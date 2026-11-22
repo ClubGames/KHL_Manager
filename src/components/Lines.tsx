@@ -1,9 +1,13 @@
 import { useState } from 'react';
 import type { Lineup, Player } from '../types';
-import { autoLineup } from '../game/ai';
+import { autoLineup, lineupConstraintsFor } from '../game/ai';
 import { attackRating, defenseRating, isForward, isGoalie, POS_RU } from '../game/ratings';
 import { autoFillLineup, setUserLineup, useGame } from '../game/state';
+import { countLineupLegionnaires, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
+import { getCapSummary } from '../game/cap';
+import { nextUserGame } from '../game/schedule';
 import { Button, Empty, Panel, OverallChip, PosBadge, Tag, useUI } from './ui';
+import { LineupPreview } from './LineupPreview';
 import { cn } from '../utils/cn';
 
 function clone(L: Lineup): Lineup {
@@ -40,6 +44,14 @@ export function Lines() {
   const U = s.teams[s.userTeamId];
   const L = U.lineup;
   const [sel, setSel] = useState<{ id: string; set?: (c: Lineup, v: string | null) => void } | null>(null);
+  const [ruleErr, setRuleErr] = useState<string | null>(null);
+
+  const fl = teamForeignLimit(U, s.league.foreignLimit);
+  const dressedLegs = countLineupLegionnaires(L, P);
+  const capSummary = getCapSummary(s, U.id);
+  const suspendedSet = new Set(capSummary.suspendedIds);
+  const nextG = nextUserGame(s, U.id);
+  const nextOppId = nextG ? (nextG.home === U.id ? nextG.away : nextG.home) : undefined;
 
   const used = new Set<string>([...L.F.flat(), ...L.D.flat(), ...L.pp1, ...L.pp2, ...L.pk1, ...L.pk2, L.starterG, L.backupG].filter((x): x is string => !!x));
   const bench = U.players.filter((id) => !used.has(id)).map((id) => P[id]).sort((a, b) => b.overall - a.overall);
@@ -48,6 +60,18 @@ export function Lines() {
     const c = clone(L);
     setter(c);
     dedupeLineup(c);
+    if (fl !== null && countLineupLegionnaires(c, P) > fl) {
+      setRuleErr(`Превышен лимит легионеров КХЛ в заявке на матч (максимум ${fl} иностранцев). Замените одного из легионеров.`);
+      return;
+    }
+    const afterUsed = new Set<string>([...c.F.flat(), ...c.D.flat(), ...c.pp1, ...c.pp2, ...c.pk1, ...c.pk2, c.starterG, c.backupG].filter((x): x is string => !!x));
+    for (const sid of suspendedSet) {
+      if (afterUsed.has(sid)) {
+        setRuleErr(`Игрок ${P[sid]?.name ?? ''} заблокирован лигой из-за превышения потолка зарплат!`);
+        return;
+      }
+    }
+    setRuleErr(null);
     setUserLineup(c);
     setSel(null);
   };
@@ -82,11 +106,12 @@ export function Lines() {
   const Slot = ({ id, pref, onClick, label }: { id: string | null; pref: 'C' | 'LW' | 'RW' | 'D' | 'G'; onClick: () => void; label?: string }) => {
     const p = skater(id);
     return (
-      <button onClick={onClick} className={slotCls(id, pref)} title={p ? `${p.name} · OVR ${p.overall}` : 'Пустой слот'}>
+      <button onClick={onClick} className={slotCls(id, pref)} title={p ? `${p.name} · OVR ${p.overall} · ${p.country}` : 'Пустой слот'}>
         <span className="text-[10px] uppercase text-muted w-5">{label ?? POS_RU[pref]}</span>
         {p ? (
           <>
             <span className="font-medium truncate flex-1 text-left">{p.name}</span>
+            {isLegionnaire(p) && <span className="text-[9px] font-bold px-1 rounded bg-gold/20 text-gold">ЛЕГ</span>}
             <PosBadge pos={p.position} />
             <OverallChip value={p.overall} size="sm" />
           </>
@@ -126,8 +151,17 @@ export function Lines() {
   return (
     <div className="space-y-4 fade-in">
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-sm text-muted">
-          Кликните игрока, затем слот — игрок встанет на место ( swap при занятом слоте). Нажмите на выбранного игрока ещё раз, чтобы снять выбор.
+        <div className="flex items-center gap-2.5 flex-wrap text-sm text-muted">
+          <span>Кликните игрока, затем слот — игрок встанет на место (swap при занятом слоте).</span>
+          <span data-lineup-legionnaires>
+            {fl !== null ? (
+              <Tag tone={dressedLegs > fl ? 'bad' : dressedLegs === fl ? 'warn' : 'accent'}>
+                Легионеры в заявке: {dressedLegs} / {fl}
+              </Tag>
+            ) : (
+              <Tag tone="good">Иностранный клуб КХЛ · без лимита легионеров ({dressedLegs})</Tag>
+            )}
+          </span>
         </div>
         <div className="flex gap-2">
           {sel && (
@@ -135,14 +169,20 @@ export function Lines() {
               Снять со слота
             </Button>
           )}
-          <Button size="sm" onClick={() => { setUserLineup(autoLineup(U.players, P)); setSel(null); }}>
+          <Button size="sm" onClick={() => { setUserLineup(autoLineup(U.players, P, lineupConstraintsFor(s, U.id))); setSel(null); setRuleErr(null); }}>
             Автосостав
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => { autoFillLineup(); setSel(null); }}>
+          <Button size="sm" variant="ghost" onClick={() => { autoFillLineup(); setSel(null); setRuleErr(null); }}>
             Сбросить
           </Button>
         </div>
       </div>
+      {ruleErr && (
+        <div className="rounded-md border border-red/50 bg-red/15 px-3 py-2 text-xs text-ice flex items-center justify-between gap-2">
+          <span>⛔ {ruleErr}</span>
+          <button type="button" onClick={() => setRuleErr(null)} className="text-muted hover:text-ice cursor-pointer">✕</button>
+        </div>
+      )}
       {sel && (
         <div className="rounded-md border border-accent/60 bg-accent/10 px-3 py-2 text-sm flex flex-wrap items-center gap-3">
           Выбран игрок: <b>{P[sel.id]?.name}</b>
@@ -245,9 +285,26 @@ export function Lines() {
               <ul className="space-y-1 max-h-[560px] overflow-y-auto pr-1">
                 {bench.map((p) => (
                   <li key={p.id}>
-                    <button onClick={() => setSel(sel?.id === p.id ? null : { id: p.id })} onDoubleClick={() => ui.openPlayer(p.id)} className={cn('w-full flex items-center gap-2 px-2 py-1.5 rounded-sm border text-sm transition-colors', sel?.id === p.id ? 'border-accent bg-accent/15 ring-1 ring-accent/50' : 'border-transparent hover:bg-panel2', p.injury && 'opacity-60')} title="Двойной клик — карточка игрока">
+                    <button
+                      onClick={() => {
+                        if (suspendedSet.has(p.id)) {
+                          setRuleErr(`Контракт ${p.name} заблокирован КХЛ из-за превышения потолка зарплат!`);
+                          return;
+                        }
+                        setSel(sel?.id === p.id ? null : { id: p.id });
+                      }}
+                      onDoubleClick={() => ui.openPlayer(p.id)}
+                      className={cn(
+                        'w-full flex items-center gap-2 px-2 py-1.5 rounded-sm border text-sm transition-colors',
+                        sel?.id === p.id ? 'border-accent bg-accent/15 ring-1 ring-accent/50' : 'border-transparent hover:bg-panel2',
+                        (p.injury || suspendedSet.has(p.id)) && 'opacity-60'
+                      )}
+                      title="Двойной клик — карточка игрока"
+                    >
                       <PosBadge pos={p.position} />
                       <span className="flex-1 truncate text-left">{p.name}</span>
+                      {isLegionnaire(p) && <span className="text-[9px] font-bold px-1 rounded bg-gold/20 text-gold">ЛЕГ</span>}
+                      {suspendedSet.has(p.id) && <span className="text-[9px] font-bold px-1 rounded bg-red/25 text-red">БЛОК ФОТ</span>}
                       <span className="text-xs text-muted">{p.age} л.</span>
                       <OverallChip value={p.overall} size="sm" />
                       {p.injury && <span className="text-[10px] text-accent uppercase">{p.injury.games} мат.</span>}
@@ -267,6 +324,15 @@ export function Lines() {
           </Panel>
         </div>
       </div>
+
+      {/* Live Pre-Match Power Play Preview & Lineup Comparison */}
+      <LineupPreview
+        state={s}
+        leftTeamId={U.id}
+        initialOpponentId={nextOppId}
+        overrideLeftLineup={L}
+        onPlayer={(id) => ui.openPlayer(id)}
+      />
     </div>
   );
 }

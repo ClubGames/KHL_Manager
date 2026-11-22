@@ -9,6 +9,9 @@ import type { LiveStats } from '../game/live';
 import { Button, Icon, Panel, PosBadge, TeamLogo } from './ui';
 import { cn } from '../utils/cn';
 import { GoalReplay } from './GoalReplay';
+import { ShotMap } from './ShotMap';
+import { LineupPreview } from './LineupPreview';
+import { previewPowerPlay } from '../game/lineupCompare';
 
 const RATE: Record<1 | 2 | 4, number> = { 1: 30, 2: 60, 4: 120 };
 
@@ -48,6 +51,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const [replayEvent, setReplayEvent] = useState<GameEvent | null>(null);
   const [countdown, setCountdown] = useState(8);
   const [swapSel, setSwapSel] = useState<number | null>(null);
+  const [showPreLineup, setShowPreLineup] = useState(false);
+  const [showPostMap, setShowPostMap] = useState(true);
   const periodEvs = useRef<GameEvent[]>([]);
   const idx = useRef(0);
   const clockRef = useRef(0);
@@ -298,8 +303,11 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
             {renderOnIce(0)}
             {renderOnIce(1)}
           </div>
-          <Panel title="Хроника матча" noPad className="min-h-[320px]">
-            <div ref={feedRef} data-feed className="max-h-[52vh] overflow-y-auto divide-y divide-line/60">
+          <Panel title="Мини-карта опасных моментов (xG) и тепловая карта бросков">
+            <ShotMap shots={stats.shotMap} home={H} away={A} players={P} compact />
+          </Panel>
+          <Panel title="Хроника матча" noPad className="min-h-[260px]">
+            <div ref={feedRef} data-feed className="max-h-[42vh] overflow-y-auto divide-y divide-line/60">
               {feed.length === 0 && status === 'playing' && <div className="p-4 text-muted text-sm">Игра началась…</div>}
               <FeedRows feed={feed} onReplay={setReplayEvent} />
             </div>
@@ -321,6 +329,16 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
                   <td className="pl-4 py-1.5 font-display text-lg">{stats.shots[0]}</td>
                   <td className="text-center text-xs text-muted">Броски</td>
                   <td className="pr-4 py-1.5 font-display text-lg text-right">{stats.shots[1]}</td>
+                </tr>
+                <tr className="border-t border-line/60">
+                  <td className="pl-4 py-1.5 font-semibold text-accent">{stats.xg[0].toFixed(2)}</td>
+                  <td className="text-center text-xs text-muted">Ожид. голы (xG)</td>
+                  <td className="pr-4 py-1.5 font-semibold text-accent text-right">{stats.xg[1].toFixed(2)}</td>
+                </tr>
+                <tr className="border-t border-line/60">
+                  <td className="pl-4 py-1.5 text-gold">{stats.dangerShots[0]}</td>
+                  <td className="text-center text-xs text-muted">Опасные (xG ≥ 0.12)</td>
+                  <td className="pr-4 py-1.5 text-gold text-right">{stats.dangerShots[1]}</td>
                 </tr>
                 <tr className="border-t border-line/60">
                   <td className="pl-4 py-1.5">{stats.ppGoals[0]}/{stats.ppChances[0]}</td>
@@ -384,20 +402,61 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       {replayEvent && (
         <GoalReplay event={replayEvent} home={H} away={A} players={P} onClose={() => setReplayEvent(null)} />
       )}
-      {status === 'intro' && (
-        <Overlay>
-          <div className="font-display text-3xl uppercase">Матч начинается</div>
-          <div className="text-muted text-sm mt-2">{H.name} — {A.name}. Настройте звенья заранее или начните прямо сейчас.</div>
-          <div className="flex gap-2 mt-5 flex-wrap justify-center">
-            <Button variant="primary" size="lg" onClick={startBlock}>
-              <Icon name="play" /> Начать матч
-            </Button>
-            <Button size="lg" onClick={finishNow}>
-              <Icon name="fast" /> Симулировать
-            </Button>
-          </div>
-        </Overlay>
-      )}
+      {status === 'intro' && (() => {
+        const oppId = game.home === s.userTeamId ? game.away : game.home;
+        const [pp1, pp2] = previewPowerPlay(s, s.userTeamId, oppId, userL);
+        return (
+          <Overlay wide={showPreLineup}>
+            <div className="font-display text-3xl uppercase">Матч начинается</div>
+            <div className="text-muted text-sm mt-1">
+              {H.name} — {A.name}. Проверьте сравнение звеньев и бригады большинства до стартового вбрасывания.
+            </div>
+
+            {/* Compact pre-game PP preview right in the intro card */}
+            <div className="mt-3 w-full rounded-lg border border-line bg-bg/55 p-3 text-left text-xs space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-display uppercase tracking-wider text-accent font-semibold">
+                  Кто выйдет в большинстве ({userTeam.short})
+                </span>
+                <span className="text-muted">Прогноз ЧБ: <b className="text-ice">{pp1.expectedPpPct}%</b></span>
+              </div>
+              <div className="text-[11px] text-ice">
+                <span className="text-muted">1-я ЧБ (~58%): </span>
+                {pp1.slots.map((sl) => sl.player?.name).filter(Boolean).join(' · ')}
+              </div>
+              <div className="text-[11px] text-ice/85">
+                <span className="text-muted">2-я ЧБ (~42%): </span>
+                {pp2.slots.map((sl) => sl.player?.name).filter(Boolean).join(' · ')}
+              </div>
+            </div>
+
+            {showPreLineup && (
+              <div className="mt-3 w-full max-h-[52vh] overflow-y-auto text-left">
+                <LineupPreview
+                  state={s}
+                  leftTeamId={s.userTeamId}
+                  initialOpponentId={oppId}
+                  overrideLeftLineup={userL}
+                  allowPickOpponent={false}
+                  initialTab="compare"
+                />
+              </div>
+            )}
+
+            <div className="flex gap-2 mt-4 flex-wrap justify-center">
+              <Button variant="primary" size="lg" onClick={startBlock}>
+                <Icon name="play" /> Начать матч
+              </Button>
+              <Button size="lg" onClick={finishNow}>
+                <Icon name="fast" /> Симулировать
+              </Button>
+              <Button variant="secondary" size="lg" onClick={() => setShowPreLineup((v) => !v)}>
+                {showPreLineup ? 'Скрыть тактику' : 'Сравнение звеньев и схема ЧБ'}
+              </Button>
+            </div>
+          </Overlay>
+        );
+      })()}
       {status === 'break' && (
         <Overlay>
           <div className="text-[11px] uppercase tracking-widest text-muted">{periodNameOf(period, kind)} завершён</div>
@@ -439,23 +498,28 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         </Overlay>
       )}
       {status === 'done' && res && (
-        <Overlay>
+        <Overlay wide={showPostMap}>
           <div className="text-[11px] uppercase tracking-widest text-muted">Матч завершён{res.so ? ' · буллиты' : res.ot ? ` · овертайм${res.periods > 4 ? ` ${res.periods - 3}×` : ''}` : ''}</div>
           <div className={cn('font-display text-5xl tabular', userWon ? 'text-ok' : 'text-accent')}>{userWon ? 'Победа' : 'Поражение'}</div>
           <div className="font-display text-3xl tabular mt-1">
             {H.short} {res.homeScore} : {res.awayScore} {A.short}
           </div>
           <div className="text-xs text-muted">
-            {res.periodScores.map((p, i) => `${i < 3 ? i + 1 : 'OT'}-й: ${p[0]}-${p[1]}`).join(' · ')} · броски {res.homeStats.shots}:{res.awayStats.shots}
+            {res.periodScores.map((p, i) => `${i < 3 ? i + 1 : 'OT'}-й: ${p[0]}-${p[1]}`).join(' · ')} · броски {res.homeStats.shots}:{res.awayStats.shots} · xG {(res.homeStats.xg ?? 0).toFixed(2)}:{(res.awayStats.xg ?? 0).toFixed(2)}
           </div>
-          <div className="flex gap-2 mt-4 flex-wrap justify-center">
+          <div className="flex gap-2 mt-3 flex-wrap justify-center">
             {res.stars.map((id, i) => (
               <span key={id} className="text-xs bg-panel2 border border-amber/40 rounded-sm px-2 py-1">
                 <span className="text-amber">★{i + 1}</span> {P[id]?.name} <span className="text-muted">({teamShort(id)})</span>
               </span>
             ))}
           </div>
-          <div className="mt-4 w-full max-w-md text-left text-xs max-h-40 overflow-y-auto">
+          {showPostMap && (res.shotMap?.length ?? stats.shotMap.length) > 0 && (
+            <div className="mt-3 w-full text-left">
+              <ShotMap shots={res.shotMap ?? stats.shotMap} home={H} away={A} players={P} compact />
+            </div>
+          )}
+          <div className="mt-3 w-full max-w-lg text-left text-xs max-h-32 overflow-y-auto">
             {res.scorers.map((sc, i) => (
               <div key={i} className="flex gap-2 py-0.5">
                 <span className="w-12 text-muted tabular shrink-0">{sc.period <= 3 ? sc.period : 'ОТ'} · {sc.time}</span>
@@ -466,17 +530,21 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               </div>
             ))}
           </div>
-          <Button
-            variant="primary"
-            size="lg"
-            className="mt-5"
-            onClick={() => {
-              commitUserResult(game.id, sim.result());
-              onFinished();
-            }}
-          >
-            Продолжить сезон
-          </Button>
+          <div className="flex gap-2 mt-4 flex-wrap justify-center">
+            <Button variant="secondary" onClick={() => setShowPostMap((v) => !v)}>
+              {showPostMap ? 'Скрыть карту бросков' : 'Показать карту xG / тепловую'}
+            </Button>
+            <Button
+              variant="primary"
+              size="lg"
+              onClick={() => {
+                commitUserResult(game.id, sim.result());
+                onFinished();
+              }}
+            >
+              Продолжить сезон
+            </Button>
+          </div>
         </Overlay>
       )}
     </div>
@@ -490,10 +558,12 @@ function periodNameOf(period: number, kind: BlockKind): string {
   return period === 4 ? 'Овертайм' : `${period - 3}-й овертайм`;
 }
 
-function Overlay({ children }: { children: React.ReactNode }) {
+function Overlay({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="fixed inset-0 z-40 bg-bg/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-panel border border-line rounded-md p-6 max-w-xl w-full text-center shadow-2xl fade-in flex flex-col items-center">{children}</div>
+    <div className="fixed inset-0 z-40 bg-bg/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+      <div className={cn('bg-panel border border-line rounded-md p-5 w-full text-center shadow-2xl fade-in flex flex-col items-center max-h-[92vh] overflow-y-auto', wide ? 'max-w-4xl' : 'max-w-xl')}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -542,6 +612,11 @@ const FeedRow = memo(function FeedRow({ e, onReplay }: { e: GameEvent; onReplay:
         <Icon name={e.type === 'goal' || e.type === 'so_goal' ? 'puck' : e.type === 'penalty' ? 'alert' : e.type === 'hit' ? 'injury' : e.type === 'shot' || e.type === 'miss' ? 'puck' : 'check'} />
       </span>
       <span className={cn('flex-1 min-w-0', e.type === 'goal' && 'font-semibold text-text', e.type === 'shot' || e.type === 'miss' || e.type === 'hit' ? 'text-text/75' : 'text-text/90')}>{e.text}</span>
+      {e.xg !== undefined && (e.type === 'goal' || e.xg >= 0.12) && (
+        <span className={cn('shrink-0 text-[10px] tabular px-1.5 py-0.5 rounded', e.xg >= 0.12 ? 'bg-gold/15 text-gold font-semibold' : 'bg-panel2 text-muted')}>
+          xG {e.xg.toFixed(2)}
+        </span>
+      )}
       {e.type === 'goal' && (
         <button onClick={() => onReplay(e)} className="shrink-0 text-[10px] uppercase tracking-wide rounded border border-accent/40 px-2 py-1 text-accent hover:bg-accent/10" title="Посмотреть 3D-повтор">3D повтор</button>
       )}

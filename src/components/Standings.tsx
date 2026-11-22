@@ -31,6 +31,7 @@ function Table({ teams, U }: { teams: Team[]; U: string }) {
                     <TeamLogo team={t} size={22} />
                     <span className="truncate">{t.name}</span>
                     {t.id === U && <Tag color="#8FD8F0">вы</Tag>}
+                    {(r.capPenaltyPoints ?? 0) > 0 && <Tag tone="bad">−{r.capPenaltyPoints} ФОТ</Tag>}
                     {t.record.streakType && t.record.streak >= 3 && <Tag color={t.record.streakType === 'W' ? '#3FCF8E' : '#E5323E'}>{t.record.streakType === 'W' ? 'В' : 'П'}{t.record.streak}</Tag>}
                   </span>
                 </td>

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect } from 'react';
-import type { ButtonHTMLAttributes, ReactNode } from 'react';
+import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import { cn } from '../utils/cn';
 import type { PosCode, Team } from '../types';
 import { overallColor, POS_RU } from '../game/ratings';
@@ -25,9 +25,9 @@ export const UIContext = createContext<UIApi>({
 });
 export const useUI = () => useContext(UIContext);
 
-export function Panel({ title, right, children, className, noPad }: { title?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; noPad?: boolean }) {
+export function Panel({ title, right, children, className, noPad, ...rest }: Omit<HTMLAttributes<HTMLElement>, 'title'> & { title?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; noPad?: boolean }) {
   return (
-    <section className={cn('bg-panel border border-line rounded-md overflow-hidden', className)}>
+    <section {...rest} className={cn('bg-panel border border-line rounded-md overflow-hidden', className)}>
       {title && (
         <header className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-line bg-panel2/60 min-h-[42px]">
           <h3 className="font-display uppercase tracking-wide text-sm text-text flex items-center gap-2 m-0">
@@ -154,8 +154,16 @@ export function Bar({ value, color, height = 6, className }: { value: number; co
   );
 }
 
-export function Tag({ children, color, className }: { children: ReactNode; color?: string; className?: string }) {
-  const c = color ?? '#93A4BC';
+const TONE_COLOR: Record<'accent' | 'good' | 'warn' | 'bad' | 'muted', string> = {
+  accent: '#8FD8F0',
+  good: '#3FCF8E',
+  warn: '#F2B544',
+  bad: '#E5323E',
+  muted: '#93A4BC',
+};
+
+export function Tag({ children, color, tone, className }: { children: ReactNode; color?: string; tone?: 'accent' | 'good' | 'warn' | 'bad' | 'muted'; className?: string }) {
+  const c = color ?? (tone ? TONE_COLOR[tone] : '#93A4BC');
   return (
     <span className={cn('inline-flex items-center text-[11px] font-semibold uppercase tracking-wide px-1.5 py-0.5 rounded-sm', className)} style={{ color: c, background: `${c}1f` }}>
       {children}

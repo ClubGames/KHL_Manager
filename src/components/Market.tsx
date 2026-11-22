@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { groupOf } from '../game/ai';
 import { askingSalary, talksLeft } from '../game/contracts';
-import { formatMoney, payroll } from '../game/ratings';
+import { getCapSummary } from '../game/cap';
+import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
+import { formatMoney } from '../game/ratings';
 import { useGame } from '../game/state';
-import { Button, OverallChip, Panel, PosBadge, useUI } from './ui';
+import { Button, OverallChip, Panel, PosBadge, Tag, useUI } from './ui';
 import { cn } from '../utils/cn';
 
 export function Market() {
@@ -12,20 +14,52 @@ export function Market() {
   const P = s.players;
   const U = s.teams[s.userTeamId];
   const [pos, setPos] = useState<'ALL' | 'F' | 'D' | 'G'>('ALL');
-  const list = s.freeAgents.map((id) => P[id]).filter((p) => p && (pos === 'ALL' || groupOf(p) === pos)).sort((a, b) => b.overall - a.overall);
-  const fol = s.phase === 'offseason' ? U.players.reduce((a, id) => a + (P[id].contract.years > 0 ? P[id].contract.salary : 0), 0) : payroll(U.players, P);
+  const [natFilter, setNatFilter] = useState<'ALL' | 'EAEU' | 'LEG'>('ALL');
+  const fl = teamForeignLimit(U, s.league.foreignLimit);
+  const curLegs = countRosterLegionnaires(U.players, P);
+  const capInfo = getCapSummary(s, U.id);
+  const fol = capInfo.totalPayroll;
   const cap = s.league.salaryCap;
+
+  const list = s.freeAgents
+    .map((id) => P[id])
+    .filter((p) => {
+      if (!p) return false;
+      if (pos !== 'ALL' && groupOf(p) !== pos) return false;
+      if (natFilter === 'EAEU' && isLegionnaire(p)) return false;
+      if (natFilter === 'LEG' && !isLegionnaire(p)) return false;
+      return true;
+    })
+    .sort((a, b) => b.overall - a.overall);
+
   return (
     <div className="space-y-4 fade-in">
       <Panel
         title="Рынок свободных агентов"
         right={
-          <div className="flex items-center gap-2">
-            {(['ALL', 'F', 'D', 'G'] as const).map((k) => (
-              <button key={k} onClick={() => setPos(k)} className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold', pos === k ? 'bg-accent text-white' : 'text-muted hover:text-text bg-panel2')}>
-                {k === 'ALL' ? 'Все' : k === 'F' ? 'Нападающие' : k === 'D' ? 'Защитники' : 'Вратари'}
-              </button>
-            ))}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1">
+              {([
+                ['ALL', 'Все паспорта'],
+                ['EAEU', 'ЕАЭС (без лимита)'],
+                ['LEG', 'Легионеры'],
+              ] as const).map(([k, lbl]) => (
+                <button
+                  key={k}
+                  onClick={() => setNatFilter(k)}
+                  className={cn('text-[11px] px-2 py-1 rounded-sm font-semibold', natFilter === k ? 'bg-ice text-bg' : 'text-muted hover:text-text bg-bg/60')}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-1">
+              {(['ALL', 'F', 'D', 'G'] as const).map((k) => (
+                <button key={k} onClick={() => setPos(k)} className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold', pos === k ? 'bg-accent text-white' : 'text-muted hover:text-text bg-panel2')}>
+                  {k === 'ALL' ? 'Все' : k === 'F' ? 'Нападающие' : k === 'D' ? 'Защитники' : 'Вратари'}
+                </button>
+              ))}
+            </div>
           </div>
         }
         noPad
@@ -39,6 +73,12 @@ export function Market() {
           </span>
           <span>
             Свободно под потолком: <b className="text-ok">{formatMoney(Math.max(0, cap - fol))}</b>
+          </span>
+          <span>
+            Легионеры в клубе:{' '}
+            <b className={fl !== null && curLegs >= fl ? 'text-gold' : 'text-ice'}>
+              {fl !== null ? `${curLegs} / ${fl}` : `${curLegs} (без лим.)`}
+            </b>
           </span>
           <span>
             Бюджет: <b className="text-text">{formatMoney(U.budget)}</b>
@@ -70,12 +110,16 @@ export function Market() {
                 const ask = askingSalary(s, p, 1, U.id);
                 const left = talksLeft(s, p);
                 const noRoom = fol + ask * 0.87 > cap;
+                const leg = isLegionnaire(p);
+                const legFull = leg && fl !== null && curLegs >= fl;
                 return (
                   <tr key={p.id} className="border-t border-line/60 hover:bg-panel2 transition-colors">
                     <td className="pl-4 py-2 font-medium whitespace-nowrap">
                       <button className="hover:text-ice text-left" onClick={() => ui.openPlayer(p.id)}>
                         {p.name}
                       </button>
+                      <span className="ml-1.5 text-[10px] text-muted">{countryCode(p.country)}</span>
+                      {leg && <Tag tone={legFull ? 'bad' : 'warn'} className="ml-1.5">ЛЕГ</Tag>}
                     </td>
                     <td className="py-2">
                       <PosBadge pos={p.position} />

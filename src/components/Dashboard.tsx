@@ -1,8 +1,15 @@
+import { useState } from 'react';
 import { nextUserGame, regularSeasonLength, seasonDate } from '../game/schedule';
 import { rankConference, simulateDay, simulateDays, simulateToNextUserGame, useGame } from '../game/state';
-import { isGoalie, isSkater, payroll, points } from '../game/ratings';
+import { isGoalie, isSkater, points } from '../game/ratings';
+import { getCapSummary } from '../game/cap';
+import { countRosterLegionnaires, teamForeignLimit } from '../game/legionnaires';
+import { isYouthPlayer } from '../game/training';
+import { tradeWindow } from '../game/ai';
+import { previewPowerPlay } from '../game/lineupCompare';
 import type { Game, NewsItem, Team } from '../types';
 import { Bar, Button, Icon, money, Panel, ResultPill, Stat, Tag, TeamLogo, useUI } from './ui';
+import { LineupPreview } from './LineupPreview';
 import { boardOnTrack } from '../game/board';
 
 function TeamBlock({ team, place, right }: { team: Team; place: number | null; right?: boolean }) {
@@ -41,12 +48,20 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
   const injured = U.players.map((id) => P[id]).filter((p) => p.injury);
   const alive = s.playoffs ? s.playoffs.series.filter((x) => (x.high === U.id || x.low === U.id) && !x.done) : [];
   const eliminated = s.phase === 'playoffs' && alive.length === 0;
+  const [showTactics, setShowTactics] = useState(false);
   const cap = s.league.salaryCap;
-  const fol = payroll(U.players, P);
+  const capInfo = getCapSummary(s, U.id);
+  const fol = capInfo.totalPayroll;
+  const fl = teamForeignLimit(U, s.league.foreignLimit);
+  const legCount = countRosterLegionnaires(U.players, P);
+  const youthCount = U.players.filter((id) => isYouthPlayer(P[id])).length;
+  const tw = tradeWindow(s);
   const topSal = [...U.players].sort((a, b) => P[b].contract.salary - P[a].contract.salary).slice(0, 4);
   const onTrack = boardOnTrack(s);
   const dayLabel = (g: Game) => (g.day === s.day ? 'Сегодня' : g.day === s.day + 1 ? 'Завтра' : `Через ${g.day - s.day} дн.`);
   const series = upcoming?.seriesId != null ? s.playoffs?.series.find((x) => x.id === upcoming.seriesId) : null;
+  const upcomingOppId = upcoming ? (upcoming.home === U.id ? upcoming.away : upcoming.home) : undefined;
+  const ppQuick = upcomingOppId ? previewPowerPlay(s, U.id, upcomingOppId)[0] : null;
 
   const simToNext = () => {
     const res = simulateToNextUserGame();
@@ -66,6 +81,27 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
         <Stat label="Бюджет" value={money(U.budget)} sub={`ФОТ ${money(fol)}`} color="#3FCF8E" />
       </div>
 
+      {capInfo.over && (
+        <div className="rounded-md border border-accent/60 bg-accent/12 p-3 text-xs flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <b className="text-accent uppercase">
+              {capInfo.sanctionsActive
+                ? `⛔ Санкции КХЛ за превышение потолка зарплат (−${capInfo.pointsDeducted} очк.)`
+                : `⚠ Превышение потолка зарплат на ${money(capInfo.excess)} (льготный период: ${capInfo.graceDaysLeft} дн.)`}
+            </b>
+            <span className="text-text/85 ml-2">
+              {capInfo.sanctionsActive
+                ? `Заблокировано игроков: ${capInfo.suspendedIds.length} · штраф ${money(capInfo.dailyFine)}/день.`
+                : 'Разгрузите ведомость через обмен или расторжение контракта до введения жёстких санкций!'}
+            </span>
+          </div>
+          <div className="flex gap-1.5">
+            <Button size="sm" variant="primary" onClick={() => ui.nav('contracts')}>Контракты</Button>
+            <Button size="sm" onClick={() => ui.nav('trades')}>Обмены</Button>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
         <div className="xl:col-span-2 space-y-4">
           <Panel title={userGame ? 'Матч сегодня' : 'Следующий матч'} right={upcoming && <Tag color={upcoming.kind === 'playoff' ? '#F2B544' : '#93A4BC'}>{upcoming.kind === 'playoff' ? 'Плей-офф' : 'Регулярный чемпионат'} · {dayLabel(upcoming)}</Tag>}>
@@ -84,6 +120,21 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
                   </div>
                   <TeamBlock team={s.teams[upcoming.away]} right place={rankConference(s, s.teams[upcoming.away].conference).findIndex((t) => t.id === upcoming.away) + 1} />
                 </div>
+
+                {ppQuick && (
+                  <div className="my-2 rounded-md border border-line/80 bg-bg/45 px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="text-ice font-semibold">1-я ЧБ на матч: </span>
+                      <span className="text-text/90">
+                        {ppQuick.slots.map((sl) => sl.player?.name).filter(Boolean).join(' · ')}
+                      </span>
+                    </div>
+                    <span className="text-muted shrink-0">
+                      Прогноз ЧБ: <b className="text-amber">{ppQuick.expectedPpPct}%</b>
+                    </span>
+                  </div>
+                )}
+
                 <div className="flex flex-wrap gap-2 pt-3 border-t border-line">
                   {eliminated ? (
                     <Button variant="primary" onClick={simToNext}>
@@ -116,10 +167,26 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
                       5 дней
                     </Button>
                   )}
+                  {!eliminated && (
+                    <Button size="lg" variant="secondary" onClick={() => setShowTactics((v) => !v)}>
+                      {showTactics ? 'Скрыть разбор' : 'Сравнение звеньев и ЧБ'}
+                    </Button>
+                  )}
                   <Button size="lg" variant="ghost" onClick={() => ui.nav('schedule')}>
                     Календарь
                   </Button>
                 </div>
+                {showTactics && upcomingOppId && (
+                  <div className="mt-3">
+                    <LineupPreview
+                      state={s}
+                      leftTeamId={U.id}
+                      initialOpponentId={upcomingOppId}
+                      allowPickOpponent={false}
+                      onPlayer={(id) => ui.openPlayer(id)}
+                    />
+                  </div>
+                )}
                 {eliminated && <div className="mt-3 text-xs text-amber">Команда выбыла из борьбы за Кубок Гагарина. Досимулируйте плей-офф, чтобы перейти к межсезонью.</div>}
               </>
             ) : (
@@ -231,15 +298,29 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
             </div>
           </Panel>
 
-          <Panel title="Финансы">
+          <Panel title="Регламент и финансы">
             <div className="flex justify-between text-sm">
               <span className="text-muted">ФОТ</span>
-              <span className="tabular">{money(fol)} / {money(cap)}</span>
+              <span className={`tabular ${fol > cap ? 'text-accent font-semibold' : ''}`}>{money(fol)} / {money(cap)}</span>
             </div>
             <div className="h-2 bg-line rounded-full overflow-hidden mt-1">
-              <div className="h-full rounded-full" style={{ width: `${Math.min(100, (fol / cap) * 100)}%`, background: fol / cap > 0.95 ? '#E5323E' : '#3FCF8E' }} />
+              <div className="h-full rounded-full" style={{ width: `${Math.min(100, (fol / cap) * 100)}%`, background: fol > cap ? '#E5323E' : fol / cap > 0.95 ? '#F2B544' : '#3FCF8E' }} />
             </div>
-            <ul className="mt-3 space-y-1 text-xs">
+            <div className="mt-2.5 pt-2 border-t border-line/60 space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted">Легионеры</span>
+                <span className="tabular text-ice">{fl !== null ? `${legCount} / ${fl}` : `${legCount} (без лим.)`}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Окно обменов</span>
+                <span className={tw.open ? 'text-ok' : 'text-amber'}>{tw.windowTitle}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Молодёжь U23</span>
+                <button onClick={() => ui.nav('roster')} className="text-ice hover:underline">{youthCount} игр. (планы →)</button>
+              </div>
+            </div>
+            <ul className="mt-3 pt-2 border-t border-line/60 space-y-1 text-xs">
               {topSal.map((id) => (
                 <li key={id} className="flex justify-between">
                   <button onClick={() => ui.openPlayer(id)} className="truncate hover:text-ice text-left">{P[id].name}</button>

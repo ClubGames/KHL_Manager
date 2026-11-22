@@ -136,7 +136,7 @@ check('extension is stored for next season; this season is unchanged', ext.ok &&
 s = st();
 const victim = s.teams.ska.players.map((id) => s.players[id]).filter((p) => p.contract.years >= 2 && p.id !== longTerm.id).sort((a, b) => a.overall - b.overall)[0];
 const cost = buyoutCost(s, victim), b1 = s.teams.ska.budget;
-const expect = Math.round((victim.contract.salary * (victim.contract.years - 1 + (1 - s.day / 142))) / 3 / 1e5) * 1e5;
+const expect = Math.round((victim.contract.salary * (victim.contract.years - 1 + (1 - s.day / Math.max(1, s.schedule.length)))) / 3 / 1e5) * 1e5;
 const rel = G.releasePlayer(victim.id);
 check('termination costs a third of the money still owed', rel === null && cost === expect && cost > 0 && st().teams.ska.budget === b1 - cost && st().players[victim.id].teamId === null, `${(cost / 1e6).toFixed(1)} млн`);
 check('board sets a season objective', !!st().board.text && st().board.confidence === 60, `${st().board.text} (состав №${st().board.rank} по силе)`);

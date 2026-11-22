@@ -1,8 +1,8 @@
 import { useSyncExternalStore } from 'react';
-import type { Award, Game, GameResult, GameState, Lineup, NewsItem, NewsType, Series, Team } from '../types';
+import type { Award, Game, GameResult, GameState, Lineup, NewsItem, NewsType, Series, Team, YouthTrainingPlan } from '../types';
 import { buildSchedule } from './schedule';
 import { GameSim, INJURY_TYPES, pick } from './engine';
-import { autoLineup, clubSideProblem, evaluateTrade, executeTrade, MAX_ROSTER, maybeAiTrade, maybeIncomingOffer, prepareLineup, sanitizeLineup, tradeWindow, userSideProblem } from './ai';
+import { autoLineup, clubSideProblem, evaluateTrade, executeTrade, groupOf, lineupConstraintsFor, MAX_ROSTER, maybeAiTrade, maybeIncomingOffer, prepareLineup, sanitizeLineup, tradeWindow, userSideProblem } from './ai';
 import { buyoutCost, commitments, negotiate, talksLeft } from './contracts';
 import { evaluateBoard, setBoardGoal } from './board';
 import { beginNewSeason, letGoUser, startOffseason, toFreeAgency } from './offseason';
@@ -11,6 +11,9 @@ import { emptyLineup, emptyRecord } from './defaults';
 import type { NormalizedRoster } from './roster';
 import { clearLegacy, deleteSave, getBackend, listMetas, readLegacy, readSave, storageError, writeSave } from './storage';
 import type { SaveMeta } from './storage';
+import { buyoutDeadCap, CAP_GAMES_PER_POINT_DEDUCTION, CAP_GRACE_DAYS, capExcess, dailyCapFine, effectivePayroll, getCapSummary, recomputePoints } from './cap';
+import { countRosterLegionnaires, DEFAULT_FOREIGN_LIMIT, isLegionnaire, teamForeignLimit } from './legionnaires';
+import { isYouthPlayer, recommendYouthPlan, stepYouthTrainingWeek } from './training';
 
 const SAVE_VERSION = 2;
 const LEGACY_ID = 'legacy-v1';
@@ -116,8 +119,16 @@ if (typeof window !== 'undefined') {
 
 const newId = () => `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 
-/** Copy of the state that is written to disk: play-by-play and per-skater game lines are dropped (kept only in memory). */
+/** Copy of the state that is written to disk: play-by-play and per-skater game lines are dropped (kept only in memory); shotMap is retained only on recent user matches. */
 export function snapshot(s: GameState): GameState {
+  const U = s.userTeamId;
+  const userPlayedIds: number[] = [];
+  for (const day of s.schedule) {
+    for (const g of day) {
+      if (g.played && g.result?.shotMap && (g.home === U || g.away === U)) userPlayedIds.push(g.id);
+    }
+  }
+  const keepShots = new Set(userPlayedIds.slice(-12));
   return {
     ...s,
     schedule: s.schedule.map((day) =>
@@ -126,7 +137,8 @@ export function snapshot(s: GameState): GameState {
         if (!r) return g;
         const lines: GameResult['lines'] = {};
         for (const gid of [r.homeGoalie, r.awayGoalie]) if (gid && r.lines[gid]) lines[gid] = r.lines[gid];
-        return { ...g, result: { ...r, events: [], homeDressed: [], awayDressed: [], lines } };
+        const shotMap = keepShots.has(g.id) ? r.shotMap : undefined;
+        return { ...g, result: { ...r, events: [], homeDressed: [], awayDressed: [], lines, shotMap } };
       })
     ),
   };
@@ -178,11 +190,21 @@ export function migrateState(raw: unknown): GameState | null {
   s.freeAgents ??= [];
   s.offseason ??= null;
   s.playoffs ??= null;
+  s.announcedWindows ??= [];
+  s.league.foreignLimit ??= DEFAULT_FOREIGN_LIMIT;
   if (s.playoffs && !s.playoffs.awards) s.playoffs.awards = [];
-  // Points are derived from the record, so saves made under the old 3-point rule are converted automatically.
+  for (const p of Object.values(s.players)) {
+    if (isYouthPlayer(p) && !p.trainingPlan) p.trainingPlan = recommendYouthPlan(p);
+  }
+  // Points are derived from the record (minus any salary-cap penalty deductions), so saves made under the old 3-point rule are converted automatically.
   for (const t of Object.values(s.teams)) {
+    t.deadCap ??= 0;
+    t.capViolationDays ??= 0;
+    t.capViolationGames ??= 0;
+    t.capFinesTotal ??= 0;
     const r = t.record;
-    r.points = 2 * (r.w + r.otw + r.sow) + r.otl + r.sol;
+    r.capPenaltyPoints ??= 0;
+    r.points = recomputePoints(r);
   }
   for (const day of s.schedule)
     for (const g of day)
@@ -220,7 +242,7 @@ export const roundName = (r: number) => ['1/8 финала', '1/4 финала',
 
 export function createGameState(r: NormalizedRoster, userTeamId: string): GameState {
   const teamOrder = r.teams.map((t) => t.id);
-  const { days, nextId } = buildSchedule(teamOrder, r.gamesPerTeam, 1);
+  const { days, nextId } = buildSchedule(teamOrder, r.gamesPerTeam, 1, r.season);
   const teams: Record<string, Team> = {};
   for (const t of r.teams) teams[t.id] = t;
   newsId = 1;
@@ -231,7 +253,7 @@ export function createGameState(r: NormalizedRoster, userTeamId: string): GameSt
     saveId: newId(),
     saveName: user.name,
     createdAt: Date.now(),
-    league: { name: r.leagueName, season: r.season, gamesPerTeam: r.gamesPerTeam, salaryCap: r.salaryCap },
+    league: { name: r.leagueName, season: r.season, gamesPerTeam: r.gamesPerTeam, salaryCap: r.salaryCap, foreignLimit: r.foreignLimit },
     seasonNumber: 1,
     teams,
     teamOrder,
@@ -249,9 +271,26 @@ export function createGameState(r: NormalizedRoster, userTeamId: string): GameSt
     summaries: [],
     offseason: null,
     deadlinePassed: false,
+    announcedWindows: ['autumn'],
   } as unknown as GameState;
   setBoardGoal(state);
   news[0].text += ` Задача руководства на сезон: ${state.board.text.toLowerCase()}.`;
+  const startPay = effectivePayroll(user, r.players, 'season');
+  if (startPay > r.salaryCap) {
+    addNews(
+      state,
+      'info',
+      `ВНИМАНИЕ КХЛ: ФОТ «${user.name}» превышает потолок зарплат (${formatMoney(startPay)} при лимите ${formatMoney(r.salaryCap)})! У вас есть ${CAP_GRACE_DAYS} игровых дней на разгрузку ведомости до блокировки контрактов, штрафов и снятия очков.`,
+      userTeamId
+    );
+  }
+  const fl = teamForeignLimit(user, r.foreignLimit);
+  if (fl !== null) {
+    const legs = countRosterLegionnaires(user.players, r.players);
+    if (legs > fl) {
+      addNews(state, 'info', `Регламент КХЛ: в составе «${user.name}» ${legs} легионеров при лимите ${fl} на матч — лишние легионеры останутся вне заявки до обмена.`, userTeamId);
+    }
+  }
   return state;
 }
 
@@ -417,7 +456,26 @@ export function setUserLineup(L: Lineup) {
 export function autoFillLineup() {
   store.update((s) => {
     const t = s.teams[s.userTeamId];
-    t.lineup = autoLineup(t.players, s.players);
+    t.lineup = autoLineup(t.players, s.players, lineupConstraintsFor(s, t.id));
+  });
+}
+
+/* ---------------- youth training ---------------- */
+export function setTrainingPlan(playerId: string, plan: YouthTrainingPlan) {
+  store.update((s) => {
+    const p = s.players[playerId];
+    if (!p || p.teamId !== s.userTeamId || !isYouthPlayer(p)) return;
+    p.trainingPlan = plan;
+  });
+}
+
+export function autoAssignYouthPlans() {
+  store.update((s) => {
+    const t = s.teams[s.userTeamId];
+    for (const id of t.players) {
+      const p = s.players[id];
+      if (p && isYouthPlayer(p)) p.trainingPlan = recommendYouthPlan(p);
+    }
   });
 }
 
@@ -428,6 +486,7 @@ function runGame(state: GameState, g: Game): GameResult {
   const sim = new GameSim({ id: g.home, lineup: home, name: state.teams[g.home].name }, { id: g.away, lineup: away, name: state.teams[g.away].name }, state.players, g.kind === 'playoff');
   // simulated games are never replayed, so no play-by-play is generated for them
   sim.quiet = true;
+  sim.keepShotMap = g.home === state.userTeamId || g.away === state.userTeamId;
   return sim.runAll();
 }
 
@@ -488,6 +547,23 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
   if (g.kind === 'regular') {
     applyRecord(H, res.homeScore, res.awayScore, beyond, res.so, hw);
     applyRecord(A, res.awayScore, res.homeScore, beyond, res.so, !hw);
+    for (const tid of [g.home, g.away]) {
+      const cap = getCapSummary(state, tid);
+      if (cap.sanctionsActive) {
+        const T = state.teams[tid];
+        T.capViolationGames = (T.capViolationGames ?? 0) + 1;
+        if (T.capViolationGames % CAP_GAMES_PER_POINT_DEDUCTION === 0) {
+          T.record.capPenaltyPoints = (T.record.capPenaltyPoints ?? 0) + 2;
+          T.record.points = recomputePoints(T.record);
+          addNews(
+            state,
+            'info',
+            `Санкции КХЛ: с клуба «${T.name}» снято 2 турнирных очка за проведение ${T.capViolationGames} матчей с превышением потолка зарплат!`,
+            tid
+          );
+        }
+      }
+    }
   }
   const winnerId = hw ? g.home : g.away;
   for (const id in res.lines) {
@@ -552,16 +628,116 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
   if (g.home === U || g.away === U) {
     const tag = res.so ? ' (Б)' : res.ot ? ' (ОТ)' : '';
     const stars = res.stars.map((id) => P[id]?.name).filter(Boolean).join(', ');
-    addNews(state, 'result', `${H.short} ${res.homeScore}:${res.awayScore}${tag} ${A.short}. Броски ${res.homeStats.shots}:${res.awayStats.shots}. Звёзды: ${stars || '—'}`, U, g.id);
+    const hXg = (res.homeStats.xg ?? 0).toFixed(2);
+    const aXg = (res.awayStats.xg ?? 0).toFixed(2);
+    addNews(state, 'result', `${H.short} ${res.homeScore}:${res.awayScore}${tag} ${A.short}. Броски ${res.homeStats.shots}:${res.awayStats.shots} (xG ${hXg}:${aXg}). Звёзды: ${stars || '—'}`, U, g.id);
+  }
+}
+
+function aiResolveCapExcess(state: GameState, t: Team) {
+  const P = state.players;
+  let guard = 0;
+  while (capExcess(state, t.id) > 0 && t.players.length > 18 && guard++ < 6) {
+    const cnt = {
+      F: t.players.filter((id) => groupOf(P[id]) === 'F').length,
+      D: t.players.filter((id) => groupOf(P[id]) === 'D').length,
+      G: t.players.filter((id) => groupOf(P[id]) === 'G').length,
+    };
+    const mins: Record<'F' | 'D' | 'G', number> = { F: 12, D: 6, G: 2 };
+    const candidates = t.players
+      .map((id) => P[id])
+      .filter((p) => p && p.contract.salary >= 10_000_000 && cnt[groupOf(p)] > mins[groupOf(p)])
+      .sort((a, b) => a.overall - a.contract.salary / 8e6 - (b.overall - b.contract.salary / 8e6));
+    if (!candidates.length) break;
+    const drop = candidates[0];
+    const dead = Math.round((drop.contract.salary * 0.1) / 100_000) * 100_000;
+    t.deadCap = (t.deadCap ?? 0) + dead;
+    toFreeAgency(state, drop.id);
   }
 }
 
 function postDay(state: GameState) {
-  if (state.phase === 'season' && !state.deadlinePassed && !tradeWindow(state).open) {
-    state.deadlinePassed = true;
-    state.offers = [];
-    addNews(state, 'trade', 'Дедлайн обменов прошёл: до межсезонья усиливаться можно только свободными агентами.');
+  state.announcedWindows ??= [];
+  if (state.phase === 'season') {
+    const w = tradeWindow(state);
+    if (w.windowId === 'freeze' && !state.announcedWindows.includes('freeze')) {
+      state.announcedWindows.push('freeze');
+      addNews(state, 'trade', 'Пауза сборных: объявлен временный мораторий КХЛ на обмены между клубами.');
+    } else if (w.windowId === 'winter' && !state.announcedWindows.includes('winter')) {
+      state.announcedWindows.push('winter');
+      addNews(state, 'trade', 'Открыто зимнее («преддедлайновое») окно обменов КХЛ — клубы ведут финальную гонку за усилением.');
+    } else if (!state.deadlinePassed && w.windowId === 'closed') {
+      state.deadlinePassed = true;
+      state.offers = [];
+      addNews(state, 'trade', 'Дедлайн обменов прошёл: до межсезонья усиливаться можно только свободными агентами.');
+    }
   }
+
+  // Daily salary cap enforcement & harsh consequences
+  if (state.phase === 'season' || state.phase === 'playoffs') {
+    for (const t of Object.values(state.teams)) {
+      if (t.id !== state.userTeamId && capExcess(state, t.id) > 0 && (t.capViolationDays ?? 0) >= 4) {
+        aiResolveCapExcess(state, t);
+      }
+      const excess = capExcess(state, t.id);
+      if (excess > 0) {
+        t.capViolationDays = (t.capViolationDays ?? 0) + 1;
+        if (t.id === state.userTeamId && t.capViolationDays === 1) {
+          addNews(
+            state,
+            'info',
+            `Предупреждение КХЛ: ФОТ превышает потолок зарплат на ${formatMoney(excess)}! Дано ${CAP_GRACE_DAYS} дн. на разгрузку ведомости.`,
+            t.id
+          );
+        }
+        if (t.capViolationDays > CAP_GRACE_DAYS) {
+          const fine = dailyCapFine(excess);
+          t.budget -= fine;
+          t.capFinesTotal = (t.capFinesTotal ?? 0) + fine;
+          const cap = getCapSummary(state, t.id);
+          if (t.id === state.userTeamId) {
+            t.lineup = sanitizeLineup(t.lineup, t.players, state.players, lineupConstraintsFor(state, t.id));
+            if (t.capViolationDays === CAP_GRACE_DAYS + 1) {
+              const suspNames = cap.suspendedIds.map((id) => state.players[id]?.name).filter(Boolean).join(', ');
+              addNews(
+                state,
+                'info',
+                `ЖЁСТКИЕ САНКЦИИ КХЛ: льготный срок истёк! Заблокированы контракты лидеров (${suspNames || '—'}), введён ежедневный штраф ${formatMoney(fine)} и учёт штрафных матчей (−2 очка каждые ${CAP_GAMES_PER_POINT_DEDUCTION} игр).`,
+                t.id
+              );
+            }
+          }
+          if ((t.capViolationDays - CAP_GRACE_DAYS) % 4 === 1) {
+            for (const pid of t.players) {
+              const pl = state.players[pid];
+              if (pl) pl.morale = clamp(pl.morale - (cap.suspendedIds.includes(pid) ? 4 : 2), 25, 99);
+            }
+            if (t.id === state.userTeamId && state.board) {
+              state.board.confidence = clamp(state.board.confidence - 4, 5, 100);
+            }
+          }
+        }
+      } else if ((t.capViolationDays ?? 0) > 0) {
+        if (t.id === state.userTeamId && (t.capViolationDays ?? 0) > CAP_GRACE_DAYS) {
+          addNews(state, 'info', 'Клуб вернулся под потолок зарплат КХЛ: блокировка лидеров и ежедневные штрафы сняты.', t.id);
+        }
+        t.capViolationDays = 0;
+      }
+    }
+  }
+
+  // Weekly U23 training progression
+  if (state.phase === 'season' && state.day > 0 && state.day % 7 === 0) {
+    stepYouthTrainingWeek(state, (pl, _fromOvr, toOvr, skillLabel, planLabel) => {
+      addNews(
+        state,
+        'info',
+        `Прогресс молодёжи: ${pl.name} (${pl.age} л.) прибавил по плану «${planLabel}» — рейтинг ${toOvr} (+1 «${skillLabel}»).`,
+        state.userTeamId
+      );
+    });
+  }
+
   state.offers = state.offers.filter((o) => o.expires >= state.day);
   const off = maybeIncomingOffer(state);
   if (off) {
@@ -752,9 +928,12 @@ function finishSeason(state: GameState) {
   const loser = state.teams[champId === finalSeries.high ? finalSeries.low : finalSeries.high];
   const place = rankConference(state, U.conference).indexOf(U) + 1;
   const verdict = evaluateBoard(state, { place, madePlayoffs: userSeries.length > 0, roundsWon: userSeries.filter((x) => x.winner === U.id).length });
-  U.budget += verdict.bonus;
-  state.summaries.push({ season: state.league.season, champion: champId, regularWinner: regular.id, userResult, userPoints: U.record.points, userPlace: place, awards: po.awards, revenue: userRev, payroll: userPay, board: verdict.text, boardBonus: verdict.bonus });
-  addNews(state, 'info', `${verdict.text}${verdict.bonus > 0 ? ` Премиальные клубу: ${formatMoney(verdict.bonus)}.` : ''} Финансы сезона: доходы ${formatMoney(userRev)}, зарплаты ${formatMoney(userPay)}.`, U.id);
+  const penPts = U.record.capPenaltyPoints ?? 0;
+  const finalBonus = penPts > 0 ? Math.round(verdict.bonus * 0.5) : verdict.bonus;
+  U.budget += finalBonus;
+  const fineNote = (U.capFinesTotal ?? 0) > 0 ? `, штрафы потолка ${formatMoney(U.capFinesTotal!)}` : '';
+  state.summaries.push({ season: state.league.season, champion: champId, regularWinner: regular.id, userResult, userPoints: U.record.points, userPlace: place, awards: po.awards, revenue: userRev, payroll: userPay, board: verdict.text, boardBonus: finalBonus });
+  addNews(state, 'info', `${verdict.text}${finalBonus > 0 ? ` Премиальные клубу: ${formatMoney(finalBonus)}.` : ''} Финансы сезона: доходы ${formatMoney(userRev)}, зарплаты ${formatMoney(userPay)}${fineNote}.`, U.id);
   addNews(state, 'playoff', `${champ.name} — обладатель Кубка Гагарина! Финал против ${loser.name} — ${finalSeries.wins[0]}:${finalSeries.wins[1]}. Самый ценный игрок плей-офф: ${mvp?.name ?? '—'}.`);
   state.phase = 'offseason';
   state.offseason = startOffseason(state);
@@ -868,10 +1047,10 @@ export function setTradeFlag(id: string, flag: 'block' | 'keep' | null) {
 }
 
 /* ---------------- contracts ---------------- */
-/** Salaries the club is committed to: in the off-season expired deals no longer count. */
-function committedPayroll(state: GameState, ids: string[]): number {
+/** Salaries the club is committed to: in the off-season expired deals no longer count; during the season deadCap is included. */
+function committedPayroll(state: GameState, ids: string[], deadCap = 0): number {
   const P = state.players;
-  return state.phase === 'offseason' ? ids.reduce((a, id) => a + (P[id].contract.years > 0 ? P[id].contract.salary : 0), 0) : payroll(ids, P);
+  return state.phase === 'offseason' ? ids.reduce((a, id) => a + (P[id].contract.years > 0 ? P[id].contract.salary : 0), 0) : payroll(ids, P) + deadCap;
 }
 
 export interface ContractAnswer {
@@ -901,18 +1080,27 @@ export function offerContract(id: string, salary: number, years: number): Contra
     years = Math.round(years);
     if (!free && !own) return fail('Игрок принадлежит другому клубу — его можно получить только обменом');
     if (!(salary > 0) || years < 1) return fail('Укажите оклад и срок контракта');
+    const capState = getCapSummary(state, t.id);
+    if (capState.sanctionsActive) return fail('КХЛ заблокировала регистрацию новых контрактов из-за превышения потолка зарплат!');
     const expired = own && p.contract.years === 0;
     const extension = own && p.contract.years === 1;
     if (own && !expired && !extension) return fail(`Контракт действует ещё ${p.contract.years} сезона — продлевать его можно в последний год`);
     if (own && p.contract.next) return fail('Контракт этого игрока уже продлён');
     const cap = state.league.salaryCap;
     if (free && t.players.length >= MAX_ROSTER) return fail(`В составе уже ${MAX_ROSTER} игроков — больше заявить нельзя`);
+    if (free && isLegionnaire(p)) {
+      const fl = teamForeignLimit(t, state.league.foreignLimit);
+      if (fl !== null) {
+        const curLeg = countRosterLegionnaires(t.players, P);
+        if (curLeg >= fl) return fail(`Достигнут лимит легионеров КХЛ (${curLeg} из ${fl}) — сначала освободите легионерскую вакансию`);
+      }
+    }
     if (extension) {
       const next = commitments(t.players, P, 2)[1] + salary;
       if (next > cap) return fail(`Со следующего сезона ФОТ составит ${formatMoney(next)} — это выше потолка зарплат (${formatMoney(cap)})`);
     } else {
-      const now = committedPayroll(state, t.players) + salary;
-      if (now > cap) return fail(`С этим окладом ФОТ составит ${formatMoney(now)} — это выше потолка зарплат (${formatMoney(cap)})`);
+      const now = committedPayroll(state, t.players, t.deadCap ?? 0) + salary;
+      if (now > cap) return fail(`С этим окладом ФОТ (с учётом выкупов) составит ${formatMoney(now)} — это выше потолка зарплат (${formatMoney(cap)})`);
     }
     if (t.budget < salary) return fail(`В бюджете клуба должно быть не меньше годового оклада игрока (${formatMoney(salary)}), сейчас — ${formatMoney(t.budget)}`);
     const v = negotiate(state, p, salary, years, t.id);
@@ -925,9 +1113,10 @@ export function offerContract(id: string, salary: number, years: number): Contra
     if (free) {
       p.contract = { salary, years };
       p.teamId = t.id;
+      if (isYouthPlayer(p) && !p.trainingPlan) p.trainingPlan = recommendYouthPlan(p);
       t.players.push(id);
       state.freeAgents = state.freeAgents.filter((x) => x !== id);
-      t.lineup = sanitizeLineup(t.lineup, t.players, P);
+      t.lineup = sanitizeLineup(t.lineup, t.players, P, lineupConstraintsFor(state, t.id));
       addNews(state, 'trade', `${t.name} подписывает свободного агента ${p.name}: ${term}`, t.id);
       out = { ok: true, text: `${p.name} подписал контракт: ${term}.`, left: v.left };
     } else if (expired) {
@@ -945,7 +1134,7 @@ export function offerContract(id: string, salary: number, years: number): Contra
   return out;
 }
 
-/** Terminate a contract. The club pays severance (see buyoutCost). Returns an error text or null. */
+/** Terminate a contract. The club pays severance (see buyoutCost) and absorbs 20% dead cap for the rest of the season. Returns an error text or null. */
 export function releasePlayer(id: string): string | null {
   let err: string | null = null;
   store.update((state) => {
@@ -958,10 +1147,13 @@ export function releasePlayer(id: string): string | null {
       err = `На компенсацию нужно ${formatMoney(cost)}, а в бюджете ${formatMoney(t.budget)}`;
       return;
     }
+    const dead = state.phase !== 'offseason' && p.contract.years > 0 ? buyoutDeadCap(p.contract.salary) : 0;
     t.budget -= cost;
+    if (dead > 0) t.deadCap = (t.deadCap ?? 0) + dead;
     toFreeAgency(state, id);
     if (state.offseason) state.offseason.expiring = state.offseason.expiring.filter((x) => x !== id);
-    addNews(state, 'trade', `${t.name} расторгает контракт с ${p.name}${cost > 0 ? `; компенсация игроку — ${formatMoney(cost)}` : ''}`, U);
+    const deadNote = dead > 0 ? ` («мёртвые деньги» под потолком: ${formatMoney(dead)})` : '';
+    addNews(state, 'trade', `${t.name} расторгает контракт с ${p.name}${cost > 0 ? `; компенсация игроку — ${formatMoney(cost)}${deadNote}` : ''}`, U);
   });
   return err;
 }

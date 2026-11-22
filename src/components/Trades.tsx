@@ -1,5 +1,7 @@
-import { useEffect, useState } from 'react';
-import { groupOf, tradeValue, tradeWindow } from '../game/ai';
+import { useEffect, useMemo, useState } from 'react';
+import { getTradeWindowsSchedule, groupOf, tradeValue, tradeWindow } from '../game/ai';
+import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
+import { regularSeasonLength, seasonDateOnly } from '../game/schedule';
 import { formatMoney, payroll } from '../game/ratings';
 import { proposeTrade, respondOffer, useGame } from '../game/state';
 import { Button, Empty, OverallChip, Panel, PosBadge, TeamLogo, money, useUI } from './ui';
@@ -38,6 +40,7 @@ function PlayerList({ ids, selected, onToggle, title, empty, footer }: { ids: st
                         <button className="flex-1 truncate text-left hover:text-ice min-w-0" onClick={(e) => { e.stopPropagation(); ui.openPlayer(id); }} title={p.name}>
                           {p.name}
                         </button>
+                        {isLegionnaire(p) && <span className="text-[9px] font-bold px-1 rounded bg-gold/20 text-gold" title={p.country}>ЛЕГ {countryCode(p.country)}</span>}
                         <span className="text-xs text-muted w-6 tabular">{p.age}</span>
                         <OverallChip value={p.overall} size="sm" />
                         <span className="text-xs text-muted w-20 text-right tabular">{money(p.contract.salary)}</span>
@@ -84,9 +87,18 @@ export function Trades({ preselect }: { preselect: string | null }) {
   const gv = give.reduce((a, id) => a + tradeValue(P[id]), 0);
   const rv = get.reduce((a, id) => a + tradeValue(P[id]), 0);
   const afterIds = U.players.filter((id) => !give.includes(id)).concat(get);
-  const afterPayroll = payroll(afterIds, P);
-  const overCap = afterPayroll > s.league.salaryCap;
+  const dead = s.phase === 'offseason' ? 0 : (U.deadCap ?? 0);
+  const beforePayroll = payroll(U.players, P) + dead;
+  const afterPayroll = payroll(afterIds, P) + dead;
+  const salaryDumpOk = beforePayroll > s.league.salaryCap && afterPayroll <= beforePayroll - 5_000_000;
+  const capBlocked = afterPayroll > s.league.salaryCap && !salaryDumpOk;
+  const fl = teamForeignLimit(U, s.league.foreignLimit);
+  const beforeLegs = countRosterLegionnaires(U.players, P);
+  const afterLegs = countRosterLegionnaires(afterIds, P);
+  const legBlocked = fl !== null && afterLegs > fl && (afterLegs > beforeLegs || get.some((id) => isLegionnaire(P[id])));
   const win = tradeWindow(s);
+  const windows = useMemo(() => getTradeWindowsSchedule(s), [s]);
+  const regLen = regularSeasonLength(s.schedule);
   const maxValue = Math.max(gv, rv, 1);
 
   const toggle = (id: string, list: string[], set: (v: string[]) => void, other: string[]) => {
@@ -107,6 +119,31 @@ export function Trades({ preselect }: { preselect: string | null }) {
       <div data-trade-window className={cn('rounded-md border px-3 py-2 text-sm flex items-center gap-2 flex-wrap', win.open ? (win.daysLeft <= 8 ? 'border-amber/50 bg-amber/10 text-amber' : 'border-line bg-panel2/50 text-text/85') : 'border-accent/50 bg-accent/10 text-accent')}>
         <b>{win.open ? 'Окно обменов открыто.' : 'Окно обменов закрыто.'}</b>
         <span>{win.text}</span>
+      </div>
+
+      {/* Trade Windows Visual Schedule */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2" data-trades-windows>
+        {windows.map((w) => {
+          const active = w.status === 'active';
+          const range = w.id === 'offseason' ? 'Межсезонье' : `${seasonDateOnly(w.startDay, regLen, s.league.season)} — ${seasonDateOnly(w.endDay, regLen, s.league.season)}`;
+          return (
+            <div
+              key={w.id}
+              className={cn(
+                'rounded-md border px-2.5 py-2 text-xs',
+                active ? (w.open ? 'border-ok/60 bg-ok/10' : 'border-amber/60 bg-amber/10') : 'border-line/70 bg-panel/70 opacity-80'
+              )}
+            >
+              <div className="flex items-center justify-between gap-1">
+                <span className="font-display font-bold uppercase tracking-wide truncate">{w.title}</span>
+                <span className={cn('text-[10px] font-bold uppercase px-1 rounded', w.open ? 'bg-ok/20 text-ok' : 'bg-accent/20 text-accent')}>
+                  {w.open ? 'Открыто' : 'Стоп'}
+                </span>
+              </div>
+              <div className="text-[11px] text-ice mt-0.5">{range}</div>
+            </div>
+          );
+        })}
       </div>
       {s.offers.length > 0 && (
         <Panel title={`Входящие предложения (${s.offers.length})`} className="border-amber/40">
@@ -213,20 +250,28 @@ export function Trades({ preselect }: { preselect: string | null }) {
             <div className="mt-3 text-xs space-y-1">
               <div className="flex justify-between">
                 <span className="text-muted">ФОТ после обмена</span>
-                <span className={cn('tabular', overCap ? 'text-accent' : 'text-text')}>{formatMoney(afterPayroll)}</span>
+                <span className={cn('tabular', capBlocked ? 'text-accent' : salaryDumpOk ? 'text-amber' : 'text-text')}>{formatMoney(afterPayroll)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted">Потолок</span>
+                <span className="text-muted">Потолок КХЛ</span>
                 <span className="tabular">{formatMoney(s.league.salaryCap)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Легионеры после обмена</span>
+                <span className={cn('tabular', legBlocked ? 'text-accent font-semibold' : 'text-ice')}>
+                  {fl !== null ? `${afterLegs} / ${fl}` : `${afterLegs} (без лим.)`}
+                </span>
               </div>
             </div>
             {msg && (
               <div className={cn('mt-3 text-xs rounded-sm border px-2.5 py-2', msg.ok ? 'border-ok/50 text-ok bg-ok/10' : 'border-accent/50 text-accent bg-accent/10')}>{msg.text}</div>
             )}
-            <Button variant="primary" className="w-full mt-3" disabled={!give.length || !get.length || overCap || !win.open} onClick={propose}>
+            <Button variant="primary" className="w-full mt-3" disabled={!give.length || !get.length || capBlocked || legBlocked || !win.open} onClick={propose}>
               Предложить обмен
             </Button>
-            {overCap && <div className="text-[11px] text-accent mt-1">Обмен превышает потолок зарплат</div>}
+            {capBlocked && <div className="text-[11px] text-accent mt-1">Обмен превышает потолок зарплат</div>}
+            {salaryDumpOk && <div className="text-[11px] text-amber mt-1">Разгрузка ФОТ: сделка разрешена для снижения превышения потолка</div>}
+            {legBlocked && <div className="text-[11px] text-accent mt-1">Обмен превышает лимит легионеров КХЛ ({fl})</div>}
           </Panel>
           <Panel title="Как оценивают клубы">
             <ul className="text-xs text-text/80 space-y-1.5">

@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { Player } from '../types';
 import { askingSalary, buyoutCost, commitments, maxYears, TALKS, talksLeft } from '../game/contracts';
+import { buyoutDeadCap, CAP_GAMES_PER_POINT_DEDUCTION, dailyCapFine, getCapSummary } from '../game/cap';
+import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
 import { formatMoney } from '../game/ratings';
 import { letGo, offerContract, releasePlayer, useGame } from '../game/state';
 import type { ContractAnswer } from '../game/state';
@@ -32,7 +34,11 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
   const left = talksLeft(s, p);
   const signed = !!answer?.ok;
   const cap = s.league.salaryCap;
-  const committed = extension ? commitments(U.players, s.players, 2)[1] : U.players.reduce((a, x) => a + (s.phase === 'offseason' && s.players[x].contract.years === 0 ? 0 : s.players[x].contract.salary), 0);
+  const capInfo = getCapSummary(s, U.id);
+  const fl = teamForeignLimit(U, s.league.foreignLimit);
+  const curLegs = countRosterLegionnaires(U.players, s.players);
+  const legBlocked = free && isLegionnaire(p) && fl !== null && curLegs >= fl;
+  const committed = extension ? commitments(U.players, s.players, 2)[1] : capInfo.totalPayroll;
   const after = committed + salary;
   const offer = (value: number) => setAnswer(offerContract(p.id, value, years));
   const tone = !answer ? '' : answer.ok ? 'border-ok/50 text-ok bg-ok/10' : 'border-accent/50 text-accent bg-accent/10';
@@ -41,7 +47,10 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
       <div className="flex items-center gap-3 flex-wrap">
         <PosBadge pos={p.position} />
         <div className="flex-1 min-w-[160px]">
-          <div className="font-display text-xl uppercase leading-none">{p.name}</div>
+          <div className="font-display text-xl uppercase leading-none flex items-center gap-2">
+            <span>{p.name}</span>
+            {isLegionnaire(p) && <Tag tone="warn">Легионер ({countryCode(p.country)})</Tag>}
+          </div>
           <div className="text-xs text-muted mt-1">
             {p.age} лет{p.age <= 25 ? ` · потенциал ${p.potential}` : ''} · мораль {p.morale}
             {!free && ` · сейчас ${formatMoney(p.contract.salary)}${p.contract.years ? `, осталось ${p.contract.years} ${yearsWord(p.contract.years)}` : ', контракт истёк'}`}
@@ -49,6 +58,11 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
         </div>
         <OverallChip value={p.overall} size="lg" />
       </div>
+      {legBlocked && (
+        <div className="mt-3 rounded-sm border border-gold/50 bg-gold/10 px-3 py-2 text-xs text-gold">
+          ⛔ В составе уже {curLegs} из {fl} легионеров — освободите легионерскую вакансию перед подписанием иностранца.
+        </div>
+      )}
 
       {signed ? (
         <div className={cn('mt-4 text-sm rounded-sm border px-3 py-3', tone)} data-neg-result>
@@ -137,13 +151,18 @@ export function Contracts() {
   const plan = commitments(U.players, P, 4);
   const cap = s.league.salaryCap;
   const off = s.phase === 'offseason';
-  const now = off ? rows.reduce((a, p) => a + (p.contract.years > 0 ? p.contract.salary : 0), 0) : plan[0];
+  const capInfo = getCapSummary(s, U.id);
+  const suspendedSet = new Set(capInfo.suspendedIds);
+  const fl = teamForeignLimit(U, s.league.foreignLimit);
+  const legCount = countRosterLegionnaires(U.players, P);
+  const now = capInfo.totalPayroll;
   const ending = rows.filter((p) => p.contract.years <= 1 && !p.contract.next);
   const terminate = (p: Player) => {
     const cost = buyoutCost(s, p);
+    const dead = !off ? buyoutDeadCap(p.contract.salary) : 0;
     ui.confirm({
       title: 'Расторгнуть контракт?',
-      text: `${p.name} станет свободным агентом. ${cost > 0 ? `Клуб выплатит компенсацию ${formatMoney(cost)} — треть суммы, оставшейся по контракту.` : 'Компенсация не потребуется.'} ФОТ уменьшится на ${formatMoney(p.contract.salary)}.`,
+      text: `${p.name} станет свободным агентом. ${cost > 0 ? `Клуб выплатит компенсацию ${formatMoney(cost)} из бюджета.` : 'Компенсация не потребуется.'} ${dead > 0 ? `Внимание: ${formatMoney(dead)} (20% оклада) останется «мёртвыми деньгами» под потолком зарплат до конца сезона!` : `ФОТ уменьшится на ${formatMoney(p.contract.salary)}.`}`,
       danger: true,
       confirmLabel: cost > 0 ? `Расторгнуть за ${formatMoney(cost)}` : 'Расторгнуть',
       onYes: () => setMsg(releasePlayer(p.id)),
@@ -151,12 +170,61 @@ export function Contracts() {
   };
   return (
     <div className="space-y-4 fade-in">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <Stat label="Фонд оплаты труда" value={formatMoney(now)} sub={`потолок ${formatMoney(cap)}`} color={now > cap ? '#E5323E' : '#E8EEF5'} />
-        <Stat label="Свободно под потолком" value={formatMoney(cap - now)} color={cap - now < 0 ? '#E5323E' : '#3FCF8E'} />
-        <Stat label="Бюджет клуба" value={formatMoney(U.budget)} sub="зарплаты выплачиваются в конце сезона" />
-        <Stat label="Истекают в этом сезоне" value={ending.length} sub={off ? 'решите до старта сезона' : 'можно продлить заранее'} color={ending.length ? '#F2B544' : '#E8EEF5'} />
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+        <Stat
+          label="ФОТ (с выкупами)"
+          value={formatMoney(now)}
+          sub={capInfo.deadCap > 0 ? `выкупы: ${formatMoney(capInfo.deadCap)} · потолок ${formatMoney(cap)}` : `потолок ${formatMoney(cap)}`}
+          color={now > cap ? '#E5323E' : '#E8EEF5'}
+        />
+        <Stat label="Свободно под потолком" value={formatMoney(cap - now)} sub={cap - now < 0 ? 'превышение лимита!' : 'резерв на сезон'} color={cap - now < 0 ? '#E5323E' : '#3FCF8E'} />
+        <Stat
+          label="Лимит легионеров"
+          value={fl !== null ? `${legCount} / ${fl}` : `${legCount} (без лим.)`}
+          sub={fl !== null ? 'клуб России · норма КХЛ' : 'иностранный клуб КХЛ'}
+          color={fl !== null && legCount > fl ? '#E5323E' : '#8FD8F0'}
+        />
+        <Stat label="Бюджет клуба" value={formatMoney(U.budget)} sub={capInfo.finesTotal > 0 ? `штрафы потолка: −${formatMoney(capInfo.finesTotal)}` : 'зарплаты в конце сезона'} />
+        <Stat label="Истекают в сезоне" value={ending.length} sub={off ? 'решите до старта сезона' : 'можно продлить заранее'} color={ending.length ? '#F2B544' : '#E8EEF5'} />
       </div>
+
+      {/* Salary Cap Enforcement & Harsh Consequences Banner */}
+      {capInfo.over && (
+        <div
+          data-cap-sanctions
+          className={cn(
+            'rounded-md border p-3.5 text-xs space-y-1.5',
+            capInfo.sanctionsActive ? 'border-accent bg-accent/12 text-text' : 'border-gold/60 bg-gold/10 text-text'
+          )}
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className={cn('font-display text-sm uppercase tracking-wider font-bold', capInfo.sanctionsActive ? 'text-accent' : 'text-gold')}>
+              {capInfo.sanctionsActive
+                ? '⛔ Жёсткие санкции КХЛ за превышение потолка зарплат активны!'
+                : `⚠ Превышение потолка зарплат на ${formatMoney(capInfo.excess)} — льготный срок: ещё ${capInfo.graceDaysLeft} дн.`}
+            </span>
+            {capInfo.pointsDeducted > 0 && <Tag tone="bad">Снято очков: −{capInfo.pointsDeducted}</Tag>}
+          </div>
+          {capInfo.sanctionsActive ? (
+            <div className="text-text/90 space-y-1">
+              <div>
+                • <b>Заблокированы контракты и отстранены от матчей:</b>{' '}
+                {capInfo.suspendedIds.map((id) => P[id]?.name).filter(Boolean).join(', ') || '—'}
+              </div>
+              <div>
+                • <b>Ежедневный штраф лиги (300%):</b> {formatMoney(capInfo.dailyFine)} / день · Выплачено штрафов: {formatMoney(capInfo.finesTotal)}
+              </div>
+              <div>
+                • <b>Турнирные санкции:</b> сыграно {capInfo.violationGames} штрафных матчей (−2 очка за каждые {CAP_GAMES_PER_POINT_DEDUCTION} игр) · Регистрация новичков закрыта.
+              </div>
+            </div>
+          ) : (
+            <div className="text-text/85">
+              Разгрузите платёжную ведомость через обмен (клубу с превышением разрешены сделки со сбросом зарплаты от 5 млн ₽) или расторжение контракта. Иначе через {capInfo.graceDaysLeft} дн. лига отстранит самых высокооплачиваемых игроков, введёт штраф {formatMoney(dailyCapFine(capInfo.excess))}/день и начнёт снимать очки!
+            </div>
+          )}
+        </div>
+      )}
 
       <Panel title="Обязательства по сезонам">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -206,6 +274,8 @@ export function Contracts() {
                       <button className="hover:text-ice text-left" onClick={() => ui.openPlayer(p.id)}>
                         {p.name}
                       </button>
+                      {isLegionnaire(p) && <Tag tone="warn" className="ml-1.5">ЛЕГ</Tag>}
+                      {suspendedSet.has(p.id) && <Tag tone="bad" className="ml-1.5">блок потолка</Tag>}
                       {p.tradeFlag === 'block' && <Tag color="#F2B544" className="ml-2">на обмен</Tag>}
                       {p.tradeFlag === 'keep' && <Tag color="#8FD8F0" className="ml-2">неприкосновенный</Tag>}
                     </td>
@@ -255,7 +325,8 @@ export function Contracts() {
           <li>• Переговоры: игрок называет запрос, но готов уступить 3–13% — где именно его предел, неизвестно. На попытки сбить цену у вас {TALKS} попытки; слишком низкое предложение сжигает сразу две.</li>
           <li>• Запрос зависит от рейтинга, возраста и потенциала, срока (молодые берут дороже за длинный контракт, ветераны дешевле), морали и положения команды в таблице.</li>
           <li>• Максимальный срок: до 30 лет — 5 лет, 30–31 — 3 года, 32–34 — 2 года, с 35 — 1 год.</li>
-          <li>• Расторжение стоит треть суммы, оставшейся по контракту (упрощённое игровое правило), и выплачивается сразу из бюджета.</li>
+          <li>• Расторжение контракта в сезоне требует выплаты 1/3 оставшейся суммы из бюджета и оставляет 20% годового оклада «мёртвыми деньгами» под потолком зарплат до конца сезона.</li>
+          <li>• Превышение жёсткого потолка зарплат свыше 7 льготных дней приводит к блокировке контрактов самых дорогих игроков, ежедневному штрафу (300% превышения), падению морали и снятию 2 очков за каждые 5 штрафных матчей.</li>
         </ul>
       </Panel>
     </div>
