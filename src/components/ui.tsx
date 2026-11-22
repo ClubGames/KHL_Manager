@@ -25,19 +25,25 @@ export const UIContext = createContext<UIApi>({
 });
 export const useUI = () => useContext(UIContext);
 
+export function shortName(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length < 2) return name;
+  return `${parts[0][0]}. ${parts.slice(1).join(' ')}`;
+}
+
 export function Panel({ title, right, children, className, noPad, ...rest }: Omit<HTMLAttributes<HTMLElement>, 'title'> & { title?: ReactNode; right?: ReactNode; children: ReactNode; className?: string; noPad?: boolean }) {
   return (
     <section {...rest} className={cn('bg-panel border border-line rounded-md overflow-hidden', className)}>
       {title && (
-        <header className="flex items-center justify-between gap-3 px-4 py-2.5 border-b border-line bg-panel2/60 min-h-[42px]">
-          <h3 className="font-display uppercase tracking-wide text-sm text-text flex items-center gap-2 m-0">
-            <span className="w-1.5 h-4 bg-accent slash" />
-            {title}
+        <header className="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-4 py-2 sm:py-2.5 border-b border-line bg-panel2/60 min-h-[42px]">
+          <h3 className="font-display uppercase tracking-wide text-sm text-text flex items-center gap-2 m-0 min-w-0">
+            <span className="w-1.5 h-4 bg-accent slash shrink-0" />
+            <span className="min-w-0">{title}</span>
           </h3>
-          {right && <div className="flex items-center gap-2">{right}</div>}
+          {right && <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">{right}</div>}
         </header>
       )}
-      <div className={cn(!noPad && 'p-4')}>{children}</div>
+      <div className={cn(!noPad && 'p-3 sm:p-4')}>{children}</div>
     </section>
   );
 }
@@ -54,9 +60,9 @@ export function Button({ variant = 'secondary', size = 'md', className, ...props
         variant === 'secondary' && 'bg-panel2 border border-line text-text hover:border-muted hover:bg-line/40',
         variant === 'ghost' && 'text-muted hover:text-text hover:bg-panel2',
         variant === 'danger' && 'border border-accent/50 text-accent hover:bg-accent/10',
-        size === 'sm' && 'text-xs px-2.5 py-1',
-        size === 'md' && 'text-sm px-3.5 py-2',
-        size === 'lg' && 'text-base px-5 py-2.5',
+        size === 'sm' && 'text-xs px-2.5 py-1.5 sm:py-1 min-h-[34px] sm:min-h-0',
+        size === 'md' && 'text-sm px-3.5 py-2 min-h-[40px] sm:min-h-0',
+        size === 'lg' && 'text-sm sm:text-base px-4 sm:px-5 py-2.5 min-h-[44px]',
         className
       )}
     />
@@ -109,12 +115,12 @@ export function TeamName({ team, size = 24, className, short }: { team: Team; si
 
 export function Stat({ label, value, sub, color }: { label: string; value: ReactNode; sub?: ReactNode; color?: string }) {
   return (
-    <div className="bg-panel2/70 border border-line/70 rounded-sm px-3 py-2">
-      <div className="text-[11px] uppercase tracking-wider text-muted">{label}</div>
-      <div className="font-display text-xl tabular leading-tight" style={{ color: color ?? '#E8EEF5' }}>
+    <div className="bg-panel2/70 border border-line/70 rounded-sm px-2.5 sm:px-3 py-2 min-w-0">
+      <div className="text-[10px] sm:text-[11px] uppercase tracking-wider text-muted truncate">{label}</div>
+      <div className="font-display text-lg sm:text-xl tabular leading-tight truncate" style={{ color: color ?? '#E8EEF5' }}>
         {value}
       </div>
-      {sub && <div className="text-xs text-muted">{sub}</div>}
+      {sub && <div className="text-[11px] sm:text-xs text-muted truncate">{sub}</div>}
     </div>
   );
 }
@@ -122,25 +128,39 @@ export function Stat({ label, value, sub, color }: { label: string; value: React
 export function Modal({ open, onClose, title, children, width = 'max-w-2xl' }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode; width?: string }) {
   useEffect(() => {
     if (!open) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     const h = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
     window.addEventListener('keydown', h);
-    return () => window.removeEventListener('keydown', h);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', h);
+    };
   }, [open, onClose]);
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/65 backdrop-blur-[2px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={cn('w-full bg-panel border border-line rounded-md shadow-2xl max-h-[92vh] flex flex-col fade-in', width)}>
-        {title && (
-          <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-line bg-panel2/60">
-            <div className="min-w-0">{title}</div>
-            <button onClick={onClose} className="text-muted hover:text-text text-xl leading-none px-1" aria-label="Закрыть">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-[2px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className={cn('w-full bg-panel border-t sm:border border-line rounded-t-xl sm:rounded-md shadow-2xl max-h-[92dvh] flex flex-col fade-in pb-[env(safe-area-inset-bottom)] sm:pb-0', width)}>
+        <div className="sm:hidden flex justify-center pt-2 pb-0.5">
+          <span className="w-10 h-1 rounded-full bg-line" />
+        </div>
+        {title ? (
+          <header className="flex items-center justify-between gap-3 px-4 py-2.5 sm:py-3 border-b border-line bg-panel2/60">
+            <div className="min-w-0 font-semibold">{title}</div>
+            <button onClick={onClose} className="w-9 h-9 -mr-1.5 inline-flex items-center justify-center rounded-sm text-muted hover:text-text hover:bg-panel2 text-2xl leading-none shrink-0" aria-label="Закрыть">
               ×
             </button>
           </header>
+        ) : (
+          <div className="sm:hidden flex justify-end px-3 pt-1">
+            <button onClick={onClose} className="w-8 h-8 inline-flex items-center justify-center rounded-sm text-muted hover:text-text bg-panel2/70 text-xl leading-none" aria-label="Закрыть">
+              ×
+            </button>
+          </div>
         )}
-        <div className="overflow-y-auto p-4">{children}</div>
+        <div className="overflow-y-auto overscroll-contain p-3.5 sm:p-4">{children}</div>
       </div>
     </div>
   );

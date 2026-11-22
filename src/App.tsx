@@ -119,6 +119,17 @@ export default function App() {
 
   const U = s.teams[s.userTeamId];
   const phaseLabel = s.phase === 'playoffs' ? `Плей-офф · ${roundName(s.playoffs?.round ?? 0)}` : s.phase === 'offseason' ? 'Межсезонье' : 'Регулярный чемпионат';
+  const phaseShort = s.phase === 'playoffs' ? roundName(s.playoffs?.round ?? 0) : s.phase === 'offseason' ? 'Межсезонье' : 'Регулярка';
+  const ltirReadyCount = U.players.filter((id) => s.players[id]?.inLtir && !s.players[id]?.injury).length;
+  const rfaOffersCount = (s.rfaOffers ?? []).length;
+  const moreBadgeCount = s.offers.length + rfaOffersCount + ltirReadyCount;
+  const curFol = effectivePayroll(U, s.players, s.phase);
+  const fl = teamForeignLimit(U, s.league.foreignLimit);
+  const legNum = countRosterLegionnaires(U.players, s.players);
+  const switchView = (v: View) => {
+    setView(v);
+    window.scrollTo?.({ top: 0 });
+  };
   const nav: View[] =
     s.phase === 'offseason'
       ? ['dashboard', 'offseason', ...NAV.filter((n) => n.id !== 'dashboard').map((n) => n.id), 'format']
@@ -128,12 +139,13 @@ export default function App() {
     const label = v === 'offseason' ? 'Межсезонье' : v === 'format' ? 'Формат JSON' : item?.label ?? v;
     const icon = v === 'offseason' ? 'trophy' : v === 'format' ? 'code' : item?.icon ?? 'dashboard';
     const active = view === v;
-    const ltirReady = U.players.filter((id) => s.players[id]?.inLtir && !s.players[id]?.injury).length;
-    const badge = v === 'trades' && s.offers.length > 0 ? s.offers.length : v === 'club' && ltirReady > 0 ? ltirReady : 0;
+    const badge = v === 'trades' && s.offers.length > 0 ? s.offers.length : v === 'contracts' && rfaOffersCount > 0 ? rfaOffersCount : v === 'club' && ltirReadyCount > 0 ? ltirReadyCount : 0;
     const isOffTab = v === 'offseason';
     const cls = cn(
       'flex items-center gap-3 transition-colors',
-      mobile ? 'flex-col text-[10px] gap-1 py-1.5 px-1 flex-1 min-w-0' : 'px-4 py-2.5 text-sm border-l-2',
+      mobile
+        ? cn('flex-col justify-center text-[10px] gap-1 py-1.5 px-1 flex-1 min-w-0 min-h-[54px] border-t-2', active ? 'border-ice text-ice bg-ice/5' : 'border-transparent')
+        : 'px-4 py-2.5 text-sm border-l-2',
       active
         ? mobile
           ? 'text-ice'
@@ -147,12 +159,12 @@ export default function App() {
             : 'text-muted hover:text-text hover:bg-panel2 border-transparent'
     );
     return (
-      <button key={v} onClick={() => setView(v)} className={cls} title={label}>
+      <button key={v} onClick={() => switchView(v)} className={cls} title={label}>
         <span className="relative">
           <Icon name={icon} className={mobile ? 'w-5 h-5' : ''} />
           {badge > 0 && <span className="absolute -top-1.5 -right-2 bg-amber text-bg text-[9px] font-bold px-1 rounded-sm leading-3">{badge}</span>}
         </span>
-        <span className={cn('truncate', mobile && 'font-medium')}>{label}</span>
+        <span className={cn('truncate max-w-full', mobile && 'font-medium')}>{label}</span>
       </button>
     );
   };
@@ -237,16 +249,29 @@ export default function App() {
             </div>
           </aside>
 
-          <main className="flex-1 min-w-0 rink-lines pb-20 lg:pb-0">
-            <header className="sticky top-0 z-30 bg-bg/85 backdrop-blur border-b border-line px-4 py-2 flex items-center gap-3 flex-wrap">
-              <div className="font-display uppercase tracking-wide text-sm">{seasonDate(s.day, regularSeasonLength(s.schedule), s.league.season)}</div>
-              <Tag color={s.phase === 'playoffs' ? '#F2B544' : s.phase === 'offseason' ? '#8FD8F0' : '#93A4BC'}>{phaseLabel}</Tag>
+          <main className="flex-1 min-w-0 rink-lines pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0">
+            <header className="sticky top-0 z-30 bg-bg/90 backdrop-blur border-b border-line px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-3 flex-wrap">
+              <button
+                type="button"
+                onClick={() => switchView('dashboard')}
+                className="lg:hidden inline-flex items-center gap-1.5 pr-2 border-r border-line text-left"
+                title={U.name}
+              >
+                <TeamLogo team={U} size={26} />
+                <div className="leading-none">
+                  <div className="font-display text-xs font-bold uppercase text-text">{U.short}</div>
+                  <div className="text-[10px] text-ice tabular mt-0.5">{U.record.points} очк.</div>
+                </div>
+              </button>
+              <div className="font-display uppercase tracking-wide text-xs sm:text-sm">{seasonDate(s.day, regularSeasonLength(s.schedule), s.league.season)}</div>
+              <Tag className="hidden sm:inline-flex" color={s.phase === 'playoffs' ? '#F2B544' : s.phase === 'offseason' ? '#8FD8F0' : '#93A4BC'}>{phaseLabel}</Tag>
+              <Tag className="sm:hidden" color={s.phase === 'playoffs' ? '#F2B544' : s.phase === 'offseason' ? '#8FD8F0' : '#93A4BC'}>{phaseShort}</Tag>
               {s.phase === 'offseason' && view !== 'offseason' && (
-                <Button size="sm" variant="primary" onClick={() => setView('offseason')}>
-                  <Icon name="trophy" /> Межсезонье →
+                <Button size="sm" variant="primary" onClick={() => switchView('offseason')}>
+                  <Icon name="trophy" /> <span className="hidden sm:inline">Межсезонье →</span><span className="sm:hidden">Драфт/ТО</span>
                 </Button>
               )}
-              <div className="ml-auto flex items-center gap-3 flex-wrap">
+              <div className="ml-auto flex items-center gap-2 sm:gap-3">
                 <div className="hidden md:flex items-center gap-2 text-xs text-muted">
                   <span>День {Math.min(s.day + 1, s.schedule.length)} / {s.schedule.length}</span>
                   <span>·</span>
@@ -262,7 +287,7 @@ export default function App() {
               </div>
             </header>
             {saveStatus.state === 'error' && (
-              <div role="alert" className="mx-4 mt-4 rounded-md border border-accent/60 bg-accent/10 p-3 text-sm flex items-center gap-3 flex-wrap">
+              <div role="alert" className="mx-3 sm:mx-4 mt-3 sm:mt-4 rounded-md border border-accent/60 bg-accent/10 p-3 text-sm flex items-center gap-3 flex-wrap">
                 <span className="text-accent">
                   <Icon name="alert" />
                 </span>
@@ -277,15 +302,24 @@ export default function App() {
                 </Button>
               </div>
             )}
-            <div className="p-4 max-w-[1500px] mx-auto">{content}</div>
+            <div className="p-2.5 sm:p-4 max-w-[1500px] mx-auto">{content}</div>
           </main>
 
-          <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-panel/95 backdrop-blur border-t border-line flex justify-around px-1" aria-label="Разделы">
+          <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-panel/95 backdrop-blur border-t border-line flex justify-around px-1 pb-[env(safe-area-inset-bottom)]" aria-label="Разделы">
             {(s.phase === 'offseason' ? (['dashboard', 'offseason', 'contracts', 'market'] as View[]) : MOBILE_MAIN).map((id) => navItem(id, true))}
-            <button onClick={() => setMoreOpen(true)} className={cn('flex flex-col items-center text-[10px] gap-1 py-1.5 px-1 flex-1 min-w-0 transition-colors', !MOBILE_MAIN.includes(view) ? 'text-ice' : 'text-muted')} title="Все разделы">
+            <button
+              onClick={() => setMoreOpen(true)}
+              className={cn(
+                'flex flex-col items-center justify-center text-[10px] gap-1 py-1.5 px-1 flex-1 min-w-0 min-h-[54px] border-t-2 transition-colors',
+                !(s.phase === 'offseason' ? (['dashboard', 'offseason', 'contracts', 'market'] as View[]) : MOBILE_MAIN).includes(view)
+                  ? 'border-ice text-ice bg-ice/5'
+                  : 'border-transparent text-muted'
+              )}
+              title="Все разделы"
+            >
               <span className="relative">
                 <Icon name="more" className="w-5 h-5" />
-                {s.offers.length > 0 && <span className="absolute -top-1.5 -right-2 bg-amber text-bg text-[9px] font-bold px-1 rounded-sm leading-3">{s.offers.length}</span>}
+                {moreBadgeCount > 0 && <span className="absolute -top-1.5 -right-2 bg-amber text-bg text-[9px] font-bold px-1 rounded-sm leading-3">{moreBadgeCount}</span>}
               </span>
               <span className="font-medium">Ещё</span>
             </button>
@@ -312,25 +346,39 @@ export default function App() {
       )}
       {moreOpen && (
         <Modal open onClose={() => setMoreOpen(false)} width="max-w-md" title={<span className="font-display uppercase tracking-wide">Все разделы</span>}>
+          <div className="mb-3 rounded-md border border-line bg-bg/60 p-2.5 flex items-center gap-3 text-xs">
+            <TeamLogo team={U} size={36} />
+            <div className="min-w-0 flex-1">
+              <div className="font-semibold text-sm truncate">{U.name}</div>
+              <div className="text-[11px] text-muted">
+                {s.league.season} · {U.record.points} очк. · Бюджет <b className="text-ok">{money(U.budget)}</b>
+              </div>
+              <div className="text-[11px] text-muted">
+                ФОТ <b className={curFol > s.league.salaryCap ? 'text-accent' : 'text-text'}>{money(curFol)}</b> · Лег.{' '}
+                <b className="text-ice">{fl !== null ? `${legNum}/${fl}` : legNum}</b>
+              </div>
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-2">
             {nav.map((v) => {
               const item = NAV.find((n) => n.id === v);
               const label = v === 'offseason' ? 'Межсезонье' : v === 'format' ? 'Формат JSON' : item?.label ?? v;
               const icon = v === 'offseason' ? 'trophy' : v === 'format' ? 'code' : item?.icon ?? 'dashboard';
+              const bdg = v === 'trades' && s.offers.length > 0 ? s.offers.length : v === 'contracts' && rfaOffersCount > 0 ? rfaOffersCount : v === 'club' && ltirReadyCount > 0 ? ltirReadyCount : 0;
               return (
-                <button key={v} onClick={() => { setView(v); setMoreOpen(false); }} className={cn('flex items-center gap-2.5 rounded-sm border px-3 py-2.5 text-sm text-left transition-colors', view === v ? 'border-accent bg-accent/15 text-text' : 'border-line bg-panel2 text-text/90 hover:border-muted')}>
+                <button key={v} onClick={() => { switchView(v); setMoreOpen(false); }} className={cn('flex items-center gap-2.5 rounded-sm border px-3 py-3 text-sm text-left transition-colors min-h-[44px]', view === v ? 'border-accent bg-accent/15 text-text font-semibold' : 'border-line bg-panel2 text-text/90 hover:border-muted')}>
                   <Icon name={icon} />
                   <span className="flex-1 truncate">{label}</span>
-                  {v === 'trades' && s.offers.length > 0 && <span className="bg-amber text-bg text-[10px] font-bold px-1.5 rounded-sm">{s.offers.length}</span>}
+                  {bdg > 0 && <span className="bg-amber text-bg text-[10px] font-bold px-1.5 rounded-sm">{bdg}</span>}
                 </button>
               );
             })}
           </div>
           <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-line">
-            <button onClick={() => { setMoreOpen(false); setSavesOpen(true); }} className="flex items-center gap-2.5 rounded-sm border border-line bg-panel2 px-3 py-2.5 text-sm text-left hover:border-muted">
+            <button onClick={() => { setMoreOpen(false); setSavesOpen(true); }} className="flex items-center gap-2.5 rounded-sm border border-line bg-panel2 px-3 py-3 text-sm text-left hover:border-muted min-h-[44px]">
               <Icon name="save" /> Сохранения
             </button>
-            <button onClick={() => void exitToMenu()} className="flex items-center gap-2.5 rounded-sm border border-line bg-panel2 px-3 py-2.5 text-sm text-left hover:border-muted">
+            <button onClick={() => void exitToMenu()} className="flex items-center gap-2.5 rounded-sm border border-line bg-panel2 px-3 py-3 text-sm text-left hover:border-muted min-h-[44px]">
               <Icon name="logout" /> Главное меню
             </button>
           </div>

@@ -18,13 +18,13 @@ import { boardOnTrack } from '../game/board';
 function TeamBlock({ team, place, right }: { team: Team; place: number | null; right?: boolean }) {
   const r = team.record;
   return (
-    <div className={`flex items-center gap-3 ${right ? 'flex-row-reverse text-right' : ''}`}>
-      <TeamLogo team={team} size={56} />
-      <div className="min-w-0">
-        <div className="font-display text-xl uppercase leading-tight truncate">{team.name}</div>
-        <div className="text-xs text-muted">{team.city}</div>
-        <div className="text-xs text-text/80 mt-0.5 tabular">
-          {r.gp} игр · {r.points} очк.{place ? ` · ${place}-е место` : ''}
+    <div className={`flex flex-col sm:flex-row items-center sm:items-center gap-1.5 sm:gap-3 min-w-0 text-center ${right ? 'sm:flex-row-reverse sm:text-right' : 'sm:text-left'}`}>
+      <TeamLogo team={team} size={46} className="sm:w-14 sm:h-14" />
+      <div className="min-w-0 max-w-full">
+        <div className="font-display text-base sm:text-xl uppercase leading-tight truncate">{team.name}</div>
+        <div className="text-[11px] sm:text-xs text-muted truncate">{team.city}</div>
+        <div className="text-[11px] sm:text-xs text-text/80 mt-0.5 tabular">
+          {r.gp} и · {r.points} очк.{place ? ` · #${place}` : ''}
         </div>
       </div>
     </div>
@@ -162,46 +162,55 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
                   </div>
                 )}
 
-                <div className="flex flex-wrap gap-2 pt-3 border-t border-line">
+                <div className="pt-3 border-t border-line space-y-2 sm:space-y-0 sm:flex sm:flex-wrap sm:gap-2">
                   {eliminated ? (
-                    <Button variant="primary" onClick={simToNext}>
+                    <Button variant="primary" className="w-full sm:w-auto" onClick={simToNext}>
                       <Icon name="fast" /> Симулировать плей-офф до конца
                     </Button>
                   ) : userGame ? (
                     <>
-                      <Button variant="primary" size="lg" onClick={() => onPlay(userGame)}>
+                      <Button variant="primary" size="lg" className="w-full sm:w-auto" onClick={() => onPlay(userGame)}>
                         <Icon name="play" /> Играть матч
                       </Button>
-                      <Button size="lg" onClick={simGame}>
-                        <Icon name="fast" /> Симулировать матч
-                      </Button>
-                      <Button size="lg" variant="ghost" onClick={() => ui.nav('lines')}>
-                        Звенья
-                      </Button>
+                      <div className="grid grid-cols-2 gap-2 sm:contents">
+                        <Button size="lg" className="w-full sm:w-auto" onClick={simGame}>
+                          <Icon name="fast" /> Симулировать матч
+                        </Button>
+                        <Button size="lg" variant="ghost" className="w-full sm:w-auto border border-line sm:border-0" onClick={() => ui.nav('lines')}>
+                          Звенья
+                        </Button>
+                        <Button size="lg" variant="ghost" className="w-full sm:w-auto border border-line sm:border-0" onClick={simWeek}>
+                          5 дней
+                        </Button>
+                        <Button size="lg" variant="secondary" className="w-full sm:w-auto" onClick={() => setShowTactics((v) => !v)}>
+                          {showTactics ? 'Скрыть разбор' : 'Сравнение ЧБ'}
+                        </Button>
+                        <Button size="lg" variant="ghost" className="col-span-2 sm:col-span-1 w-full sm:w-auto border border-line sm:border-0" onClick={() => ui.nav('schedule')}>
+                          Календарь
+                        </Button>
+                      </div>
                     </>
                   ) : (
                     <>
-                      <Button variant="primary" size="lg" onClick={simToNext}>
+                      <Button variant="primary" size="lg" className="w-full sm:w-auto" onClick={simToNext}>
                         <Icon name="fast" /> Симулировать до матча
                       </Button>
-                      <Button size="lg" onClick={() => simulateDay(true)}>
-                        Симулировать день
-                      </Button>
+                      <div className="grid grid-cols-2 gap-2 sm:contents">
+                        <Button size="lg" className="w-full sm:w-auto" onClick={() => simulateDay(true)}>
+                          Симулировать день
+                        </Button>
+                        <Button size="lg" variant="ghost" className="w-full sm:w-auto border border-line sm:border-0" onClick={simWeek}>
+                          5 дней
+                        </Button>
+                        <Button size="lg" variant="secondary" className="w-full sm:w-auto" onClick={() => setShowTactics((v) => !v)}>
+                          {showTactics ? 'Скрыть разбор' : 'Сравнение ЧБ'}
+                        </Button>
+                        <Button size="lg" variant="ghost" className="w-full sm:w-auto border border-line sm:border-0" onClick={() => ui.nav('schedule')}>
+                          Календарь
+                        </Button>
+                      </div>
                     </>
                   )}
-                  {!eliminated && (
-                    <Button size="lg" variant="ghost" onClick={simWeek}>
-                      5 дней
-                    </Button>
-                  )}
-                  {!eliminated && (
-                    <Button size="lg" variant="secondary" onClick={() => setShowTactics((v) => !v)}>
-                      {showTactics ? 'Скрыть разбор' : 'Сравнение звеньев и ЧБ'}
-                    </Button>
-                  )}
-                  <Button size="lg" variant="ghost" onClick={() => ui.nav('schedule')}>
-                    Календарь
-                  </Button>
                 </div>
                 {showTactics && upcomingOppId && (
                   <div className="mt-3">

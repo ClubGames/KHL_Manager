@@ -133,9 +133,9 @@ export function Leaders() {
         <span className="text-xs text-muted ml-auto">Сезон {s.league.season}{s.phase !== 'season' ? ' · регулярный чемпионат и плей-офф' : ''}</span>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+      <div className="flex overflow-x-auto no-scrollbar md:grid md:grid-cols-5 gap-2 pb-0.5">
         {cards.map((c) => (
-          <button key={c.title} disabled={!c.p} onClick={() => c.p && ui.openPlayer(c.p.id)} className={cn('text-left bg-panel border rounded-md p-3 transition-colors', c.p ? 'hover:border-muted' : 'opacity-60', c.p?.teamId === U ? 'border-ice/60' : 'border-line')}>
+          <button key={c.title} disabled={!c.p} onClick={() => c.p && ui.openPlayer(c.p.id)} className={cn('text-left bg-panel border rounded-md p-3 transition-colors min-w-[185px] md:min-w-0 shrink-0', c.p ? 'hover:border-muted' : 'opacity-60', c.p?.teamId === U ? 'border-ice/60' : 'border-line')}>
             <div className="text-[10px] uppercase tracking-wider text-muted">{c.title}</div>
             {c.p ? (
               <>

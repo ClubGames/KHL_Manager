@@ -6,7 +6,7 @@ import { fmtClock } from '../game/engine';
 import { commitUserResult, makeUserSim, useGame } from '../game/state';
 import { applyEvent, emptyLive, foldEvents, manpower } from '../game/live';
 import type { LiveStats } from '../game/live';
-import { Button, Icon, Panel, PosBadge, TeamLogo } from './ui';
+import { Button, Icon, Panel, PosBadge, shortName, TeamLogo } from './ui';
 import { cn } from '../utils/cn';
 import { GoalReplay } from './GoalReplay';
 import { ShotMap } from './ShotMap';
@@ -66,6 +66,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const [swapSel, setSwapSel] = useState<number | null>(null);
   const [showPreLineup, setShowPreLineup] = useState(false);
   const [showPostMap, setShowPostMap] = useState(true);
+  const [mobileTab, setMobileTab] = useState<'live' | 'coach' | 'stats'>('live');
   const [forecheck, setForecheckState] = useState<ForecheckStyle>(sim.tactics[userIdx].forecheck);
   const [attackStyle, setAttackStyleState] = useState<AttackStyle>(sim.tactics[userIdx].style);
   const [pullPolicy, setPullPolicyState] = useState<PullGoaliePolicy>(sim.tactics[userIdx].pullGoalie);
@@ -319,20 +320,23 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         <div className="flex items-center gap-2 mb-1.5">
           <TeamLogo team={team} size={18} />
           <span className={cn('text-[11px] uppercase tracking-wider', special ? 'text-amber' : 'text-muted')}>на льду · {iceLabel(ti, li)}</span>
-          <span className="ml-auto text-[11px] text-muted truncate">вратарь: {goalieName(ti)}</span>
+          <span className="ml-auto text-[11px] text-muted truncate">вр: {shortName(goalieName(ti))}</span>
         </div>
-        <div className="grid grid-cols-5 gap-1.5">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5">
           {ids.map((id, i) => {
             const p = id ? P[id] : null;
             return (
-              <div key={i} className="rounded-sm bg-panel border border-line px-2 py-1.5 min-w-0">
+              <div key={i} className="rounded-sm bg-panel border border-line px-2 py-1.5 min-w-0 flex sm:block items-center gap-1.5">
                 {p ? (
                   <>
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 shrink-0">
                       <PosBadge pos={p.position} />
                       <span className="font-display text-xs text-muted">{p.number}</span>
                     </div>
-                    <div className="text-xs truncate mt-0.5">{p.name}</div>
+                    <div className="text-xs truncate sm:mt-0.5 min-w-0">
+                      <span className="sm:hidden">{shortName(p.name)}</span>
+                      <span className="hidden sm:inline">{p.name}</span>
+                    </div>
                   </>
                 ) : (
                   <div className="text-xs text-muted">замена</div>
@@ -356,69 +360,152 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
 
   return (
     <div className="min-h-screen rink-lines flex flex-col fade-in">
-      <header className="bg-panel border-b border-line">
+      <header className="sticky top-0 z-30 bg-panel/95 backdrop-blur border-b border-line">
         {sim.derby && (
-          <div className="bg-gradient-to-r from-accent/25 via-gold/20 to-accent/25 border-b border-gold/30 px-4 py-1 text-center text-xs" data-derby-banner>
+          <div className="bg-gradient-to-r from-accent/25 via-gold/20 to-accent/25 border-b border-gold/30 px-3 py-1 text-center text-[11px] sm:text-xs truncate" data-derby-banner>
             <span className="font-display uppercase tracking-wider font-bold text-gold">🔥 {sim.derby.title}</span>
-            <span className="text-text/85 ml-2">{sim.derby.subtitle}</span>
+            <span className="hidden sm:inline text-text/85 ml-2">{sim.derby.subtitle}</span>
             {game.home === s.userTeamId && (
-              <span className="text-ok ml-2 font-semibold">· Аншлаг: +{formatMoney(sim.derby.gateBonus)} в бюджет</span>
+              <span className="text-ok ml-2 font-semibold">· +{formatMoney(sim.derby.gateBonus)}</span>
             )}
           </div>
         )}
-        <div className="max-w-7xl mx-auto px-4 py-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <TeamLogo team={H} size={40} />
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <TeamLogo team={H} size={32} className="sm:w-10 sm:h-10" />
             <div className="min-w-0">
-              <div className="font-display text-xl uppercase leading-none truncate">{H.name}</div>
-              <div className="text-[11px] text-muted">дома · {H.record.points} очк.</div>
+              <div className="font-display text-sm sm:text-xl uppercase leading-none truncate">
+                <span className="sm:hidden">{H.short}</span>
+                <span className="hidden sm:inline">{H.name}</span>
+              </div>
+              <div className="text-[10px] sm:text-[11px] text-muted truncate">дома · {H.record.points} очк.</div>
             </div>
-            <span className="font-display text-5xl tabular leading-none ml-auto score-tick" key={`h${score[0]}`}>
+            <span className="font-display text-3xl sm:text-5xl tabular leading-none ml-auto score-tick" key={`h${score[0]}`}>
               {score[0]}
             </span>
           </div>
-          <div className="text-center px-4 min-w-[120px]">
+          <div className="text-center px-1.5 sm:px-4 min-w-[82px] sm:min-w-[120px]">
             <ClockFace ticker={ticker} end={blockEnd} shootout={kind === 'so'} />
-            <div className={cn('text-[11px] uppercase tracking-widest mt-1', paused ? 'text-amber' : 'text-muted')}>{paused ? 'Пауза' : periodLabel || 'Старт'}</div>
-            <div className="h-5 mt-1 flex items-center justify-center">
+            <div className={cn('text-[10px] sm:text-[11px] uppercase tracking-widest mt-0.5 sm:mt-1', paused ? 'text-amber' : 'text-muted')}>{paused ? 'Пауза' : periodLabel || 'Старт'}</div>
+            <div className="min-h-[18px] mt-0.5 flex items-center justify-center">
               {mp.state !== null && (
-                <span data-manpower className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-sm bg-amber/15 text-amber tabular whitespace-nowrap">
-                  {mp.state === 'even' ? '4 на 4' : `Большинство ${mp.state === 0 ? H.short : A.short}`} · <PenaltyTimer ticker={ticker} live={live} />
+                <span data-manpower className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide px-1.5 sm:px-2 py-0.5 rounded-sm bg-amber/15 text-amber tabular whitespace-nowrap">
+                  {mp.state === 'even' ? '4×4' : `ЧБ ${mp.state === 0 ? H.short : A.short}`} · <PenaltyTimer ticker={ticker} live={live} />
                 </span>
               )}
             </div>
           </div>
-          <div className="flex items-center gap-3 min-w-0 flex-row-reverse">
-            <TeamLogo team={A} size={40} />
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-row-reverse">
+            <TeamLogo team={A} size={32} className="sm:w-10 sm:h-10" />
             <div className="min-w-0 text-right">
-              <div className="font-display text-xl uppercase leading-none truncate">{A.name}</div>
-              <div className="text-[11px] text-muted">в гостях · {A.record.points} очк.</div>
+              <div className="font-display text-sm sm:text-xl uppercase leading-none truncate">
+                <span className="sm:hidden">{A.short}</span>
+                <span className="hidden sm:inline">{A.name}</span>
+              </div>
+              <div className="text-[10px] sm:text-[11px] text-muted truncate">гости · {A.record.points} очк.</div>
             </div>
-            <span className="font-display text-5xl tabular leading-none mr-auto score-tick" key={`a${score[1]}`}>
+            <span className="font-display text-3xl sm:text-5xl tabular leading-none mr-auto score-tick" key={`a${score[1]}`}>
               {score[1]}
             </span>
           </div>
         </div>
+
+        {/* Sticky Mobile Live Control Strip + Section Tabs */}
+        <div className="lg:hidden border-t border-line/70 px-3 py-1.5 bg-bg/85 space-y-1.5">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              disabled={status !== 'playing'}
+              onClick={() => setPaused((p) => !p)}
+              className={cn(
+                'px-2.5 py-1.5 rounded-sm text-xs font-semibold inline-flex items-center gap-1 border disabled:opacity-45',
+                paused ? 'bg-ice text-bg border-ice' : 'bg-panel2 text-text border-line'
+              )}
+            >
+              <Icon name={paused ? 'play' : 'pause'} className="w-3.5 h-3.5" />
+              {paused ? 'Возобновить' : 'Пауза'}
+            </button>
+            <div className="inline-flex rounded-sm border border-line bg-panel2 p-0.5">
+              {([1, 2, 4] as const).map((sp) => (
+                <button
+                  key={sp}
+                  type="button"
+                  onClick={() => setSpeed(sp)}
+                  className={cn('px-2 py-1 rounded-sm text-xs font-semibold tabular', speed === sp ? 'bg-ice text-bg' : 'text-muted')}
+                >
+                  ×{sp}
+                </button>
+              ))}
+            </div>
+            {!timeoutUsed && status !== 'done' && (
+              <button
+                type="button"
+                disabled={status === 'intro'}
+                onClick={callTimeoutNow}
+                className={cn(
+                  'px-2 py-1.5 rounded-sm text-xs font-semibold border disabled:opacity-45',
+                  sim.unansweredGoals[1 - userIdx] >= 2 ? 'bg-accent text-white border-accent' : 'bg-panel2 text-gold border-line'
+                )}
+              >
+                ⏱ Т-А
+              </button>
+            )}
+            {status !== 'done' && (
+              <button
+                type="button"
+                onClick={finishNow}
+                className="ml-auto px-2.5 py-1.5 rounded-sm text-xs font-semibold bg-panel2 border border-line text-muted hover:text-text"
+              >
+                В конец ⏭
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-1">
+            {([
+              ['live', 'Трансляция'],
+              ['coach', 'Мостик и звенья'],
+              ['stats', `Карта xG (${stats.shots[0]}:${stats.shots[1]})`],
+            ] as const).map(([id, lbl]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMobileTab(id)}
+                className={cn(
+                  'py-1.5 px-1 rounded-sm text-[11px] font-semibold text-center truncate transition-colors',
+                  mobileTab === id ? 'bg-accent text-white' : 'bg-panel2/70 text-muted'
+                )}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+        </div>
       </header>
 
-      <div className="flex-1 max-w-7xl mx-auto w-full px-4 py-4 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4">
+      <div className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-4 py-3 sm:py-4 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="space-y-3 min-w-0">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-2', mobileTab !== 'live' && 'hidden lg:grid')}>
             {renderOnIce(0)}
             {renderOnIce(1)}
           </div>
-          <Panel title="Мини-карта опасных моментов (xG) и тепловая карта бросков">
-            <ShotMap shots={stats.shotMap} home={H} away={A} players={P} compact />
-          </Panel>
-          <Panel title="Хроника матча" noPad className="min-h-[260px]">
-            <div ref={feedRef} data-feed className="max-h-[42vh] overflow-y-auto divide-y divide-line/60">
-              {feed.length === 0 && status === 'playing' && <div className="p-4 text-muted text-sm">Игра началась…</div>}
-              <FeedRows feed={feed} onReplay={setReplayEvent} />
-            </div>
-          </Panel>
+          <div className={cn(mobileTab !== 'stats' && 'hidden lg:block')}>
+            <Panel title="Мини-карта опасных моментов (xG) и тепловая карта бросков">
+              <ShotMap shots={stats.shotMap} home={H} away={A} players={P} compact />
+            </Panel>
+          </div>
+          <div className={cn(mobileTab !== 'live' && 'hidden lg:block')}>
+            <Panel title="Хроника матча" noPad className="min-h-[260px]">
+              <div ref={feedRef} data-feed className="max-h-[46vh] sm:max-h-[42vh] overflow-y-auto divide-y divide-line/60">
+                {feed.length === 0 && status === 'playing' && <div className="p-4 text-muted text-sm">Игра началась…</div>}
+                <FeedRows feed={feed} onReplay={setReplayEvent} />
+              </div>
+            </Panel>
+          </div>
         </div>
 
         <div className="space-y-3">
+          <div className={cn(mobileTab !== 'stats' && 'hidden lg:block')}>
           <Panel title="Статистика" noPad>
             <table className="w-full text-sm tabular" data-live-stats data-shots={`${stats.shots[0]}:${stats.shots[1]}`} data-periods={stats.periods.map((x) => x.join('-')).join(' ')}>
               <thead>
@@ -469,6 +556,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               </tbody>
             </table>
           </Panel>
+          </div>
+          <div className={cn('space-y-3', mobileTab !== 'coach' && 'hidden lg:block')}>
           <Panel title="Тренерский мостик (на лету)" data-live-coaching>
             <div className="space-y-2.5 text-xs">
               <div>
@@ -585,6 +674,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               </Button>
             )}
           </Panel>
+          </div>
+          <div className={cn(mobileTab !== 'stats' && mobileTab !== 'coach' && 'hidden lg:block')}>
           <Panel title="Вратари и свежесть">
             <div className="text-xs space-y-1.5">
               {([0, 1] as const).map((ti) => {
@@ -605,6 +696,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               })}
             </div>
           </Panel>
+          </div>
         </div>
       </div>
 
@@ -697,11 +789,11 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           </div>
           {sim.status !== 'so' && sim.status !== 'ot' && (
             <div className="text-left w-full max-w-md">
-              <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Звенья {userTeam.name} — нажмите на два звена, чтобы поменять их местами</div>
-              <div className="grid grid-cols-4 gap-1.5">
+              <div className="text-[11px] uppercase tracking-wider text-muted mb-1.5">Звенья {userTeam.name} — нажмите на два звена, чтобы поменять их местами</div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                 {userL.F.map((line, i) => (
-                  <button key={i} onClick={() => (swapSel === null ? setSwapSel(i) : swapSel === i ? setSwapSel(null) : swapLine(swapSel, i))} className={cn('rounded-sm border p-2 text-xs transition-colors', swapSel === i ? 'border-accent bg-accent/15' : 'border-line bg-panel2 hover:border-muted')}>
-                    <div className="font-display text-base">{i + 1}</div>
+                  <button key={i} onClick={() => (swapSel === null ? setSwapSel(i) : swapSel === i ? setSwapSel(null) : swapLine(swapSel, i))} className={cn('rounded-sm border p-2 text-xs transition-colors text-left sm:text-center', swapSel === i ? 'border-accent bg-accent/15' : 'border-line bg-panel2 hover:border-muted')}>
+                    <div className="font-display text-base">{i + 1}-е звено</div>
                     <div className="truncate">{line.filter(Boolean).map((id) => P[id!]?.name.split(' ').slice(-1)[0]).join(' · ') || '—'}</div>
                   </button>
                 ))}
@@ -789,8 +881,8 @@ function periodNameOf(period: number, kind: BlockKind): string {
 
 function Overlay({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="fixed inset-0 z-40 bg-bg/80 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
-      <div className={cn('bg-panel border border-line rounded-md p-5 w-full text-center shadow-2xl fade-in flex flex-col items-center max-h-[92vh] overflow-y-auto', wide ? 'max-w-4xl' : 'max-w-xl')}>
+    <div className="fixed inset-0 z-40 bg-bg/85 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
+      <div className={cn('bg-panel border-t sm:border border-line rounded-t-xl sm:rounded-md p-4 sm:p-5 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-5 w-full text-center shadow-2xl fade-in flex flex-col items-center max-h-[92dvh] overflow-y-auto overscroll-contain', wide ? 'max-w-4xl' : 'max-w-xl')}>
         {children}
       </div>
     </div>
