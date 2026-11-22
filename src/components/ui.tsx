@@ -4,7 +4,7 @@ import { cn } from '../utils/cn';
 import type { PosCode, Team } from '../types';
 import { overallColor, POS_RU } from '../game/ratings';
 
-export type View = 'dashboard' | 'roster' | 'lines' | 'schedule' | 'standings' | 'stats' | 'trades' | 'market' | 'contracts' | 'format' | 'offseason';
+export type View = 'dashboard' | 'roster' | 'lines' | 'schedule' | 'standings' | 'stats' | 'trades' | 'market' | 'contracts' | 'club' | 'format' | 'offseason';
 
 export interface UIApi {
   openPlayer: (id: string) => void;

@@ -114,7 +114,8 @@ function buildPPUnit(
   for (const rid of rawClean) {
     if (!effIds.includes(rid) && P[rid]) {
       const rp = P[rid];
-      if (rp.injury) missingReasons.push(`${rp.name} (травма)`);
+      if (rp.injury) missingReasons.push(`${rp.name} (травма, ${rp.injury.days} дн.)`);
+      else if (rp.inLtir) missingReasons.push(`${rp.name} (ДСБТ)`);
       else if (suspended.has(rid)) missingReasons.push(`${rp.name} (блок потолка)`);
       else missingReasons.push(`${rp.name} (вне заявки)`);
     }

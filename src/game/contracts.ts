@@ -1,6 +1,7 @@
 import type { GameState, Player } from '../types';
 import { fairSalary, salaryDemand } from './ratings';
-import { canHaveNmc } from './khlRules';
+import { canHaveNmc, canSignTwoWay } from './khlRules';
+import { scoutingDemandMult } from './medical';
 
 export interface ContractTerms {
   salary: number;
@@ -61,7 +62,7 @@ function confPlace(state: GameState, teamId: string): { place: number; gp: numbe
 }
 
 /** What the player asks from the given club for a deal of this length. */
-export function askingSalary(state: GameState, p: Player, years: number, teamId: string, withNmc = false): number {
+export function askingSalary(state: GameState, p: Player, years: number, teamId: string, withNmc = false, twoWay = false): number {
   let v = salaryDemand(p.overall, p.age, p.potential);
   // young players charge for selling their best years; veterans give a discount for security
   v *= p.age < 30 ? 1 + 0.04 * (years - 1) : 1 - 0.03 * (years - 1);
@@ -69,6 +70,8 @@ export function askingSalary(state: GameState, p: Player, years: number, teamId:
   const { place, gp } = confPlace(state, teamId);
   if (gp >= 10) v *= place <= 4 ? 0.97 : place >= 10 ? 1.05 : 1;
   if (withNmc && canHaveNmc(p) && years >= 2) v *= 0.92;
+  if (twoWay && canSignTwoWay(p) && p.age > 22) v *= 1.06;
+  v *= scoutingDemandMult(state.teams[teamId]?.facilities?.scouting ?? 1);
   return round(v);
 }
 
@@ -79,9 +82,9 @@ export function talksLeft(state: GameState, p: Player): number {
 }
 
 /** The lowest salary the player will really accept (hidden from the manager, fixed for the negotiation window). */
-export function floorSalary(state: GameState, p: Player, years: number, teamId: string, withNmc = false): number {
+export function floorSalary(state: GameState, p: Player, years: number, teamId: string, withNmc = false, twoWay = false): number {
   const flex = 0.87 + 0.1 * seeded(`${p.id}|${talksKey(state)}`)();
-  return Math.round(askingSalary(state, p, years, teamId, withNmc) * flex);
+  return Math.round(askingSalary(state, p, years, teamId, withNmc, twoWay) * flex);
 }
 
 export interface Verdict {
@@ -92,13 +95,16 @@ export interface Verdict {
 }
 
 /** Player's answer to an offer. A rejected offer costs patience (stored on the player). */
-export function negotiate(state: GameState, p: Player, salary: number, years: number, teamId: string, withNmc = false): Verdict {
+export function negotiate(state: GameState, p: Player, salary: number, years: number, teamId: string, withNmc = false, twoWay = false): Verdict {
   const key = talksKey(state);
   let left = talksLeft(state, p);
   if (left <= 0) return { accept: false, left: 0, tone: 'closed', text: `${p.name} прервал переговоры. Вернуться к ним можно ${state.phase === 'offseason' ? 'в следующем сезоне' : 'в межсезонье'}.` };
   const my = maxYears(p.age);
   if (years > my) return { accept: false, left, tone: 'low', text: `${p.name} (возраст ${p.age}) не подпишет контракт дольше ${my} ${my === 1 ? 'года' : 'лет'}.` };
-  const ratio = salary / floorSalary(state, p, years, teamId, withNmc);
+  if (twoWay && !canSignTwoWay(p)) {
+    return { accept: false, left, tone: 'low', text: `${p.name} (ОВР ${p.overall}) согласен только на односторонний контракт КХЛ.` };
+  }
+  const ratio = salary / floorSalary(state, p, years, teamId, withNmc, twoWay);
   if (ratio >= 1) return { accept: true, left, tone: 'ok', text: `${p.name} согласен.` };
   const insult = ratio < 0.8;
   left = Math.max(0, left - (insult ? 2 : 1));

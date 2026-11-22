@@ -1,6 +1,7 @@
 import type { GameState, Lineup, Player, YouthTrainingPlan } from '../types';
 import { clamp, computeOverall, GOALIE_KEYS, isDefense, isGoalie, SKATER_KEYS, SKILL_LABELS } from './ratings';
 import { hasCaptainMentorOnLine } from './chemistry';
+import { academyXpMult } from './medical';
 
 export const YOUTH_MAX_AGE = 23;
 
@@ -186,7 +187,8 @@ export function stepYouthTrainingWeek(
         p.morale = clamp(p.morale - 2, 30, 99);
       }
 
-      const gain = (4.2 + gap * 1.45) * roleMult * mentorMult * ageMult * moraleMult * plan.speedMult;
+      const acadMult = academyXpMult(team.facilities?.academy ?? 1);
+      const gain = (4.2 + gap * 1.45) * roleMult * mentorMult * ageMult * moraleMult * plan.speedMult * acadMult;
       p.trainingXp = (p.trainingXp ?? 0) + gain;
 
       if (p.trainingXp >= 100) {

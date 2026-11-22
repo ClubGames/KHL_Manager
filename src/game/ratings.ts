@@ -53,13 +53,15 @@ export function computeOverall(p: Player): number {
 export function attackRating(p: Player | null): number {
   if (!p || isGoalie(p)) return 20;
   const s = p.skills;
-  return 0.25 * (s.skating ?? 65) + 0.3 * (s.shooting ?? 65) + 0.25 * (s.passing ?? 65) + 0.2 * (s.puckControl ?? 65);
+  const pen = p.injury && p.playingThroughInjury ? 3 : 0;
+  return Math.max(20, 0.25 * (s.skating ?? 65) + 0.3 * (s.shooting ?? 65) + 0.25 * (s.passing ?? 65) + 0.2 * (s.puckControl ?? 65) - pen);
 }
 
 export function defenseRating(p: Player | null): number {
   if (!p || isGoalie(p)) return 20;
   const s = p.skills;
-  return 0.35 * (s.defense ?? 65) + 0.3 * (s.checking ?? 65) + 0.2 * (s.skating ?? 65) + 0.15 * (s.passing ?? 65);
+  const pen = p.injury && p.playingThroughInjury ? 3 : 0;
+  return Math.max(20, 0.35 * (s.defense ?? 65) + 0.3 * (s.checking ?? 65) + 0.2 * (s.skating ?? 65) + 0.15 * (s.passing ?? 65) - pen);
 }
 
 const REPL = 50;
@@ -69,7 +71,7 @@ function fill(ids: (string | null)[] | undefined, n: number, P: Record<string, P
   for (let i = 0; i < n; i++) {
     const id = ids && ids[i];
     const p = id ? P[id] : undefined;
-    out.push(p && (!skatersOnly || isSkater(p)) && !p.injury ? p : null);
+    out.push(p && (!skatersOnly || isSkater(p)) && !p.inLtir && (!p.injury || p.playingThroughInjury) ? p : null);
   }
   return out;
 }

@@ -122,7 +122,10 @@ export function teamForeignLimit(
 
 export function countRosterLegionnaires(ids: string[], P: Record<string, Player>): number {
   let n = 0;
-  for (const id of ids) if (isLegionnaire(P[id])) n++;
+  for (const id of ids) {
+    const p = P[id];
+    if (p && !p.inVhl && !p.inLtir && isLegionnaire(p)) n++;
+  }
   return n;
 }
 

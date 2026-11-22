@@ -14,6 +14,7 @@ import { Market } from './components/Market';
 import { Offseason } from './components/Offseason';
 import { Leaders } from './components/Leaders';
 import { Contracts, NegotiationModal } from './components/Contracts';
+import { Club } from './components/Club';
 import { SaveIndicator, SavesList } from './components/Saves';
 import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, useGame, useSaveStatus } from './game/state';
 import { regularSeasonLength, seasonDate } from './game/schedule';
@@ -31,6 +32,7 @@ const NAV: { id: View; label: string; icon: string }[] = [
   { id: 'trades', label: 'Обмены', icon: 'trade' },
   { id: 'market', label: 'Рынок', icon: 'market' },
   { id: 'contracts', label: 'Контракты', icon: 'contract' },
+  { id: 'club', label: 'Инфраструктура', icon: 'trophy' },
 ];
 
 const MOBILE_MAIN: View[] = ['dashboard', 'roster', 'lines', 'standings'];
@@ -126,7 +128,8 @@ export default function App() {
     const label = v === 'offseason' ? 'Межсезонье' : v === 'format' ? 'Формат JSON' : item?.label ?? v;
     const icon = v === 'offseason' ? 'trophy' : v === 'format' ? 'code' : item?.icon ?? 'dashboard';
     const active = view === v;
-    const badge = v === 'trades' && s.offers.length > 0 ? s.offers.length : 0;
+    const ltirReady = U.players.filter((id) => s.players[id]?.inLtir && !s.players[id]?.injury).length;
+    const badge = v === 'trades' && s.offers.length > 0 ? s.offers.length : v === 'club' && ltirReady > 0 ? ltirReady : 0;
     const isOffTab = v === 'offseason';
     const cls = cn(
       'flex items-center gap-3 transition-colors',
@@ -172,6 +175,8 @@ export default function App() {
         return <Market />;
       case 'contracts':
         return <Contracts />;
+      case 'club':
+        return <Club />;
       case 'offseason':
         return <Offseason />;
       case 'format':

@@ -58,9 +58,16 @@
 
 ```bash
 npm install
-npm run build      # → dist/index.html + dist/roster.json + dist/arena.jpg (фон главного меню)
+npm run build      # → dist/index.html + dist/roster.json + dist/arena.jpg + dist/.nojekyll
 npm run preview    # или любой статический сервер на папку dist
 ```
+
+## Деплой на GitHub Pages
+
+Репозиторий полностью подготовлен к публикации на **GitHub Pages** (в том числе по подпути `https://<org>.github.io/KHL_Manager/`):
+- В `vite.config.ts` задан относительный `base: './'`, а плагин сборки автоматически кладёт актуальный `roster.json`, `arena.jpg` и `.nojekyll` рядом с `dist/index.html`.
+- Добавлен GitHub Actions workflow `.github/workflows/pages.yml`, который собирает проект и публикует артефакт при каждом пуше в `main` (или вручную через **Actions → Deploy to GitHub Pages → Run workflow**).
+- В настройках репозитория на GitHub достаточно один раз выбрать: **Settings → Pages → Build and deployment → Source: `GitHub Actions`**.
 
 ## Ростер (roster.json)
 
@@ -94,8 +101,10 @@ npm run preview    # или любой статический сервер на 
             "skating": 84, "shooting": 78, "passing": 88,
             "puckControl": 85, "checking": 62, "defense": 74
           },
-          "contract": { "salary": 65000000, "years": 2 },   // зарплата ₽/сезон, осталось лет
-          "injury": null,          // или { "name": "Травма плеча", "games": 6 }
+          "contract": { "salary": 65000000, "years": 2, "twoWay": false }, // twoWay: true — двусторонний контракт КХЛ/ВХЛ без отказов
+          "inVhl": false,          // true — начать сезон сразу в фарм-клубе ВХЛ
+          "nmc": false,            // true — запрет на обмен и драфт отказов (ЗНО)
+          "injury": null,          // или { "name": "Травма плеча", "days": 14 }
           "morale": 78
         },
         {

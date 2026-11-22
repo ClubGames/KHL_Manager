@@ -3,6 +3,8 @@ import { clamp, computeOverall, isDefense, isForward, isGoalie } from './ratings
 import { emptyStats } from './defaults';
 import { isLegionnaire } from './legionnaires';
 import { recommendYouthPlan } from './training';
+import { scoutingMaxSpread } from './medical';
+import { activeKhlCount, MAX_VHL_PLAYERS, vhlCount } from './khlRules';
 
 /** KHL young-player extra match roster limit ("лимитчик" U20, domestic/EAEU skater). */
 export const U20_MAX_AGE = 20;
@@ -227,6 +229,10 @@ export function createJuniorDraft(state: GameState, orderWorstFirst: string[]): 
   const usedNames = new Set(Object.values(state.players).map((p) => p.name));
   const prospects: DraftProspectMeta[] = [];
   const positions: PosCode[] = ['C', 'LW', 'RW', 'D', 'D', 'C', 'LW', 'RW', 'D', 'G'];
+  const userClub = state.teams[state.userTeamId];
+  const userScouting = userClub?.facilities?.scouting ?? 1;
+  const userAcademy = userClub?.facilities?.academy ?? 1;
+  const maxSpread = scoutingMaxSpread(userScouting);
 
   for (let i = 0; i < count; i++) {
     const pos = positions[i % positions.length];
@@ -302,13 +308,19 @@ export function createJuniorDraft(state: GameState, orderWorstFirst: string[]): 
       stats: emptyStats(),
       history: [],
     };
+    if (userClub && userAcademy >= 2 && (i === 6 || i === 18)) {
+      school = `Академия «${userClub.name}» (МХЛ)`;
+      pot = clamp(pot + (userAcademy - 1), 72, 94);
+    }
     player.overall = computeOverall(player);
     player.potential = Math.max(pot, player.overall + 3);
     player.trainingPlan = recommendYouthPlan(player);
     state.players[id] = player;
 
-    const fuzzLo = clamp(player.potential - randInt(2, 4), player.overall, 95);
-    const fuzzHi = clamp(player.potential + randInt(1, 4), fuzzLo + 2, 96);
+    const loDelta = randInt(Math.min(1, maxSpread), maxSpread);
+    const hiDelta = randInt(Math.min(1, maxSpread), maxSpread);
+    const fuzzLo = clamp(player.potential - loDelta, player.overall, 95);
+    const fuzzHi = clamp(player.potential + hiDelta, fuzzLo + Math.min(2, maxSpread), 96);
     const score = player.overall * 0.55 + player.potential * 0.45;
     const grade = score >= 78 ? 'A+' : score >= 74 ? 'A' : score >= 70 ? 'B+' : score >= 67 ? 'B' : 'C+';
 
@@ -399,15 +411,20 @@ export function executeSingleDraftPick(state: GameState, draft: JuniorDraftState
 
   if (p && team) {
     const sal = rookieSalary(p.overall, p.potential);
-    p.contract = { salary: sal, years: 3 };
+    p.contract = { salary: sal, years: 3, twoWay: true };
     p.rightsTeamId = team.id;
-    if (team.players.length < 30) {
+    const curKhl = activeKhlCount(team.players, state.players);
+    const curVhl = vhlCount(team.players, state.players);
+    if (curKhl < 30) {
       p.teamId = team.id;
-      // Younger raw prospects start in VHL/MHL affiliate if roster already has 23+ players
-      p.inVhl = team.players.length >= 23 && p.overall < 67;
+      p.inVhl = curKhl >= 23 && p.overall < 67 && curVhl < MAX_VHL_PLAYERS;
+      team.players.push(p.id);
+    } else if (curVhl < MAX_VHL_PLAYERS) {
+      p.teamId = team.id;
+      p.inVhl = true;
       team.players.push(p.id);
     } else {
-      // Roster at 30 limit: club retains RFA sports rights while player develops as unsigned RFA
+      // Both KHL (30) and VHL (10) rosters are full: club retains RFA sports rights
       p.teamId = null;
       if (!state.freeAgents.includes(p.id)) state.freeAgents.push(p.id);
     }

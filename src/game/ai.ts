@@ -1,11 +1,12 @@
-import type { GameState, Lineup, NewsItem, Player, PosCode, Team, TradeOffer } from '../types';
+import type { GameState, Lineup, NewsItem, Phase, Player, PosCode, Team, TradeOffer } from '../types';
 import { attackRating, clamp, defenseRating, fairSalary, isDefense, isForward, isGoalie, isSkater, payroll, POS_RU } from './ratings';
 import { emptyLineup } from './defaults';
 import { countRosterLegionnaires, isLegionnaire, teamForeignLimit } from './legionnaires';
 import { capSuspendedPlayers } from './cap';
 import { ensureCaptains, goalieFreshness } from './chemistry';
 import { isU20DefenseLimiter, isU20ForwardLimiter } from './dynasty';
-import { teamVhlCapRelief } from './khlRules';
+import { activeKhlCount, teamVhlCapRelief } from './khlRules';
+import { isUnavailable } from './medical';
 
 export const byOvr = (a: Player, b: Player) => b.overall - a.overall || a.age - b.age;
 export const groupOf = (p: Player): 'F' | 'D' | 'G' => (isGoalie(p) ? 'G' : isDefense(p) ? 'D' : 'F');
@@ -13,12 +14,13 @@ export const groupOf = (p: Player): 'F' | 'D' | 'G' => (isGoalie(p) ? 'G' : isDe
 export interface LineupConstraints {
   foreignLimit?: number | null;
   excluded?: Set<string>;
+  phase?: Phase;
 }
 
 export function autoLineup(ids: string[], P: Record<string, Player>, opts?: LineupConstraints): Lineup {
   const excluded = opts?.excluded;
   const foreignLimit = opts?.foreignLimit ?? null;
-  let avail = ids.map((id) => P[id]).filter((p): p is Player => !!p && !p.injury && !p.inVhl && !excluded?.has(p.id));
+  let avail = ids.map((id) => P[id]).filter((p): p is Player => !!p && !isUnavailable(p, opts?.phase) && !p.inVhl && !excluded?.has(p.id));
   if (foreignLimit !== null) {
     const legs = avail.filter((p) => isLegionnaire(p)).sort(byOvr);
     if (legs.length > foreignLimit) {
@@ -92,15 +94,15 @@ export function sanitizeLineup(L: Lineup, ids: string[], P: Record<string, Playe
     if (isLegionnaire(P[id])) legCount++;
   };
 
-  const ok = (id: string | null) => !!id && !!P[id] && !P[id].injury && !P[id].inVhl && !excluded?.has(id) && ids.includes(id) && isSkater(P[id]);
+  const ok = (id: string | null) => !!id && !!P[id] && !isUnavailable(P[id], opts?.phase) && !P[id].inVhl && !excluded?.has(id) && ids.includes(id) && isSkater(P[id]);
   const used = new Set<string>();
-  const avail = ids.map((id) => P[id]).filter((p): p is Player => !!p && !p.injury && !p.inVhl && !excluded?.has(p.id));
+  const avail = ids.map((id) => P[id]).filter((p): p is Player => !!p && !isUnavailable(p, opts?.phase) && !p.inVhl && !excluded?.has(p.id));
   const F = avail.filter(isForward).sort(byOvr);
   const D = avail.filter(isDefense).sort(byOvr);
   const G = avail.filter(isGoalie).sort(byOvr);
   const out = emptyLineup();
 
-  const gokBase = (id: string | null) => !!id && !!P[id] && isGoalie(P[id]) && !P[id].injury && !P[id].inVhl && !excluded?.has(id) && ids.includes(id);
+  const gokBase = (id: string | null) => !!id && !!P[id] && isGoalie(P[id]) && !isUnavailable(P[id], opts?.phase) && !P[id].inVhl && !excluded?.has(id) && ids.includes(id);
   const pickGoalie = (preferred: (string | null)[]): string | null => {
     for (const id of preferred) {
       if (id && gokBase(id) && !used.has(id) && canTakeLeg(id)) {
@@ -190,6 +192,7 @@ export function lineupConstraintsFor(state: GameState, teamId: string): LineupCo
   return {
     foreignLimit: teamForeignLimit(t, state.league.foreignLimit),
     excluded: new Set(capSuspendedPlayers(state, teamId)),
+    phase: state.phase,
   };
 }
 
@@ -461,7 +464,7 @@ export function valueFor(ctx: TeamCtx, p: Player): number {
     else if (p.age <= 24) v *= 1.15;
   }
   v *= 1 + 0.12 * clamp(ctx.need[groupOf(p)] / 4, -1, 1);
-  if (p.injury && p.injury.games > 5) v *= 0.8;
+  if (p.injury && p.injury.days > 12) v *= 0.8;
   return v;
 }
 
@@ -479,7 +482,7 @@ function sideProblem(state: GameState, teamId: string, gives: string[], gets: st
     const n = after.filter((id) => groupOf(P[id]) === g).length;
     if (n < min[g]) return `у клуба «${t.name}» останется слишком мало ${GROUP_MANY[g]} (${n}, нужно минимум ${min[g]})`;
   }
-  if (after.length > MAX_ROSTER) return `в составе «${t.name}» окажется больше ${MAX_ROSTER} игроков`;
+  if (activeKhlCount(after, P) > MAX_ROSTER) return `в основном составе КХЛ «${t.name}» окажется больше ${MAX_ROSTER} игроков`;
   const fl = teamForeignLimit(t, state.league.foreignLimit);
   if (fl !== null) {
     const beforeLeg = countRosterLegionnaires(t.players, P);
