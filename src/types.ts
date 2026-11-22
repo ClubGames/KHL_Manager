@@ -299,6 +299,11 @@ export interface LeagueInfo {
 
 export type Phase = 'season' | 'playoffs' | 'offseason';
 
+export interface UserSettings {
+  /** show the 3D goal replay after a goal (when off, the "3D повтор" button is hidden) */
+  goalReplay3d: boolean;
+}
+
 export interface GameState {
   version: number;
   saveId: string;
@@ -324,4 +329,6 @@ export interface GameState {
   board: Board;
   /** the trade deadline of the current season has been announced */
   deadlinePassed?: boolean;
+  /** user-facing preferences (toggles for optional features) */
+  settings: UserSettings;
 }

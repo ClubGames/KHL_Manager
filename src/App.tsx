@@ -15,7 +15,7 @@ import { Offseason } from './components/Offseason';
 import { Leaders } from './components/Leaders';
 import { Contracts, NegotiationModal } from './components/Contracts';
 import { SaveIndicator, SavesList } from './components/Saves';
-import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, useGame, useSaveStatus } from './game/state';
+import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, store, useGame, useSaveStatus } from './game/state';
 import { regularSeasonLength, seasonDate } from './game/schedule';
 import { payroll } from './game/ratings';
 import { cn } from './utils/cn';
@@ -47,6 +47,7 @@ export default function App() {
   const [preselect, setPreselect] = useState<string | null>(null);
   const [savesOpen, setSavesOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [negId, setNegId] = useState<string | null>(null);
   const saveId = s?.saveId ?? null;
   const phase = s?.phase ?? null;
@@ -192,6 +193,9 @@ export default function App() {
                 <span>ФОТ</span>
                 <span className="tabular">{money(payroll(U.players, s.players))}</span>
               </div>
+              <button onClick={() => setSettingsOpen(true)} className="flex items-center gap-2 hover:text-text w-full pt-1">
+                <Icon name="settings" /> Настройки
+              </button>
               <button onClick={() => setSavesOpen(true)} className="flex items-center gap-2 hover:text-text w-full pt-1">
                 <Icon name="save" /> Сохранения
               </button>
@@ -286,12 +290,39 @@ export default function App() {
             })}
           </div>
           <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-line">
+            <button onClick={() => { setMoreOpen(false); setSettingsOpen(true); }} className="flex items-center gap-2.5 rounded-sm border border-line bg-panel2 px-3 py-2.5 text-sm text-left hover:border-muted">
+              <Icon name="settings" /> Настройки
+            </button>
             <button onClick={() => { setMoreOpen(false); setSavesOpen(true); }} className="flex items-center gap-2.5 rounded-sm border border-line bg-panel2 px-3 py-2.5 text-sm text-left hover:border-muted">
               <Icon name="save" /> Сохранения
             </button>
-            <button onClick={() => void exitToMenu()} className="flex items-center gap-2.5 rounded-sm border border-line bg-panel2 px-3 py-2.5 text-sm text-left hover:border-muted">
+            <button onClick={() => void exitToMenu()} className="flex items-center gap-2.5 rounded-sm border border-line bg-panel2 px-3 py-2.5 text-sm text-left hover:border-muted col-span-2">
               <Icon name="logout" /> Главное меню
             </button>
+          </div>
+        </Modal>
+      )}
+      {settingsOpen && (
+        <Modal open onClose={() => setSettingsOpen(false)} width="max-w-md" title={<span className="font-display uppercase tracking-wide">Настройки</span>}>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3 rounded-sm border border-line bg-panel2 px-3 py-2.5">
+              <div className="min-w-0">
+                <div className="text-sm font-medium">3D-повтор гола</div>
+                <div className="text-[11px] text-muted">Показывать телевизионный 3D-повтор после гола</div>
+              </div>
+              <button
+                role="switch"
+                aria-checked={!!s?.settings?.goalReplay3d}
+                aria-label="3D-повтор гола"
+                onClick={() => store.update((st) => { st.settings.goalReplay3d = !st.settings.goalReplay3d; })}
+                className={cn('relative h-6 w-11 shrink-0 rounded-full transition-colors', s?.settings?.goalReplay3d ? 'bg-ok' : 'bg-line')}
+              >
+                <span className={cn('absolute top-0.5 h-5 w-5 rounded-full bg-white transition-all', s?.settings?.goalReplay3d ? 'left-[22px]' : 'left-0.5')} />
+              </button>
+            </div>
+          </div>
+          <div className="flex justify-end mt-4 pt-4 border-t border-line">
+            <Button onClick={() => setSettingsOpen(false)}>Закрыть</Button>
           </div>
         </Modal>
       )}

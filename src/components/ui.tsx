@@ -218,6 +218,7 @@ const ICONS: Record<string, ReactNode> = {
   close: <><path d="M6 6l12 12M18 6L6 18" /></>,
   swap: <><path d="M7 4v16M7 4L4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3" /></>,
   alert: <><path d="M12 3l10 18H2z" /><path d="M12 10v5M12 18h.01" /></>,
+  settings: <><circle cx="12" cy="12" r="3.2" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M16.9 16.9l2.1 2.1M19.1 4.9l-2.1 2.1M7.1 16.9l-2.1 2.1" /></>,
 };
 export function Icon({ name, className }: { name: keyof typeof ICONS | string; className?: string }) {
   return (

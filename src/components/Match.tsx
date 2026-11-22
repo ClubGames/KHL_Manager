@@ -20,6 +20,7 @@ const EVENT_COLOR: Record<string, string> = { goal: '#E5323E', shot: '#93A4BC', 
 
 export function Match({ game, onFinished }: { game: Game; onFinished: () => void }) {
   const s = useGame()!;
+  const replayEnabled = s.settings?.goalReplay3d ?? true;
   const P = s.players;
   const H = s.teams[game.home];
   const A = s.teams[game.away];
@@ -301,7 +302,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           <Panel title="Хроника матча" noPad className="min-h-[320px]">
             <div ref={feedRef} data-feed className="max-h-[52vh] overflow-y-auto divide-y divide-line/60">
               {feed.length === 0 && status === 'playing' && <div className="p-4 text-muted text-sm">Игра началась…</div>}
-              <FeedRows feed={feed} onReplay={setReplayEvent} />
+              <FeedRows feed={feed} onReplay={setReplayEvent} replayEnabled={replayEnabled} />
             </div>
           </Panel>
         </div>
@@ -381,7 +382,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         </div>
       </div>
 
-      {replayEvent && (
+      {replayEvent && replayEnabled && (
         <GoalReplay event={replayEvent} home={H} away={A} players={P} onClose={() => setReplayEvent(null)} />
       )}
       {status === 'intro' && (
@@ -534,7 +535,7 @@ function PenaltyTimer({ ticker, live }: { ticker: Ticker; live: MutableRefObject
   return <>{text}</>;
 }
 
-const FeedRow = memo(function FeedRow({ e, onReplay }: { e: GameEvent; onReplay: (event: GameEvent) => void }) {
+const FeedRow = memo(function FeedRow({ e, onReplay, replayEnabled }: { e: GameEvent; onReplay: (event: GameEvent) => void; replayEnabled: boolean }) {
   return (
     <div className={cn('flex items-start gap-3 px-4 py-1.5 text-sm fade-in', e.type === 'goal' && 'bg-accent/10')}>
       <span className="w-14 shrink-0 text-[11px] text-muted tabular pt-0.5">{e.type === 'period_start' || e.type === 'period_end' ? '' : `${e.period <= 3 ? e.period : 'ОТ'} · ${e.time}`}</span>
@@ -542,7 +543,7 @@ const FeedRow = memo(function FeedRow({ e, onReplay }: { e: GameEvent; onReplay:
         <Icon name={e.type === 'goal' || e.type === 'so_goal' ? 'puck' : e.type === 'penalty' ? 'alert' : e.type === 'hit' ? 'injury' : e.type === 'shot' || e.type === 'miss' ? 'puck' : 'check'} />
       </span>
       <span className={cn('flex-1 min-w-0', e.type === 'goal' && 'font-semibold text-text', e.type === 'shot' || e.type === 'miss' || e.type === 'hit' ? 'text-text/75' : 'text-text/90')}>{e.text}</span>
-      {e.type === 'goal' && (
+      {e.type === 'goal' && replayEnabled && (
         <button onClick={() => onReplay(e)} className="shrink-0 text-[10px] uppercase tracking-wide rounded border border-accent/40 px-2 py-1 text-accent hover:bg-accent/10" title="Посмотреть 3D-повтор">3D повтор</button>
       )}
       {e.score && (
@@ -555,11 +556,11 @@ const FeedRow = memo(function FeedRow({ e, onReplay }: { e: GameEvent; onReplay:
 });
 
 /** The feed re-renders only when an event is added, and then only the new row is created. */
-const FeedRows = memo(function FeedRows({ feed, onReplay }: { feed: FeedItem[]; onReplay: (event: GameEvent) => void }) {
+const FeedRows = memo(function FeedRows({ feed, onReplay, replayEnabled }: { feed: FeedItem[]; onReplay: (event: GameEvent) => void; replayEnabled: boolean }) {
   return (
     <>
       {feed.map((it) => (
-        <FeedRow key={it.k} e={it.e} onReplay={onReplay} />
+        <FeedRow key={it.k} e={it.e} onReplay={onReplay} replayEnabled={replayEnabled} />
       ))}
     </>
   );

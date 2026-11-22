@@ -7,7 +7,7 @@ import { buyoutCost, commitments, negotiate, talksLeft } from './contracts';
 import { evaluateBoard, setBoardGoal } from './board';
 import { beginNewSeason, letGoUser, startOffseason, toFreeAgency } from './offseason';
 import { clamp, formatMoney, isDefense, isGoalie, isSkater, payroll, points } from './ratings';
-import { emptyLineup, emptyRecord } from './defaults';
+import { emptyLineup, emptyRecord, defaultSettings } from './defaults';
 import type { NormalizedRoster } from './roster';
 import { clearLegacy, deleteSave, getBackend, listMetas, readLegacy, readSave, storageError, writeSave } from './storage';
 import type { SaveMeta } from './storage';
@@ -194,6 +194,7 @@ export function migrateState(raw: unknown): GameState | null {
       }
   if (!s.board) setBoardGoal(s);
   s.deadlinePassed ??= s.phase === 'season' && !tradeWindow(s).open;
+  s.settings ??= defaultSettings;
   s.version = SAVE_VERSION;
   return s;
 }
@@ -249,6 +250,7 @@ export function createGameState(r: NormalizedRoster, userTeamId: string): GameSt
     summaries: [],
     offseason: null,
     deadlinePassed: false,
+    settings: defaultSettings,
   } as unknown as GameState;
   setBoardGoal(state);
   news[0].text += ` Задача руководства на сезон: ${state.board.text.toLowerCase()}.`;
