@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react';
-import type { Award, Game, GameResult, GameState, Lineup, NewsItem, NewsType, Series, Team, TeamTactics, YouthTrainingPlan } from '../types';
-import { buildSchedule } from './schedule';
-import { GameSim, INJURY_TYPES, pick } from './engine';
+import type { Award, FacilityKey, Game, GameResult, GameState, Lineup, NewsItem, NewsType, Series, Team, TeamTactics, YouthTrainingPlan } from '../types';
+import { buildSchedule, isWeekendDay, regularSeasonLength, seasonDateObj } from './schedule';
+import { GameSim } from './engine';
 import { autoLineup, clubSideProblem, evaluateTrade, executeTrade, groupOf, lineupConstraintsFor, MAX_ROSTER, maybeAiTrade, maybeIncomingOffer, prepareLineup, sanitizeLineup, tradeWindow, userSideProblem } from './ai';
 import { buyoutCost, commitments, negotiate, talksLeft } from './contracts';
 import { evaluateBoard, setBoardGoal } from './board';
@@ -16,8 +16,28 @@ import { countRosterLegionnaires, DEFAULT_FOREIGN_LIMIT, isLegionnaire, teamFore
 import { isYouthPlayer, recommendYouthPlan, stepYouthTrainingWeek } from './training';
 import { ensureCaptains, getTeamTactics, goalieFreshness, recordLineupChemistryGP, teamLeadershipBonus } from './chemistry';
 import { advanceAiDraftToUser, autoCompleteDraft, currentDraftTeamId, executeSingleDraftPick } from './dynasty';
-import { aiShouldMatchOfferSheet, canHaveNmc, isOnWaivers, isRfaEligibleAge, isWaiverExempt, MAX_VHL_PLAYERS, offerSheetCompensation, processDailyWaivers, vhlPlayerCapRelief, WAIVER_DAYS } from './khlRules';
+import { activeKhlCount, aiShouldMatchOfferSheet, canHaveNmc, canSignTwoWay, isOnWaivers, isRfaEligibleAge, isWaiverExempt, MAX_VHL_PLAYERS, offerSheetCompensation, processDailyWaivers, vhlPlayerCapRelief, WAIVER_DAYS } from './khlRules';
 import { getDerby, isFarEastClub } from './derbies';
+import {
+  allStarTargetDay,
+  canPlaceInLtir,
+  canPlayThroughInjury,
+  computeHomeGateRevenue,
+  ensureFacilities,
+  FACILITY_META,
+  facilityUpgradeCost,
+  formatInjuryDays,
+  injuryReturnDate,
+  LTIR_MIN_DAYS,
+  medicalDurationMult,
+  medicalGoalieRestRecovery,
+  medicalRiskMult,
+  normalizeInjury,
+  PLAY_THROUGH_MAX_DAYS,
+  rollInjury,
+  severityOfDays,
+  simulateAllStarWeekend,
+} from './medical';
 
 const SAVE_VERSION = 2;
 const LEGACY_ID = 'legacy-v1';
@@ -198,11 +218,14 @@ export function migrateState(raw: unknown): GameState | null {
   s.hallOfFame ??= [];
   s.waivers ??= [];
   s.rfaOffers ??= [];
+  s.allStar ??= null;
   s.league.foreignLimit ??= DEFAULT_FOREIGN_LIMIT;
   if (s.playoffs && !s.playoffs.awards) s.playoffs.awards = [];
   for (const p of Object.values(s.players)) {
     if (isYouthPlayer(p) && !p.trainingPlan) p.trainingPlan = recommendYouthPlan(p);
     p.fatigue ??= 0;
+    p.injury = normalizeInjury(p.injury);
+    if (!p.injury && s.phase === 'offseason') p.inLtir = false;
   }
   // Points are derived from the record (minus any salary-cap penalty deductions), so saves made under the old 3-point rule are converted automatically.
   for (const t of Object.values(s.teams)) {
@@ -213,6 +236,8 @@ export function migrateState(raw: unknown): GameState | null {
     t.tactics = getTeamTactics(t);
     t.chemGP ??= {};
     t.roadStreak ??= 0;
+    t.seasonGateRevenue ??= 0;
+    ensureFacilities(t);
     ensureCaptains(t, s.players);
     const r = t.record;
     r.capPenaltyPoints ??= 0;
@@ -287,7 +312,12 @@ export function createGameState(r: NormalizedRoster, userTeamId: string): GameSt
     hallOfFame: [],
     waivers: [],
     rfaOffers: [],
+    allStar: null,
   } as unknown as GameState;
+  for (const t of Object.values(teams)) {
+    ensureFacilities(t);
+    t.seasonGateRevenue = 0;
+  }
   setBoardGoal(state);
   news[0].text += ` Задача руководства на сезон: ${state.board.text.toLowerCase()}.`;
   const startPay = effectivePayroll(user, r.players, 'season');
@@ -615,14 +645,21 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
   const beyond = res.ot || res.so;
   const hw = res.homeScore > res.awayScore;
   const derby = getDerby(H, A);
+  const regLen = regularSeasonLength(state.schedule);
 
   recordLineupChemistryGP(H, H.lineup);
   recordLineupChemistryGP(A, A.lineup);
   H.roadStreak = 0;
   A.roadStreak = (A.roadStreak ?? 0) + (isFarEastClub(H) ? 2 : 1);
-  if (derby) {
-    H.budget += derby.gateBonus;
-  }
+  const homeGate =
+    computeHomeGateRevenue(
+      H.facilities?.arena ?? 1,
+      g.kind === 'playoff',
+      isWeekendDay(g.day, regLen, state.league.season),
+      A.record.points
+    ) + (derby ? derby.gateBonus : 0);
+  H.budget += homeGate;
+  H.seasonGateRevenue = (H.seasonGateRevenue ?? 0) + homeGate;
 
   if (g.kind === 'regular') {
     applyRecord(H, res.homeScore, res.awayScore, beyond, res.so, hw);
@@ -685,23 +722,47 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
   }
   for (const tid of [g.home, g.away]) {
     const dressed = tid === g.home ? res.homeDressed : res.awayDressed;
+    const medLv = state.teams[tid].facilities?.medical ?? 1;
     for (const pid of dressed) {
       const p = P[pid];
-      if (!p || p.injury) continue;
-      const gTired = isGoalie(p) && goalieFreshness(p) < 48;
-      const ch = isGoalie(p) ? (gTired ? 0.016 : 0.005) : 0.011 + (p.age >= 32 ? 0.004 : 0);
-      if (Math.random() < ch) {
-        p.injury = { name: pick(INJURY_TYPES), games: 2 + Math.floor(Math.random() * 9) };
-        if (tid === U) addNews(state, 'injury', `Травма: ${p.name} — ${p.injury.name}, ориентировочно ${p.injury.games} матчей`, tid);
+      if (!p || p.inLtir) continue;
+      if (p.injury && p.playingThroughInjury) {
+        if (Math.random() < 0.22) {
+          const extra = Math.max(4, Math.round((6 + Math.floor(Math.random() * 8)) * medicalDurationMult(medLv)));
+          p.injury.days += extra;
+          p.injury.totalDays = Math.max(p.injury.totalDays ?? p.injury.days, p.injury.days);
+          p.injury.severity = severityOfDays(p.injury.days);
+          p.injury.daySustained = state.day;
+          p.playingThroughInjury = false;
+          if (tid === U) {
+            state.teams[U].lineup = sanitizeLineup(state.teams[U].lineup, state.teams[U].players, P, lineupConstraintsFor(state, U));
+            addNews(
+              state,
+              'injury',
+              `Рецидив («на уколах»): ${p.name} усугубил повреждение (+${formatInjuryDays(extra)}, всего ${formatInjuryDays(p.injury.days)}).`,
+              tid
+            );
+          }
+        }
+        continue;
       }
-    }
-    for (const pid of state.teams[tid].players) {
-      const p = P[pid];
-      if (p?.injury) {
-        p.injury.games -= 1;
-        if (p.injury.games <= 0) {
-          p.injury = null;
-          if (tid === U) addNews(state, 'injury', `${p.name} восстановился и готов играть`, tid);
+      if (p.injury) continue;
+      const gTired = isGoalie(p) && goalieFreshness(p) < 48;
+      const baseCh = isGoalie(p) ? (gTired ? 0.014 : 0.0045) : 0.0095 + (p.age >= 32 ? 0.0035 : 0);
+      const ch = baseCh * medicalRiskMult(medLv);
+      if (Math.random() < ch) {
+        p.injury = rollInjury(isGoalie(p), medLv, state.day);
+        p.playingThroughInjury = false;
+        if (tid === U) {
+          state.teams[U].lineup = sanitizeLineup(state.teams[U].lineup, state.teams[U].players, P, lineupConstraintsFor(state, U));
+          const retStr = injuryReturnDate(state.day, p.injury.days, regLen, state.league.season);
+          const ltirHint = p.injury.days >= LTIR_MIN_DAYS ? ' • доступен перевод в ДСБТ' : '';
+          addNews(
+            state,
+            'injury',
+            `Травма: ${p.name} — ${p.injury.name.toLowerCase()}, срок ~${formatInjuryDays(p.injury.days)} (до ${retStr})${ltirHint}`,
+            tid
+          );
         }
       }
     }
@@ -725,7 +786,7 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
     const hXg = (res.homeStats.xg ?? 0).toFixed(2);
     const aXg = (res.awayStats.xg ?? 0).toFixed(2);
     const derbyPrefix = derby ? `🔥 ${derby.title}: ` : '';
-    const gateNote = derby && g.home === U ? ` Касса аншлага: +${formatMoney(derby.gateBonus)}.` : '';
+    const gateNote = g.home === U ? ` Касса арены: +${formatMoney(homeGate)}.` : '';
     addNews(
       state,
       'result',
@@ -781,6 +842,19 @@ function aiResolveCapExcess(state: GameState, t: Team) {
 }
 
 function postDay(state: GameState) {
+  const regLen = regularSeasonLength(state.schedule);
+  const calStep =
+    state.day > 0
+      ? Math.max(
+          1,
+          Math.round(
+            (seasonDateObj(state.day, regLen, state.league.season).getTime() -
+              seasonDateObj(state.day - 1, regLen, state.league.season).getTime()) /
+              86_400_000
+          )
+        )
+      : 1;
+
   // Daily goalie recovery for goalies whose club did not play on the day that just finished
   const playedToday = new Set<string>();
   const justPlayedDay = state.schedule[state.day - 1] ?? [];
@@ -790,7 +864,71 @@ function postDay(state: GameState) {
   }
   for (const p of Object.values(state.players)) {
     if (p && isGoalie(p) && (p.fatigue ?? 0) > 0 && !playedToday.has(p.id)) {
-      p.fatigue = Math.max(0, (p.fatigue ?? 0) - 11);
+      const medLv = p.teamId ? (state.teams[p.teamId]?.facilities?.medical ?? 1) : 1;
+      p.fatigue = Math.max(0, (p.fatigue ?? 0) - medicalGoalieRestRecovery(medLv));
+    }
+  }
+
+  // Calendar-day injury recovery across the entire league (including rest days & breaks)
+  for (const p of Object.values(state.players)) {
+    if (!p?.injury) continue;
+    const justSustained = p.injury.daySustained === state.day - 1;
+    const tick = justSustained ? Math.max(0, calStep - 1) : calStep;
+    if (tick <= 0) continue;
+    p.injury.days -= tick;
+    if (p.injury.days <= 0) {
+      p.injury = null;
+      p.playingThroughInjury = false;
+      if (p.teamId === state.userTeamId) {
+        if (p.inLtir) {
+          addNews(
+            state,
+            'injury',
+            `${p.name} полностью восстановился! Выведите игрока из ДСБТ во вкладке «Состав» (нужно место под потолком зарплат).`,
+            state.userTeamId
+          );
+        } else {
+          addNews(state, 'injury', `${p.name} восстановился после травмы и готов играть.`, state.userTeamId);
+        }
+      } else if (p.inLtir) {
+        p.inLtir = false;
+      }
+    }
+  }
+
+  // KHL All-Star Weekend (Неделя Звёзд КХЛ: Запад vs Восток + Конкурс мастерства)
+  if (state.phase === 'season' && !state.allStar && regLen >= 24 && state.day === allStarTargetDay(regLen)) {
+    const asg = simulateAllStarWeekend(state);
+    if (asg) {
+      state.allStar = asg;
+      const starSet = new Set([...asg.westRoster, ...asg.eastRoster]);
+      for (const p of Object.values(state.players)) {
+        if (!p) continue;
+        if (starSet.has(p.id)) {
+          p.morale = clamp(p.morale + 8, 30, 99);
+        } else if (isGoalie(p) && (p.fatigue ?? 0) > 0) {
+          p.fatigue = Math.max(0, (p.fatigue ?? 0) - 18);
+        }
+      }
+      const userBonus = asg.userSelectedIds.length * 15_000_000;
+      if (userBonus > 0) {
+        const ut = state.teams[state.userTeamId];
+        ut.budget += userBonus;
+        ut.seasonGateRevenue = (ut.seasonGateRevenue ?? 0) + userBonus;
+      }
+      const mvpName = state.players[asg.mvpId]?.name ?? '—';
+      const fastName = state.players[asg.fastestSkaterId]?.name ?? '—';
+      const hardName = state.players[asg.hardestShotId]?.name ?? '—';
+      const userNames = asg.userSelectedIds.map((id) => state.players[id]?.name).filter(Boolean);
+      const userTail = userNames.length
+        ? ` От нашего клуба сыграли: ${userNames.join(', ')} (+8 к морали, медиа-бонус +${formatMoney(userBonus)}).`
+        : '';
+      addNews(
+        state,
+        'milestone',
+        `★ Неделя Звёзд КХЛ: Запад — Восток ${asg.westScore}:${asg.eastScore}! MVP — ${mvpName}, круг на скорость — ${fastName}, сила броска — ${hardName}.${userTail}`,
+        state.userTeamId
+      );
     }
   }
 
@@ -1095,14 +1233,15 @@ function finishSeason(state: GameState) {
   let userRev = 0;
   let userPay = 0;
   for (const t of Object.values(state.teams)) {
-    let rev = 400_000_000 + t.record.points * 8_500_000;
-    rev += po.series.filter((s) => s.high === t.id || s.low === t.id).length * 40_000_000;
-    if (t.id === champId) rev += 100_000_000;
-    if (regular.id === t.id) rev += 50_000_000;
+    const arenaLv = t.facilities?.arena ?? 1;
+    let settlement = 260_000_000 + (arenaLv - 1) * 25_000_000 + t.record.points * 8_500_000;
+    settlement += po.series.filter((s) => s.high === t.id || s.low === t.id).length * 40_000_000;
+    if (t.id === champId) settlement += 100_000_000;
+    if (regular.id === t.id) settlement += 50_000_000;
     const pay = payroll(t.players, P);
-    t.budget += rev - pay;
+    t.budget += settlement - pay;
     if (t.id === state.userTeamId) {
-      userRev = rev;
+      userRev = settlement + (t.seasonGateRevenue ?? 0);
       userPay = pay;
     }
   }
@@ -1248,7 +1387,7 @@ export interface ContractAnswer {
  * Offer a contract: to a free agent (UFA or RFA via offer sheet), to an own player whose deal has expired (off-season)
  * or to an own player in the last year of his deal (the extension starts next season).
  */
-export function offerContract(id: string, salary: number, years: number, withNmc = false): ContractAnswer {
+export function offerContract(id: string, salary: number, years: number, withNmc = false, twoWay = false): ContractAnswer {
   let out: ContractAnswer = { ok: false, text: 'Игрок не найден', left: 0 };
   store.update((state) => {
     const P = state.players;
@@ -1262,7 +1401,8 @@ export function offerContract(id: string, salary: number, years: number, withNmc
     const own = p.teamId === t.id;
     salary = Math.round(salary / 100_000) * 100_000;
     years = Math.round(years);
-    const applyNmc = withNmc && canHaveNmc(p) && years >= 2;
+    const applyNmc = withNmc && canHaveNmc(p) && years >= 2 && !twoWay;
+    const applyTwoWay = twoWay && canSignTwoWay(p) && !applyNmc;
     if (!free && !own) return fail('Игрок принадлежит другому клубу — его можно получить только обменом');
     if (!(salary > 0) || years < 1) return fail('Укажите оклад и срок контракта');
     const capState = getCapSummary(state, t.id);
@@ -1272,7 +1412,11 @@ export function offerContract(id: string, salary: number, years: number, withNmc
     if (own && !expired && !extension) return fail(`Контракт действует ещё ${p.contract.years} сезона — продлевать его можно в последний год`);
     if (own && p.contract.next) return fail('Контракт этого игрока уже продлён');
     const cap = state.league.salaryCap;
-    if (free && t.players.length >= MAX_ROSTER) return fail(`В составе уже ${MAX_ROSTER} игроков — больше заявить нельзя`);
+    if (free && activeKhlCount(t.players, P) >= MAX_ROSTER) {
+      return fail(
+        `В основном составе КХЛ уже ${MAX_ROSTER} игроков — отправьте игрока в фарм-клуб ВХЛ, переведите травмированного в ДСБТ или освободите место`
+      );
+    }
     if (free && isLegionnaire(p)) {
       const fl = teamForeignLimit(t, state.league.foreignLimit);
       if (fl !== null) {
@@ -1299,21 +1443,22 @@ export function offerContract(id: string, salary: number, years: number, withNmc
       );
     }
 
-    const v = negotiate(state, p, salary, years, t.id, applyNmc);
+    const v = negotiate(state, p, salary, years, t.id, applyNmc, applyTwoWay);
     if (!v.accept) {
       out = { ok: false, text: v.text, left: v.left };
       return;
     }
     delete p.talks;
-    const nmcTag = applyNmc ? ' (с пунктом ЗНО)' : '';
+    const nmcTag = applyNmc ? ' (с пунктом ЗНО)' : applyTwoWay ? ' (двусторонний КХЛ/ВХЛ)' : '';
     const term = `${years} ${years === 1 ? 'год' : years < 5 ? 'года' : 'лет'}, ${formatMoney(salary)} за сезон${nmcTag}`;
+    const cFlags = applyTwoWay ? { twoWay: true } : p.age <= 22 && !twoWay ? { twoWay: false } : {};
 
     if (free) {
       if (rfaOwnerId) {
         const rightsClub = state.teams[rfaOwnerId];
         const clubPay = committedPayroll(state, rightsClub);
         if (aiShouldMatchOfferSheet(state, rightsClub, p, salary, clubPay)) {
-          p.contract = { salary, years };
+          p.contract = { salary, years, ...cFlags };
           p.teamId = rightsClub.id;
           p.rightsTeamId = rightsClub.id;
           rightsClub.players.push(id);
@@ -1337,7 +1482,7 @@ export function offerContract(id: string, salary: number, years: number, withNmc
         rightsClub.budget += rfaComp;
       }
 
-      p.contract = { salary, years };
+      p.contract = { salary, years, ...cFlags };
       p.teamId = t.id;
       p.inVhl = false;
       p.nmc = applyNmc;
@@ -1351,14 +1496,14 @@ export function offerContract(id: string, salary: number, years: number, withNmc
       addNews(state, 'trade', `${t.name} подписывает ${rfaOwnerId ? 'ОСА' : 'свободного агента'} ${p.name}: ${term}${compNote}`, t.id);
       out = { ok: true, text: `${p.name} подписал контракт: ${term}${compNote}.`, left: v.left };
     } else if (expired) {
-      p.contract = { salary, years };
+      p.contract = { salary, years, ...cFlags };
       p.nmc = applyNmc;
       p.rightsTeamId = isRfaEligibleAge(p.age) ? t.id : null;
       if (state.offseason) state.offseason.expiring = state.offseason.expiring.filter((x) => x !== id);
       addNews(state, 'trade', `${p.name} остаётся в ${t.name}: новый контракт на ${term}`, t.id);
       out = { ok: true, text: `${p.name} подписал новый контракт: ${term}.`, left: v.left };
     } else {
-      p.contract.next = { salary, years };
+      p.contract.next = { salary, years, ...(applyTwoWay ? { twoWay: true } : {}) };
       if (applyNmc) p.nmc = true;
       p.morale = clamp(p.morale + 5, 30, 99);
       addNews(state, 'trade', `${p.name} продлил контракт с ${t.name}: со следующего сезона — ${term}`, t.id);
@@ -1447,6 +1592,15 @@ export function recallFromVhl(playerId: string): string | null {
     const U = state.userTeamId;
     const t = state.teams[U];
     if (!p || p.teamId !== U || !p.inVhl) return;
+    if (activeKhlCount(t.players, P) >= MAX_ROSTER) {
+      err = `В основном составе КХЛ уже максимум игроков (${MAX_ROSTER}/30) — сначала отправьте другого игрока в ВХЛ или освободите место`;
+      return;
+    }
+    const fl = teamForeignLimit(t, state.league.foreignLimit);
+    if (fl !== null && isLegionnaire(p) && countRosterLegionnaires(t.players, P) >= fl) {
+      err = `Нельзя вызвать легионера из ВХЛ: в основе КХЛ уже ${fl} из ${fl} иностранцев`;
+      return;
+    }
     const reliefLost = state.phase === 'offseason' ? 0 : vhlPlayerCapRelief(p);
     const afterPay = effectivePayroll(t, P, state.phase) + reliefLost;
     if (state.phase !== 'offseason' && afterPay > state.league.salaryCap) {
@@ -1479,8 +1633,8 @@ export function claimFromWaivers(playerId: string): string | null {
     const t = state.teams[U];
     const fromTeam = state.teams[w.fromTeamId];
     if (!p || !fromTeam) return;
-    if (t.players.length >= MAX_ROSTER) {
-      err = `В составе уже ${MAX_ROSTER} игроков`;
+    if (activeKhlCount(t.players, P) >= MAX_ROSTER) {
+      err = `В основном составе КХЛ уже ${MAX_ROSTER} игроков — сначала освободите место в основе`;
       return;
     }
     const fl = teamForeignLimit(t, state.league.foreignLimit);
@@ -1564,8 +1718,8 @@ export function respondRfaOfferSheet(offerId: number, matchOffer: boolean): stri
       return;
     }
     if (matchOffer) {
-      if (t.players.length >= MAX_ROSTER) {
-        err = `В составе уже ${MAX_ROSTER} игроков`;
+      if (activeKhlCount(t.players, state.players) >= MAX_ROSTER) {
+        err = `В основном составе КХЛ уже ${MAX_ROSTER} игроков`;
         return;
       }
       const afterPay = committedPayroll(state, t) + sheet.salary;
@@ -1691,6 +1845,132 @@ export function letGo(id: string) {
 }
 export function startNewSeason() {
   store.update((state) => beginNewSeason(state));
+}
+
+/* ---------------- KHL LTIR (ДСБТ), Playoff «На уколах» & Club Facilities ---------------- */
+
+export function placePlayerInLtir(playerId: string): string | null {
+  let err: string | null = null;
+  store.update((state) => {
+    const U = state.userTeamId;
+    const p = state.players[playerId];
+    const t = state.teams[U];
+    if (!p || p.teamId !== U) {
+      err = 'Игрок не принадлежит вашему клубу';
+      return;
+    }
+    if (state.phase === 'offseason') {
+      err = 'В межсезонье список травмированных не действует';
+      return;
+    }
+    if (!canPlaceInLtir(p)) {
+      err = `В ДСБТ КХЛ можно перевести только игрока с травмой от ${LTIR_MIN_DAYS} дней`;
+      return;
+    }
+    p.inLtir = true;
+    p.playingThroughInjury = false;
+    t.lineup = sanitizeLineup(t.lineup, t.players, state.players, lineupConstraintsFor(state, U));
+    addNews(
+      state,
+      'injury',
+      `${p.name} переведён в ДСБТ КХЛ: его зарплата (${formatMoney(p.contract.salary)}) временно выведена из-под потолка зарплат.`,
+      U
+    );
+  });
+  return err;
+}
+
+export function activatePlayerFromLtir(playerId: string): string | null {
+  let err: string | null = null;
+  store.update((state) => {
+    const U = state.userTeamId;
+    const p = state.players[playerId];
+    const t = state.teams[U];
+    if (!p || p.teamId !== U || !p.inLtir) return;
+    if (p.injury && p.injury.days > 0) {
+      err = `${p.name} ещё восстанавливается (${formatInjuryDays(p.injury.days)}) — вывести из ДСБТ можно после выздоровления`;
+      return;
+    }
+    if (activeKhlCount(t.players, state.players) >= MAX_ROSTER) {
+      err = `В основном составе КХЛ уже ${MAX_ROSTER} игроков — сначала отправьте кого-нибудь в ВХЛ или освободите место`;
+      return;
+    }
+    const fl = teamForeignLimit(t, state.league.foreignLimit);
+    if (fl !== null && isLegionnaire(p) && countRosterLegionnaires(t.players, state.players) >= fl) {
+      err = `Нельзя вывести легионера из ДСБТ: в основе КХЛ уже ${fl} из ${fl} иностранцев`;
+      return;
+    }
+    p.inLtir = false;
+    const excess = capExcess(state, U);
+    if (excess > 0) {
+      p.inLtir = true;
+      err = `Нельзя вывести ${p.name} из ДСБТ: ФОТ превысит потолок КХЛ на ${formatMoney(excess)}. Сначала освободите место (перевод в ВХЛ, обмен или выкуп).`;
+      return;
+    }
+    t.lineup = sanitizeLineup(t.lineup, t.players, state.players, lineupConstraintsFor(state, U));
+    addNews(state, 'injury', `${p.name} выведен из ДСБТ КХЛ и снова доступен для заявки на матчи.`, U);
+  });
+  return err;
+}
+
+export function togglePlayThroughInjury(playerId: string): string | null {
+  let err: string | null = null;
+  store.update((state) => {
+    const U = state.userTeamId;
+    const p = state.players[playerId];
+    const t = state.teams[U];
+    if (!p || p.teamId !== U) return;
+    if (p.playingThroughInjury) {
+      p.playingThroughInjury = false;
+      t.lineup = sanitizeLineup(t.lineup, t.players, state.players, lineupConstraintsFor(state, U));
+      return;
+    }
+    if (!canPlayThroughInjury(p, state.phase)) {
+      err = `Выход «на уколах» доступен только в плей-офф Кубка Гагарина при лёгкой травме (до ${PLAY_THROUGH_MAX_DAYS} дн.)`;
+      return;
+    }
+    p.playingThroughInjury = true;
+    t.lineup = sanitizeLineup(t.lineup, t.players, state.players, lineupConstraintsFor(state, U));
+    addNews(
+      state,
+      'injury',
+      `Кубок Гагарина: врачи допустили ${p.name} к игре «на уколах» (штраф −3 к навыкам, повышенный риск рецидива).`,
+      U
+    );
+  });
+  return err;
+}
+
+export function upgradeClubFacility(key: FacilityKey): string | null {
+  let err: string | null = null;
+  store.update((state) => {
+    const U = state.userTeamId;
+    const t = state.teams[U];
+    const fac = ensureFacilities(t);
+    const cur = fac[key];
+    const cost = facilityUpgradeCost(cur);
+    if (cost === null) {
+      err = 'Этот отдел уже модернизирован до максимального 5-го уровня';
+      return;
+    }
+    if (t.budget < cost) {
+      err = `Недостаточно средств в бюджете клуба: нужно ${formatMoney(cost)}, доступно ${formatMoney(t.budget)}`;
+      return;
+    }
+    t.budget -= cost;
+    fac[key] = cur + 1;
+    if (state.board) {
+      state.board.confidence = clamp(state.board.confidence + 2, 5, 100);
+    }
+    const meta = FACILITY_META.find((m) => m.key === key);
+    addNews(
+      state,
+      'milestone',
+      `Модернизация клуба: «${meta?.title ?? key}» повышен до Ур. ${fac[key]} (−${formatMoney(cost)}). ${meta ? meta.effectLabel(fac[key]) : ''}`,
+      U
+    );
+  });
+  return err;
 }
 
 export { emptyLineup, emptyRecord, sanitizeLineup, autoLineup, prepareLineup };

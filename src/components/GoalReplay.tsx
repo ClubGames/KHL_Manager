@@ -87,7 +87,7 @@ function applyShotType(cfg: Cfg, shotType?: string): void {
   }
 }
 
-function baseConfig(kind: Kind, assists: number): Cfg {
+function baseConfig(kind: Kind, _assists: number): Cfg {
   switch (kind) {
     case 'pp':
       return {

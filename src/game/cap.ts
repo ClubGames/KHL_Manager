@@ -1,6 +1,7 @@
 import type { GameState, Phase, Player, Team, TeamRecord } from '../types';
 import { isGoalie, payroll } from './ratings';
 import { teamVhlCapRelief } from './khlRules';
+import { isLtirCapExempt, isUnavailable } from './medical';
 
 /** Days at the start of the regular season given to clear an inherited cap overrun before sanctions hit. */
 export const CAP_GRACE_DAYS = 7;
@@ -8,6 +9,17 @@ export const CAP_GRACE_DAYS = 7;
 export const BUYOUT_DEAD_CAP_SHARE = 0.2;
 /** Matches played in cap violation before each 2-point standings deduction. */
 export const CAP_GAMES_PER_POINT_DEDUCTION = 5;
+
+export function teamLtirCapRelief(ids: string[], P: Record<string, Player>): number {
+  let relief = 0;
+  for (const id of ids) {
+    const p = P[id];
+    if (p && !p.inVhl && isLtirCapExempt(p)) {
+      relief += p.contract.salary;
+    }
+  }
+  return relief;
+}
 
 export function teamBasePayroll(ids: string[], P: Record<string, Player>, phase: Phase = 'season'): number {
   if (phase === 'offseason') {
@@ -19,7 +31,8 @@ export function teamBasePayroll(ids: string[], P: Record<string, Player>, phase:
 export function effectivePayroll(team: Pick<Team, 'players' | 'deadCap'>, P: Record<string, Player>, phase: Phase = 'season'): number {
   const base = teamBasePayroll(team.players, P, phase);
   const vhlRelief = phase === 'offseason' ? 0 : teamVhlCapRelief(team.players, P);
-  return Math.max(0, base - vhlRelief + (phase === 'offseason' ? 0 : (team.deadCap ?? 0)));
+  const ltirRelief = phase === 'offseason' ? 0 : teamLtirCapRelief(team.players, P);
+  return Math.max(0, base - vhlRelief - ltirRelief + (phase === 'offseason' ? 0 : (team.deadCap ?? 0)));
 }
 
 export function buyoutDeadCap(salary: number): number {
@@ -52,10 +65,10 @@ export function capSuspendedPlayers(state: GameState, teamId: string): string[] 
   if (excess <= 0) return [];
   const t = state.teams[teamId];
   const P = state.players;
-  const healthyGoalies = t.players.filter((id) => P[id] && isGoalie(P[id]) && !P[id].injury && !P[id].inVhl);
+  const healthyGoalies = t.players.filter((id) => P[id] && isGoalie(P[id]) && !isUnavailable(P[id], state.phase) && !P[id].inVhl);
   const candidates = t.players
     .map((id) => P[id])
-    .filter((p): p is Player => !!p && !p.injury && !p.inVhl && p.contract.salary > 0)
+    .filter((p): p is Player => !!p && !isUnavailable(p, state.phase) && !p.inVhl && p.contract.salary > 0)
     .sort((a, b) => b.contract.salary - a.contract.salary || a.overall - b.overall);
 
   const suspended: string[] = [];
@@ -75,6 +88,7 @@ export function capSuspendedPlayers(state: GameState, teamId: string): string[] 
 export interface CapSummary {
   basePayroll: number;
   vhlRelief: number;
+  ltirRelief: number;
   deadCap: number;
   totalPayroll: number;
   cap: number;
@@ -96,8 +110,9 @@ export function getCapSummary(state: GameState, teamId: string): CapSummary {
   const cap = state.league.salaryCap;
   const basePayroll = teamBasePayroll(t.players, state.players, state.phase);
   const vhlRelief = state.phase === 'offseason' ? 0 : teamVhlCapRelief(t.players, state.players);
+  const ltirRelief = state.phase === 'offseason' ? 0 : teamLtirCapRelief(t.players, state.players);
   const deadCap = state.phase === 'offseason' ? 0 : (t.deadCap ?? 0);
-  const totalPayroll = Math.max(0, basePayroll - vhlRelief + deadCap);
+  const totalPayroll = Math.max(0, basePayroll - vhlRelief - ltirRelief + deadCap);
   const excess = Math.max(0, totalPayroll - cap);
   const over = excess > 0;
   const graceDaysLeft = state.phase === 'season' ? Math.max(0, CAP_GRACE_DAYS - state.day) : 0;
@@ -106,6 +121,7 @@ export function getCapSummary(state: GameState, teamId: string): CapSummary {
   return {
     basePayroll,
     vhlRelief,
+    ltirRelief,
     deadCap,
     totalPayroll,
     cap,

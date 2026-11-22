@@ -7,6 +7,7 @@ import { generateContract } from './contracts';
 import type { ContractTerms } from './contracts';
 import { DEFAULT_FOREIGN_LIMIT, teamForeignLimit } from './legionnaires';
 import { isYouthPlayer, recommendYouthPlan } from './training';
+import { defaultFacilities, normalizeInjury } from './medical';
 
 export interface NormalizedRoster {
   leagueName: string;
@@ -117,6 +118,30 @@ export function normalizePlayer(raw: any, teamId: string | null, idx: number, pr
       : typeof raw?.contract?.nmc === 'boolean'
         ? raw.contract.nmc
         : undefined;
+  const rawContractType = String(raw?.contract?.type ?? raw?.contractType ?? '').trim().toLowerCase();
+  const explicitTwoWay =
+    typeof raw?.contract?.twoWay === 'boolean'
+      ? raw.contract.twoWay
+      : typeof raw?.twoWay === 'boolean'
+        ? raw.twoWay
+        : rawContractType
+          ? rawContractType.includes('two') ||
+            rawContractType.includes('2') ||
+            rawContractType.includes('дву') ||
+            rawContractType.includes('вхл') ||
+            rawContractType.includes('vhl')
+            ? true
+            : rawContractType.includes('one') || rawContractType.includes('1') || rawContractType.includes('одно')
+              ? false
+              : undefined
+          : undefined;
+  const parsedSalary = Math.max(0, Math.round(num(raw?.contract?.salary ?? raw?.salary, 0)));
+  const inferredTwoWay =
+    explicitTwoWay !== undefined
+      ? explicitTwoWay
+      : age <= 22 || (inVhl && (parsedSalary === 0 || parsedSalary <= 25_000_000))
+        ? true
+        : undefined;
   const player: Player = {
     id,
     name,
@@ -131,12 +156,13 @@ export function normalizePlayer(raw: any, teamId: string | null, idx: number, pr
     potential: Math.round(clampNum(raw?.potential, 0, 1, 99)),
     skills,
     contract: {
-      salary: Math.max(0, Math.round(num(raw?.contract?.salary ?? raw?.salary, 0))),
+      salary: parsedSalary,
       years: Math.round(clampNum(raw?.contract?.years ?? raw?.years, 0, 0, 6)),
+      ...(inferredTwoWay !== undefined ? { twoWay: inferredTwoWay } : {}),
     },
     ...(inVhl ? { inVhl: true } : {}),
     ...(explicitNmc !== undefined ? { nmc: explicitNmc } : {}),
-    injury: raw?.injury && typeof raw.injury === 'object' ? { name: String(raw.injury.name ?? 'Травма'), games: Math.round(clampNum(raw.injury.games, 3, 1, 60)) } : null,
+    injury: normalizeInjury(raw?.injury),
     morale: Math.round(clampNum(raw?.morale, 72, 20, 99)),
     teamId,
     stats: emptyStats(),
@@ -233,6 +259,7 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
       capViolationGames: 0,
       capFinesTotal: 0,
       tactics: defaultTactics(),
+      facilities: defaultFacilities(Math.max(0, num(t?.budget, 1_500_000_000))),
     };
     const hasExplicitNmc = ids.some((pid) => players[pid]?.nmc !== undefined);
     if (!hasExplicitNmc) {
@@ -381,10 +408,10 @@ export const ROSTER_EXAMPLE = `{
           "skills": {                  // для полевых игроков
             "skating": 84, "shooting": 78, "passing": 88, "puckControl": 85, "checking": 62, "defense": 74
           },
-          "contract": { "salary": 65000000, "years": 2 },
+          "contract": { "salary": 65000000, "years": 2, "twoWay": false }, // "twoWay": true — двусторонний КХЛ/ВХЛ (также "type": "двухсторонний" или поле "twoWay": true у игрока)
           "inVhl": false,              // true — начать сезон сразу в фарм-клубе ВХЛ (также понимаются "vhl": true или "league": "ВХЛ")
           "nmc": false,                // true — запрет на обмен и отказы (ЗНО)
-          "injury": null,              // или { "name": "Травма плеча", "games": 6 }
+          "injury": null,              // или { "name": "Травма плеча", "days": 14 } (понимается и старое "games")
           "morale": 78
         },
         {

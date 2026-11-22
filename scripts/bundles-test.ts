@@ -11,7 +11,7 @@ import * as G from '../src/game/state';
 import { foldEvents } from '../src/game/live';
 import { calcDefenseChemistry, calcForwardChemistry, getArchetype, goalieFreshness, playerCaptainRole } from '../src/game/chemistry';
 import { getDerby, isFarEastClub } from '../src/game/derbies';
-import { canHaveNmc, isRfaEligibleAge, isWaiverExempt, offerSheetCompensation, vhlPlayerCapRelief } from '../src/game/khlRules';
+import { activeKhlCount, canHaveNmc, hasTwoWayContract, isOnWaivers, isRfaEligibleAge, isWaiverExempt, offerSheetCompensation, vhlPlayerCapRelief } from '../src/game/khlRules';
 import { isU20DefenseLimiter, isU20ForwardLimiter } from '../src/game/dynasty';
 import { askingSalary } from '../src/game/contracts';
 import { getCapSummary } from '../src/game/cap';
@@ -25,6 +25,9 @@ import { Trades } from '../src/components/Trades';
 import { Schedule } from '../src/components/Schedule';
 import { Offseason } from '../src/components/Offseason';
 import { Match } from '../src/components/Match';
+import { Club } from '../src/components/Club';
+import { facilityUpgradeCost, isUnavailable, normalizeInjury } from '../src/game/medical';
+import { attackRating } from '../src/game/ratings';
 
 let failed = 0;
 const check = (name: string, ok: boolean, extra = '') => {
@@ -314,14 +317,219 @@ S = G.store.get()!;
 const userDraftPicks = S.offseason!.draft!.picks.filter((pk) => pk.teamId === S.userTeamId);
 check('User drafted 2 MHL/KHL junior prospects & draft completed', S.offseason!.draft!.completed && userDraftPicks.length === 2, `firstPick=${pickedName}, totalPicks=${S.offseason!.draft!.picks.length}`);
 
+// Verify Season 1 All-Star Weekend & live home-gate revenue before resetting into Season 2
+check(
+  'KHL All-Star Weekend ran mid-season with 12v12 rosters, skills winners & non-tied score',
+  !!S.allStar &&
+    S.allStar.westRoster.length === 12 &&
+    S.allStar.eastRoster.length === 12 &&
+    S.allStar.westScore !== S.allStar.eastScore &&
+    !!S.players[S.allStar.mvpId],
+  S.allStar ? `${S.allStar.westScore}:${S.allStar.eastScore}` : 'missing'
+);
+check(
+  'Home matches credited live arena gate revenue during Season 1',
+  (S.teams[S.userTeamId].seasonGateRevenue ?? 0) > 100_000_000,
+  `gate=${((S.teams[S.userTeamId].seasonGateRevenue ?? 0) / 1e6).toFixed(1)} млн ₽`
+);
+
 // Start Season 2!
 G.startNewSeason();
 S = G.store.get()!;
 check('Season 2 starts cleanly with drafted juniors & preserved Hall of Fame', S.phase === 'season' && S.seasonNumber === 2 && Array.isArray(S.hallOfFame), `season=${S.league.season}`);
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   5. Calendar-Day Injuries, KHL LTIR (ДСБТ), Playoff «На уколах» & Club Hub
+   ═══════════════════════════════════════════════════════════════════════════ */
+const legacyInj = normalizeInjury({ name: 'Травма плеча', games: 4 });
+check('Legacy { games: 4 } injury payload migrates cleanly to calendar days', !!legacyInj && legacyInj.days === 10 && legacyInj.severity === 'moderate');
+
+// Upgrade club Medical Center
+const medLvBefore = S.teams[S.userTeamId].facilities!.medical;
+const medCost = facilityUpgradeCost(medLvBefore)!;
+G.store.update((st) => {
+  st.teams[st.userTeamId].budget = Math.max(st.teams[st.userTeamId].budget, medCost + 200_000_000);
+});
+const bBeforeFac = G.store.get()!.teams[S.userTeamId].budget;
+const upgErr = G.upgradeClubFacility('medical');
+S = G.store.get()!;
+check(
+  'upgradeClubFacility levels up Medical Center and deducts exact cost from budget',
+  upgErr === null &&
+    S.teams[S.userTeamId].facilities!.medical === medLvBefore + 1 &&
+    S.teams[S.userTeamId].budget === bBeforeFac - medCost,
+  `lv=${S.teams[S.userTeamId].facilities!.medical}`
+);
+
+// Verify calendar-day injury countdown ticks every calendar day (including non-match days)
+const testPid = S.teams[S.userTeamId].players.find((id) => !S.players[id].inVhl && S.players[id].position !== 'G')!;
+G.store.update((st) => {
+  st.players[testPid].injury = { name: 'Ушиб верхней части тела', days: 5, totalDays: 5, severity: 'minor', daySustained: -5 };
+});
+G.simulateDays(3);
+S = G.store.get()!;
+check('Calendar-day injury ticks down by exact 3 days over 3 simulated calendar days', S.players[testPid].injury?.days === 2, `days=${S.players[testPid].injury?.days}`);
+G.simulateDays(2);
+S = G.store.get()!;
+check('Calendar-day injury heals to null after remaining 2 calendar days', S.players[testPid].injury === null);
+
+// Verify KHL LTIR (ДСБТ) 14+ day cap relief & activation rules
+G.store.update((st) => {
+  st.players[testPid].injury = { name: 'Надрыв боковой связки колена', days: 22, totalDays: 22, severity: 'severe', daySustained: st.day };
+});
+const capBeforeLtir = getCapSummary(G.store.get()!, S.userTeamId);
+const ltirErr = G.placePlayerInLtir(testPid);
+S = G.store.get()!;
+const capDuringLtir = getCapSummary(S, S.userTeamId);
+check(
+  'placePlayerInLtir grants 100% salary cap relief for 14+ day injury',
+  ltirErr === null &&
+    S.players[testPid].inLtir === true &&
+    capDuringLtir.ltirRelief >= S.players[testPid].contract.salary &&
+    capDuringLtir.totalPayroll === Math.max(0, capBeforeLtir.totalPayroll - S.players[testPid].contract.salary)
+);
+const earlyActErr = G.activatePlayerFromLtir(testPid);
+check('activatePlayerFromLtir refuses activation while player is still injured', earlyActErr !== null && S.players[testPid].inLtir === true);
+
+const htmlClub = renderWithUI(React.createElement(Club));
+check(
+  'SSR Club hub renders Facilities, LTIR medical bulletin & All-Star panel',
+  htmlClub.includes('data-club-hub') && htmlClub.includes('data-facility-card="medical"') && htmlClub.includes('ДСБТ')
+);
+
+G.store.update((st) => {
+  st.players[testPid].injury = null;
+});
+const actOkErr = G.activatePlayerFromLtir(testPid);
+S = G.store.get()!;
+check('activatePlayerFromLtir succeeds once player recovers and club fits under cap', actOkErr === null && !S.players[testPid].inLtir);
+
+// Verify Playoff «На уколах» (playing through <=6 day minor injury with -3 rating penalty)
+const healthyAtt = attackRating(S.players[testPid]);
+G.store.update((st) => {
+  st.phase = 'playoffs';
+  st.players[testPid].injury = { name: 'Ушиб голеностопа', days: 4, totalDays: 4, severity: 'minor', daySustained: st.day };
+});
+const shotErr = G.togglePlayThroughInjury(testPid);
+S = G.store.get()!;
+const hurtAtt = attackRating(S.players[testPid]);
+check(
+  'Playoff togglePlayThroughInjury clears minor-injured player for lineup with -3 skill penalty',
+  shotErr === null &&
+    S.players[testPid].playingThroughInjury === true &&
+    !isUnavailable(S.players[testPid], 'playoffs') &&
+    Math.abs(healthyAtt - hurtAtt - 3) < 0.01
+);
+
+// Verify explicit two-way contracts in roster.json + unlimited free KHL <-> VHL shuttling for 26+ players without waivers
+const twoWayRoster = parseRosterText(
+  JSON.stringify({
+    league: { name: 'КХЛ', season: '2026/27', gamesPerTeam: 4, salaryCap: 900_000_000 },
+    teams: [
+      {
+        id: 't1',
+        name: 'Клуб 1',
+        conference: 'Запад',
+        players: [
+          { id: 'tw-1', name: 'Игрок А', position: 'C', age: 27, overall: 74, contract: { salary: 15_000_000, years: 2, twoWay: true } },
+          { id: 'tw-2', name: 'Игрок Б', position: 'D', age: 29, overall: 72, contract: { salary: 12_000_000, years: 1, type: 'двухсторонний' } },
+          { id: 'tw-3', name: 'Игрок В', position: 'LW', age: 26, overall: 73, twoWay: true, contract: { salary: 10_000_000, years: 1 } },
+          { id: 'ow-1', name: 'Молодая Звезда', position: 'RW', age: 20, overall: 83, contract: { salary: 45_000_000, years: 3, twoWay: false } },
+          { id: 'g-1', name: 'Вратарь 1', position: 'G', age: 26, overall: 78 },
+        ],
+      },
+      {
+        id: 't2',
+        name: 'Клуб 2',
+        conference: 'Восток',
+        players: [{ id: 'g-2', name: 'Вратарь 2', position: 'G', age: 25, overall: 76 }],
+      },
+    ],
+  })
+);
+check(
+  'roster.json parses contract.twoWay, contract.type="двухсторонний", player.twoWay & explicit twoWay=false',
+  hasTwoWayContract(twoWayRoster.players['tw-1']) &&
+    hasTwoWayContract(twoWayRoster.players['tw-2']) &&
+    hasTwoWayContract(twoWayRoster.players['tw-3']) &&
+    !hasTwoWayContract(twoWayRoster.players['ow-1'])
+);
+
+// Test unlimited free KHL <-> VHL moves during season for a 27-year-old two-way player
+G.store.update((st) => {
+  st.phase = 'season';
+  st.players[testPid].injury = null;
+  st.players[testPid].playingThroughInjury = false;
+  st.players[testPid].age = 27;
+  st.players[testPid].nmc = false;
+  st.players[testPid].contract.twoWay = true;
+});
+const bTwoWay0 = G.store.get()!.teams[S.userTeamId].budget;
+const payTwoWay0 = getCapSummary(G.store.get()!, S.userTeamId).totalPayroll;
+const eDown1 = G.sendToVhlOrWaivers(testPid);
+const wasInVhl1 = !!G.store.get()!.players[testPid].inVhl;
+const wasOnWaivers1 = isOnWaivers(G.store.get()!, testPid);
+const payInVhl = getCapSummary(G.store.get()!, S.userTeamId).totalPayroll;
+const eUp1 = G.recallFromVhl(testPid);
+const eDown2 = G.sendToVhlOrWaivers(testPid);
+const wasInVhl2 = !!G.store.get()!.players[testPid].inVhl;
+const eUp2 = G.recallFromVhl(testPid);
+S = G.store.get()!;
+check(
+  '27yo two-way player moves KHL <-> VHL repeatedly for free, bypasses waivers & gets 100% cap relief in VHL',
+  eDown1 === null &&
+    eUp1 === null &&
+    eDown2 === null &&
+    eUp2 === null &&
+    !wasOnWaivers1 &&
+    wasInVhl1 &&
+    wasInVhl2 &&
+    payInVhl === Math.max(0, payTwoWay0 - S.players[testPid].contract.salary) &&
+    !S.players[testPid].inVhl &&
+    S.teams[S.userTeamId].budget === bTwoWay0,
+  eDown1 ?? eUp1 ?? eDown2 ?? eUp2 ?? 'ok'
+);
+
+// Verify 30-man KHL active roster limit: players in VHL (both waiver-cleared & two-way) free a KHL signing slot
+G.store.update((st) => {
+  const ut = st.teams[st.userTeamId];
+  st.league.salaryCap = 2_000_000_000;
+  ut.budget = 2_000_000_000;
+  for (const pid of ut.players) {
+    st.players[pid].inVhl = false;
+    st.players[pid].inLtir = false;
+  }
+  while (ut.players.length < 30 && st.freeAgents.length > 1) {
+    const fid = st.freeAgents.find((id) => st.players[id].country === 'Россия') ?? st.freeAgents[0];
+    st.freeAgents = st.freeAgents.filter((x) => x !== fid);
+    st.players[fid].teamId = st.userTeamId;
+    st.players[fid].contract = { salary: 8_000_000, years: 1 };
+    ut.players.push(fid);
+  }
+});
+S = G.store.get()!;
+const signTarget = S.freeAgents.find((id) => S.players[id].country === 'Россия') ?? S.freeAgents[0];
+const blockedAt30 = G.offerContract(signTarget, askingSalary(S, S.players[signTarget], 1, S.userTeamId), 1);
+check('Signing is blocked when active KHL roster is at 30/30', !blockedAt30.ok && activeKhlCount(S.teams[S.userTeamId].players, S.players) === 30);
+
+// Send one player to VHL -> active KHL roster drops to 29/30 -> signing now succeeds!
+G.sendToVhlOrWaivers(testPid);
+S = G.store.get()!;
+const allowedAt29 = G.offerContract(signTarget, askingSalary(S, S.players[signTarget], 1, S.userTeamId), 1);
+S = G.store.get()!;
+const recallBlockedAt30 = G.recallFromVhl(testPid);
+check(
+  'Sending player to VHL frees KHL 30-roster slot for FA signing, and recallFromVhl enforces 30-man active limit',
+  allowedAt29.ok &&
+    S.players[signTarget].teamId === S.userTeamId &&
+    S.teams[S.userTeamId].players.length === 31 &&
+    activeKhlCount(S.teams[S.userTeamId].players, S.players) === 30 &&
+    recallBlockedAt30 !== null
+);
+
 if (failed > 0) {
   console.error(`\nFAILED: ${failed} checks failed`);
   process.exit(1);
 } else {
-  console.log('\nALL BUNDLES 1–3 CHECKS PASSED!');
+  console.log('\nALL BUNDLES 1–5 CHECKS PASSED!');
 }

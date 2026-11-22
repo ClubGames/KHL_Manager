@@ -279,6 +279,7 @@ export function effectiveGoalieOvr(p: Player | null | undefined, roadStreak = 0)
   if (fresh < 45) pen = 6 + Math.round((45 - fresh) * 0.15);
   else if (fresh < 65) pen = Math.round((65 - fresh) * 0.18);
   if (roadStreak >= 4) pen += 1;
+  if (p.injury && p.playingThroughInjury) pen += 3;
   return clamp(p.overall - pen, 45, 99);
 }
 

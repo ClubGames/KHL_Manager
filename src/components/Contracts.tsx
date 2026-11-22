@@ -3,7 +3,7 @@ import type { Player } from '../types';
 import { askingSalary, buyoutCost, commitments, maxYears, TALKS, talksLeft } from '../game/contracts';
 import { buyoutDeadCap, CAP_GAMES_PER_POINT_DEDUCTION, dailyCapFine, getCapSummary } from '../game/cap';
 import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
-import { canHaveNmc, isRfaEligibleAge, offerSheetCompensation, playerStatusTag, qualifyingOfferSalary, vhlPlayerCapRelief } from '../game/khlRules';
+import { canHaveNmc, canSignTwoWay, hasTwoWayContract, isRfaEligibleAge, offerSheetCompensation, playerStatusTag, qualifyingOfferSalary, vhlPlayerCapRelief } from '../game/khlRules';
 import { formatMoney } from '../game/ratings';
 import { letGo, offerContract, releasePlayer, respondRfaOfferSheet, tenderQualifyingOffer, useGame } from '../game/state';
 import type { ContractAnswer } from '../game/state';
@@ -27,13 +27,16 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
   const [years, setYears] = useState(Math.min(2, maxY));
   const [pct, setPct] = useState(100);
   const [nmc, setNmc] = useState<boolean>(!!p?.nmc);
+  const [twoWay, setTwoWay] = useState<boolean>(() => (p ? hasTwoWayContract(p) && canSignTwoWay(p) : false));
   const [answer, setAnswer] = useState<ContractAnswer | null>(null);
   if (!p || (p.teamId && p.teamId !== U.id)) return null;
   const free = !p.teamId;
   const extension = !free && p.contract.years === 1;
   const allowNmc = canHaveNmc(p);
-  const effectiveNmc = allowNmc && nmc;
-  const ask = askingSalary(s, p, years, U.id, effectiveNmc);
+  const allowTwoWay = canSignTwoWay(p);
+  const effectiveNmc = allowNmc && nmc && !twoWay;
+  const effectiveTwoWay = allowTwoWay && twoWay && !effectiveNmc;
+  const ask = askingSalary(s, p, years, U.id, effectiveNmc, effectiveTwoWay);
   const salary = Math.max(500_000, Math.round((ask * pct) / 100 / 500_000) * 500_000);
   const isForeignRfa = free && !!p.rightsTeamId && p.rightsTeamId !== U.id && isRfaEligibleAge(p.age);
   const rfaCompCash = isForeignRfa ? offerSheetCompensation(salary, p.overall) : 0;
@@ -46,7 +49,7 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
   const legBlocked = free && isLegionnaire(p) && fl !== null && curLegs >= fl;
   const committed = extension ? commitments(U.players, s.players, 2)[1] : capInfo.totalPayroll;
   const after = committed + salary;
-  const offer = (value: number) => setAnswer(offerContract(p.id, value, years, effectiveNmc));
+  const offer = (value: number) => setAnswer(offerContract(p.id, value, years, effectiveNmc, effectiveTwoWay));
   const tone = !answer ? '' : answer.ok ? 'border-ok/50 text-ok bg-ok/10' : 'border-accent/50 text-accent bg-accent/10';
   return (
     <Modal open onClose={onClose} width="max-w-xl" title={<span className="font-display uppercase tracking-wide">{free ? 'Переговоры со свободным агентом' : extension ? 'Продление контракта' : 'Новый контракт'}</span>}>
@@ -101,6 +104,27 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
             <span>игрок согласится не на всякую скидку — у него есть свой минимум</span>
             <span>115%</span>
           </div>
+          {allowTwoWay && (
+            <label className="mt-3 flex items-center justify-between gap-2 rounded-sm border border-line bg-panel2/60 px-3 py-2 text-xs cursor-pointer">
+              <div>
+                <div className="font-semibold text-ice">Двусторонний контракт КХЛ / ВХЛ (без драфта отказов)</div>
+                <div className="text-[11px] text-muted">
+                  Бесплатные переводы в фарм-клуб ВХЛ и обратно сколько угодно раз в сезоне + 100% разгрузка потолка КХЛ в ВХЛ
+                  {p.age > 22 ? ' (+6% к запросу по окладу).' : '.'}
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={effectiveTwoWay}
+                onChange={(e) => {
+                  setTwoWay(e.target.checked);
+                  if (e.target.checked) setNmc(false);
+                  setAnswer(null);
+                }}
+                className="w-4 h-4 accent-[#8FD8F0]"
+              />
+            </label>
+          )}
           {allowNmc && (
             <label className="mt-3 flex items-center justify-between gap-2 rounded-sm border border-line bg-panel2/60 px-3 py-2 text-xs cursor-pointer">
               <div>
@@ -202,7 +226,16 @@ export function Contracts() {
         <Stat
           label="ФОТ (с выкупами)"
           value={formatMoney(now)}
-          sub={capInfo.deadCap > 0 ? `выкупы: ${formatMoney(capInfo.deadCap)} · потолок ${formatMoney(cap)}` : `потолок ${formatMoney(cap)}`}
+          sub={
+            [
+              capInfo.ltirRelief > 0 ? `ДСБТ: −${formatMoney(capInfo.ltirRelief)}` : null,
+              capInfo.vhlRelief > 0 ? `ВХЛ: −${formatMoney(capInfo.vhlRelief)}` : null,
+              capInfo.deadCap > 0 ? `выкупы: +${formatMoney(capInfo.deadCap)}` : null,
+              `потолок ${formatMoney(cap)}`,
+            ]
+              .filter(Boolean)
+              .join(' · ')
+          }
           color={now > cap ? '#E5323E' : '#E8EEF5'}
         />
         <Stat label="Свободно под потолком" value={formatMoney(cap - now)} sub={cap - now < 0 ? 'превышение лимита!' : 'резерв на сезон'} color={cap - now < 0 ? '#E5323E' : '#3FCF8E'} />
@@ -346,6 +379,11 @@ export function Contracts() {
                         {p.name}
                       </button>
                       <span className="ml-1.5 text-[10px] text-muted">{playerStatusTag(p)}</span>
+                      {hasTwoWayContract(p) && (
+                        <span title="Двусторонний контракт КХЛ/ВХЛ: переводы в ВХЛ без отказов и 100% снятие с потолка КХЛ в ВХЛ">
+                          <Tag tone="good" className="ml-1.5">2-СТОР</Tag>
+                        </span>
+                      )}
                       {p.nmc && <Tag tone="warn" className="ml-1.5">ЗНО</Tag>}
                       {p.inVhl && (
                         <span title={`В потолке КХЛ учитывается ${formatMoney(c.salary - vhlPlayerCapRelief(p))}`}>

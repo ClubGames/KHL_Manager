@@ -8,6 +8,7 @@ import { getCapSummary } from '../game/cap';
 import { nextUserGame } from '../game/schedule';
 import { ATTACK_STYLE_INFO, calcDefenseChemistry, calcForwardChemistry, FORECHECK_INFO, freshnessTone, getArchetype, getTeamTactics, goalieFreshness, playerCaptainRole, PULL_GOALIE_INFO } from '../game/chemistry';
 import { isU20DefenseLimiter, isU20ForwardLimiter, isU20Limiter } from '../game/dynasty';
+import { formatInjuryDays, isPlayingHurt, isUnavailable } from '../game/medical';
 import { Bar, Button, Empty, Panel, OverallChip, PosBadge, Tag, useUI } from './ui';
 import { LineupPreview } from './LineupPreview';
 import { cn } from '../utils/cn';
@@ -106,6 +107,16 @@ export function Lines() {
     const afterUsed = new Set<string>(
       [...c.F.flat(), ...c.D.flat(), ...c.pp1, ...c.pp2, ...c.pk1, ...c.pk2, c.starterG, c.backupG, c.u20F, c.u20D].filter((x): x is string => !!x)
     );
+    for (const uid of afterUsed) {
+      if (isUnavailable(P[uid], s.phase)) {
+        setRuleErr(
+          P[uid]?.inLtir
+            ? `${P[uid].name} находится в ДСБТ — сначала выведите игрока из списка травмированных!`
+            : `${P[uid]?.name ?? 'Игрок'} травмирован (${formatInjuryDays(P[uid]?.injury?.days ?? 1)})!`
+        );
+        return;
+      }
+    }
     for (const sid of suspendedSet) {
       if (afterUsed.has(sid)) {
         setRuleErr(`Игрок ${P[sid]?.name ?? ''} заблокирован лигой из-за превышения потолка зарплат!`);
@@ -469,7 +480,7 @@ export function Lines() {
                       className={cn(
                         'w-full flex items-center gap-2 px-2 py-1.5 rounded-sm border text-sm transition-colors',
                         sel?.id === p.id ? 'border-accent bg-accent/15 ring-1 ring-accent/50' : 'border-transparent hover:bg-panel2',
-                        (p.injury || suspendedSet.has(p.id)) && 'opacity-60'
+                        (isUnavailable(p, s.phase) || suspendedSet.has(p.id)) && 'opacity-60'
                       )}
                       title="Двойной клик — карточка игрока"
                     >
@@ -477,10 +488,12 @@ export function Lines() {
                       <span className="flex-1 truncate text-left">{p.name}</span>
                       {isU20Limiter(p) && <span className="text-[9px] font-bold px-1 rounded bg-ice/20 text-ice">U20</span>}
                       {isLegionnaire(p) && <span className="text-[9px] font-bold px-1 rounded bg-gold/20 text-gold">ЛЕГ</span>}
+                      {p.inLtir && <span className="text-[9px] font-bold px-1 rounded bg-ice/20 text-ice">ДСБТ</span>}
+                      {isPlayingHurt(p, s.phase) && <span className="text-[9px] font-bold px-1 rounded bg-gold/25 text-gold">НА УКОЛАХ</span>}
                       {suspendedSet.has(p.id) && <span className="text-[9px] font-bold px-1 rounded bg-red/25 text-red">БЛОК ФОТ</span>}
                       <span className="text-xs text-muted">{p.age} л.</span>
                       <OverallChip value={p.overall} size="sm" />
-                      {p.injury && <span className="text-[10px] text-accent uppercase">{p.injury.games} мат.</span>}
+                      {p.injury && <span className="text-[10px] text-accent uppercase">{formatInjuryDays(p.injury.days, true)}</span>}
                     </button>
                   </li>
                 ))}

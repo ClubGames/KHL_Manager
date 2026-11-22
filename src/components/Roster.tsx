@@ -1,14 +1,30 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Player } from '../types';
 import { formatMoney, isDefense, isForward, isGoalie, POS_NAME, salaryDemand, SKILL_LABELS, skillList } from '../game/ratings';
-import { autoAssignYouthPlans, claimFromWaivers, recallFromVhl, releasePlayer, sendToVhlOrWaivers, setTeamRole, setTradeFlag, setTrainingPlan, toggleHallOfFameJersey, useGame } from '../game/state';
+import {
+  activatePlayerFromLtir,
+  autoAssignYouthPlans,
+  claimFromWaivers,
+  placePlayerInLtir,
+  recallFromVhl,
+  releasePlayer,
+  sendToVhlOrWaivers,
+  setTeamRole,
+  setTradeFlag,
+  setTrainingPlan,
+  toggleHallOfFameJersey,
+  togglePlayThroughInjury,
+  useGame,
+} from '../game/state';
 import { buyoutCost } from '../game/contracts';
 import { buyoutDeadCap, getCapSummary } from '../game/cap';
 import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
 import { getPlayerPlan, isYouthPlayer, playerIceRole, plansForPlayer } from '../game/training';
 import { freshnessTone, getArchetype, goalieFreshness, playerCaptainRole } from '../game/chemistry';
 import { isU20Limiter } from '../game/dynasty';
-import { isWaiverExempt, playerStatusTag, teamVhlCapRelief, vhlPlayerCapRelief } from '../game/khlRules';
+import { activeKhlCount, hasTwoWayContract, isWaiverExempt, MAX_VHL_PLAYERS, playerStatusTag, teamVhlCapRelief, vhlPlayerCapRelief } from '../game/khlRules';
+import { canPlaceInLtir, canPlayThroughInjury, formatInjuryDays, injuryReturnDate, isPlayingHurt, LTIR_MIN_DAYS } from '../game/medical';
+import { regularSeasonLength } from '../game/schedule';
 import { Bar, Button, Empty, Modal, OverallChip, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { cn } from '../utils/cn';
 
@@ -80,6 +96,8 @@ export function Roster({ teamId }: { teamId?: string }) {
   const suspendedSet = new Set(capInfo.suspendedIds);
   const capPlayer = team.captainId ? P[team.captainId] : null;
   const altPlayers = (team.assistantIds ?? []).map((id: string) => P[id]).filter(Boolean);
+  const regLen = regularSeasonLength(s.schedule);
+  const allStarSet = new Set([...(s.allStar?.westRoster ?? []), ...(s.allStar?.eastRoster ?? [])]);
 
   const list = useMemo(() => {
     const f = all.filter((p) => (tab === 'G' ? isGoalie(p) : tab === 'D' ? isDefense(p) : isForward(p)));
@@ -102,6 +120,10 @@ export function Roster({ teamId }: { teamId?: string }) {
       {/* Legionnaire Limit & Cap Compliance Summary Strip */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-4 py-2.5 text-xs" data-roster-limits>
         <div className="flex flex-wrap items-center gap-2.5">
+          <span className="text-muted">Заявка КХЛ:</span>
+          <Tag tone={activeKhlCount(team.players, P) >= 30 ? 'warn' : 'good'}>
+            {activeKhlCount(team.players, P)} / 30{vhlList.length > 0 ? ` · ВХЛ ${vhlList.length}/${MAX_VHL_PLAYERS}` : ''}
+          </Tag>
           <span className="text-muted">Лимит легионеров КХЛ:</span>
           {fl !== null ? (
             <Tag tone={legCount > fl ? 'bad' : legCount === fl ? 'warn' : 'accent'}>
@@ -275,7 +297,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                             <span className="truncate font-medium">{p.name}</span>
                             <span className="text-muted">{p.age} л. · {p.overall}</span>
                             {p.nmc && <Tag tone="warn">ЗНО</Tag>}
-                            {exempt ? <Tag tone="good">≤22 напрямую</Tag> : <Tag tone="accent">Отказы 48ч</Tag>}
+                            {exempt ? <Tag tone="good">2-стор. напрямую</Tag> : <Tag tone="accent">Отказы 48ч</Tag>}
                           </div>
                           <Button
                             size="sm"
@@ -554,6 +576,14 @@ export function Roster({ teamId }: { teamId?: string }) {
                       )}
                       <span className="ml-1.5 text-[10px] text-muted">{countryCode(p.country)}</span>
                       {p.inVhl && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-ice/20 text-ice">ВХЛ</span>}
+                      {hasTwoWayContract(p) && (
+                        <span className="ml-1 text-[9px] font-bold px-1 rounded bg-ok/20 text-ok" title="Двусторонний контракт КХЛ/ВХЛ (перевод в ВХЛ без отказов)">
+                          2-СТОР
+                        </span>
+                      )}
+                      {p.inLtir && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-ice/25 text-ice" title="Долгосрочный список травмированных КХЛ">ДСБТ</span>}
+                      {isPlayingHurt(p, s.phase) && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-gold/25 text-gold" title="Играет на уколах в плей-офф">УКОЛЫ</span>}
+                      {allStarSet.has(p.id) && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-gold/20 text-gold" title="Участник Матча Звёзд КХЛ">★ МЗ</span>}
                       {p.nmc && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-gold/20 text-gold" title="Запрет на обмен (ЗНО)">ЗНО</span>}
                       {isU20Limiter(p) && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-ok/20 text-ok">U20</span>}
                       {leg && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-gold/20 text-gold">ЛЕГ</span>}
@@ -597,8 +627,12 @@ export function Roster({ teamId }: { teamId?: string }) {
                         <span className="text-red font-semibold">блок потолка</span>
                       ) : p.inVhl ? (
                         <span className="text-ice">в ВХЛ</span>
+                      ) : p.inLtir && !p.injury ? (
+                        <span className="text-ok font-semibold">здоров (в ДСБТ)</span>
                       ) : p.injury ? (
-                        `${p.injury.games} матч.`
+                        <span className="tabular" title={`Ориентировочное возвращение: ${injuryReturnDate(s.day, p.injury.days, regLen, s.league.season)}`}>
+                          {formatInjuryDays(p.injury.days, true)} (до {injuryReturnDate(s.day, p.injury.days, regLen, s.league.season)})
+                        </span>
                       ) : isGoalie(p) ? (
                         <span style={{ color: freshnessTone(goalieFreshness(p)).color }}>свеж. {goalieFreshness(p)}%</span>
                       ) : p.morale >= 80 ? (
@@ -657,10 +691,17 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             {team && <span className="text-sm">{team.name}</span>}
             {p.inVhl && <Tag tone="accent">Фарм-клуб ВХЛ</Tag>}
+            {hasTwoWayContract(p) ? <Tag tone="good">Двусторонний КХЛ/ВХЛ</Tag> : p.teamId ? <Tag>Односторонний КХЛ</Tag> : null}
+            {p.inLtir && <Tag tone="accent">ДСБТ КХЛ (вне потолка)</Tag>}
+            {isPlayingHurt(p, s.phase) && <Tag tone="warn">На уколах (−3 навык)</Tag>}
             {p.nmc && <Tag tone="warn">ЗНО (запрет на обмен)</Tag>}
             {p.rightsTeamId && !p.teamId && <Tag tone="warn">Права ОСА: {s.teams[p.rightsTeamId]?.short ?? 'КХЛ'}</Tag>}
             {isLegionnaire(p) ? <Tag tone="warn">Легионер ({p.country})</Tag> : <Tag tone="good">Не легионер · ЕАЭС</Tag>}
-            {p.injury && <Tag color="#E5323E">Травма: {p.injury.name} · {p.injury.games} матчей</Tag>}
+            {p.injury && (
+              <Tag color="#E5323E">
+                Травма: {p.injury.name} · {formatInjuryDays(p.injury.days)} (до {injuryReturnDate(s.day, p.injury.days, regularSeasonLength(s.schedule), s.league.season)})
+              </Tag>
+            )}
             {!p.teamId && <Tag color="#F2B544">Свободный агент</Tag>}
             {p.contract.years === 0 && p.teamId && <Tag color="#F2B544">Контракт истекает</Tag>}
           </div>
@@ -850,6 +891,45 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
         <div className="mt-3 rounded-sm border border-ice/40 bg-ice/10 px-3 py-1.5 text-xs text-ice">{modalNotice}</div>
       )}
       <div className="flex flex-wrap gap-2 mt-5 pt-4 border-t border-line justify-end">
+        {isUser && canPlaceInLtir(p) && s.phase !== 'offseason' && (
+          <Button
+            variant="ice"
+            onClick={() => {
+              const err = placePlayerInLtir(p.id);
+              setModalNotice(err ?? `${p.name} переведён в ДСБТ КХЛ — зарплата ${formatMoney(p.contract.salary)} выведена из-под потолка.`);
+            }}
+            title={`Травма от ${LTIR_MIN_DAYS} дней позволяет временно вывести 100% оклада из-под потолка зарплат КХЛ`}
+          >
+            🏥 В ДСБТ (разгрузить потолок)
+          </Button>
+        )}
+        {isUser && p.inLtir && !p.injury && (
+          <Button
+            variant="primary"
+            onClick={() => {
+              const err = activatePlayerFromLtir(p.id);
+              setModalNotice(err ?? `${p.name} выведен из ДСБТ и готов играть.`);
+            }}
+          >
+            ✓ Вывести из ДСБТ
+          </Button>
+        )}
+        {isUser && (canPlayThroughInjury(p, s.phase) || p.playingThroughInjury) && (
+          <Button
+            variant={p.playingThroughInjury ? 'danger' : 'secondary'}
+            onClick={() => {
+              const err = togglePlayThroughInjury(p.id);
+              setModalNotice(
+                err ??
+                  (p.playingThroughInjury
+                    ? `${p.name} снят с игры «на уколах» и вернётся к лечению.`
+                    : `${p.name} допущен к матчам плей-офф «на уколах» (−3 к навыкам, риск рецидива).`)
+              );
+            }}
+          >
+            {p.playingThroughInjury ? 'Отменить выход «на уколах»' : '💉 Выпустить на уколах (плей-офф)'}
+          </Button>
+        )}
         {isUser && (
           p.inVhl ? (
             <Button
@@ -871,7 +951,7 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
               }}
               title={p.nmc ? 'Пункт ЗНО запрещает перевод в ВХЛ / на отказы' : undefined}
             >
-              ↓ {isWaiverExempt(p) ? 'В фарм ВХЛ (≤22)' : 'На отказы / ВХЛ'}
+              ↓ {isWaiverExempt(p) ? 'В фарм ВХЛ (2-стор., без отказов)' : 'На отказы (48ч) / ВХЛ'}
             </Button>
           )
         )}

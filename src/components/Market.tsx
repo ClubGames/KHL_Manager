@@ -3,7 +3,7 @@ import { groupOf } from '../game/ai';
 import { askingSalary, talksLeft } from '../game/contracts';
 import { getCapSummary } from '../game/cap';
 import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
-import { isRfaEligibleAge, offerSheetCompensation } from '../game/khlRules';
+import { activeKhlCount, isRfaEligibleAge, offerSheetCompensation, vhlCount } from '../game/khlRules';
 import { formatMoney } from '../game/ratings';
 import { claimFromWaivers, useGame } from '../game/state';
 import { Button, OverallChip, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
@@ -23,6 +23,8 @@ export function Market() {
   const capInfo = getCapSummary(s, U.id);
   const fol = capInfo.totalPayroll;
   const cap = s.league.salaryCap;
+  const khlRosterCount = activeKhlCount(U.players, P);
+  const farmRosterCount = vhlCount(U.players, P);
   const activeWaivers = (s.waivers ?? []).filter((w) => w.expiresDay > s.day && P[w.playerId]);
 
   const list = s.freeAgents
@@ -152,7 +154,10 @@ export function Market() {
           <span>
             Бюджет: <b className="text-text">{formatMoney(U.budget)}</b>
           </span>
-          <span>Состав: {U.players.length} / 30</span>
+          <span>
+            Заявка КХЛ: <b className={khlRosterCount >= 30 ? 'text-accent' : 'text-text'}>{khlRosterCount} / 30</b>
+            {farmRosterCount > 0 ? <span className="text-ice"> (+{farmRosterCount} в ВХЛ)</span> : null}
+          </span>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm tabular" data-market>
@@ -218,7 +223,7 @@ export function Market() {
                       {formatMoney(ask)}
                     </td>
                     <td className="py-2 pr-4 text-right">
-                      <Button size="sm" variant={left > 0 ? 'secondary' : 'ghost'} disabled={left <= 0 || U.players.length >= 30} onClick={() => ui.negotiate(p.id)} title={left <= 0 ? 'Игрок прервал переговоры с вашим клубом' : undefined}>
+                      <Button size="sm" variant={left > 0 ? 'secondary' : 'ghost'} disabled={left <= 0 || khlRosterCount >= 30} onClick={() => ui.negotiate(p.id)} title={left <= 0 ? 'Игрок прервал переговоры с вашим клубом' : khlRosterCount >= 30 ? 'В основе КХЛ 30/30 игроков — отправьте игрока в ВХЛ или освободите место' : undefined}>
                         {left <= 0 ? 'Отказ' : 'Переговоры'}
                       </Button>
                     </td>

@@ -40,9 +40,22 @@ export function canHaveNmc(p: Player): boolean {
   return p.age >= UFA_MIN_AGE && p.overall >= 79;
 }
 
-/** Cap relief granted for one player assigned to the VHL farm club. */
+/** Whether a player is willing to sign a two-way KHL/VHL contract (U23 or depth player <= 76 OVR). */
+export function canSignTwoWay(p: Player): boolean {
+  return p.age <= 23 || p.overall <= 76;
+}
+
+/** True when a player holds an active two-way KHL/VHL contract (explicit `contract.twoWay`, or U22 youth contract unless explicitly `twoWay: false`). */
+export function hasTwoWayContract(p: Player | undefined): boolean {
+  if (!p) return false;
+  if (typeof p.contract.twoWay === 'boolean') return p.contract.twoWay;
+  return p.age <= WAIVER_EXEMPT_MAX_AGE;
+}
+
+/** Cap relief granted for one player assigned to the VHL farm club: 100% on two-way contracts, 60% (up to 35M) on one-way contracts. */
 export function vhlPlayerCapRelief(p: Player | undefined): number {
   if (!p || !p.inVhl || p.contract.salary <= 0) return 0;
+  if (hasTwoWayContract(p)) return p.contract.salary;
   return Math.min(MAX_VHL_RELIEF_PER_PLAYER, Math.round((p.contract.salary * VHL_RELIEF_SHARE) / 100_000) * 100_000);
 }
 
@@ -55,8 +68,28 @@ export function teamVhlCapRelief(ids: string[], P: Record<string, Player>): numb
   return relief;
 }
 
+/** Players occupying an active KHL main-squad roster slot (excludes VHL farm club and LTIR). */
+export function activeKhlCount(ids: string[], P: Record<string, Player>): number {
+  let n = 0;
+  for (const id of ids) {
+    const p = P[id];
+    if (p && !p.inVhl && !p.inLtir) n++;
+  }
+  return n;
+}
+
+/** Players currently assigned to the VHL farm club. */
+export function vhlCount(ids: string[], P: Record<string, Player>): number {
+  let n = 0;
+  for (const id of ids) {
+    if (P[id]?.inVhl) n++;
+  }
+  return n;
+}
+
+/** Exempt from 48-hour KHL waivers when sent to VHL: any player on a two-way KHL/VHL contract (or <= 22 unless explicitly one-way). */
 export function isWaiverExempt(p: Player): boolean {
-  return p.age <= WAIVER_EXEMPT_MAX_AGE;
+  return hasTwoWayContract(p);
 }
 
 export function isOnWaivers(state: GameState, playerId: string): boolean {
@@ -71,7 +104,7 @@ export function aiShouldMatchOfferSheet(
   salary: number,
   currentTeamPayroll: number
 ): boolean {
-  if (rightsTeam.players.length >= 30) return false;
+  if (activeKhlCount(rightsTeam.players, state.players) >= 30) return false;
   if (rightsTeam.budget < salary) return false;
   if (currentTeamPayroll + salary > state.league.salaryCap) return false;
   const fl = teamForeignLimit(rightsTeam, state.league.foreignLimit);

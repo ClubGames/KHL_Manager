@@ -10,7 +10,7 @@ import { countRosterLegionnaires, isLegionnaire, teamForeignLimit } from './legi
 import { getPlayerPlan, isYouthPlayer, progressPlayerWithTraining, recommendYouthPlan } from './training';
 import { ensureCaptains } from './chemistry';
 import { autoCompleteDraft, createJuniorDraft, processVeteranRetirements } from './dynasty';
-import { isRfaEligibleAge, maybeGenerateAiRfaOffer } from './khlRules';
+import { activeKhlCount, isRfaEligibleAge, maybeGenerateAiRfaOffer } from './khlRules';
 
 export function toFreeAgency(state: GameState, id: string, keepRightsTeamId?: string | null) {
   const p = state.players[id];
@@ -24,6 +24,8 @@ export function toFreeAgency(state: GameState, id: string, keepRightsTeamId?: st
   }
   p.teamId = null;
   p.inVhl = false;
+  p.inLtir = false;
+  p.playingThroughInjury = false;
   p.nmc = false;
   p.rightsTeamId = keepRightsTeamId && isRfaEligibleAge(p.age) ? keepRightsTeamId : null;
   p.contract = { salary: 0, years: 0 };
@@ -79,10 +81,15 @@ export function startOffseason(state: GameState): OffseasonPlan {
       progressions.push({ id, from, to: p.overall, plan: planUsed });
     }
     p.fatigue = 0;
-    p.inVhl = false;
+    if (p.teamId !== state.userTeamId && p.inVhl) {
+      const club = p.teamId ? state.teams[p.teamId] : null;
+      if (club && activeKhlCount(club.players, P) < 30) p.inVhl = false;
+    }
     const c = p.contract;
     c.years = Math.max(0, c.years - 1);
-    if (c.years === 0 && c.next) p.contract = { salary: c.next.salary, years: c.next.years };
+    if (c.years === 0 && c.next) {
+      p.contract = { salary: c.next.salary, years: c.next.years, ...(c.next.twoWay !== undefined ? { twoWay: c.next.twoWay } : {}) };
+    }
     delete p.talks;
   }
 
@@ -238,6 +245,8 @@ export function beginNewSeason(state: GameState) {
     const p = P[id];
     p.stats = emptyStats();
     p.injury = null;
+    p.inLtir = false;
+    p.playingThroughInjury = false;
     p.fatigue = 0;
     delete p.seasonGrowth;
     p.morale = 70 + Math.round(Math.random() * 10);
@@ -247,6 +256,7 @@ export function beginNewSeason(state: GameState) {
   state.league.season = nextSeasonLabel(state.league.season);
   state.waivers = [];
   state.rfaOffers = [];
+  state.allStar = null;
 
   for (const t of Object.values(state.teams)) {
     t.record = emptyRecord();
@@ -256,6 +266,7 @@ export function beginNewSeason(state: GameState) {
     t.capViolationGames = 0;
     t.capFinesTotal = 0;
     t.roadStreak = 0;
+    t.seasonGateRevenue = 0;
     t.tactics ??= defaultTactics();
     ensureCaptains(t, P);
     const opts = lineupConstraintsFor(state, t.id);

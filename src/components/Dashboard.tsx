@@ -9,6 +9,7 @@ import { tradeWindow } from '../game/ai';
 import { previewPowerPlay } from '../game/lineupCompare';
 import { FORECHECK_INFO, freshnessTone, getTeamTactics, goalieFreshness } from '../game/chemistry';
 import { getDerby } from '../game/derbies';
+import { ensureFacilities, formatInjuryDays, injuryReturnDate } from '../game/medical';
 import type { Game, NewsItem, Team } from '../types';
 import { Bar, Button, Icon, money, Panel, ResultPill, Stat, Tag, TeamLogo, useUI } from './ui';
 import { LineupPreview } from './LineupPreview';
@@ -47,7 +48,9 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
   const skaters = U.players.map((id) => P[id]).filter(isSkater);
   const topPts = [...skaters].sort((a, b) => points(b) - points(a)).slice(0, 5);
   const goalies = U.players.map((id) => P[id]).filter(isGoalie).sort((a, b) => b.stats.wins - a.stats.wins);
-  const injured = U.players.map((id) => P[id]).filter((p) => p.injury);
+  const injured = U.players.map((id) => P[id]).filter((p) => p && (p.injury || p.inLtir));
+  const regLen = regularSeasonLength(s.schedule);
+  const fac = ensureFacilities(U);
   const curRoundSeries = s.playoffs
     ? s.playoffs.series.find((x) => x.round === s.playoffs!.round && (x.high === U.id || x.low === U.id)) ?? null
     : null;
@@ -402,6 +405,24 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
                   {U.captainId && P[U.captainId] ? ` · К: ${P[U.captainId].name.split(' ').slice(-1)[0]}` : ''}
                 </button>
               </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Штаб / Арена</span>
+                <button onClick={() => ui.nav('club')} className="text-ice hover:underline">
+                  Мед.{fac.medical} · Акад.{fac.academy} · Ар.{fac.arena} →
+                </button>
+              </div>
+              {(U.seasonGateRevenue ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted">Касса дома</span>
+                  <span className="tabular text-ok">+{money(U.seasonGateRevenue!)}</span>
+                </div>
+              )}
+              {capInfo.ltirRelief > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted">Льгота ДСБТ</span>
+                  <span className="tabular text-ice">−{money(capInfo.ltirRelief)}</span>
+                </div>
+              )}
               {(s.waivers?.length ?? 0) > 0 && (
                 <div className="flex justify-between">
                   <span className="text-muted">Драфт отказов</span>
@@ -419,22 +440,51 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
             </ul>
           </Panel>
 
-          <Panel title="Травмы" right={injured.length ? <Tag color="#E5323E">{injured.length}</Tag> : <Tag color="#3FCF8E">Здоровы</Tag>}>
+          <Panel title="Лазарет и ДСБТ" right={injured.length ? <Tag color="#E5323E">{injured.length}</Tag> : <Tag color="#3FCF8E">Здоровы</Tag>}>
             {injured.length === 0 ? (
-              <div className="text-sm text-muted">Все игроки доступны.</div>
+              <div className="text-sm text-muted">Все игроки здоровы и доступны.</div>
             ) : (
-              <ul className="space-y-1 text-sm">
+              <ul className="space-y-1.5 text-sm">
                 {injured.map((p) => (
                   <li key={p.id} className="flex items-center justify-between gap-2">
-                    <button onClick={() => ui.openPlayer(p.id)} className="truncate text-left hover:text-ice">
-                      {p.name}
+                    <button onClick={() => ui.openPlayer(p.id)} className="truncate text-left hover:text-ice flex items-center gap-1.5">
+                      <span className="truncate">{p.name}</span>
+                      {p.inLtir && <span className="text-[9px] font-bold px-1 rounded bg-ice/20 text-ice shrink-0">ДСБТ</span>}
+                      {p.playingThroughInjury && <span className="text-[9px] font-bold px-1 rounded bg-gold/25 text-gold shrink-0">УКОЛЫ</span>}
                     </button>
-                    <span className="text-xs text-muted whitespace-nowrap">{p.injury!.name} · {p.injury!.games} матчей</span>
+                    {p.injury ? (
+                      <span className="text-xs text-muted whitespace-nowrap tabular">
+                        {p.injury.name} · {formatInjuryDays(p.injury.days, true)} (до {injuryReturnDate(s.day, p.injury.days, regLen, s.league.season)})
+                      </span>
+                    ) : (
+                      <span className="text-xs text-ok whitespace-nowrap">здоров · вывести из ДСБТ</span>
+                    )}
                   </li>
                 ))}
               </ul>
             )}
           </Panel>
+
+          {s.allStar && (
+            <Panel
+              title="★ Неделя Звёзд КХЛ"
+              right={<Tag color="#F2B544">Запад {s.allStar.westScore}:{s.allStar.eastScore} Восток</Tag>}
+            >
+              <div className="text-xs space-y-1 text-text/90">
+                <div>
+                  MVP Матча Звёзд: <button onClick={() => ui.openPlayer(s.allStar!.mvpId)} className="font-semibold text-gold hover:underline">{P[s.allStar.mvpId]?.name ?? '—'}</button>
+                </div>
+                <div className="text-muted">
+                  Скорость: {P[s.allStar.fastestSkaterId]?.name ?? '—'} · Бросок: {P[s.allStar.hardestShotId]?.name ?? '—'}
+                </div>
+                {s.allStar.userSelectedIds.length > 0 && (
+                  <div className="text-ice pt-0.5">
+                    Представители «{U.short}»: {s.allStar.userSelectedIds.map((id) => P[id]?.name).filter(Boolean).join(', ')}
+                  </div>
+                )}
+              </div>
+            </Panel>
+          )}
 
           {s.offers.length > 0 && (
             <Panel title="Предложения обмена" className="border-amber/40">

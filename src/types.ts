@@ -27,9 +27,17 @@ export interface Skills {
   endurance?: number;
 }
 
+export type InjurySeverity = 'minor' | 'moderate' | 'severe';
+
 export interface Injury {
   name: string;
-  games: number;
+  /** remaining calendar days out */
+  days: number;
+  /** original duration in calendar days when sustained */
+  totalDays?: number;
+  severity?: InjurySeverity;
+  /** schedule day index on which the injury occurred */
+  daySustained?: number;
 }
 
 export interface PlayerStats {
@@ -72,8 +80,8 @@ export interface Player {
   overall: number;
   potential: number;
   skills: Skills;
-  /** years = seasons left including the current one; next = extension that starts when this deal runs out */
-  contract: { salary: number; years: number; next?: { salary: number; years: number } };
+  /** years = seasons left including the current one; twoWay = KHL/VHL two-way deal (free VHL moves without waivers); next = extension */
+  contract: { salary: number; years: number; twoWay?: boolean; next?: { salary: number; years: number; twoWay?: boolean } };
   /** negotiation patience for the current window */
   talks?: { key: string; left: number };
   /** manager's trade note: on the block / not for sale */
@@ -92,6 +100,10 @@ export interface Player {
   nmc?: boolean;
   /** KHL club holding RFA sports rights (for players < 28) */
   rightsTeamId?: string | null;
+  /** placed in KHL Long-Term Injured Reserve (ДСБТ — 14+ day injury, 100% cap relief) */
+  inLtir?: boolean;
+  /** cleared to play «на уколах» in playoffs despite a minor (<=6 day) injury */
+  playingThroughInjury?: boolean;
   injury: Injury | null;
   morale: number;
   teamId: string | null;
@@ -132,6 +144,32 @@ export interface TeamRecord {
   capPenaltyPoints?: number;
 }
 
+export type FacilityKey = 'medical' | 'academy' | 'arena' | 'scouting';
+
+export interface ClubFacilities {
+  /** Medical & rehab center level (1..5): shorter injuries & faster goalie recovery */
+  medical: number;
+  /** MHL academy & player development staff (1..5): faster U23 growth & better draft prospects */
+  academy: number;
+  /** Home arena & commercial department (1..5): live gate revenue on every home game */
+  arena: number;
+  /** Scouting & analytics hub (1..5): tighter draft potential intel & softer FA talks */
+  scouting: number;
+}
+
+export interface AllStarResult {
+  season: string;
+  day: number;
+  westScore: number;
+  eastScore: number;
+  mvpId: string;
+  fastestSkaterId: string;
+  hardestShotId: string;
+  westRoster: string[];
+  eastRoster: string[];
+  userSelectedIds: string[];
+}
+
 export interface Team {
   id: string;
   name: string;
@@ -164,6 +202,10 @@ export interface Team {
   chemGP?: Record<string, number>;
   /** consecutive away matches played */
   roadStreak?: number;
+  /** club infrastructure & staff levels (1..5) */
+  facilities?: ClubFacilities;
+  /** cumulative live home-gate revenue earned during the current season */
+  seasonGateRevenue?: number;
 }
 
 export type GameKind = 'regular' | 'playoff';
@@ -471,4 +513,6 @@ export interface GameState {
   waivers?: WaiverItem[];
   /** incoming RFA offer sheets awaiting the user's decision */
   rfaOffers?: RfaOfferSheet[];
+  /** KHL All-Star Weekend result for the current season */
+  allStar?: AllStarResult | null;
 }
