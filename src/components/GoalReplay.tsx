@@ -70,11 +70,11 @@ function applyShotType(cfg: Cfg, shotType?: string): void {
       break;
     case 'tip':
       cfg.label += ' · гол-касание (tip-in)';
-      cfg.puck = insertWaypoint(cfg.puck, 0.64, 81, 47);
+      cfg.puck = insertWaypoint(cfg.puck, 0.64, 84, 47);
       break;
     case 'rebound':
       cfg.label += ' · добивание (rebound)';
-      cfg.puck = insertWaypoint(cfg.puck, 0.63, 89, 47).map((w) => (w.t === 0.74 ? { ...w, x: 92, y: 46 } : w));
+      cfg.puck = insertWaypoint(cfg.puck, 0.63, 90, 47).map((w) => (w.t === 0.74 ? { ...w, x: 93, y: 46 } : w));
       break;
     case 'backhand':
       cfg.label += ' · с тыльной стороны клюшки';
@@ -87,18 +87,20 @@ function applyShotType(cfg: Cfg, shotType?: string): void {
   }
 }
 
+// Offensive zone is on the RIGHT (net at x≈95); blue lines at x=27/73, center at 50.
+// Scoring happens from the SLOT (~x83), not the blue line.
 function baseConfig(kind: Kind, assists: number): Cfg {
   switch (kind) {
     case 'pp':
       return {
         label: 'Большинство (PP)',
         dur: 5.4,
-        scorer: [{ t: 0, x: 58, y: 50 }, { t: 0.56, x: 70, y: 50 }, { t: 1, x: 70, y: 50 }] as WP[],
+        scorer: [{ t: 0, x: 58, y: 50 }, { t: 0.56, x: 83, y: 50 }, { t: 1, x: 83, y: 50 }] as WP[],
         others: [
-          [[48, 50], [50, 50]],
+          [[50, 50], [52, 50]],
           [[66, 28], [64, 30]],
           [[60, 72], [62, 70]],
-          [[76, 50], [80, 50]],
+          [[78, 50], [82, 50]],
         ] as Seg[],
         defenders: [
           [[84, 50], [83, 50]],
@@ -109,8 +111,8 @@ function baseConfig(kind: Kind, assists: number): Cfg {
         ] as Seg[],
         goalie: [{ t: 0, x: 90, y: 50 }, { t: 0.72, x: 90, y: 50 }, { t: 0.82, x: 89, y: 48 }, { t: 1, x: 89, y: 48 }] as WP[],
         puck: [
-          { t: 0, x: 48, y: 50 }, { t: 0.18, x: 48, y: 50 }, { t: 0.34, x: 66, y: 28 },
-          { t: 0.46, x: 66, y: 28 }, { t: 0.56, x: 70, y: 50 }, { t: 0.62, x: 70, y: 50 },
+          { t: 0, x: 50, y: 50 }, { t: 0.18, x: 50, y: 50 }, { t: 0.34, x: 66, y: 28 },
+          { t: 0.46, x: 66, y: 28 }, { t: 0.56, x: 83, y: 50 }, { t: 0.62, x: 83, y: 50 },
           { t: 0.74, x: 95, y: 50, s: 1.15 }, { t: 1, x: 96, y: 50, s: 0.85 },
         ] as WP[],
       };
@@ -118,12 +120,12 @@ function baseConfig(kind: Kind, assists: number): Cfg {
       return {
         label: 'Меньшинство (SH) · выход 1-в-1',
         dur: 4.8,
-        scorer: [{ t: 0, x: 18, y: 48 }, { t: 0.62, x: 74, y: 48 }, { t: 1, x: 74, y: 48 }] as WP[],
+        scorer: [{ t: 0, x: 18, y: 48 }, { t: 0.62, x: 84, y: 48 }, { t: 1, x: 84, y: 48 }] as WP[],
         others: [
-          [[14, 58], [58, 60]],
-          [[22, 40], [50, 38]],
-          [[10, 52], [42, 54]],
-          [[16, 46], [46, 46]],
+          [[14, 58], [60, 60]],
+          [[22, 40], [54, 38]],
+          [[10, 52], [46, 54]],
+          [[16, 46], [50, 46]],
         ] as Seg[],
         defenders: [
           [[84, 50], [83, 50]],
@@ -134,7 +136,7 @@ function baseConfig(kind: Kind, assists: number): Cfg {
         ] as Seg[],
         goalie: [{ t: 0, x: 92, y: 50 }, { t: 0.5, x: 84, y: 49 }, { t: 0.74, x: 86, y: 51 }, { t: 1, x: 86, y: 51 }] as WP[],
         puck: [
-          { t: 0, x: 18, y: 48 }, { t: 0.5, x: 58, y: 49 }, { t: 0.62, x: 74, y: 48 },
+          { t: 0, x: 18, y: 48 }, { t: 0.5, x: 60, y: 49 }, { t: 0.62, x: 84, y: 48 },
           { t: 0.74, x: 95, y: 50, s: 1.15 }, { t: 1, x: 96, y: 50, s: 0.85 },
         ] as WP[],
       };
@@ -142,12 +144,12 @@ function baseConfig(kind: Kind, assists: number): Cfg {
       return {
         label: 'Пустые ворота (EN)',
         dur: 6.0,
-        scorer: [{ t: 0, x: 40, y: 50 }, { t: 0.6, x: 82, y: 50 }, { t: 1, x: 82, y: 50 }] as WP[],
+        scorer: [{ t: 0, x: 40, y: 50 }, { t: 0.6, x: 84, y: 50 }, { t: 1, x: 84, y: 50 }] as WP[],
         others: [
-          [[46, 36], [60, 38]],
-          [[34, 64], [54, 62]],
-          [[30, 44], [50, 44]],
-          [[44, 58], [64, 58]],
+          [[48, 36], [64, 38]],
+          [[36, 64], [58, 62]],
+          [[34, 44], [56, 44]],
+          [[46, 58], [68, 58]],
         ] as Seg[],
         defenders: [
           [[80, 50], [78, 50]],
@@ -158,7 +160,7 @@ function baseConfig(kind: Kind, assists: number): Cfg {
         ] as Seg[],
         goalie: null,
         puck: [
-          { t: 0, x: 40, y: 50 }, { t: 0.45, x: 72, y: 50 }, { t: 0.6, x: 82, y: 50 },
+          { t: 0, x: 40, y: 50 }, { t: 0.45, x: 72, y: 50 }, { t: 0.6, x: 84, y: 50 },
           { t: 0.8, x: 96, y: 52, s: 1.1 }, { t: 1, x: 97, y: 52, s: 0.9 },
         ] as WP[],
       };
@@ -166,12 +168,12 @@ function baseConfig(kind: Kind, assists: number): Cfg {
       return {
         label: 'Овертайм · золотой гол',
         dur: 5.0,
-        scorer: [{ t: 0, x: 16, y: 50 }, { t: 0.62, x: 76, y: 50 }, { t: 1, x: 76, y: 50 }] as WP[],
+        scorer: [{ t: 0, x: 16, y: 50 }, { t: 0.62, x: 84, y: 50 }, { t: 1, x: 84, y: 50 }] as WP[],
         others: [
-          [[12, 60], [56, 62]],
-          [[20, 40], [50, 38]],
-          [[10, 50], [40, 52]],
-          [[14, 46], [44, 46]],
+          [[12, 60], [58, 62]],
+          [[20, 40], [54, 38]],
+          [[10, 50], [48, 52]],
+          [[14, 46], [52, 46]],
         ] as Seg[],
         defenders: [
           [[84, 50], [83, 50]],
@@ -182,14 +184,14 @@ function baseConfig(kind: Kind, assists: number): Cfg {
         ] as Seg[],
         goalie: [{ t: 0, x: 92, y: 50 }, { t: 0.45, x: 82, y: 49 }, { t: 0.74, x: 84, y: 51 }, { t: 1, x: 84, y: 51 }] as WP[],
         puck: [
-          { t: 0, x: 16, y: 50 }, { t: 0.5, x: 60, y: 50 }, { t: 0.62, x: 76, y: 50 },
+          { t: 0, x: 16, y: 50 }, { t: 0.5, x: 62, y: 50 }, { t: 0.62, x: 84, y: 50 },
           { t: 0.74, x: 95, y: 50, s: 1.15 }, { t: 1, x: 96, y: 50, s: 0.85 },
         ] as WP[],
       };
     case 'ev4':
-      return evBase(true);
+      return evBase(assists > 0);
     default:
-      return evBase(false);
+      return evBase(assists > 0);
   }
 }
 
@@ -198,29 +200,29 @@ function evBase(assists: boolean): Cfg {
     label: 'Равные составы',
     dur: 5.2,
     scorer: assists
-      ? ([{ t: 0, x: 34, y: 50 }, { t: 0.36, x: 60, y: 48 }, { t: 0.6, x: 70, y: 50 }, { t: 1, x: 70, y: 50 }] as WP[])
-      : ([{ t: 0, x: 34, y: 50 }, { t: 0.6, x: 70, y: 50 }, { t: 1, x: 70, y: 50 }] as WP[]),
+      ? ([{ t: 0, x: 50, y: 50 }, { t: 0.36, x: 68, y: 49 }, { t: 0.58, x: 83, y: 50 }, { t: 1, x: 83, y: 50 }] as WP[])
+      : ([{ t: 0, x: 50, y: 50 }, { t: 0.58, x: 83, y: 50 }, { t: 1, x: 83, y: 50 }] as WP[]),
     others: [
-      [[44, 30], [56, 36]],
-      [[28, 70], [52, 64]],
-      [[46, 20], [60, 24]],
-      [[22, 46], [46, 44]],
+      [[55, 35], [66, 40]],
+      [[48, 68], [62, 64]],
+      [[58, 20], [70, 24]],
+      [[40, 46], [56, 44]],
     ] as Seg[],
     defenders: [
-      [[82, 50], [80, 50]],
-      [[78, 38], [76, 40]],
-      [[78, 62], [76, 60]],
-      [[86, 34], [84, 36]],
-      [[86, 66], [84, 64]],
+      [[84, 50], [82, 50]],
+      [[80, 40], [80, 42]],
+      [[80, 60], [80, 58]],
+      [[88, 36], [87, 38]],
+      [[88, 64], [87, 62]],
     ] as Seg[],
     goalie: [{ t: 0, x: 90, y: 50 }, { t: 0.72, x: 90, y: 50 }, { t: 0.82, x: 88, y: 46 }, { t: 1, x: 88, y: 46 }] as WP[],
     puck: assists
       ? ([
-          { t: 0, x: 44, y: 30 }, { t: 0.16, x: 44, y: 30 }, { t: 0.36, x: 60, y: 48 },
-          { t: 0.6, x: 70, y: 50 }, { t: 0.74, x: 95, y: 50, s: 1.15 }, { t: 1, x: 96, y: 50, s: 0.85 },
+          { t: 0, x: 55, y: 35 }, { t: 0.16, x: 55, y: 35 }, { t: 0.36, x: 68, y: 49 },
+          { t: 0.58, x: 83, y: 50 }, { t: 0.74, x: 95, y: 50, s: 1.15 }, { t: 1, x: 96, y: 50, s: 0.85 },
         ] as WP[])
       : ([
-          { t: 0, x: 34, y: 50 }, { t: 0.6, x: 70, y: 50 },
+          { t: 0, x: 50, y: 50 }, { t: 0.58, x: 83, y: 50 },
           { t: 0.74, x: 95, y: 50, s: 1.15 }, { t: 1, x: 96, y: 50, s: 0.85 },
         ] as WP[]),
   };
@@ -283,9 +285,9 @@ function buildScenario(event: GameEvent, home: Team, _away: Team, players: Recor
   const rand = rng(seed);
   const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
   const jitter = (rp: RP): RP => {
-    const dx = (rand() - 0.5) * 7;
-    const dy = (rand() - 0.5) * 5;
-    return { ...rp, path: rp.path.map((w) => ({ ...w, x: clamp(w.x + dx, 6, 94), y: clamp(w.y + dy, 10, 90) })) };
+    const dx = (rand() - 0.5) * 6;
+    const dy = (rand() - 0.5) * 4;
+    return { ...rp, path: rp.path.map((w) => ({ ...w, x: clamp(w.x + dx, 12, 92), y: clamp(w.y + dy, 12, 88) })) };
   };
   const attackJ = attackRP.map((a) => (a.slot === 0 ? a : jitter(a)));
   const defenseJ = defenseRP.map((d) => jitter(d));
@@ -301,7 +303,6 @@ function buildScenario(event: GameEvent, home: Team, _away: Team, players: Recor
   };
 }
 
-// broadcast camera presets — different angle per goal for variety
 const CAMERAS = [
   { rx: 57, rz: -4, scale: 1.12 },
   { rx: 61, rz: 3, scale: 1.18 },
@@ -323,7 +324,7 @@ export function GoalReplay({ event, home, away, players, onClose }: {
   const shooter = event.player ? players[event.player] : undefined;
   const assistNames = (event.players ?? []).map((id) => players[id]?.name).filter(Boolean);
 
-  const flip = event.team === away.id; // guests attack the opposite end → different net on screen
+  const flip = event.team === away.id;
   const cam = CAMERAS[(Math.abs(Math.round(event.sec ?? 0)) + take) % CAMERAS.length];
   const baseTransform = (zoom: number, shift: number) =>
     `scaleX(${flip ? -1 : 1}) rotateX(${cam.rx}deg) rotateZ(${cam.rz}deg) scale(${(cam.scale * zoom).toFixed(3)}) translateX(${-shift}%)`;
@@ -343,7 +344,6 @@ export function GoalReplay({ event, home, away, players, onClose }: {
         dyn.push(kf(`gk-${take}`, scenario.goalie.path.map((w) => ({ t: w.t, css: `left:${w.x}%;top:${w.y}%` }))));
       }
       dyn.push(kf(`puck-${take}`, scenario.puck.map((w) => ({ t: w.t, css: `left:${w.x}%;top:${w.y}%;transform:translate(-50%,-50%) scale(${w.s ?? 1})` }))));
-      // broadcast camera: hold, then punch-zoom toward the net on the shot, then ease back
       const base = baseTransform(1, 0);
       const punch = baseTransform(1.32, 6);
       const ease = baseTransform(1.3, 5);
@@ -394,7 +394,9 @@ export function GoalReplay({ event, home, away, players, onClose }: {
               <div className="replay-slab" />
               <div className="replay-board" />
               <div className="replay-ice">
-                <div className="replay-center-line" /><div className="replay-blue-line replay-blue-left" /><div className="replay-blue-line replay-blue-right" /><div className="replay-red-circle replay-circle-left" /><div className="replay-red-circle replay-circle-right" /><div className="replay-center-circle" />
+                <div className="replay-center-line" /><div className="replay-blue-line replay-blue-left" /><div className="replay-blue-line replay-blue-right" />
+                <div className="replay-center-circle" />
+                <div className="replay-dot replay-dot-tl" /><div className="replay-dot replay-dot-bl" /><div className="replay-dot replay-dot-tr" /><div className="replay-dot replay-dot-br" />
                 <div className="replay-goal-crease" /><div className="replay-goal-net"><span /></div><div className="replay-goal-frame" />
                 <div className="replay-goal-crease replay-crease-left" /><div className="replay-goal-net replay-goal-net-left"><span /></div><div className="replay-goal-frame replay-goal-frame-left" />
                 {scenario.attack.map((rp) => {
@@ -443,38 +445,40 @@ const STATIC_CSS = `
   .replay-board{position:absolute;inset:-1.6%;border-radius:32px;background:linear-gradient(160deg,#eef4f8,#9fb2bf 30%,#eef4f8 70%,#7f94a3);transform:translateZ(-3px);box-shadow:inset 0 0 0 4px #fff,0 6px 14px #0008}
   .replay-ice{position:absolute;inset:0;overflow:hidden;border-radius:26px;background:repeating-linear-gradient(0deg,rgba(60,105,130,.03) 0 3px,transparent 3px 7px),radial-gradient(120% 100% at 50% 26%,#eaf6fa,#cfe6ee 62%,#bcd7e0);box-shadow:inset 0 0 0 4px #e9eff3,inset 0 18px 38px #ffffff86}
   .replay-center-line,.replay-blue-line{position:absolute;top:0;bottom:0;width:1.1%;left:50%;background:#df3b46;opacity:.9}.replay-blue-line{background:#3979bc;width:.7%}.replay-blue-left{left:27%}.replay-blue-right{left:73%}
-  .replay-center-circle,.replay-red-circle{position:absolute;width:18%;aspect-ratio:1;border:2px solid #d84b55;border-radius:50%;left:41%;top:36%;background:transparent}.replay-red-circle{width:9%;left:12%;top:39%;border-color:#d84b55}.replay-circle-right{left:79%}
+  .replay-center-circle{position:absolute;width:16%;aspect-ratio:1;border:2px solid #d84b55;border-radius:50%;left:42%;top:42%}
+  .replay-dot{position:absolute;width:7%;aspect-ratio:1;border:2px solid #d84b55;border-radius:50%;background:transparent}
+  .replay-dot-tl{left:13%;top:18%}.replay-dot-bl{left:13%;top:75%}.replay-dot-tr{left:80%;top:18%}.replay-dot-br{left:80%;top:75%}
   .replay-goal-crease{position:absolute;right:0;top:39%;height:22%;width:10%;border:2px solid #6aa6d4;border-right:0;border-radius:50% 0 0 50%;background:#9fcbe533}
   .replay-crease-left{left:0;right:auto;top:39%;border-left:0;border-radius:0 50% 50% 0}
   .replay-goal-net{position:absolute;right:-.5%;top:42%;width:7%;height:16%;border:2px solid var(--defend);border-left:0;background:repeating-linear-gradient(0deg,transparent 0 5px,#8ba3b2 5px 6px),repeating-linear-gradient(90deg,transparent 0 5px,#8ba3b2 5px 6px);transform:translateZ(6px);box-shadow:0 6px 12px #0007}.replay-goal-net span{position:absolute;inset:0;background:#fff4}
   .replay-goal-net-left{right:auto;left:-.5%;border:2px solid var(--attack);border-right:0}
   .replay-goal-frame{position:absolute;right:-.5%;top:41%;width:1.6%;height:18%;background:linear-gradient(var(--defend),color-mix(in srgb,var(--defend) 60%,#000));transform:translateZ(11px);border-radius:2px;box-shadow:0 0 7px #0003}
   .replay-goal-frame-left{right:auto;left:-.5%}
-  .replay-skater{position:absolute;width:26px;height:46px;z-index:5;transform:translate(-50%,-50%) rotateX(-57deg);transform-style:preserve-3d}
-  .replay-shadow{position:absolute;left:-8px;bottom:-4px;width:42px;height:18px;background:radial-gradient(closest-side,#22384a99,transparent);filter:blur(2px);transform:translateZ(-1px)}
-  .replay-legs{position:absolute;left:4px;top:25px;width:18px;height:15px}
-  .replay-legs::before,.replay-legs::after{content:"";position:absolute;top:0;width:6px;height:13px;background:linear-gradient(#33454f,#16222e);border-radius:3px 3px 2px 2px;box-shadow:inset 1px 0 0 #0004,0 13px 0 -3px #d7e0e6}
+  .replay-skater{position:absolute;width:28px;height:50px;z-index:5;transform:translate(-50%,-50%) rotateX(-57deg) scale(1.12);transform-style:preserve-3d}
+  .replay-shadow{position:absolute;left:-9px;bottom:-5px;width:46px;height:20px;background:radial-gradient(closest-side,#22384a99,transparent);filter:blur(2px);transform:translateZ(-1px)}
+  .replay-legs{position:absolute;left:5px;top:27px;width:19px;height:16px}
+  .replay-legs::before,.replay-legs::after{content:"";position:absolute;top:0;width:6px;height:14px;background:linear-gradient(#33454f,#16222e);border-radius:3px 3px 2px 2px;box-shadow:inset 1px 0 0 #0004,0 14px 0 -3px #d7e0e6}
   .replay-legs::before{left:1px;transform:rotate(9deg)}
   .replay-legs::after{right:1px;transform:rotate(-9deg)}
-  .replay-body{position:absolute;left:3px;top:11px;width:19px;height:20px;border-radius:7px 7px 6px 6px;background:linear-gradient(180deg,color-mix(in srgb,var(--jersey) 92%,#fff) 0 8%,var(--jersey) 32%,color-mix(in srgb,var(--jersey) 78%,#000) 100%);border:1px solid #16222e;color:#fff;font:700 8px/20px Arial;text-align:center;box-shadow:inset 2px 0 3px #fff3,inset -2px 0 3px #0005,2px 0 0 color-mix(in srgb,var(--jersey) 70%,#000),4px 0 0 color-mix(in srgb,var(--jersey) 55%,#000),0 4px 6px #0007;overflow:hidden}
+  .replay-body{position:absolute;left:3px;top:12px;width:21px;height:22px;border-radius:7px 7px 6px 6px;background:linear-gradient(180deg,#ffffffcc 0 4%,color-mix(in srgb,var(--jersey) 90%,#fff) 20%,var(--jersey) 46%,color-mix(in srgb,var(--jersey) 62%,#000) 100%);border:1px solid #16222e;color:#fff;font:700 9px/22px Arial;text-align:center;box-shadow:inset 3px 0 4px #fff4,inset -3px 0 4px #0006,2px 0 0 color-mix(in srgb,var(--jersey) 70%,#000),4px 0 0 color-mix(in srgb,var(--jersey) 55%,#000),0 5px 7px #0007;overflow:hidden}
   .replay-flipped .replay-body{transform:scaleX(-1)}
-  .replay-head{position:absolute;left:7px;top:3px;width:12px;height:12px;border-radius:50% 50% 48% 48%;background:radial-gradient(circle at 35% 28%,#f6dcc0,#b1886a 66%,#865f49 100%);border:1px solid #182432;box-shadow:inset -2px -2px 3px #0004,inset 1px 1px 2px #fff6}
-  .replay-helmet{position:absolute;left:4px;top:0;width:18px;height:11px;border-radius:9px 9px 5px 5px;background:linear-gradient(180deg,#fff3 0 1px,var(--jersey) 14%,color-mix(in srgb,var(--jersey) 72%,#000) 100%);border:1px solid #16222e;box-shadow:inset 0 1px 0 #fff6,0 1px 1px #0007,0 0 0 1px #0003}
-  .replay-helmet::after{content:"";position:absolute;left:5px;top:2.5px;width:8px;height:4px;border-radius:3px;background:radial-gradient(circle at 50% 40%,#fff9,transparent 70%)}
-  .replay-helmet-cage{position:absolute;left:6px;top:10px;width:14px;height:5px;border-radius:0 0 4px 4px;background:repeating-linear-gradient(90deg,#cdd6dd 0 1px,transparent 1px 2px);opacity:.85;border-bottom:1px solid #16222e}
-  .replay-stick{position:absolute;left:20px;top:18px;width:3px;height:26px;background:linear-gradient(#6b4a32,#3a2716);transform:rotate(-32deg);transform-origin:top;border-radius:2px;box-shadow:0 0 1px #000;translate:0 -2px}
-  .replay-blade{position:absolute;left:11px;top:40px;width:14px;height:4px;background:linear-gradient(#3a3f45,#1c2024);border-radius:3px;transform:rotate(-12deg);box-shadow:0 1px 1px #0006}
+  .replay-head{position:absolute;left:8px;top:3px;width:13px;height:13px;border-radius:50% 50% 48% 48%;background:radial-gradient(circle at 35% 28%,#f6dcc0,#b1886a 66%,#865f49 100%);border:1px solid #182432;box-shadow:inset -2px -2px 3px #0004,inset 1px 1px 2px #fff6}
+  .replay-helmet{position:absolute;left:5px;top:0;width:19px;height:12px;border-radius:9px 9px 5px 5px;background:linear-gradient(180deg,#fff3 0 1px,var(--jersey) 14%,color-mix(in srgb,var(--jersey) 72%,#000) 100%);border:1px solid #16222e;box-shadow:inset 0 1px 0 #fff6,0 1px 1px #0007,0 0 0 1px #0003}
+  .replay-helmet::after{content:"";position:absolute;left:5px;top:3px;width:9px;height:4px;border-radius:3px;background:radial-gradient(circle at 50% 40%,#fff9,transparent 70%)}
+  .replay-helmet-cage{position:absolute;left:7px;top:11px;width:15px;height:5px;border-radius:0 0 4px 4px;background:repeating-linear-gradient(90deg,#cdd6dd 0 1px,transparent 1px 2px);opacity:.85;border-bottom:1px solid #16222e}
+  .replay-stick{position:absolute;left:22px;top:19px;width:3px;height:28px;background:linear-gradient(#6b4a32,#3a2716);transform:rotate(-32deg);transform-origin:top;border-radius:2px;box-shadow:0 0 1px #000;translate:0 -2px}
+  .replay-blade{position:absolute;left:12px;top:43px;width:15px;height:4px;background:linear-gradient(#3a3f45,#1c2024);border-radius:3px;transform:rotate(-12deg);box-shadow:0 1px 1px #0006}
   .replay-shooter .replay-body{filter:drop-shadow(0 0 6px #fff8)}
-  .replay-goalie{position:absolute;width:42px;height:30px;z-index:7;transform:translate(-50%,-50%) rotateX(-57deg);transform-style:preserve-3d}
-  .replay-goalie-body{position:absolute;left:8px;top:2px;width:21px;height:20px;border-radius:9px;background:linear-gradient(90deg,var(--defend),#fff,var(--defend));border:2px solid #24394c}
-  .replay-goalie-mask{position:absolute;left:14px;top:-9px;width:14px;height:14px;border-radius:8px 8px 5px 5px;background:linear-gradient(180deg,#fff3 0 1px,var(--defend) 16%,color-mix(in srgb,var(--defend) 65%,#000) 100%);border:1px solid #24394c;box-shadow:inset 0 0 0 1px #fff5,0 1px 2px #0007}
+  .replay-goalie{position:absolute;width:44px;height:32px;z-index:7;transform:translate(-50%,-50%) rotateX(-57deg) scale(1.12);transform-style:preserve-3d}
+  .replay-goalie-body{position:absolute;left:9px;top:2px;width:23px;height:22px;border-radius:10px;background:linear-gradient(90deg,var(--defend),#fff,var(--defend));border:2px solid #24394c}
+  .replay-goalie-mask{position:absolute;left:15px;top:-10px;width:15px;height:15px;border-radius:8px 8px 5px 5px;background:linear-gradient(180deg,#fff3 0 1px,var(--defend) 16%,color-mix(in srgb,var(--defend) 65%,#000) 100%);border:1px solid #24394c;box-shadow:inset 0 0 0 1px #fff5,0 1px 2px #0007}
   .replay-goalie-mask::after{content:"";position:absolute;inset:2.5px;border-radius:3px;background:repeating-linear-gradient(0deg,transparent 0 1px,#0b1622 1px 2px),repeating-linear-gradient(90deg,transparent 0 1px,#0b1622 1px 2px);opacity:.85}
-  .replay-goalie-pad{position:absolute;left:0;top:13px;width:42px;height:13px;border-radius:9px;background:#e8edf1;border:2px solid var(--defend)}
-  .replay-goalie-glove{position:absolute;left:30px;top:4px;width:10px;height:10px;border-radius:50%;background:#e8edf1;border:2px solid var(--defend);box-shadow:0 0 4px #0005}
+  .replay-goalie-pad{position:absolute;left:0;top:14px;width:44px;height:14px;border-radius:9px;background:#e8edf1;border:2px solid var(--defend)}
+  .replay-goalie-glove{position:absolute;left:32px;top:4px;width:10px;height:10px;border-radius:50%;background:#e8edf1;border:2px solid var(--defend);box-shadow:0 0 4px #0005}
   .replay-puck{position:absolute;width:11px;height:7px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#3a3f45,#070a0d 70%);box-shadow:inset 0 -1px 0 #000,0 0 0 1px #000,0 6px 6px #0007,0 0 12px #0006;z-index:14}
   .replay-puck::after{content:"";position:absolute;left:-3px;top:9px;width:16px;height:6px;background:radial-gradient(closest-side,#1b2c3a99,transparent);filter:blur(2px);border-radius:50%}
   .replay-goalflash{position:absolute;inset:0;z-index:30;display:grid;place-items:center;pointer-events:none;font:800 clamp(40px,9vw,96px)/1 'Oswald',Arial;letter-spacing:.04em;color:#fff;text-shadow:0 0 18px #ff2b3a,0 4px 0 #7a0c14;opacity:0}
-  .replay-assist .replay-body{box-shadow:0 0 0 2px #ffd34d,0 0 10px #ffd34daa,2px 0 0 color-mix(in srgb,var(--jersey) 70%,#000),4px 0 0 color-mix(in srgb,var(--jersey) 55%,#000),0 4px 6px #0007}
+  .replay-assist .replay-body{box-shadow:0 0 0 2px #ffd34d,0 0 10px #ffd34daa,2px 0 0 color-mix(in srgb,var(--jersey) 70%,#000),4px 0 0 color-mix(in srgb,var(--jersey) 55%,#000),0 5px 7px #0007}
   .replay-assist .replay-head{box-shadow:inset -2px -2px 3px #0004,inset 1px 1px 2px #fff6,0 0 0 1px #ffd34d}
   @media(prefers-reduced-motion:reduce){.replay-skater,.replay-puck,.replay-goalie,.replay-rink,.replay-goalflash{animation-duration:1ms!important;animation-delay:0ms!important;animation-iteration-count:1!important}}
 `;
