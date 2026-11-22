@@ -148,6 +148,8 @@ export interface GameEvent {
   goalie?: string | null;
   /** penalty minutes of this penalty */
   pim?: number;
+  /** how the puck went in — classified by the engine from the shooter's context (visual variety for the 3D replay) */
+  shotType?: 'wrist' | 'slap' | 'snap' | 'backhand' | 'tip' | 'rebound';
   /** penalty: it gives the opponent a power play; goal: it was scored on the power play (also into an empty net) */
   pp?: boolean;
   /** absolute game second until which each team [home, away] is short-handed, as of this event */

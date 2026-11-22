@@ -37,7 +37,57 @@ function pickKind(event: GameEvent): Kind {
   return kind;
 }
 
-function configFor(kind: Kind, assists: number) {
+type Cfg = {
+  label: string;
+  dur: number;
+  scorer: WP[];
+  others: Seg[];
+  defenders: Seg[];
+  goalie: WP[] | null;
+  puck: WP[];
+};
+
+function insertWaypoint(puck: WP[], t: number, x: number, y: number): WP[] {
+  const out: WP[] = [];
+  let inserted = false;
+  for (const w of puck) {
+    if (!inserted && w.t > t) {
+      out.push({ t, x, y });
+      inserted = true;
+    }
+    out.push(w);
+  }
+  if (!inserted) out.push({ t, x, y });
+  return out;
+}
+
+function applyShotType(cfg: Cfg, shotType?: string): void {
+  if (!shotType) return;
+  switch (shotType) {
+    case 'slap': // sharper, faster release — compress the post-release travel
+      cfg.label += ' · бросок щелчком';
+      cfg.puck = cfg.puck.map((w) => (w.t > 0.6 ? { ...w, t: Math.max(0.6, (w.t - 0.6) * 0.7 + 0.6) } : w));
+      break;
+    case 'tip': // redirect off a stick in front
+      cfg.label += ' · гол-касание (tip-in)';
+      cfg.puck = insertWaypoint(cfg.puck, 0.64, 81, 47);
+      break;
+    case 'rebound': // off the goalie pad into the corner
+      cfg.label += ' · добивание (rebound)';
+      cfg.puck = insertWaypoint(cfg.puck, 0.63, 89, 47).map((w) => (w.t === 0.74 ? { ...w, x: 92, y: 46 } : w));
+      break;
+    case 'backhand':
+      cfg.label += ' · с тыльной стороны клюшки';
+      break;
+    case 'snap':
+      cfg.label += ' · бросок с руки (snap)';
+      break;
+    default:
+      break;
+  }
+}
+
+function baseConfig(kind: Kind, assists: number): Cfg {
   const hasPass = assists > 0;
   switch (kind) {
     case 'pp':
@@ -202,10 +252,14 @@ function configFor(kind: Kind, assists: number) {
   }
 }
 
-function buildScenario(event: GameEvent, home: Team, away: Team, players: Record<string, Player>): Scenario | null {
+function configFor(kind: Kind, assists: number, shotType?: string): Cfg {
+  const cfg = baseConfig(kind, assists);
+  applyShotType(cfg, shotType);
+  return cfg;
+}
+
+function buildScenario(event: GameEvent, home: Team, _away: Team, players: Record<string, Player>): Scenario | null {
   if (!event.player || !players[event.player]) return null;
-  const attacking = event.team === home.id ? home : away;
-  const defending = event.team === home.id ? away : home;
   const attackingIce = (event.team === home.id ? event.ice?.[0] : event.ice?.[1]) ?? [];
   const defendingIce = (event.team === home.id ? event.ice?.[1] : event.ice?.[0]) ?? [];
   const aids = attackingIce.filter((id): id is string => !!id && !!players[id]);
@@ -218,7 +272,7 @@ function buildScenario(event: GameEvent, home: Team, away: Team, players: Record
 
   const kind = pickKind(event);
   const assists = (event.players ?? []).length;
-  const cfg = configFor(kind, assists);
+  const cfg = configFor(kind, assists, event.shotType);
 
   const attackRP: RP[] = attack.map((a) =>
     a.slot === 0
@@ -259,6 +313,7 @@ export function GoalReplay({ event, home, away, players, onClose }: {
   const css = useMemo(() => {
     const kf = (name: string, stops: { t: number; css: string }[]) =>
       `@keyframes ${name}{` + stops.map((s) => `${(s.t * 100).toFixed(2)}%{${s.css}}`).join('') + `}`;
+    const RINK_BASE = 'rotateX(55deg) rotateZ(-3deg) scale(1.12)';
     const dyn: string[] = [];
     if (scenario) {
       scenario.attack.forEach((rp) => {
@@ -271,6 +326,21 @@ export function GoalReplay({ event, home, away, players, onClose }: {
         dyn.push(kf(`gk-${take}`, scenario.goalie.path.map((w) => ({ t: w.t, css: `left:${w.x}%;top:${w.y}%` }))));
       }
       dyn.push(kf(`puck-${take}`, scenario.puck.map((w) => ({ t: w.t, css: `left:${w.x}%;top:${w.y}%;transform:translate(-50%,-50%) scale(${w.s ?? 1})` }))));
+      // broadcast camera: hold, then punch-zoom toward the net on the shot, then ease back
+      dyn.push(kf(`cam-${take}`, [
+        { t: 0, css: `transform:${RINK_BASE}` },
+        { t: 0.5, css: `transform:${RINK_BASE}` },
+        { t: 0.58, css: `transform:${RINK_BASE} scale(1.32) translateX(-6%)` },
+        { t: 0.82, css: `transform:${RINK_BASE} scale(1.3) translateX(-5%)` },
+        { t: 1, css: `transform:${RINK_BASE}` },
+      ]));
+      dyn.push(kf(`flash-${take}`, [
+        { t: 0, css: 'opacity:0;transform:scale(.7)' },
+        { t: 0.06, css: 'opacity:1;transform:scale(1.1)' },
+        { t: 0.18, css: 'opacity:1;transform:scale(1)' },
+        { t: 0.32, css: 'opacity:0;transform:scale(1.05)' },
+        { t: 1, css: 'opacity:0;transform:scale(1)' },
+      ]));
     }
     return STATIC_CSS + dyn.join('\n');
   }, [scenario, take]);
@@ -299,14 +369,16 @@ export function GoalReplay({ event, home, away, players, onClose }: {
             <div className="flex items-center gap-2 min-w-0"><div className="text-right min-w-0"><div className="text-[10px] text-slate-400 uppercase tracking-widest">Вратарь</div><div className="text-sm sm:text-base font-bold truncate">{event.goalie ? players[event.goalie]?.name ?? 'Вратарь' : 'Пустые ворота'}</div></div><TeamLogo team={defending} size={30} /></div>
           </div>
           <div className="replay-camera" key={take}>
-            <div className="replay-rink">
+            <div className="replay-goalflash" style={{ animation: `flash-${take} ${scenario.dur}s ease-out both` }}>ГОЛ!</div>
+            <div className="replay-rink" style={{ animation: `cam-${take} ${scenario.dur}s ease-in-out both` }}>
               <div className="replay-board" />
               <div className="replay-ice">
                 <div className="replay-center-line" /><div className="replay-blue-line replay-blue-left" /><div className="replay-blue-line replay-blue-right" /><div className="replay-red-circle replay-circle-left" /><div className="replay-red-circle replay-circle-right" /><div className="replay-center-circle" /><div className="replay-goal-crease" /><div className="replay-goal-net"><span /></div><div className="replay-goal-frame" />
                 {scenario.attack.map((rp) => {
                   const isShooter = rp.id === event.player;
+                  const isAssist = (event.players ?? []).includes(rp.id);
                   return (
-                    <div key={rp.id} className={cn('replay-skater', rp.side === 'attack' ? 'replay-attacker' : 'replay-defender', isShooter && 'replay-shooter')} style={{ animation: `sk-${rp.id}-${take} ${scenario.dur}s cubic-bezier(.3,.7,.3,1) both`, '--jersey': rp.side === 'attack' ? attacking.primaryColor : defending.primaryColor, '--trim': rp.side === 'attack' ? attacking.secondaryColor : defending.secondaryColor } as CSSProperties}>
+                    <div key={rp.id} className={cn('replay-skater', rp.side === 'attack' ? 'replay-attacker' : 'replay-defender', isShooter && 'replay-shooter', isAssist && 'replay-assist')} style={{ animation: `sk-${rp.id}-${take} ${scenario.dur}s cubic-bezier(.3,.7,.3,1) both`, '--jersey': rp.side === 'attack' ? attacking.primaryColor : defending.primaryColor, '--trim': rp.side === 'attack' ? attacking.secondaryColor : defending.secondaryColor } as CSSProperties}>
                       <span className="replay-shadow" /><span className="replay-legs" /><span className="replay-stick" /><span className="replay-blade" /><span className="replay-body">{rp.player.number}</span><span className="replay-head" /><span className="replay-helmet" /><span className="replay-helmet-cage" />
                     </div>
                   );
@@ -373,5 +445,8 @@ const STATIC_CSS = `
   .replay-goalie-glove{position:absolute;left:30px;top:4px;width:10px;height:10px;border-radius:50%;background:#e8edf1;border:2px solid var(--defend);box-shadow:0 0 4px #0005}
   .replay-puck{position:absolute;width:11px;height:7px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#3a3f45,#070a0d 70%);box-shadow:inset 0 -1px 0 #000,0 0 0 1px #000,0 6px 6px #0007;z-index:14}
   .replay-puck::after{content:"";position:absolute;left:-3px;top:9px;width:16px;height:6px;background:radial-gradient(closest-side,#1b2c3a99,transparent);filter:blur(2px);border-radius:50%}
-  @media(prefers-reduced-motion:reduce){.replay-skater,.replay-puck,.replay-goalie{animation-duration:1ms!important;animation-delay:0ms!important;animation-iteration-count:1!important}}
+  .replay-goalflash{position:absolute;inset:0;z-index:30;display:grid;place-items:center;pointer-events:none;font:800 clamp(40px,9vw,96px)/1 'Oswald',Arial;letter-spacing:.04em;color:#fff;text-shadow:0 0 18px #ff2b3a,0 4px 0 #7a0c14;opacity:0}
+  .replay-assist .replay-body{box-shadow:0 0 0 2px #ffd34d,0 0 10px #ffd34daa,2px 0 0 color-mix(in srgb,var(--jersey) 70%,#000),4px 0 0 color-mix(in srgb,var(--jersey) 55%,#000),0 4px 6px #0007}
+  .replay-assist .replay-head{box-shadow:inset -2px -2px 3px #0004,inset 1px 1px 2px #fff6,0 0 0 1px #ffd34d}
+  @media(prefers-reduced-motion:reduce){.replay-skater,.replay-puck,.replay-goalie,.replay-rink,.replay-goalflash{animation-duration:1ms!important;animation-delay:0ms!important;animation-iteration-count:1!important}}
 `;
