@@ -1,5 +1,6 @@
 import type { GameState, Lineup, Player, YouthTrainingPlan } from '../types';
 import { clamp, computeOverall, GOALIE_KEYS, isDefense, isGoalie, SKATER_KEYS, SKILL_LABELS } from './ratings';
+import { hasCaptainMentorOnLine } from './chemistry';
 
 export const YOUTH_MAX_AGE = 23;
 
@@ -122,14 +123,22 @@ export function recommendYouthPlan(p: Player): YouthTrainingPlan {
   return (p.skills.shooting ?? 65) >= (p.skills.passing ?? 65) ? 'sniper' : 'playmaker';
 }
 
-export type IceRole = 'top' | 'depth' | 'bench';
+export type IceRole = 'top' | 'depth' | 'vhl' | 'bench';
 
-export function playerIceRole(L: Lineup, id: string): IceRole {
+export function playerIceRole(L: Lineup, id: string, inVhl = false): IceRole {
+  if (inVhl) return 'vhl';
   if (L.starterG === id) return 'top';
   if ((L.F[0] ?? []).includes(id) || (L.F[1] ?? []).includes(id) || (L.D[0] ?? []).includes(id) || (L.D[1] ?? []).includes(id) || L.pp1.includes(id)) {
     return 'top';
   }
-  if ((L.F[2] ?? []).includes(id) || (L.F[3] ?? []).includes(id) || (L.D[2] ?? []).includes(id) || L.backupG === id) {
+  if (
+    (L.F[2] ?? []).includes(id) ||
+    (L.F[3] ?? []).includes(id) ||
+    (L.D[2] ?? []).includes(id) ||
+    L.backupG === id ||
+    L.u20F === id ||
+    L.u20D === id
+  ) {
     return 'depth';
   }
   return 'bench';
@@ -166,9 +175,10 @@ export function stepYouthTrainingWeek(
       const p = P[pid];
       if (!p || !isYouthPlayer(p) || p.injury) continue;
       const plan = getPlayerPlan(p);
-      const role = playerIceRole(team.lineup, pid);
+      const role = playerIceRole(team.lineup, pid, !!p.inVhl);
       const gap = Math.max(1, p.potential - p.overall);
-      const roleMult = role === 'top' ? 1.45 : role === 'depth' ? 1.15 : 0.65;
+      const roleMult = role === 'top' ? 1.45 : role === 'depth' ? 1.15 : role === 'vhl' ? 1.05 : 0.65;
+      const mentorMult = hasCaptainMentorOnLine(team, P, pid) ? 1.2 : 1.0;
       const ageMult = p.age <= 20 ? 1.25 : p.age <= 22 ? 1.08 : 0.92;
       const moraleMult = p.morale >= 75 ? 1.1 : p.morale < 50 ? 0.82 : 1.0;
 
@@ -176,7 +186,7 @@ export function stepYouthTrainingWeek(
         p.morale = clamp(p.morale - 2, 30, 99);
       }
 
-      const gain = (4.2 + gap * 1.45) * roleMult * ageMult * moraleMult * plan.speedMult;
+      const gain = (4.2 + gap * 1.45) * roleMult * mentorMult * ageMult * moraleMult * plan.speedMult;
       p.trainingXp = (p.trainingXp ?? 0) + gain;
 
       if (p.trainingXp >= 100) {

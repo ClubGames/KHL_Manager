@@ -117,14 +117,32 @@ export default function App() {
 
   const U = s.teams[s.userTeamId];
   const phaseLabel = s.phase === 'playoffs' ? `Плей-офф · ${roundName(s.playoffs?.round ?? 0)}` : s.phase === 'offseason' ? 'Межсезонье' : 'Регулярный чемпионат';
-  const nav: View[] = s.phase === 'offseason' ? [...NAV.map((n) => n.id), 'offseason', 'format'] : [...NAV.map((n) => n.id), 'format'];
+  const nav: View[] =
+    s.phase === 'offseason'
+      ? ['dashboard', 'offseason', ...NAV.filter((n) => n.id !== 'dashboard').map((n) => n.id), 'format']
+      : [...NAV.map((n) => n.id), 'format'];
   const navItem = (v: View, mobile = false) => {
     const item = NAV.find((n) => n.id === v);
     const label = v === 'offseason' ? 'Межсезонье' : v === 'format' ? 'Формат JSON' : item?.label ?? v;
     const icon = v === 'offseason' ? 'trophy' : v === 'format' ? 'code' : item?.icon ?? 'dashboard';
     const active = view === v;
     const badge = v === 'trades' && s.offers.length > 0 ? s.offers.length : 0;
-    const cls = cn('flex items-center gap-3 transition-colors', mobile ? 'flex-col text-[10px] gap-1 py-1.5 px-1 flex-1 min-w-0' : 'px-4 py-2.5 text-sm border-l-2', active ? (mobile ? 'text-ice' : 'bg-accent/15 text-text border-accent') : (mobile ? 'text-muted' : 'text-muted hover:text-text hover:bg-panel2 border-transparent'));
+    const isOffTab = v === 'offseason';
+    const cls = cn(
+      'flex items-center gap-3 transition-colors',
+      mobile ? 'flex-col text-[10px] gap-1 py-1.5 px-1 flex-1 min-w-0' : 'px-4 py-2.5 text-sm border-l-2',
+      active
+        ? mobile
+          ? 'text-ice'
+          : 'bg-accent/15 text-text border-accent'
+        : mobile
+          ? isOffTab
+            ? 'text-gold'
+            : 'text-muted'
+          : isOffTab
+            ? 'text-gold font-semibold bg-gold/10 hover:bg-gold/20 border-gold/60'
+            : 'text-muted hover:text-text hover:bg-panel2 border-transparent'
+    );
     return (
       <button key={v} onClick={() => setView(v)} className={cls} title={label}>
         <span className="relative">
@@ -166,7 +184,7 @@ export default function App() {
   return (
     <UIContext.Provider value={api}>
       {matchGame ? (
-        <Match key={matchGame.id} game={matchGame} onFinished={() => { setMatchGame(null); setView('dashboard'); }} />
+        <Match key={matchGame.id} game={matchGame} onFinished={() => { setMatchGame(null); setView(s.phase === 'offseason' ? 'offseason' : 'dashboard'); }} />
       ) : (
         <div className="min-h-screen flex">
           <aside className="hidden lg:flex flex-col w-56 shrink-0 border-r border-line bg-panel/80 sticky top-0 h-screen">
@@ -218,6 +236,11 @@ export default function App() {
             <header className="sticky top-0 z-30 bg-bg/85 backdrop-blur border-b border-line px-4 py-2 flex items-center gap-3 flex-wrap">
               <div className="font-display uppercase tracking-wide text-sm">{seasonDate(s.day, regularSeasonLength(s.schedule), s.league.season)}</div>
               <Tag color={s.phase === 'playoffs' ? '#F2B544' : s.phase === 'offseason' ? '#8FD8F0' : '#93A4BC'}>{phaseLabel}</Tag>
+              {s.phase === 'offseason' && view !== 'offseason' && (
+                <Button size="sm" variant="primary" onClick={() => setView('offseason')}>
+                  <Icon name="trophy" /> Межсезонье →
+                </Button>
+              )}
               <div className="ml-auto flex items-center gap-3 flex-wrap">
                 <div className="hidden md:flex items-center gap-2 text-xs text-muted">
                   <span>День {Math.min(s.day + 1, s.schedule.length)} / {s.schedule.length}</span>
@@ -253,7 +276,7 @@ export default function App() {
           </main>
 
           <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-panel/95 backdrop-blur border-t border-line flex justify-around px-1" aria-label="Разделы">
-            {MOBILE_MAIN.map((id) => navItem(id, true))}
+            {(s.phase === 'offseason' ? (['dashboard', 'offseason', 'contracts', 'market'] as View[]) : MOBILE_MAIN).map((id) => navItem(id, true))}
             <button onClick={() => setMoreOpen(true)} className={cn('flex flex-col items-center text-[10px] gap-1 py-1.5 px-1 flex-1 min-w-0 transition-colors', !MOBILE_MAIN.includes(view) ? 'text-ice' : 'text-muted')} title="Все разделы">
               <span className="relative">
                 <Icon name="more" className="w-5 h-5" />

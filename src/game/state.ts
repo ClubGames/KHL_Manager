@@ -1,11 +1,11 @@
 import { useSyncExternalStore } from 'react';
-import type { Award, Game, GameResult, GameState, Lineup, NewsItem, NewsType, Series, Team, YouthTrainingPlan } from '../types';
+import type { Award, Game, GameResult, GameState, Lineup, NewsItem, NewsType, Series, Team, TeamTactics, YouthTrainingPlan } from '../types';
 import { buildSchedule } from './schedule';
 import { GameSim, INJURY_TYPES, pick } from './engine';
 import { autoLineup, clubSideProblem, evaluateTrade, executeTrade, groupOf, lineupConstraintsFor, MAX_ROSTER, maybeAiTrade, maybeIncomingOffer, prepareLineup, sanitizeLineup, tradeWindow, userSideProblem } from './ai';
 import { buyoutCost, commitments, negotiate, talksLeft } from './contracts';
 import { evaluateBoard, setBoardGoal } from './board';
-import { beginNewSeason, letGoUser, startOffseason, toFreeAgency } from './offseason';
+import { beginNewSeason, letGoUser, qualifyUserRfa, startOffseason, toFreeAgency } from './offseason';
 import { clamp, formatMoney, isDefense, isGoalie, isSkater, payroll, points } from './ratings';
 import { emptyLineup, emptyRecord } from './defaults';
 import type { NormalizedRoster } from './roster';
@@ -14,6 +14,10 @@ import type { SaveMeta } from './storage';
 import { buyoutDeadCap, CAP_GAMES_PER_POINT_DEDUCTION, CAP_GRACE_DAYS, capExcess, dailyCapFine, effectivePayroll, getCapSummary, recomputePoints } from './cap';
 import { countRosterLegionnaires, DEFAULT_FOREIGN_LIMIT, isLegionnaire, teamForeignLimit } from './legionnaires';
 import { isYouthPlayer, recommendYouthPlan, stepYouthTrainingWeek } from './training';
+import { ensureCaptains, getTeamTactics, goalieFreshness, recordLineupChemistryGP, teamLeadershipBonus } from './chemistry';
+import { advanceAiDraftToUser, autoCompleteDraft, currentDraftTeamId, executeSingleDraftPick } from './dynasty';
+import { aiShouldMatchOfferSheet, canHaveNmc, isOnWaivers, isRfaEligibleAge, isWaiverExempt, MAX_VHL_PLAYERS, offerSheetCompensation, processDailyWaivers, vhlPlayerCapRelief, WAIVER_DAYS } from './khlRules';
+import { getDerby, isFarEastClub } from './derbies';
 
 const SAVE_VERSION = 2;
 const LEGACY_ID = 'legacy-v1';
@@ -191,10 +195,14 @@ export function migrateState(raw: unknown): GameState | null {
   s.offseason ??= null;
   s.playoffs ??= null;
   s.announcedWindows ??= [];
+  s.hallOfFame ??= [];
+  s.waivers ??= [];
+  s.rfaOffers ??= [];
   s.league.foreignLimit ??= DEFAULT_FOREIGN_LIMIT;
   if (s.playoffs && !s.playoffs.awards) s.playoffs.awards = [];
   for (const p of Object.values(s.players)) {
     if (isYouthPlayer(p) && !p.trainingPlan) p.trainingPlan = recommendYouthPlan(p);
+    p.fatigue ??= 0;
   }
   // Points are derived from the record (minus any salary-cap penalty deductions), so saves made under the old 3-point rule are converted automatically.
   for (const t of Object.values(s.teams)) {
@@ -202,6 +210,10 @@ export function migrateState(raw: unknown): GameState | null {
     t.capViolationDays ??= 0;
     t.capViolationGames ??= 0;
     t.capFinesTotal ??= 0;
+    t.tactics = getTeamTactics(t);
+    t.chemGP ??= {};
+    t.roadStreak ??= 0;
+    ensureCaptains(t, s.players);
     const r = t.record;
     r.capPenaltyPoints ??= 0;
     r.points = recomputePoints(r);
@@ -272,6 +284,9 @@ export function createGameState(r: NormalizedRoster, userTeamId: string): GameSt
     offseason: null,
     deadlinePassed: false,
     announcedWindows: ['autumn'],
+    hallOfFame: [],
+    waivers: [],
+    rfaOffers: [],
   } as unknown as GameState;
   setBoardGoal(state);
   news[0].text += ` Задача руководства на сезон: ${state.board.text.toLowerCase()}.`;
@@ -447,7 +462,7 @@ export async function importCareer(text: string): Promise<string | null> {
 
 export { getBackend };
 
-/* ---------------- lineups ---------------- */
+/* ---------------- lineups, captains & tactics ---------------- */
 export function setUserLineup(L: Lineup) {
   store.update((s) => {
     s.teams[s.userTeamId].lineup = L;
@@ -457,6 +472,46 @@ export function autoFillLineup() {
   store.update((s) => {
     const t = s.teams[s.userTeamId];
     t.lineup = autoLineup(t.players, s.players, lineupConstraintsFor(s, t.id));
+  });
+}
+export function swapStarterBackup() {
+  store.update((s) => {
+    const L = s.teams[s.userTeamId].lineup;
+    if (!L.backupG) return;
+    const prev = L.starterG;
+    L.starterG = L.backupG;
+    L.backupG = prev;
+  });
+}
+export function setTeamRole(playerId: string, role: 'C' | 'A' | null) {
+  store.update((s) => {
+    const t = s.teams[s.userTeamId];
+    const p = s.players[playerId];
+    if (!p || p.teamId !== t.id || isGoalie(p)) return;
+    t.assistantIds ??= [];
+    if (role === 'C') {
+      const oldCap = t.captainId;
+      t.captainId = playerId;
+      t.assistantIds = t.assistantIds.filter((id) => id !== playerId);
+      if (oldCap && oldCap !== playerId && t.assistantIds.length < 2) t.assistantIds.push(oldCap);
+    } else if (role === 'A') {
+      if (t.captainId === playerId) t.captainId = null;
+      if (!t.assistantIds.includes(playerId)) {
+        if (t.assistantIds.length >= 2) t.assistantIds.shift();
+        t.assistantIds.push(playerId);
+      }
+      ensureCaptains(t, s.players);
+    } else {
+      if (t.captainId === playerId) t.captainId = null;
+      t.assistantIds = t.assistantIds.filter((id) => id !== playerId);
+      ensureCaptains(t, s.players);
+    }
+  });
+}
+export function setUserTactics(patch: Partial<TeamTactics>) {
+  store.update((s) => {
+    const t = s.teams[s.userTeamId];
+    t.tactics = { ...getTeamTactics(t), ...patch };
   });
 }
 
@@ -480,10 +535,24 @@ export function autoAssignYouthPlans() {
 }
 
 /* ---------------- simulation ---------------- */
+function buildSimTeam(state: GameState, tid: string, lineup: Lineup) {
+  const T = state.teams[tid];
+  return {
+    id: tid,
+    lineup,
+    name: T.name,
+    tactics: getTeamTactics(T),
+    chemGP: T.chemGP,
+    leadershipBonus: teamLeadershipBonus(T, state.players),
+    roadStreak: T.roadStreak ?? 0,
+  };
+}
+
 function runGame(state: GameState, g: Game): GameResult {
   const home = prepareLineup(state, g.home);
   const away = prepareLineup(state, g.away);
-  const sim = new GameSim({ id: g.home, lineup: home, name: state.teams[g.home].name }, { id: g.away, lineup: away, name: state.teams[g.away].name }, state.players, g.kind === 'playoff');
+  const derby = getDerby(state.teams[g.home], state.teams[g.away]);
+  const sim = new GameSim(buildSimTeam(state, g.home, home), buildSimTeam(state, g.away, away), state.players, g.kind === 'playoff', derby);
   // simulated games are never replayed, so no play-by-play is generated for them
   sim.quiet = true;
   sim.keepShotMap = g.home === state.userTeamId || g.away === state.userTeamId;
@@ -493,7 +562,8 @@ function runGame(state: GameState, g: Game): GameResult {
 export function makeUserSim(state: GameState, g: Game): { sim: GameSim; home: Lineup; away: Lineup } {
   const home = prepareLineup(state, g.home);
   const away = prepareLineup(state, g.away);
-  const sim = new GameSim({ id: g.home, lineup: home, name: state.teams[g.home].name }, { id: g.away, lineup: away, name: state.teams[g.away].name }, state.players, g.kind === 'playoff');
+  const derby = getDerby(state.teams[g.home], state.teams[g.away]);
+  const sim = new GameSim(buildSimTeam(state, g.home, home), buildSimTeam(state, g.away, away), state.players, g.kind === 'playoff', derby);
   return { sim, home, away };
 }
 
@@ -544,6 +614,16 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
   const U = state.userTeamId;
   const beyond = res.ot || res.so;
   const hw = res.homeScore > res.awayScore;
+  const derby = getDerby(H, A);
+
+  recordLineupChemistryGP(H, H.lineup);
+  recordLineupChemistryGP(A, A.lineup);
+  H.roadStreak = 0;
+  A.roadStreak = (A.roadStreak ?? 0) + (isFarEastClub(H) ? 2 : 1);
+  if (derby) {
+    H.budget += derby.gateBonus;
+  }
+
   if (g.kind === 'regular') {
     applyRecord(H, res.homeScore, res.awayScore, beyond, res.so, hw);
     applyRecord(A, res.awayScore, res.homeScore, beyond, res.so, !hw);
@@ -566,13 +646,18 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
     }
   }
   const winnerId = hw ? g.home : g.away;
+  const moraleMult = derby ? derby.moraleMult : 1;
   for (const id in res.lines) {
     const l = res.lines[id];
     const p = P[id];
     if (!p) continue;
     const ti = res.homeDressed.includes(id) ? g.home : g.away;
+    const club = state.teams[ti];
     const won = ti === winnerId;
-    if (isGoalie(p) && l.minutes === 0) continue;
+    if (isGoalie(p) && l.minutes === 0) {
+      p.fatigue = Math.max(0, (p.fatigue ?? 0) - 4);
+      continue;
+    }
     p.stats.gp++;
     p.stats.goals += l.goals;
     p.stats.assists += l.assists;
@@ -587,15 +672,24 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
       else if (beyond) p.stats.otl++;
       else p.stats.losses++;
       if (won && l.goalsAgainst === 0 && l.minutes >= 55) p.stats.shutouts++;
+      const load = 19 + (l.shotsAgainst >= 34 ? 5 : l.shotsAgainst >= 28 ? 2 : 0) + (ti === g.away && isFarEastClub(H) ? 4 : 0);
+      p.fatigue = clamp((p.fatigue ?? 0) + load, 0, 96);
     }
-    p.morale = clamp(p.morale + (won ? 3 : beyond ? -1 : -3) + l.goals * 2 + l.assists, 30, 99);
+    const hasSteadyCap = !!(club?.captainId && P[club.captainId] && !P[club.captainId].injury && P[club.captainId].morale >= 70);
+    const rawSwing = won ? 3 : beyond ? -1 : hasSteadyCap ? -2 : -3;
+    p.morale = clamp(p.morale + Math.round(rawSwing * moraleMult) + l.goals * 2 + l.assists, 30, 99);
+  }
+  if (derby && (g.home === U || g.away === U) && state.board) {
+    const userWonDerby = winnerId === U;
+    state.board.confidence = clamp(state.board.confidence + (userWonDerby ? 3 : beyond ? 0 : -2), 5, 100);
   }
   for (const tid of [g.home, g.away]) {
     const dressed = tid === g.home ? res.homeDressed : res.awayDressed;
     for (const pid of dressed) {
       const p = P[pid];
       if (!p || p.injury) continue;
-      const ch = isGoalie(p) ? 0.005 : 0.011 + (p.age >= 32 ? 0.004 : 0);
+      const gTired = isGoalie(p) && goalieFreshness(p) < 48;
+      const ch = isGoalie(p) ? (gTired ? 0.016 : 0.005) : 0.011 + (p.age >= 32 ? 0.004 : 0);
       if (Math.random() < ch) {
         p.injury = { name: pick(INJURY_TYPES), games: 2 + Math.floor(Math.random() * 9) };
         if (tid === U) addNews(state, 'injury', `Травма: ${p.name} — ${p.injury.name}, ориентировочно ${p.injury.games} матчей`, tid);
@@ -630,26 +724,56 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
     const stars = res.stars.map((id) => P[id]?.name).filter(Boolean).join(', ');
     const hXg = (res.homeStats.xg ?? 0).toFixed(2);
     const aXg = (res.awayStats.xg ?? 0).toFixed(2);
-    addNews(state, 'result', `${H.short} ${res.homeScore}:${res.awayScore}${tag} ${A.short}. Броски ${res.homeStats.shots}:${res.awayStats.shots} (xG ${hXg}:${aXg}). Звёзды: ${stars || '—'}`, U, g.id);
+    const derbyPrefix = derby ? `🔥 ${derby.title}: ` : '';
+    const gateNote = derby && g.home === U ? ` Касса аншлага: +${formatMoney(derby.gateBonus)}.` : '';
+    addNews(
+      state,
+      'result',
+      `${derbyPrefix}${H.short} ${res.homeScore}:${res.awayScore}${tag} ${A.short}. Броски ${res.homeStats.shots}:${res.awayStats.shots} (xG ${hXg}:${aXg}). Звёзды: ${stars || '—'}.${gateNote}`,
+      U,
+      g.id
+    );
   }
 }
 
 function aiResolveCapExcess(state: GameState, t: Team) {
   const P = state.players;
+  state.waivers ??= [];
   let guard = 0;
   while (capExcess(state, t.id) > 0 && t.players.length > 18 && guard++ < 6) {
+    const activeIds = t.players.filter((id) => P[id] && !P[id].inVhl && !isOnWaivers(state, id));
     const cnt = {
-      F: t.players.filter((id) => groupOf(P[id]) === 'F').length,
-      D: t.players.filter((id) => groupOf(P[id]) === 'D').length,
-      G: t.players.filter((id) => groupOf(P[id]) === 'G').length,
+      F: activeIds.filter((id) => groupOf(P[id]) === 'F').length,
+      D: activeIds.filter((id) => groupOf(P[id]) === 'D').length,
+      G: activeIds.filter((id) => groupOf(P[id]) === 'G').length,
     };
     const mins: Record<'F' | 'D' | 'G', number> = { F: 12, D: 6, G: 2 };
-    const candidates = t.players
+    const candidates = activeIds
       .map((id) => P[id])
-      .filter((p) => p && p.contract.salary >= 10_000_000 && cnt[groupOf(p)] > mins[groupOf(p)])
+      .filter((p) => p && !p.nmc && p.contract.salary >= 10_000_000 && cnt[groupOf(p)] > mins[groupOf(p)])
       .sort((a, b) => a.overall - a.contract.salary / 8e6 - (b.overall - b.contract.salary / 8e6));
     if (!candidates.length) break;
     const drop = candidates[0];
+    const vhlCount = t.players.filter((id) => P[id]?.inVhl).length;
+    // First send depth contracts to VHL / 48h Waivers before taking buyout deadCap
+    if (vhlCount < MAX_VHL_PLAYERS) {
+      if (isWaiverExempt(drop)) {
+        drop.inVhl = true;
+        continue;
+      }
+      if ((state.waivers?.length ?? 0) < 6 && Math.random() < 0.7) {
+        state.waivers.push({
+          playerId: drop.id,
+          fromTeamId: t.id,
+          postedDay: state.day,
+          expiresDay: state.day + WAIVER_DAYS,
+        });
+        addNews(state, 'trade', `Драфт отказов КХЛ (48 ч): «${t.name}» выставила ${drop.name} (ОВР ${drop.overall}, ${formatMoney(drop.contract.salary)}).`);
+        // If still above cap after grace, also move to VHL or buyout next excess
+        drop.inVhl = true;
+        continue;
+      }
+    }
     const dead = Math.round((drop.contract.salary * 0.1) / 100_000) * 100_000;
     t.deadCap = (t.deadCap ?? 0) + dead;
     toFreeAgency(state, drop.id);
@@ -657,6 +781,66 @@ function aiResolveCapExcess(state: GameState, t: Team) {
 }
 
 function postDay(state: GameState) {
+  // Daily goalie recovery for goalies whose club did not play on the day that just finished
+  const playedToday = new Set<string>();
+  const justPlayedDay = state.schedule[state.day - 1] ?? [];
+  for (const g of justPlayedDay) {
+    if (g.result?.homeGoalie) playedToday.add(g.result.homeGoalie);
+    if (g.result?.awayGoalie) playedToday.add(g.result.awayGoalie);
+  }
+  for (const p of Object.values(state.players)) {
+    if (p && isGoalie(p) && (p.fatigue ?? 0) > 0 && !playedToday.has(p.id)) {
+      p.fatigue = Math.max(0, (p.fatigue ?? 0) - 11);
+    }
+  }
+
+  // Process 48-hour KHL waivers
+  if (state.waivers && state.waivers.length > 0) {
+    const worstFirst = [...rankAll(state)].reverse();
+    processDailyWaivers(
+      state,
+      worstFirst,
+      (t) => effectivePayroll(t, state.players, state.phase),
+      (txt, tid) => addNews(state, 'trade', txt, tid)
+    );
+    for (const t of Object.values(state.teams)) {
+      ensureCaptains(t, state.players);
+      const opts = lineupConstraintsFor(state, t.id);
+      if (t.id === state.userTeamId) t.lineup = sanitizeLineup(t.lineup, t.players, state.players, opts);
+    }
+  }
+
+  // Occasional AI veteran waiver placement during regular season to keep the KHL waiver wire active
+  if (state.phase === 'season' && state.day > 6 && state.day % 9 === 0 && (state.waivers?.length ?? 0) < 3) {
+    const aiTeams = state.teamOrder.filter((id) => id !== state.userTeamId && state.teams[id].players.length >= 23);
+    if (aiTeams.length) {
+      const tid = aiTeams[Math.floor(Math.random() * aiTeams.length)];
+      const T = state.teams[tid];
+      const P = state.players;
+      const dressedSet = new Set([...T.lineup.F.flat(), ...T.lineup.D.flat(), T.lineup.starterG, T.lineup.backupG].filter(Boolean));
+      const grpCounts = {
+        F: T.players.filter((id) => groupOf(P[id]) === 'F').length,
+        D: T.players.filter((id) => groupOf(P[id]) === 'D').length,
+        G: T.players.filter((id) => groupOf(P[id]) === 'G').length,
+      };
+      const surplus = T.players
+        .map((id) => P[id])
+        .filter((p) => {
+          if (!p || p.injury || dressedSet.has(p.id) || p.inVhl || p.nmc || isWaiverExempt(p)) return false;
+          const g = groupOf(p);
+          const minKeep = g === 'F' ? 13 : g === 'D' ? 7 : 3;
+          if (grpCounts[g] < minKeep) return false;
+          return p.overall >= 71 && p.overall <= 77 && !isOnWaivers(state, p.id);
+        })
+        .sort((a, b) => b.contract.salary - a.contract.salary)[0];
+      if (surplus) {
+        state.waivers ??= [];
+        state.waivers.push({ playerId: surplus.id, fromTeamId: tid, postedDay: state.day, expiresDay: state.day + WAIVER_DAYS });
+        addNews(state, 'trade', `Драфт отказов КХЛ (48 ч): «${T.name}» поместила ${surplus.name} (ОВР ${surplus.overall}, ${formatMoney(surplus.contract.salary)}) в список отказов.`);
+      }
+    }
+  }
+
   state.announcedWindows ??= [];
   if (state.phase === 'season') {
     const w = tradeWindow(state);
@@ -1046,11 +1230,10 @@ export function setTradeFlag(id: string, flag: 'block' | 'keep' | null) {
   });
 }
 
-/* ---------------- contracts ---------------- */
-/** Salaries the club is committed to: in the off-season expired deals no longer count; during the season deadCap is included. */
-function committedPayroll(state: GameState, ids: string[], deadCap = 0): number {
-  const P = state.players;
-  return state.phase === 'offseason' ? ids.reduce((a, id) => a + (P[id].contract.years > 0 ? P[id].contract.salary : 0), 0) : payroll(ids, P) + deadCap;
+/* ---------------- contracts, RFA offer sheets, waivers & VHL ---------------- */
+/** Salaries the club is committed to: in the off-season expired deals no longer count; during the season deadCap and VHL relief apply. */
+function committedPayroll(state: GameState, t: Team): number {
+  return effectivePayroll(t, state.players, state.phase);
 }
 
 export interface ContractAnswer {
@@ -1058,13 +1241,14 @@ export interface ContractAnswer {
   text: string;
   /** negotiation attempts left with this player */
   left: number;
+  matchedByClub?: boolean;
 }
 
 /**
- * Offer a contract: to a free agent, to an own player whose deal has expired (off-season) or to an own
- * player in the last year of his deal (the extension starts next season).
+ * Offer a contract: to a free agent (UFA or RFA via offer sheet), to an own player whose deal has expired (off-season)
+ * or to an own player in the last year of his deal (the extension starts next season).
  */
-export function offerContract(id: string, salary: number, years: number): ContractAnswer {
+export function offerContract(id: string, salary: number, years: number, withNmc = false): ContractAnswer {
   let out: ContractAnswer = { ok: false, text: 'Игрок не найден', left: 0 };
   store.update((state) => {
     const P = state.players;
@@ -1078,6 +1262,7 @@ export function offerContract(id: string, salary: number, years: number): Contra
     const own = p.teamId === t.id;
     salary = Math.round(salary / 100_000) * 100_000;
     years = Math.round(years);
+    const applyNmc = withNmc && canHaveNmc(p) && years >= 2;
     if (!free && !own) return fail('Игрок принадлежит другому клубу — его можно получить только обменом');
     if (!(salary > 0) || years < 1) return fail('Укажите оклад и срок контракта');
     const capState = getCapSummary(state, t.id);
@@ -1095,43 +1280,386 @@ export function offerContract(id: string, salary: number, years: number): Contra
         if (curLeg >= fl) return fail(`Достигнут лимит легионеров КХЛ (${curLeg} из ${fl}) — сначала освободите легионерскую вакансию`);
       }
     }
+
+    const rfaOwnerId = free && p.rightsTeamId && p.rightsTeamId !== t.id && state.teams[p.rightsTeamId] ? p.rightsTeamId : null;
+    const rfaComp = rfaOwnerId ? offerSheetCompensation(salary, p.overall) : 0;
+
     if (extension) {
       const next = commitments(t.players, P, 2)[1] + salary;
       if (next > cap) return fail(`Со следующего сезона ФОТ составит ${formatMoney(next)} — это выше потолка зарплат (${formatMoney(cap)})`);
     } else {
-      const now = committedPayroll(state, t.players, t.deadCap ?? 0) + salary;
-      if (now > cap) return fail(`С этим окладом ФОТ (с учётом выкупов) составит ${formatMoney(now)} — это выше потолка зарплат (${formatMoney(cap)})`);
+      const now = committedPayroll(state, t) + salary;
+      if (now > cap) return fail(`С этим окладом ФОТ составит ${formatMoney(now)} — это выше потолка зарплат (${formatMoney(cap)})`);
     }
-    if (t.budget < salary) return fail(`В бюджете клуба должно быть не меньше годового оклада игрока (${formatMoney(salary)}), сейчас — ${formatMoney(t.budget)}`);
-    const v = negotiate(state, p, salary, years, t.id);
+    if (t.budget < salary + rfaComp) {
+      return fail(
+        rfaComp > 0
+          ? `Для оффершита ОСА нужен бюджет на оклад + компенсацию (${formatMoney(salary + rfaComp)}), сейчас — ${formatMoney(t.budget)}`
+          : `В бюджете клуба должно быть не меньше годового оклада игрока (${formatMoney(salary)}), сейчас — ${formatMoney(t.budget)}`
+      );
+    }
+
+    const v = negotiate(state, p, salary, years, t.id, applyNmc);
     if (!v.accept) {
       out = { ok: false, text: v.text, left: v.left };
       return;
     }
     delete p.talks;
-    const term = `${years} ${years === 1 ? 'год' : years < 5 ? 'года' : 'лет'}, ${formatMoney(salary)} за сезон`;
+    const nmcTag = applyNmc ? ' (с пунктом ЗНО)' : '';
+    const term = `${years} ${years === 1 ? 'год' : years < 5 ? 'года' : 'лет'}, ${formatMoney(salary)} за сезон${nmcTag}`;
+
     if (free) {
+      if (rfaOwnerId) {
+        const rightsClub = state.teams[rfaOwnerId];
+        const clubPay = committedPayroll(state, rightsClub);
+        if (aiShouldMatchOfferSheet(state, rightsClub, p, salary, clubPay)) {
+          p.contract = { salary, years };
+          p.teamId = rightsClub.id;
+          p.rightsTeamId = rightsClub.id;
+          rightsClub.players.push(id);
+          state.freeAgents = state.freeAgents.filter((x) => x !== id);
+          rightsClub.lineup = autoLineup(rightsClub.players, P, lineupConstraintsFor(state, rightsClub.id));
+          addNews(
+            state,
+            'trade',
+            `Оффершит повторён! «${rightsClub.name}» повторила предложение «${t.name}» по ОСА ${p.name} (${term}) и сохранила игрока.`,
+            t.id
+          );
+          out = {
+            ok: false,
+            matchedByClub: true,
+            left: 0,
+            text: `«${rightsClub.name}» воспользовалась правом ОСА и повторила ваш оффершит (${term}) — игрок остаётся в своём клубе!`,
+          };
+          return;
+        }
+        t.budget -= rfaComp;
+        rightsClub.budget += rfaComp;
+      }
+
       p.contract = { salary, years };
       p.teamId = t.id;
+      p.inVhl = false;
+      p.nmc = applyNmc;
+      p.rightsTeamId = isRfaEligibleAge(p.age) ? t.id : null;
       if (isYouthPlayer(p) && !p.trainingPlan) p.trainingPlan = recommendYouthPlan(p);
       t.players.push(id);
       state.freeAgents = state.freeAgents.filter((x) => x !== id);
+      ensureCaptains(t, P);
       t.lineup = sanitizeLineup(t.lineup, t.players, P, lineupConstraintsFor(state, t.id));
-      addNews(state, 'trade', `${t.name} подписывает свободного агента ${p.name}: ${term}`, t.id);
-      out = { ok: true, text: `${p.name} подписал контракт: ${term}.`, left: v.left };
+      const compNote = rfaOwnerId ? ` (оффершит ОСА · компенсация «${state.teams[rfaOwnerId].short}» ${formatMoney(rfaComp)})` : '';
+      addNews(state, 'trade', `${t.name} подписывает ${rfaOwnerId ? 'ОСА' : 'свободного агента'} ${p.name}: ${term}${compNote}`, t.id);
+      out = { ok: true, text: `${p.name} подписал контракт: ${term}${compNote}.`, left: v.left };
     } else if (expired) {
       p.contract = { salary, years };
+      p.nmc = applyNmc;
+      p.rightsTeamId = isRfaEligibleAge(p.age) ? t.id : null;
       if (state.offseason) state.offseason.expiring = state.offseason.expiring.filter((x) => x !== id);
       addNews(state, 'trade', `${p.name} остаётся в ${t.name}: новый контракт на ${term}`, t.id);
       out = { ok: true, text: `${p.name} подписал новый контракт: ${term}.`, left: v.left };
     } else {
       p.contract.next = { salary, years };
+      if (applyNmc) p.nmc = true;
       p.morale = clamp(p.morale + 5, 30, 99);
       addNews(state, 'trade', `${p.name} продлил контракт с ${t.name}: со следующего сезона — ${term}`, t.id);
       out = { ok: true, text: `${p.name} продлил контракт: со следующего сезона — ${term}.`, left: v.left };
     }
   });
   return out;
+}
+
+/** Send a player to the VHL farm club (directly if <= 22 or offseason; via 48h KHL waivers if 23+ in season). */
+export function sendToVhlOrWaivers(playerId: string): string | null {
+  let err: string | null = null;
+  store.update((state) => {
+    const P = state.players;
+    const p = P[playerId];
+    const U = state.userTeamId;
+    const t = state.teams[U];
+    if (!p || p.teamId !== U) {
+      err = 'Игрок не в вашем клубе';
+      return;
+    }
+    if (p.inVhl) {
+      err = 'Игрок уже находится в фарм-клубе ВХЛ';
+      return;
+    }
+    if (isOnWaivers(state, playerId)) {
+      err = 'Игрок уже выставлен на драфт отказов КХЛ (48 ч)';
+      return;
+    }
+    if (p.nmc) {
+      err = `У ${p.name} действует пункт ЗНО (запрет на обмен и отправку в ВХЛ / список отказов)`;
+      return;
+    }
+    const curVhl = t.players.filter((id) => P[id]?.inVhl).length;
+    if (curVhl >= MAX_VHL_PLAYERS) {
+      err = `В фарм-клубе ВХЛ уже максимум командированных игроков (${MAX_VHL_PLAYERS})`;
+      return;
+    }
+    const activeAfter = t.players.filter((id) => id !== playerId && P[id] && !P[id].inVhl);
+    const gGroup = groupOf(p);
+    const minReq = gGroup === 'G' ? 2 : gGroup === 'D' ? 4 : 8;
+    const remGroup = activeAfter.filter((id) => groupOf(P[id]) === gGroup).length;
+    if (remGroup < minReq) {
+      err = `В основе КХЛ должно остаться минимум ${minReq} игроков этой линии`;
+      return;
+    }
+
+    if (isWaiverExempt(p) || state.phase === 'offseason') {
+      p.inVhl = true;
+      ensureCaptains(t, P);
+      t.lineup = sanitizeLineup(t.lineup, t.players, P, lineupConstraintsFor(state, U));
+      addNews(
+        state,
+        'info',
+        `${p.name} командирован в фарм-клуб ВХЛ по двустороннему контракту (разгрузка потолка: ${formatMoney(vhlPlayerCapRelief(p))}).`,
+        U
+      );
+    } else {
+      state.waivers ??= [];
+      state.waivers.push({
+        playerId,
+        fromTeamId: U,
+        postedDay: state.day,
+        expiresDay: state.day + WAIVER_DAYS,
+      });
+      // Remove from active lineup while on 48h waivers
+      const opts = lineupConstraintsFor(state, U);
+      opts.excluded?.add(playerId);
+      t.lineup = sanitizeLineup(t.lineup, t.players, P, opts);
+      addNews(
+        state,
+        'trade',
+        `«${t.name}» поместила ${p.name} в список отказов КХЛ на 48 часов (2 дня). Если никто не заберёт контракт — игрок отправится в ВХЛ.`,
+        U
+      );
+    }
+  });
+  return err;
+}
+
+export function recallFromVhl(playerId: string): string | null {
+  let err: string | null = null;
+  store.update((state) => {
+    const P = state.players;
+    const p = P[playerId];
+    const U = state.userTeamId;
+    const t = state.teams[U];
+    if (!p || p.teamId !== U || !p.inVhl) return;
+    const reliefLost = state.phase === 'offseason' ? 0 : vhlPlayerCapRelief(p);
+    const afterPay = effectivePayroll(t, P, state.phase) + reliefLost;
+    if (state.phase !== 'offseason' && afterPay > state.league.salaryCap) {
+      err = `Вызов из ВХЛ поднимет ФОТ КХЛ до ${formatMoney(afterPay)} (выше потолка ${formatMoney(state.league.salaryCap)})`;
+      return;
+    }
+    p.inVhl = false;
+    ensureCaptains(t, P);
+    t.lineup = sanitizeLineup(t.lineup, t.players, P, lineupConstraintsFor(state, U));
+    addNews(state, 'info', `${p.name} вызван из фарм-клуба ВХЛ в основной состав «${t.name}».`, U);
+  });
+  return err;
+}
+
+export function claimFromWaivers(playerId: string): string | null {
+  let err: string | null = null;
+  store.update((state) => {
+    const w = (state.waivers ?? []).find((x) => x.playerId === playerId);
+    if (!w) {
+      err = 'Игрок уже покинул список отказов';
+      return;
+    }
+    const U = state.userTeamId;
+    if (w.fromTeamId === U) {
+      err = 'Это игрок вашего клуба';
+      return;
+    }
+    const P = state.players;
+    const p = P[playerId];
+    const t = state.teams[U];
+    const fromTeam = state.teams[w.fromTeamId];
+    if (!p || !fromTeam) return;
+    if (t.players.length >= MAX_ROSTER) {
+      err = `В составе уже ${MAX_ROSTER} игроков`;
+      return;
+    }
+    const fl = teamForeignLimit(t, state.league.foreignLimit);
+    if (fl !== null && isLegionnaire(p) && countRosterLegionnaires(t.players, P) >= fl) {
+      err = `Превышен лимит легионеров (${fl})`;
+      return;
+    }
+    const afterPay = effectivePayroll(t, P, state.phase) + p.contract.salary;
+    if (afterPay > state.league.salaryCap) {
+      err = `Контракт ${formatMoney(p.contract.salary)} не помещается под потолок зарплат (${formatMoney(afterPay)} / ${formatMoney(state.league.salaryCap)})`;
+      return;
+    }
+    state.waivers = (state.waivers ?? []).filter((x) => x.playerId !== playerId);
+    fromTeam.players = fromTeam.players.filter((id) => id !== playerId);
+    p.teamId = U;
+    p.inVhl = false;
+    if (isRfaEligibleAge(p.age)) p.rightsTeamId = U;
+    t.players.push(playerId);
+    ensureCaptains(fromTeam, P);
+    ensureCaptains(t, P);
+    fromTeam.lineup = autoLineup(fromTeam.players, P, lineupConstraintsFor(state, fromTeam.id));
+    t.lineup = sanitizeLineup(t.lineup, t.players, P, lineupConstraintsFor(state, U));
+    addNews(
+      state,
+      'trade',
+      `Драфт отказов КХЛ: «${t.name}» бесплатно забрала ${p.name} (${formatMoney(p.contract.salary)}) из «${fromTeam.name}»!`,
+      U
+    );
+  });
+  return err;
+}
+
+export function tenderQualifyingOffer(playerId: string): string | null {
+  let err: string | null = null;
+  store.update((state) => {
+    err = qualifyUserRfa(state, playerId);
+  });
+  return err;
+}
+
+export function acquireRfaRights(playerId: string, price: number): { ok: boolean; reason: string } {
+  let out: { ok: boolean; reason: string } = { ok: false, reason: '' };
+  store.update((state) => {
+    const p = state.players[playerId];
+    const U = state.userTeamId;
+    const t = state.teams[U];
+    if (!p || !p.rightsTeamId || p.rightsTeamId === U || p.teamId) {
+      out = { ok: false, reason: 'Спортивные права этого игрока недоступны для выкупа' };
+      return;
+    }
+    if (t.budget < price) {
+      out = { ok: false, reason: 'Недостаточно средств в бюджете клуба' };
+      return;
+    }
+    const holder = state.teams[p.rightsTeamId];
+    t.budget -= price;
+    if (holder) holder.budget += price;
+    p.rightsTeamId = U;
+    addNews(
+      state,
+      'trade',
+      `«${t.name}» выкупила у «${holder?.name ?? 'КХЛ'}» спортивные права ОСА на ${p.name} за ${formatMoney(price)}!`,
+      U
+    );
+    out = { ok: true, reason: `Спортивные права ОСА на ${p.name} перешли в «${t.name}»!` };
+  });
+  return out;
+}
+
+export function respondRfaOfferSheet(offerId: number, matchOffer: boolean): string | null {
+  let err: string | null = null;
+  store.update((state) => {
+    const sheet = (state.rfaOffers ?? []).find((o) => o.id === offerId);
+    if (!sheet) return;
+    const U = state.userTeamId;
+    const t = state.teams[U];
+    const from = state.teams[sheet.fromTeamId];
+    const p = state.players[sheet.playerId];
+    if (!p || !from) {
+      state.rfaOffers = (state.rfaOffers ?? []).filter((o) => o.id !== offerId);
+      return;
+    }
+    if (matchOffer) {
+      if (t.players.length >= MAX_ROSTER) {
+        err = `В составе уже ${MAX_ROSTER} игроков`;
+        return;
+      }
+      const afterPay = committedPayroll(state, t) + sheet.salary;
+      if (afterPay > state.league.salaryCap) {
+        err = `ФОТ с этим контрактом (${formatMoney(afterPay)}) превысит потолок зарплат`;
+        return;
+      }
+      if (t.budget < sheet.salary) {
+        err = `Недостаточно средств в бюджете (${formatMoney(t.budget)})`;
+        return;
+      }
+      p.contract = { salary: sheet.salary, years: sheet.years };
+      p.teamId = U;
+      p.rightsTeamId = U;
+      t.players.push(p.id);
+      state.freeAgents = state.freeAgents.filter((id) => id !== p.id);
+      state.rfaOffers = (state.rfaOffers ?? []).filter((o) => o.id !== offerId);
+      t.lineup = sanitizeLineup(t.lineup, t.players, state.players, lineupConstraintsFor(state, U));
+      addNews(
+        state,
+        'trade',
+        `«${t.name}» повторила оффершит «${from.name}» и сохранила ОСА ${p.name} (${formatMoney(sheet.salary)} × ${sheet.years} г.)!`,
+        U
+      );
+    } else {
+      p.contract = { salary: sheet.salary, years: sheet.years };
+      p.teamId = from.id;
+      p.rightsTeamId = from.id;
+      from.players.push(p.id);
+      from.budget = Math.max(0, from.budget - sheet.compensation);
+      t.budget += sheet.compensation;
+      state.freeAgents = state.freeAgents.filter((id) => id !== p.id);
+      state.rfaOffers = (state.rfaOffers ?? []).filter((o) => o.id !== offerId);
+      from.lineup = autoLineup(from.players, state.players, lineupConstraintsFor(state, from.id));
+      addNews(
+        state,
+        'trade',
+        `ОСА ${p.name} переходит в «${from.name}» по оффершиту; «${t.name}» получает денежную компенсацию ${formatMoney(sheet.compensation)}!`,
+        U
+      );
+    }
+  });
+  return err;
+}
+
+/* ---------------- junior draft & hall of fame ---------------- */
+export function pickJuniorProspect(prospectId?: string): string | null {
+  let pickedName: string | null = null;
+  store.update((state) => {
+    const draft = state.offseason?.draft;
+    if (!draft || draft.completed) return;
+    if (currentDraftTeamId(draft) !== state.userTeamId) {
+      advanceAiDraftToUser(state, draft);
+    }
+    if (currentDraftTeamId(draft) !== state.userTeamId) return;
+    const rec = executeSingleDraftPick(state, draft, prospectId);
+    if (rec) {
+      const p = state.players[rec.playerId];
+      pickedName = p?.name ?? null;
+      if (p) {
+        addNews(
+          state,
+          'milestone',
+          `Ярмарка юниоров КХЛ (раунд ${rec.round}, пик #${rec.overallPick}): «${state.teams[state.userTeamId].name}» выбирает ${p.name} (${p.age} л., ОВР ${p.overall}, пот. ${p.potential})!`,
+          state.userTeamId
+        );
+      }
+    }
+    advanceAiDraftToUser(state, draft);
+  });
+  return pickedName;
+}
+
+export function finishJuniorDraftAuto() {
+  store.update((state) => {
+    const draft = state.offseason?.draft;
+    if (!draft || draft.completed) return;
+    const beforeLen = draft.picks.length;
+    autoCompleteDraft(state, draft);
+    const userNew = draft.picks.slice(beforeLen).filter((pk) => pk.teamId === state.userTeamId);
+    if (userNew.length) {
+      const namesList = userNew.map((pk) => state.players[pk.playerId]?.name).filter(Boolean).join(', ');
+      addNews(state, 'milestone', `Автовыбор Ярмарки юниоров КХЛ: в систему клуба зачислены ${namesList}.`, state.userTeamId);
+    }
+  });
+}
+
+export function toggleHallOfFameJersey(entryId: string) {
+  store.update((state) => {
+    const item = (state.hallOfFame ?? []).find((h) => h.id === entryId);
+    if (item && item.teamId === state.userTeamId) {
+      item.jerseyRetired = !item.jerseyRetired;
+    }
+  });
 }
 
 /** Terminate a contract. The club pays severance (see buyoutCost) and absorbs 20% dead cap for the rest of the season. Returns an error text or null. */

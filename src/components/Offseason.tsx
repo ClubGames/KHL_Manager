@@ -1,7 +1,11 @@
+import { useState } from 'react';
 import { talksLeft, askingSalary } from '../game/contracts';
-import { formatMoney } from '../game/ratings';
+import { formatMoney, isGoalie } from '../game/ratings';
 import { TRAINING_PLANS } from '../game/training';
-import { letGo, startNewSeason, useGame } from '../game/state';
+import { getArchetype } from '../game/chemistry';
+import { currentDraftTeamId } from '../game/dynasty';
+import { isRfaEligibleAge, qualifyingOfferSalary } from '../game/khlRules';
+import { finishJuniorDraftAuto, letGo, pickJuniorProspect, respondRfaOfferSheet, startNewSeason, tenderQualifyingOffer, useGame } from '../game/state';
 import { Button, Empty, OverallChip, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { cn } from '../utils/cn';
 
@@ -19,6 +23,8 @@ export function Offseason() {
   const U = s.teams[s.userTeamId];
   const plan = s.offseason;
   const summary = s.summaries[s.summaries.length - 1];
+  const [offNotice, setOffNotice] = useState<string | null>(null);
+  const [draftPos, setDraftPos] = useState<'ALL' | 'F' | 'D' | 'G'>('ALL');
   if (!plan) {
     return (
       <Panel>
@@ -30,6 +36,23 @@ export function Offseason() {
   const progressions = plan.progressions.filter((x) => P[x.id] && P[x.id].teamId === U.id);
   const ups = progressions.filter((x) => x.to > x.from);
   const downs = progressions.filter((x) => x.to < x.from);
+  const draft = plan.draft;
+  const retired = plan.retired ?? [];
+  const onClockTeamId = draft ? currentDraftTeamId(draft) : null;
+  const isUserPick = onClockTeamId === U.id;
+  const totalPicks = draft ? draft.rounds * draft.order.length : 0;
+  const roundSize = Math.max(1, draft?.order.length ?? Object.keys(s.teams).length);
+  const curRound = draft ? Math.floor(draft.pickIndex / roundSize) + 1 : 1;
+  const pickedIds = new Set((draft?.picks ?? []).map((pk) => pk.playerId));
+  const availableProspects = (draft?.prospects ?? []).filter((pr) => {
+    if (pickedIds.has(pr.id)) return false;
+    const jp = P[pr.id];
+    if (!jp) return false;
+    if (draftPos === 'ALL') return true;
+    if (draftPos === 'G') return isGoalie(jp);
+    if (draftPos === 'D') return jp.position === 'D';
+    return jp.position !== 'D' && !isGoalie(jp);
+  });
   const begin = () => {
     const go = () => {
       startNewSeason();
@@ -104,6 +127,219 @@ export function Offseason() {
         </Panel>
       )}
 
+      {offNotice && (
+        <div className="rounded-md border border-ice/40 bg-ice/10 px-3 py-2 text-xs text-ice">{offNotice}</div>
+      )}
+
+      {(s.rfaOffers ?? []).length > 0 && (
+        <Panel title="⚡ Оффершиты КХЛ по вашим ограниченно свободным агентам (ОСА)" className="border-gold/50">
+          <div className="space-y-2">
+            {(s.rfaOffers ?? []).map((os) => {
+              const op = P[os.playerId];
+              const fromT = s.teams[os.fromTeamId];
+              if (!op) return null;
+              return (
+                <div key={os.id} className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-line bg-panel2/70 px-3 py-2 text-xs">
+                  <div>
+                    <b>{fromT?.name}</b> предложил вашему ОСА <b>{op.name}</b> ({op.age} л., OVR {op.overall}) контракт{' '}
+                    <b className="text-gold">{formatMoney(os.salary)} × {os.years} г.</b> Компенсация за права:{' '}
+                    <b className="text-ok">+{formatMoney(os.compensation)}</b>.
+                  </div>
+                  <div className="flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={() => {
+                        const err = respondRfaOfferSheet(os.id, true);
+                        setOffNotice(err ?? `Оффершит повторён — ${op.name} остаётся в клубе!`);
+                      }}
+                    >
+                      Повторить контракт
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const err = respondRfaOfferSheet(os.id, false);
+                        setOffNotice(err ?? `Получена компенсация ${formatMoney(os.compensation)} за права ОСА ${op.name}.`);
+                      }}
+                    >
+                      Отпустить за {formatMoney(os.compensation)}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
+
+      {draft && (
+        <Panel
+          title={`Ярмарка юниоров КХЛ и Выпуск Академии МХЛ · ${s.league.season}`}
+          data-junior-draft
+          right={
+            <div className="flex items-center gap-2 flex-wrap">
+              {draft.completed ? (
+                <Tag tone="good">Ярмарка завершена ({draft.picks.length} выборов)</Tag>
+              ) : (
+                <>
+                  <Tag tone={isUserPick ? 'warn' : 'accent'}>
+                    Раунд {curRound} · Пик #{draft.pickIndex + 1}/{totalPicks} ({s.teams[onClockTeamId!]?.short})
+                  </Tag>
+                  <Button size="sm" variant="secondary" onClick={() => finishJuniorDraftAuto()}>
+                    Автовыбор до конца
+                  </Button>
+                </>
+              )}
+            </div>
+          }
+        >
+          {!draft.completed && isUserPick && (
+            <div className="mb-3 rounded-md border border-gold/60 bg-gold/15 px-3 py-2 text-xs text-gold font-semibold">
+              🎯 Сейчас выбор вашего клуба ({U.name})! Выберите лучшего 17–19-летнего проспекта МХЛ на двусторонний контракт новичка (лимитчик U20).
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 space-y-2">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-xs text-muted">Доступные юниоры скаутского бюро ({availableProspects.length})</span>
+                <div className="flex gap-1">
+                  {(['ALL', 'F', 'D', 'G'] as const).map((k) => (
+                    <button
+                      key={k}
+                      onClick={() => setDraftPos(k)}
+                      className={cn(
+                        'text-[11px] px-2 py-0.5 rounded-sm font-semibold cursor-pointer',
+                        draftPos === k ? 'bg-accent text-white' : 'bg-panel2 text-muted hover:text-text'
+                      )}
+                    >
+                      {k === 'ALL' ? 'Все' : k === 'F' ? 'Нап' : k === 'D' ? 'Защ' : 'Вр'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {draft.completed ? (
+                <Empty text="Все раунды Ярмарки юниоров КХЛ проведены. Выбранные новички уже зачислены в систему клубов!" />
+              ) : (
+                <div className="max-h-72 overflow-y-auto divide-y divide-line/60 border border-line/70 rounded-sm">
+                  {availableProspects.slice(0, 28).map((pr, idx) => {
+                    const jp = P[pr.id];
+                    if (!jp) return null;
+                    const arch = getArchetype(jp);
+                    const gradeTone =
+                      pr.tag === 'Топ-проспект'
+                        ? 'warn'
+                        : pr.tag === 'Готов к КХЛ'
+                          ? 'good'
+                          : pr.tag === 'Тёмная лошадка'
+                            ? 'accent'
+                            : 'muted';
+                    return (
+                      <div key={pr.id} className="px-3 py-2 flex items-center justify-between gap-2 text-xs hover:bg-panel2/60">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-muted font-display w-6">#{idx + 1}</span>
+                            <PosBadge pos={jp.position} />
+                            <button onClick={() => ui.openPlayer(jp.id)} className="font-semibold text-sm truncate hover:text-ice text-left">
+                              {jp.name}
+                            </button>
+                            <span className="text-muted">{jp.age} л. · {jp.country}</span>
+                            <Tag tone={gradeTone}>{pr.tag}</Tag>
+                            <span className="text-[10px] px-1 rounded bg-panel2" style={{ color: arch.color }}>
+                              {arch.short}
+                            </span>
+                          </div>
+                          <div className="text-[11px] text-muted mt-0.5 pl-7">
+                            Школа: {pr.school} · Оценка скаута: <b>{pr.grade}</b> · Прогноз потенциала: {pr.potRange[0]}–{pr.potRange[1]}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <OverallChip value={jp.overall} size="sm" />
+                          {isUserPick && (
+                            <Button
+                              size="sm"
+                              variant="primary"
+                              onClick={() => {
+                                const picked = pickJuniorProspect(pr.id);
+                                if (picked) setOffNotice(`В систему клуба выбран юниор ${picked}!`);
+                              }}
+                            >
+                              Выбрать
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="text-xs text-muted mb-1.5">Ход Ярмарки ({draft.picks.length} выбрано)</div>
+              {draft.picks.length === 0 ? (
+                <Empty text="Пока не сделано ни одного выбора" />
+              ) : (
+                <ul className="max-h-72 overflow-y-auto divide-y divide-line/50 border border-line/70 rounded-sm text-xs">
+                  {[...draft.picks].reverse().map((pk) => {
+                    const t = s.teams[pk.teamId];
+                    const pp = P[pk.playerId];
+                    const mine = pk.teamId === U.id;
+                    return (
+                      <li key={pk.overallPick} className={cn('px-2.5 py-1.5 flex items-center gap-2', mine && 'bg-gold/10')}>
+                        <span className="text-muted tabular w-7">#{pk.overallPick}</span>
+                        {t && <TeamLogo team={t} size={18} />}
+                        {pp && <PosBadge pos={pp.position} />}
+                        <button
+                          onClick={() => pp && ui.openPlayer(pk.playerId)}
+                          className={cn('truncate flex-1 text-left hover:text-ice', mine && 'font-semibold text-gold')}
+                        >
+                          {pp?.name ?? pk.playerId}
+                        </button>
+                        <span className="font-display tabular text-ice">{pp?.overall ?? '—'}</span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+            </div>
+          </div>
+        </Panel>
+      )}
+
+      {retired.length > 0 && (
+        <Panel title={`Завершение карьеры ветеранов (${retired.length})`} right={<Tag tone="warn">Выведено номеров: {retired.filter((r) => r.jerseyRetired).length}</Tag>}>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 text-xs">
+            {retired.slice(0, 12).map((ret) => {
+              const rt = ret.teamId ? s.teams[ret.teamId] : null;
+              return (
+                <div
+                  key={ret.id}
+                  className={cn(
+                    'rounded-sm border px-3 py-2 flex items-center justify-between gap-2',
+                    ret.jerseyRetired ? 'border-gold/50 bg-gold/10' : 'border-line bg-panel2/50'
+                  )}
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <PosBadge pos={ret.position} />
+                      <span className="font-semibold truncate">{ret.name}</span>
+                      {ret.jerseyRetired && <Tag tone="warn">★ №{ret.number} в Зале славы</Tag>}
+                    </div>
+                    <div className="text-[11px] text-muted">
+                      {rt ? rt.short : ret.teamName} · {ret.age} лет · {ret.gp} И ({ret.position === 'G' ? `${ret.wins} поб.` : `${ret.goals + ret.assists} О`})
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
+
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
         <Panel title="Изменение рейтинга игроков" right={<span className="text-xs text-muted">↑ {ups.length} · ↓ {downs.length}</span>}>
           {progressions.length === 0 ? (
@@ -143,15 +379,32 @@ export function Offseason() {
             <ul className="divide-y divide-line/60 text-sm max-h-[420px] overflow-y-auto" data-expiring>
               {expiring.map((p) => {
                 const left = talksLeft(s, p);
+                const isRfa = isRfaEligibleAge(p.age);
                 return (
                   <li key={p.id} className="py-2 flex items-center gap-2 flex-wrap">
                     <PosBadge pos={p.position} />
                     <button className="flex-1 min-w-[120px] truncate text-left hover:text-ice" onClick={() => ui.openPlayer(p.id)}>
                       {p.name}
                     </button>
+                    <span className={cn('text-[10px] font-semibold px-1 rounded', isRfa ? 'bg-ice/20 text-ice' : 'bg-panel2 text-muted')}>
+                      {isRfa ? 'ОСА' : 'НСА'}
+                    </span>
                     <span className="text-xs text-muted">{p.age} л.</span>
                     <OverallChip value={p.overall} size="sm" />
                     <span className="text-xs text-muted tabular whitespace-nowrap">запрос {formatMoney(askingSalary(s, p, 1, U.id))}</span>
+                    {isRfa && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        title={`Квалификационное предложение на 1 год (${formatMoney(qualifyingOfferSalary(p))}) или сохранение прав ОСА`}
+                        onClick={() => {
+                          const err = tenderQualifyingOffer(p.id);
+                          setOffNotice(err ?? `Квалификационное предложение сделано — права ОСА на ${p.name} закреплены!`);
+                        }}
+                      >
+                        КП (ОСА)
+                      </Button>
+                    )}
                     <Button size="sm" variant="primary" disabled={left <= 0} onClick={() => ui.negotiate(p.id)}>
                       {left <= 0 ? 'Отказ' : 'Переговоры'}
                     </Button>

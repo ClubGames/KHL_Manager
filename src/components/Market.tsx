@@ -3,9 +3,10 @@ import { groupOf } from '../game/ai';
 import { askingSalary, talksLeft } from '../game/contracts';
 import { getCapSummary } from '../game/cap';
 import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
+import { isRfaEligibleAge, offerSheetCompensation } from '../game/khlRules';
 import { formatMoney } from '../game/ratings';
-import { useGame } from '../game/state';
-import { Button, OverallChip, Panel, PosBadge, Tag, useUI } from './ui';
+import { claimFromWaivers, useGame } from '../game/state';
+import { Button, OverallChip, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { cn } from '../utils/cn';
 
 export function Market() {
@@ -15,11 +16,14 @@ export function Market() {
   const U = s.teams[s.userTeamId];
   const [pos, setPos] = useState<'ALL' | 'F' | 'D' | 'G'>('ALL');
   const [natFilter, setNatFilter] = useState<'ALL' | 'EAEU' | 'LEG'>('ALL');
+  const [faFilter, setFaFilter] = useState<'ALL' | 'UFA' | 'RFA'>('ALL');
+  const [waiverMsg, setWaiverMsg] = useState<string | null>(null);
   const fl = teamForeignLimit(U, s.league.foreignLimit);
   const curLegs = countRosterLegionnaires(U.players, P);
   const capInfo = getCapSummary(s, U.id);
   const fol = capInfo.totalPayroll;
   const cap = s.league.salaryCap;
+  const activeWaivers = (s.waivers ?? []).filter((w) => w.expiresDay > s.day && P[w.playerId]);
 
   const list = s.freeAgents
     .map((id) => P[id])
@@ -28,16 +32,81 @@ export function Market() {
       if (pos !== 'ALL' && groupOf(p) !== pos) return false;
       if (natFilter === 'EAEU' && isLegionnaire(p)) return false;
       if (natFilter === 'LEG' && !isLegionnaire(p)) return false;
+      const isRfa = !!p.rightsTeamId && isRfaEligibleAge(p.age);
+      if (faFilter === 'UFA' && isRfa) return false;
+      if (faFilter === 'RFA' && !isRfa) return false;
       return true;
     })
     .sort((a, b) => b.overall - a.overall);
 
   return (
     <div className="space-y-4 fade-in">
+      {waiverMsg && (
+        <div className="rounded-md border border-ice/40 bg-ice/10 px-3 py-2 text-xs text-ice">{waiverMsg}</div>
+      )}
+      {activeWaivers.length > 0 && (
+        <Panel title={`Драфт отказов КХЛ (Waiver Wire · ${activeWaivers.length})`} right={<Tag tone="warn">48 часов · бесплатно</Tag>}>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {activeWaivers.map((w) => {
+              const wp = P[w.playerId];
+              const fromT = s.teams[w.fromTeamId];
+              if (!wp) return null;
+              return (
+                <div key={w.playerId} className="rounded-sm border border-line bg-panel2/60 p-2.5 flex items-center justify-between gap-2 text-xs">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {fromT && <TeamLogo team={fromT} size={24} />}
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <PosBadge pos={wp.position} />
+                        <button onClick={() => ui.openPlayer(wp.id)} className="font-semibold text-sm hover:text-ice truncate">
+                          {wp.name}
+                        </button>
+                        <OverallChip value={wp.overall} size="sm" />
+                      </div>
+                      <div className="text-[11px] text-muted">
+                        Из {fromT?.short ?? 'КХЛ'} · {wp.age} л. · оклад {formatMoney(wp.contract.salary)} × {wp.contract.years} г.
+                      </div>
+                    </div>
+                  </div>
+                  {w.fromTeamId !== U.id ? (
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={() => {
+                        const err = claimFromWaivers(wp.id);
+                        setWaiverMsg(err ?? `${wp.name} забран со списка отказов КХЛ!`);
+                      }}
+                    >
+                      Забрать с отказов
+                    </Button>
+                  ) : (
+                    <Tag>Ваш игрок</Tag>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </Panel>
+      )}
       <Panel
-        title="Рынок свободных агентов"
+        title="Рынок свободных агентов (НСА и ОСА)"
         right={
           <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1">
+              {([
+                ['ALL', 'НСА + ОСА'],
+                ['UFA', 'НСА (28+)'],
+                ['RFA', 'ОСА (оффершит)'],
+              ] as const).map(([k, lbl]) => (
+                <button
+                  key={k}
+                  onClick={() => setFaFilter(k)}
+                  className={cn('text-[11px] px-2 py-1 rounded-sm font-semibold cursor-pointer', faFilter === k ? 'bg-gold text-bg' : 'text-muted hover:text-text bg-bg/60')}
+                >
+                  {lbl}
+                </button>
+              ))}
+            </div>
             <div className="flex items-center gap-1">
               {([
                 ['ALL', 'Все паспорта'],
@@ -119,6 +188,22 @@ export function Market() {
                         {p.name}
                       </button>
                       <span className="ml-1.5 text-[10px] text-muted">{countryCode(p.country)}</span>
+                      {p.rightsTeamId && isRfaEligibleAge(p.age) ? (
+                        <span
+                          className="ml-1.5"
+                          title={
+                            p.rightsTeamId === U.id
+                              ? 'Спортивные права ОСА принадлежат вашему клубу'
+                              : `Оффершит ОСА: компенсация ${formatMoney(offerSheetCompensation(ask, p.overall))} клубу ${s.teams[p.rightsTeamId]?.short ?? ''}`
+                          }
+                        >
+                          <Tag tone={p.rightsTeamId === U.id ? 'good' : 'accent'}>
+                            ОСА ({s.teams[p.rightsTeamId]?.short ?? 'КХЛ'})
+                          </Tag>
+                        </span>
+                      ) : (
+                        <span className="ml-1.5 text-[10px] text-muted">НСА</span>
+                      )}
                       {leg && <Tag tone={legFull ? 'bad' : 'warn'} className="ml-1.5">ЛЕГ</Tag>}
                     </td>
                     <td className="py-2">

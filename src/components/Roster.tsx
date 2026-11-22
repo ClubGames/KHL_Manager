@@ -1,11 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Player } from '../types';
 import { formatMoney, isDefense, isForward, isGoalie, POS_NAME, salaryDemand, SKILL_LABELS, skillList } from '../game/ratings';
-import { autoAssignYouthPlans, releasePlayer, setTradeFlag, setTrainingPlan, useGame } from '../game/state';
+import { autoAssignYouthPlans, claimFromWaivers, recallFromVhl, releasePlayer, sendToVhlOrWaivers, setTeamRole, setTradeFlag, setTrainingPlan, toggleHallOfFameJersey, useGame } from '../game/state';
 import { buyoutCost } from '../game/contracts';
 import { buyoutDeadCap, getCapSummary } from '../game/cap';
 import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
 import { getPlayerPlan, isYouthPlayer, playerIceRole, plansForPlayer } from '../game/training';
+import { freshnessTone, getArchetype, goalieFreshness, playerCaptainRole } from '../game/chemistry';
+import { isU20Limiter } from '../game/dynasty';
+import { isWaiverExempt, playerStatusTag, teamVhlCapRelief, vhlPlayerCapRelief } from '../game/khlRules';
 import { Bar, Button, Empty, Modal, OverallChip, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { cn } from '../utils/cn';
 
@@ -61,14 +64,22 @@ export function Roster({ teamId }: { teamId?: string }) {
   const tid = teamId ?? s.userTeamId;
   const team = s.teams[tid];
   const isOwnTeam = tid === s.userTeamId;
-  const [tab, setTab] = useState<'F' | 'D' | 'G' | 'U23'>('F');
+  const [tab, setTab] = useState<'F' | 'D' | 'G' | 'U23' | 'VHL' | 'HOF'>('F');
   const [sort, setSort] = useState<{ k: SortKey; d: number }>({ k: 'overall', d: -1 });
-  const all = team.players.map((id) => P[id]);
+  const [vhlNotice, setVhlNotice] = useState<{ ok: boolean; msg: string } | null>(null);
+  const [hofScope, setHofScope] = useState<'club' | 'league'>('club');
+  const all = team.players.map((id) => P[id]).filter(Boolean);
   const youthList = useMemo(() => all.filter((p) => isYouthPlayer(p)).sort((a, b) => b.potential - a.potential || b.overall - a.overall), [all]);
+  const vhlList = useMemo(() => all.filter((p) => p.inVhl).sort((a, b) => b.overall - a.overall), [all]);
+  const activeWaivers = (s.waivers ?? []).filter((w) => w.expiresDay > s.day && P[w.playerId]);
+  const hofList = (s.hallOfFame ?? []).filter((e) => (hofScope === 'club' ? e.teamId === tid : true));
+  const totalVhlRelief = teamVhlCapRelief(team.players, P);
   const fl = teamForeignLimit(team, s.league.foreignLimit);
   const legCount = countRosterLegionnaires(team.players, P);
   const capInfo = getCapSummary(s, tid);
   const suspendedSet = new Set(capInfo.suspendedIds);
+  const capPlayer = team.captainId ? P[team.captainId] : null;
+  const altPlayers = (team.assistantIds ?? []).map((id: string) => P[id]).filter(Boolean);
 
   const list = useMemo(() => {
     const f = all.filter((p) => (tab === 'G' ? isGoalie(p) : tab === 'D' ? isDefense(p) : isForward(p)));
@@ -105,25 +116,68 @@ export function Roster({ teamId }: { teamId?: string }) {
             {capInfo.deadCap > 0 ? ` (вкл. выкупы ${formatMoney(capInfo.deadCap)})` : ''}
           </Tag>
           {capInfo.sanctionsActive && <Tag tone="bad">Санкции потолка активны (−{capInfo.pointsDeducted} очк.)</Tag>}
+          {capPlayer && (
+            <span className="text-gold font-semibold">
+              К: {capPlayer.name}
+              {altPlayers.length > 0 && <span className="text-ice font-normal ml-1.5">· А: {altPlayers.map((a: Player) => a.name).join(', ')}</span>}
+            </span>
+          )}
         </div>
         {isOwnTeam && (
-          <button
-            type="button"
-            onClick={() => setTab(tab === 'U23' ? 'F' : 'U23')}
-            className={cn(
-              'px-2.5 py-1 rounded font-semibold transition cursor-pointer',
-              tab === 'U23' ? 'bg-gold text-bg' : 'bg-gold/15 text-gold border border-gold/40 hover:bg-gold/25'
-            )}
-          >
-            ★ Тренировочные планы молодёжи U23 ({youthList.length})
-          </button>
+          <div className="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              onClick={() => setTab(tab === 'VHL' ? 'F' : 'VHL')}
+              data-vhl-tab
+              className={cn(
+                'px-2.5 py-1 rounded font-semibold transition cursor-pointer',
+                tab === 'VHL' ? 'bg-ice text-bg' : 'bg-ice/15 text-ice border border-ice/40 hover:bg-ice/25'
+              )}
+            >
+              ⇄ Фарм ВХЛ и Отказы ({vhlList.length}/{activeWaivers.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab(tab === 'HOF' ? 'F' : 'HOF')}
+              data-hof-tab
+              className={cn(
+                'px-2.5 py-1 rounded font-semibold transition cursor-pointer',
+                tab === 'HOF' ? 'bg-gold text-bg' : 'bg-panel2 text-gold border border-gold/40 hover:bg-gold/20'
+              )}
+            >
+              🏆 Зал славы ({(s.hallOfFame ?? []).length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setTab(tab === 'U23' ? 'F' : 'U23')}
+              className={cn(
+                'px-2.5 py-1 rounded font-semibold transition cursor-pointer',
+                tab === 'U23' ? 'bg-gold text-bg' : 'bg-gold/15 text-gold border border-gold/40 hover:bg-gold/25'
+              )}
+            >
+              ★ Планы U23 ({youthList.length})
+            </button>
+          </div>
         )}
       </div>
+
+      {vhlNotice && (
+        <div className={cn('rounded-md border px-3 py-2 text-xs', vhlNotice.ok ? 'border-ok/40 bg-ok/10 text-ok' : 'border-accent/40 bg-accent/10 text-accent')}>
+          {vhlNotice.msg}
+        </div>
+      )}
 
       <Panel
         title={
           <span className="flex items-center gap-2">
-            <TeamLogo team={team} size={22} /> {tab === 'U23' ? `Развитие молодёжи (U23) · ${team.name}` : `Состав · ${team.name}`}
+            <TeamLogo team={team} size={22} />{' '}
+            {tab === 'U23'
+              ? `Развитие молодёжи (U23) · ${team.name}`
+              : tab === 'VHL'
+                ? `Фарм-клуб ВХЛ и драфт отказов · ${team.name}`
+                : tab === 'HOF'
+                  ? `Зал славы и выведенные номера · ${team.name}`
+                  : `Состав · ${team.name}`}
           </span>
         }
         right={
@@ -134,18 +188,238 @@ export function Roster({ teamId }: { teamId?: string }) {
               </button>
             ))}
             {isOwnTeam && (
-              <button
-                onClick={() => setTab('U23')}
-                className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold transition-colors cursor-pointer', tab === 'U23' ? 'bg-gold text-bg' : 'text-gold hover:text-ice bg-panel2')}
-              >
-                Планы U23 ({youthList.length})
-              </button>
+              <>
+                <button
+                  onClick={() => setTab('U23')}
+                  className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold transition-colors cursor-pointer', tab === 'U23' ? 'bg-gold text-bg' : 'text-gold hover:text-ice bg-panel2')}
+                >
+                  Планы U23 ({youthList.length})
+                </button>
+                <button
+                  onClick={() => setTab('VHL')}
+                  className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold transition-colors cursor-pointer', tab === 'VHL' ? 'bg-ice text-bg' : 'text-ice hover:text-text bg-panel2')}
+                >
+                  ВХЛ / Отказы
+                </button>
+                <button
+                  onClick={() => setTab('HOF')}
+                  className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold transition-colors cursor-pointer', tab === 'HOF' ? 'bg-gold text-bg' : 'text-muted hover:text-text bg-panel2')}
+                >
+                  Зал славы
+                </button>
+              </>
             )}
           </div>
         }
-        noPad={tab !== 'U23'}
+        noPad={tab === 'F' || tab === 'D' || tab === 'G'}
       >
-        {tab === 'U23' && isOwnTeam ? (
+        {tab === 'VHL' && isOwnTeam ? (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-vhl-view>
+            <div className="space-y-3">
+              <div className="rounded-md border border-line bg-bg/50 p-3 text-xs space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-display uppercase tracking-wider text-ice font-semibold">Командированные в ВХЛ ({vhlList.length})</span>
+                  <Tag tone="good">Разгрузка потолка: {formatMoney(totalVhlRelief)}</Tag>
+                </div>
+                <p className="text-muted">
+                  До <b>22 лет</b> — прямой перевод в ВХЛ без отказов (+игровая практика). С <b>23 лет</b> — через <b>48-часовой драфт отказов</b> (игроки с пунктом ЗНО защищены). Контракт в ВХЛ облегчает ФОТ под потолком до 15 млн ₽.
+                </p>
+              </div>
+              {vhlList.length === 0 ? (
+                <Empty text="В фарм-клубе ВХЛ сейчас нет игроков." />
+              ) : (
+                <div className="space-y-1.5">
+                  {vhlList.map((p) => (
+                    <div key={p.id} className="rounded-sm border border-line bg-panel2/60 p-2.5 flex items-center justify-between gap-2 text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <PosBadge pos={p.position} />
+                        <button onClick={() => ui.openPlayer(p.id)} className="font-semibold text-sm hover:text-ice truncate">
+                          {p.name}
+                        </button>
+                        <span className="text-muted">{p.age} л.</span>
+                        <OverallChip value={p.overall} size="sm" />
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-ok tabular">
+                          в ФОТ {formatMoney(p.contract.salary - vhlPlayerCapRelief(p))} <span className="text-muted">/ {formatMoney(p.contract.salary)}</span>
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => {
+                            const err = recallFromVhl(p.id);
+                            setVhlNotice({ ok: !err, msg: err ?? `${p.name} вызван из ВХЛ в основу КХЛ.` });
+                          }}
+                        >
+                          Вызвать в КХЛ
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="pt-2 border-t border-line">
+                <div className="text-[11px] uppercase tracking-wider text-muted mb-1.5">Отправить из основы КХЛ в ВХЛ</div>
+                <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
+                  {all
+                    .filter((p) => !p.inVhl)
+                    .sort((a, b) => a.overall - b.overall)
+                    .map((p) => {
+                      const exempt = isWaiverExempt(p);
+                      const onW = activeWaivers.some((w) => w.playerId === p.id);
+                      return (
+                        <div key={p.id} className="flex items-center justify-between gap-2 px-2 py-1 rounded hover:bg-panel2 text-xs">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <PosBadge pos={p.position} />
+                            <span className="truncate font-medium">{p.name}</span>
+                            <span className="text-muted">{p.age} л. · {p.overall}</span>
+                            {p.nmc && <Tag tone="warn">ЗНО</Tag>}
+                            {exempt ? <Tag tone="good">≤22 напрямую</Tag> : <Tag tone="accent">Отказы 48ч</Tag>}
+                          </div>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={!!p.nmc || onW}
+                            onClick={() => {
+                              const err = sendToVhlOrWaivers(p.id);
+                              setVhlNotice({
+                                ok: !err,
+                                msg: err ?? (exempt ? `${p.name} переведён в фарм-клуб ВХЛ.` : `${p.name} помещён в список отказов КХЛ на 48 часов.`),
+                              });
+                            }}
+                          >
+                            {onW ? 'На отказах' : exempt ? 'В ВХЛ' : 'На отказы'}
+                          </Button>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-md border border-line bg-bg/50 p-3 text-xs flex items-center justify-between">
+                <div>
+                  <div className="font-display uppercase tracking-wider text-gold font-semibold">Драфт отказов КХЛ (48 часов)</div>
+                  <div className="text-muted mt-0.5">Любой клуб с местом под потолком может бесплатно забрать выставленного игрока.</div>
+                </div>
+                <Tag tone="warn">{activeWaivers.length} лотов</Tag>
+              </div>
+              {activeWaivers.length === 0 ? (
+                <Empty text="На драфте отказов КХЛ сейчас никого нет." />
+              ) : (
+                <div className="space-y-2">
+                  {activeWaivers.map((w) => {
+                    const wp = P[w.playerId];
+                    const fromT = s.teams[w.fromTeamId];
+                    if (!wp) return null;
+                    return (
+                      <div key={w.playerId} className="rounded-sm border border-line bg-panel2/60 p-2.5 flex items-center justify-between gap-2 text-xs">
+                        <div className="flex items-center gap-2 min-w-0">
+                          {fromT && <TeamLogo team={fromT} size={24} />}
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <PosBadge pos={wp.position} />
+                              <button onClick={() => ui.openPlayer(wp.id)} className="font-semibold text-sm hover:text-ice truncate">
+                                {wp.name}
+                              </button>
+                              <OverallChip value={wp.overall} size="sm" />
+                            </div>
+                            <div className="text-[11px] text-muted">
+                              Из {fromT?.short ?? 'КХЛ'} · {wp.age} л. · {formatMoney(wp.contract.salary)} ({wp.contract.years} г.) · до дня {w.expiresDay + 1}
+                            </div>
+                          </div>
+                        </div>
+                        {w.fromTeamId !== s.userTeamId ? (
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => {
+                              const err = claimFromWaivers(wp.id);
+                              setVhlNotice({ ok: !err, msg: err ?? `${wp.name} забран со списка отказов КХЛ!` });
+                            }}
+                          >
+                            Забрать
+                          </Button>
+                        ) : (
+                          <Tag>Ваш лот</Tag>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : tab === 'HOF' ? (
+          <div className="space-y-3" data-hof-view>
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="text-muted">
+                Выведенные номера и легенды династии (ветераны 35+ лет с выдающейся статистикой, завершившие карьеру по итогам сезона).
+              </span>
+              <div className="flex gap-1">
+                <button
+                  onClick={() => setHofScope('club')}
+                  className={cn('px-2.5 py-1 rounded-sm font-semibold cursor-pointer', hofScope === 'club' ? 'bg-gold text-bg' : 'bg-panel2 text-muted')}
+                >
+                  Клуб {team.short}
+                </button>
+                <button
+                  onClick={() => setHofScope('league')}
+                  className={cn('px-2.5 py-1 rounded-sm font-semibold cursor-pointer', hofScope === 'league' ? 'bg-gold text-bg' : 'bg-panel2 text-muted')}
+                >
+                  Вся КХЛ ({(s.hallOfFame ?? []).length})
+                </button>
+              </div>
+            </div>
+            {hofList.length === 0 ? (
+              <Empty text="Зал славы пока пуст — первые легенды появятся после завершения карьеры заслуженных ветеранов в межсезонье." />
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+                {hofList.map((e, i) => {
+                  const ht = e.teamId ? s.teams[e.teamId] : null;
+                  return (
+                    <div key={`${e.id}_${i}`} className="rounded-md border border-gold/40 bg-panel2/70 p-3 flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => e.teamId === s.userTeamId && toggleHallOfFameJersey(e.id)}
+                        title={e.teamId === s.userTeamId ? 'Нажмите, чтобы вывести или вернуть номер из обращения' : undefined}
+                        className={cn(
+                          'w-12 h-14 rounded-sm border bg-bg flex flex-col items-center justify-center shrink-0',
+                          e.jerseyRetired ? 'border-gold shadow-sm' : 'border-line',
+                          e.teamId === s.userTeamId && 'cursor-pointer hover:border-gold'
+                        )}
+                      >
+                        <span className="text-[9px] text-muted uppercase">{ht?.short ?? e.teamName}</span>
+                        <span className={cn('font-display text-xl font-bold leading-none', e.jerseyRetired ? 'text-gold' : 'text-ice')}>
+                          #{e.number}
+                        </span>
+                      </button>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <PosBadge pos={e.position} />
+                          <span className="font-display text-base font-bold truncate">{e.name}</span>
+                        </div>
+                        <div className="text-[11px] text-muted">
+                          Пик OVR {e.peakOverall} · Ушёл в {e.age} л. · Сезон {e.retiredSeason}
+                        </div>
+                        <div className="text-xs text-ice tabular mt-0.5">
+                          {e.position === 'G'
+                            ? `${e.gp} И · ${e.wins} побед (${e.shutouts} СО)`
+                            : `${e.gp} И · ${e.goals} Ш + ${e.assists} П = ${e.goals + e.assists} О`}
+                        </div>
+                        <div className="text-[11px] text-gold truncate">
+                          {e.jerseyRetired ? '★ Номер выведен из обращения' : 'Член Зала славы'}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : tab === 'U23' && isOwnTeam ? (
           <div className="space-y-3" data-youth-plans>
             <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line/70 bg-bg/50 p-3 text-xs">
               <div className="text-muted max-w-3xl">
@@ -261,12 +535,27 @@ export function Roster({ teamId }: { teamId?: string }) {
                 const sv = p.stats.shotsAgainst ? (p.stats.saves / p.stats.shotsAgainst) * 100 : 0;
                 const leg = isLegionnaire(p);
                 const susp = suspendedSet.has(p.id);
+                const capRole = playerCaptainRole(team, p.id);
+                const arch = getArchetype(p);
                 return (
-                  <tr key={p.id} onClick={() => ui.openPlayer(p.id)} className={cn('border-t border-line/70 hover:bg-panel2 cursor-pointer transition-colors', susp && 'bg-red/5')}>
+                  <tr key={p.id} onClick={() => ui.openPlayer(p.id)} className={cn('border-t border-line/70 hover:bg-panel2 cursor-pointer transition-colors', susp && 'bg-red/5', p.inVhl && 'opacity-70')}>
                     <td className="pl-4 px-2 py-1.5 text-muted">{p.number}</td>
                     <td className="px-2 py-1.5 font-medium whitespace-nowrap">
                       {p.name}
+                      {capRole && (
+                        <span className={cn('ml-1 text-[9px] font-bold px-1 rounded', capRole === 'C' ? 'bg-gold/25 text-gold' : 'bg-ice/20 text-ice')}>
+                          {capRole === 'C' ? 'К' : 'А'}
+                        </span>
+                      )}
+                      {!isGoalie(p) && (
+                        <span className="ml-1 text-[9px] px-1 rounded bg-panel2" style={{ color: arch.color }} title={arch.label}>
+                          {arch.short}
+                        </span>
+                      )}
                       <span className="ml-1.5 text-[10px] text-muted">{countryCode(p.country)}</span>
+                      {p.inVhl && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-ice/20 text-ice">ВХЛ</span>}
+                      {p.nmc && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-gold/20 text-gold" title="Запрет на обмен (ЗНО)">ЗНО</span>}
+                      {isU20Limiter(p) && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-ok/20 text-ok">U20</span>}
                       {leg && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-gold/20 text-gold">ЛЕГ</span>}
                       {isYouthPlayer(p) && isOwnTeam && (
                         <span className="ml-1 text-[9px] px-1 rounded bg-accent/15 text-accent">{getPlayerPlan(p).short}</span>
@@ -303,7 +592,23 @@ export function Roster({ teamId }: { teamId?: string }) {
                         <td className="px-2 py-1.5 text-muted">{p.stats.pim}</td>
                       </>
                     )}
-                    <td className="px-2 py-1.5 pr-4 text-xs text-muted">{susp ? <span className="text-red font-semibold">блок потолка</span> : p.injury ? `${p.injury.games} матч.` : p.morale >= 80 ? 'в тонусе' : p.morale < 50 ? 'мораль низкая' : 'готов'}</td>
+                    <td className="px-2 py-1.5 pr-4 text-xs text-muted">
+                      {susp ? (
+                        <span className="text-red font-semibold">блок потолка</span>
+                      ) : p.inVhl ? (
+                        <span className="text-ice">в ВХЛ</span>
+                      ) : p.injury ? (
+                        `${p.injury.games} матч.`
+                      ) : isGoalie(p) ? (
+                        <span style={{ color: freshnessTone(goalieFreshness(p)).color }}>свеж. {goalieFreshness(p)}%</span>
+                      ) : p.morale >= 80 ? (
+                        'в тонусе'
+                      ) : p.morale < 50 ? (
+                        'мораль низкая'
+                      ) : (
+                        'готов'
+                      )}
+                    </td>
                   </tr>
                 );
               })}
@@ -320,6 +625,7 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
   const s = useGame()!;
   const ui = useUI();
   const p = s.players[id];
+  const [modalNotice, setModalNotice] = useState<string | null>(null);
   useEffect(() => {
     if (!p) onClose();
   }, [p, onClose]);
@@ -330,6 +636,9 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
   const isG = isGoalie(p);
   const sv = st.shotsAgainst ? (st.saves / st.shotsAgainst) * 100 : 0;
   const demand = salaryDemand(p.overall, p.age, p.potential);
+  const arch = getArchetype(p);
+  const faTag = playerStatusTag(p);
+  const capRole = team ? playerCaptainRole(team, p.id) : null;
   return (
     <Modal open onClose={onClose} width="max-w-3xl">
       <div className="flex items-start gap-4 flex-wrap">
@@ -338,11 +647,18 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="font-display text-2xl uppercase leading-none m-0">{p.name}</h2>
             <PosBadge pos={p.position} />
+            <span className="text-xs px-1.5 py-0.5 rounded bg-panel2 font-semibold" style={{ color: arch.color }}>
+              {arch.label}
+            </span>
+            {capRole && <Tag color="#F2B544">{capRole === 'C' ? 'Капитан (К)' : 'Ассистент (А)'}</Tag>}
             <span className="text-xs text-muted">№{p.number}</span>
           </div>
-          <div className="text-xs text-muted mt-1">{POS_NAME[p.position]} · {p.age} лет · {p.height} см · {p.weight} кг · {p.country || '—'} · хват {p.hand === 'L' ? 'левый' : 'правый'}</div>
+          <div className="text-xs text-muted mt-1">{POS_NAME[p.position]} · {p.age} лет ({faTag === 'ОСА' ? 'ОСА <28' : 'НСА 28+'}) · {p.height} см · {p.weight} кг · {p.country || '—'} · хват {p.hand === 'L' ? 'левый' : 'правый'}</div>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             {team && <span className="text-sm">{team.name}</span>}
+            {p.inVhl && <Tag tone="accent">Фарм-клуб ВХЛ</Tag>}
+            {p.nmc && <Tag tone="warn">ЗНО (запрет на обмен)</Tag>}
+            {p.rightsTeamId && !p.teamId && <Tag tone="warn">Права ОСА: {s.teams[p.rightsTeamId]?.short ?? 'КХЛ'}</Tag>}
             {isLegionnaire(p) ? <Tag tone="warn">Легионер ({p.country})</Tag> : <Tag tone="good">Не легионер · ЕАЭС</Tag>}
             {p.injury && <Tag color="#E5323E">Травма: {p.injury.name} · {p.injury.games} матчей</Tag>}
             {!p.teamId && <Tag color="#F2B544">Свободный агент</Tag>}
@@ -380,6 +696,45 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
             <Bar value={p.morale} color={p.morale >= 70 ? '#3FCF8E' : p.morale >= 50 ? '#F2B544' : '#E5323E'} className="flex-1" />
             <span className="tabular text-muted">{p.morale}</span>
           </div>
+
+          {isG && (
+            <>
+              <div className="text-[11px] uppercase tracking-wider text-muted mt-3 mb-1">
+                Свежесть вратаря ({freshnessTone(goalieFreshness(p)).label})
+              </div>
+              <div className="flex items-center gap-3 text-xs">
+                <Bar value={goalieFreshness(p)} color={freshnessTone(goalieFreshness(p)).color} className="flex-1" />
+                <span className="tabular font-semibold" style={{ color: freshnessTone(goalieFreshness(p)).color }}>
+                  {goalieFreshness(p)}%
+                </span>
+              </div>
+            </>
+          )}
+
+          {isUser && !isG && (
+            <div className="mt-3 rounded-sm border border-line bg-panel2/60 p-2.5 flex items-center justify-between gap-2 flex-wrap text-xs">
+              <span className="text-muted">Нашивка лидера раздевалки:</span>
+              <div className="flex gap-1">
+                {([
+                  ['C', 'Капитан (К)'],
+                  ['A', 'Ассистент (А)'],
+                  [null, 'Нет'],
+                ] as const).map(([role, lbl]) => (
+                  <button
+                    key={String(role)}
+                    type="button"
+                    onClick={() => setTeamRole(p.id, role)}
+                    className={cn(
+                      'px-2 py-0.5 rounded border font-semibold cursor-pointer transition',
+                      capRole === role ? 'bg-gold/25 border-gold text-gold' : 'bg-panel border-line text-muted hover:text-text'
+                    )}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {isUser && isYouthPlayer(p) && (
             <div className="mt-4 rounded-sm border border-accent/35 bg-accent/5 p-3 space-y-2">
@@ -491,7 +846,35 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
           )}
         </div>
       </div>
+      {modalNotice && (
+        <div className="mt-3 rounded-sm border border-ice/40 bg-ice/10 px-3 py-1.5 text-xs text-ice">{modalNotice}</div>
+      )}
       <div className="flex flex-wrap gap-2 mt-5 pt-4 border-t border-line justify-end">
+        {isUser && (
+          p.inVhl ? (
+            <Button
+              variant="secondary"
+              onClick={() => {
+                const err = recallFromVhl(p.id);
+                setModalNotice(err ?? `${p.name} вызван из ВХЛ в основной состав.`);
+              }}
+            >
+              ↑ Вызвать из ВХЛ
+            </Button>
+          ) : (
+            <Button
+              variant="secondary"
+              disabled={!!p.nmc}
+              onClick={() => {
+                const err = sendToVhlOrWaivers(p.id);
+                setModalNotice(err ?? (isWaiverExempt(p) ? `${p.name} отправлен в ВХЛ.` : `${p.name} помещён в список отказов КХЛ (48ч).`));
+              }}
+              title={p.nmc ? 'Пункт ЗНО запрещает перевод в ВХЛ / на отказы' : undefined}
+            >
+              ↓ {isWaiverExempt(p) ? 'В фарм ВХЛ (≤22)' : 'На отказы / ВХЛ'}
+            </Button>
+          )
+        )}
         {p.teamId && (
           <Button
             onClick={() => {

@@ -1,6 +1,7 @@
 import type { GameState, Lineup, Player } from '../types';
 import { autoLineup, lineupConstraintsFor, sanitizeLineup } from './ai';
 import { clamp, goalieSavePct, isGoalie, lineAttack, lineDefense, mean, pairAttack, pairDefense, unitAttack, unitDefense } from './ratings';
+import { calcDefenseChemistry, calcForwardChemistry, effectiveGoalieOvr, goalieFreshness } from './chemistry';
 
 export interface PPSlotPreview {
   player: Player | null;
@@ -33,10 +34,12 @@ export interface LineComparisonRow {
   leftDef: number;
   leftOvr: number;
   leftMorale: number;
+  leftChem: number;
   rightAtt: number;
   rightDef: number;
   rightOvr: number;
   rightMorale: number;
+  rightChem: number;
   /** positive = advantage left team */
   edge: number;
 }
@@ -54,6 +57,8 @@ export interface LineupComparison {
   pkRightDef: [number, number];
   goalieLeft: Player | null;
   goalieRight: Player | null;
+  goalieLeftFresh: number;
+  goalieRightFresh: number;
   goalieEdge: number;
   totalEdge: number;
 }
@@ -218,22 +223,28 @@ export function compareTeamLineups(
   const shares = ['~33% льда', '~27% льда', '~22% льда', '~18% льда'];
   const fWeights = [0.33, 0.27, 0.22, 0.18];
   const forwards: LineComparisonRow[] = [0, 1, 2, 3].map((i) => {
-    const l = rowStats(leftLineup.F[i] ?? [], 3, false, P);
-    const r = rowStats(rightLineup.F[i] ?? [], 3, false, P);
-    const edge = +(0.6 * (l.att - r.att) + 0.4 * (l.def - r.def)).toFixed(1);
+    const lIds = leftLineup.F[i] ?? [null, null, null];
+    const rIds = rightLineup.F[i] ?? [null, null, null];
+    const l = rowStats(lIds, 3, false, P);
+    const r = rowStats(rIds, 3, false, P);
+    const lChem = calcForwardChemistry(lIds, P, lt.chemGP).score;
+    const rChem = calcForwardChemistry(rIds, P, rt.chemGP).score;
+    const edge = +(0.6 * (l.att - r.att) + 0.4 * (l.def - r.def) + (lChem - rChem) * 0.65).toFixed(1);
     return {
       label: `${i + 1}-е звено`,
       shareLabel: shares[i],
-      leftIds: leftLineup.F[i] ?? [null, null, null],
-      rightIds: rightLineup.F[i] ?? [null, null, null],
+      leftIds: lIds,
+      rightIds: rIds,
       leftAtt: l.att,
       leftDef: l.def,
       leftOvr: l.ovr,
       leftMorale: l.morale,
+      leftChem: lChem,
       rightAtt: r.att,
       rightDef: r.def,
       rightOvr: r.ovr,
       rightMorale: r.morale,
+      rightChem: rChem,
       edge,
     };
   });
@@ -241,22 +252,28 @@ export function compareTeamLineups(
   const dShares = ['~40% льда', '~34% льда', '~26% льда'];
   const dWeights = [0.4, 0.34, 0.26];
   const defense: LineComparisonRow[] = [0, 1, 2].map((i) => {
-    const l = rowStats(leftLineup.D[i] ?? [], 2, true, P);
-    const r = rowStats(rightLineup.D[i] ?? [], 2, true, P);
-    const edge = +(0.4 * (l.att - r.att) + 0.6 * (l.def - r.def)).toFixed(1);
+    const lIds = leftLineup.D[i] ?? [null, null];
+    const rIds = rightLineup.D[i] ?? [null, null];
+    const l = rowStats(lIds, 2, true, P);
+    const r = rowStats(rIds, 2, true, P);
+    const lChem = calcDefenseChemistry(lIds, P, lt.chemGP).score;
+    const rChem = calcDefenseChemistry(rIds, P, rt.chemGP).score;
+    const edge = +(0.4 * (l.att - r.att) + 0.6 * (l.def - r.def) + (lChem - rChem) * 0.65).toFixed(1);
     return {
       label: `${i + 1}-я пара`,
       shareLabel: dShares[i],
-      leftIds: leftLineup.D[i] ?? [null, null],
-      rightIds: rightLineup.D[i] ?? [null, null],
+      leftIds: lIds,
+      rightIds: rIds,
       leftAtt: l.att,
       leftDef: l.def,
       leftOvr: l.ovr,
       leftMorale: l.morale,
+      leftChem: lChem,
       rightAtt: r.att,
       rightDef: r.def,
       rightOvr: r.ovr,
       rightMorale: r.morale,
+      rightChem: rChem,
       edge,
     };
   });
@@ -268,8 +285,10 @@ export function compareTeamLineups(
 
   const goalieLeft = leftLineup.starterG ? P[leftLineup.starterG] ?? null : null;
   const goalieRight = rightLineup.starterG ? P[rightLineup.starterG] ?? null : null;
-  const glOvr = goalieLeft?.overall ?? 55;
-  const grOvr = goalieRight?.overall ?? 55;
+  const goalieLeftFresh = goalieFreshness(goalieLeft);
+  const goalieRightFresh = goalieFreshness(goalieRight);
+  const glOvr = effectiveGoalieOvr(goalieLeft, lt.roadStreak ?? 0);
+  const grOvr = effectiveGoalieOvr(goalieRight, rt.roadStreak ?? 0);
   const goalieEdge = +((goalieSavePct(glOvr) - goalieSavePct(grOvr)) * 450).toFixed(1);
 
   const fEdge = forwards.reduce((s, r, i) => s + r.edge * fWeights[i], 0);
@@ -290,6 +309,8 @@ export function compareTeamLineups(
     pkRightDef,
     goalieLeft,
     goalieRight,
+    goalieLeftFresh,
+    goalieRightFresh,
     goalieEdge,
     totalEdge,
   };

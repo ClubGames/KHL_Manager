@@ -3,6 +3,9 @@ import { attackRating, clamp, defenseRating, fairSalary, isDefense, isForward, i
 import { emptyLineup } from './defaults';
 import { countRosterLegionnaires, isLegionnaire, teamForeignLimit } from './legionnaires';
 import { capSuspendedPlayers } from './cap';
+import { ensureCaptains, goalieFreshness } from './chemistry';
+import { isU20DefenseLimiter, isU20ForwardLimiter } from './dynasty';
+import { teamVhlCapRelief } from './khlRules';
 
 export const byOvr = (a: Player, b: Player) => b.overall - a.overall || a.age - b.age;
 export const groupOf = (p: Player): 'F' | 'D' | 'G' => (isGoalie(p) ? 'G' : isDefense(p) ? 'D' : 'F');
@@ -15,7 +18,7 @@ export interface LineupConstraints {
 export function autoLineup(ids: string[], P: Record<string, Player>, opts?: LineupConstraints): Lineup {
   const excluded = opts?.excluded;
   const foreignLimit = opts?.foreignLimit ?? null;
-  let avail = ids.map((id) => P[id]).filter((p): p is Player => !!p && !p.injury && !excluded?.has(p.id));
+  let avail = ids.map((id) => P[id]).filter((p): p is Player => !!p && !p.injury && !p.inVhl && !excluded?.has(p.id));
   if (foreignLimit !== null) {
     const legs = avail.filter((p) => isLegionnaire(p)).sort(byOvr);
     if (legs.length > foreignLimit) {
@@ -54,7 +57,13 @@ export function autoLineup(ids: string[], P: Record<string, Player>, opts?: Line
   };
   const L = emptyLineup();
   for (let i = 0; i < 4; i++) L.F[i] = [take('C'), take('LW'), take('RW')];
-  for (let i = 0; i < 3; i++) L.D[i] = [D[2 * i]?.id ?? null, D[2 * i + 1]?.id ?? null];
+  for (let i = 0; i < 3; i++) {
+    const d0 = D[2 * i]?.id ?? null;
+    const d1 = D[2 * i + 1]?.id ?? null;
+    if (d0) used.add(d0);
+    if (d1) used.add(d1);
+    L.D[i] = [d0, d1];
+  }
   const dressedF = L.F.flat().filter((x): x is string => !!x);
   const dressedD = L.D.flat().filter((x): x is string => !!x);
   const fAtt = [...dressedF].sort((a, b) => attackRating(P[b]) - attackRating(P[a]));
@@ -67,6 +76,9 @@ export function autoLineup(ids: string[], P: Record<string, Player>, opts?: Line
   L.pk2 = [...fDef.slice(2, 4), ...dDef.slice(2, 4)];
   L.starterG = G[0]?.id ?? null;
   L.backupG = G[1]?.id ?? null;
+  // KHL U20 young-player limiters (13th forward & 7th defenseman)
+  L.u20F = F.filter((p) => !used.has(p.id) && isU20ForwardLimiter(p)).sort(byOvr)[0]?.id ?? null;
+  L.u20D = D.filter((p) => !used.has(p.id) && isU20DefenseLimiter(p)).sort(byOvr)[0]?.id ?? null;
   return L;
 }
 
@@ -80,15 +92,15 @@ export function sanitizeLineup(L: Lineup, ids: string[], P: Record<string, Playe
     if (isLegionnaire(P[id])) legCount++;
   };
 
-  const ok = (id: string | null) => !!id && !!P[id] && !P[id].injury && !excluded?.has(id) && ids.includes(id) && isSkater(P[id]);
+  const ok = (id: string | null) => !!id && !!P[id] && !P[id].injury && !P[id].inVhl && !excluded?.has(id) && ids.includes(id) && isSkater(P[id]);
   const used = new Set<string>();
-  const avail = ids.map((id) => P[id]).filter((p): p is Player => !!p && !p.injury && !excluded?.has(p.id));
+  const avail = ids.map((id) => P[id]).filter((p): p is Player => !!p && !p.injury && !p.inVhl && !excluded?.has(p.id));
   const F = avail.filter(isForward).sort(byOvr);
   const D = avail.filter(isDefense).sort(byOvr);
   const G = avail.filter(isGoalie).sort(byOvr);
   const out = emptyLineup();
 
-  const gokBase = (id: string | null) => !!id && !!P[id] && isGoalie(P[id]) && !P[id].injury && !excluded?.has(id) && ids.includes(id);
+  const gokBase = (id: string | null) => !!id && !!P[id] && isGoalie(P[id]) && !P[id].injury && !P[id].inVhl && !excluded?.has(id) && ids.includes(id);
   const pickGoalie = (preferred: (string | null)[]): string | null => {
     for (const id of preferred) {
       if (id && gokBase(id) && !used.has(id) && canTakeLeg(id)) {
@@ -154,6 +166,22 @@ export function sanitizeLineup(L: Lineup, ids: string[], P: Record<string, Playe
   out.pk1 = unit(L.pk1, 4, [...fDef, ...dDef]);
   const pkUsed = new Set(out.pk1.filter((x): x is string => !!x));
   out.pk2 = unit(L.pk2, 4, [...fDef.slice(2), ...dDef.slice(2), ...fDef, ...dDef], pkUsed);
+
+  // KHL U20 young-player limiters (13th forward & 7th defenseman)
+  if (L.u20F && ok(L.u20F) && !used.has(L.u20F) && isU20ForwardLimiter(P[L.u20F])) {
+    out.u20F = L.u20F;
+    used.add(L.u20F);
+  } else {
+    out.u20F = F.find((p) => !used.has(p.id) && isU20ForwardLimiter(p))?.id ?? null;
+    if (out.u20F) used.add(out.u20F);
+  }
+  if (L.u20D && ok(L.u20D) && !used.has(L.u20D) && isU20DefenseLimiter(P[L.u20D])) {
+    out.u20D = L.u20D;
+    used.add(L.u20D);
+  } else {
+    out.u20D = D.find((p) => !used.has(p.id) && isU20DefenseLimiter(p))?.id ?? null;
+    if (out.u20D) used.add(out.u20D);
+  }
   return out;
 }
 
@@ -173,7 +201,9 @@ export function prepareLineup(state: GameState, teamId: string): Lineup {
   if (L.starterG && L.backupG) {
     const s = state.players[L.starterG];
     const b = state.players[L.backupG];
-    if (b.overall >= s.overall - 7 && Math.random() < 0.25) {
+    const sFresh = goalieFreshness(s);
+    const bFresh = goalieFreshness(b);
+    if ((sFresh < 64 && bFresh >= sFresh + 12) || (b.overall >= s.overall - 7 && Math.random() < 0.24)) {
       L.starterG = L.backupG;
       L.backupG = s.id;
     }
@@ -438,6 +468,12 @@ export function valueFor(ctx: TeamCtx, p: Player): number {
 function sideProblem(state: GameState, teamId: string, gives: string[], gets: string[], min: Record<Group, number>): string | null {
   const P = state.players;
   const t = state.teams[teamId];
+  for (const id of gives) {
+    const p = P[id];
+    if (p?.nmc && p.morale >= 52) {
+      return `у игрока ${p.name} («${t.name}») действует запрет на обмен (ЗНО)`;
+    }
+  }
   const after = t.players.filter((id) => !gives.includes(id)).concat(gets);
   for (const g of GROUPS) {
     const n = after.filter((id) => groupOf(P[id]) === g).length;
@@ -453,8 +489,10 @@ function sideProblem(state: GameState, teamId: string, gives: string[], gets: st
     }
   }
   const dead = state.phase === 'offseason' ? 0 : (t.deadCap ?? 0);
-  const beforePay = payroll(t.players, P) + dead;
-  const afterPay = payroll(after, P) + dead;
+  const beforeRelief = state.phase === 'offseason' ? 0 : teamVhlCapRelief(t.players, P);
+  const afterRelief = state.phase === 'offseason' ? 0 : teamVhlCapRelief(after, P);
+  const beforePay = Math.max(0, payroll(t.players, P) - beforeRelief + dead);
+  const afterPay = Math.max(0, payroll(after, P) - afterRelief + dead);
   const cap = state.league.salaryCap;
   if (afterPay > cap) {
     const isUserDump = teamId === state.userTeamId && beforePay > cap && afterPay <= beforePay - 5_000_000;
@@ -512,6 +550,8 @@ export function executeTrade(state: GameState, aId: string, bId: string, aGives:
     const p = P[id];
     if (!p || p.teamId !== from.id) return;
     p.teamId = to.id;
+    p.inVhl = false;
+    if (p.age < 28) p.rightsTeamId = to.id;
     delete p.tradeFlag;
     delete p.talks;
     from.players = from.players.filter((x) => x !== id);
@@ -521,6 +561,7 @@ export function executeTrade(state: GameState, aId: string, bId: string, aGives:
   for (const id of bGives) move(id, B, A);
   state.offers = state.offers.filter((o) => ![...o.give, ...o.get].some((id) => aGives.includes(id) || bGives.includes(id)));
   for (const t of [A, B]) {
+    ensureCaptains(t, P);
     const opts = lineupConstraintsFor(state, t.id);
     if (t.id === state.userTeamId) t.lineup = sanitizeLineup(t.lineup, t.players, P, opts);
     else t.lineup = autoLineup(t.players, P, opts);
@@ -575,7 +616,7 @@ export function generateProposal(state: GameState, fromId: string, toId: string)
 
   // 2. Who on the other roster is a real upgrade there (and realistically obtainable)?
   const targets = T.players.map((id) => P[id]).filter((p) => {
-    if (groupOf(p) !== g || p.injury || p.contract.years <= 0 || p.tradeFlag === 'keep') return false;
+    if (groupOf(p) !== g || p.injury || p.contract.years <= 0 || p.tradeFlag === 'keep' || (p.nmc && p.morale >= 52)) return false;
     if (ct.franchise.has(p.id) && p.tradeFlag !== 'block') return false;
     if (p.overall < cf.worst[g] + 2) return false;
     if (cf.mode === 'rebuild' && p.age > 27) return false;
@@ -587,7 +628,7 @@ export function generateProposal(state: GameState, fromId: string, toId: string)
   const vx = tradeValue(X);
 
   // 3. What can the club pay with? Not its leaders, not the position it is trying to fix.
-  const spare = F.players.map((id) => P[id]).filter((p) => !p.injury && p.contract.years > 0 && !cf.franchise.has(p.id) && groupOf(p) !== g && cf.counts[groupOf(p)] > MIN_ROSTER[groupOf(p)]);
+  const spare = F.players.map((id) => P[id]).filter((p) => !p.injury && !(p.nmc && p.morale >= 52) && p.contract.years > 0 && !cf.franchise.has(p.id) && groupOf(p) !== g && cf.counts[groupOf(p)] > MIN_ROSTER[groupOf(p)]);
   const fit = (p: Player) => {
     let s = clamp(ct.need[groupOf(p)] / 4, -1, 1) * 0.06; // helps the partner where it is weak
     s += Math.min(3, cf.counts[groupOf(p)] - MIN_ROSTER[groupOf(p)]) * 0.01; // comes from depth

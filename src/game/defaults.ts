@@ -1,4 +1,4 @@
-import type { Lineup, PlayerStats, TeamRecord } from '../types';
+import type { Lineup, PlayerStats, TeamRecord, TeamTactics } from '../types';
 
 export const emptyStats = (): PlayerStats => ({
   gp: 0, goals: 0, assists: 0, plusMinus: 0, pim: 0, shots: 0, wins: 0, losses: 0, otl: 0, shutouts: 0, saves: 0, shotsAgainst: 0, minutes: 0,
@@ -14,4 +14,12 @@ export const emptyLineup = (): Lineup => ({
   pp1: [], pp2: [], pk1: [], pk2: [],
   starterG: null,
   backupG: null,
+  u20F: null,
+  u20D: null,
+});
+
+export const defaultTactics = (): TeamTactics => ({
+  forecheck: 'balanced',
+  style: 'balanced',
+  pullGoalie: 'normal',
 });
