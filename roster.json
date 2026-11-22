@@ -3,7 +3,7 @@
     "name": "КХЛ",
     "season": "2026/27",
     "gamesPerTeam": 68,
-    "salaryCap": 900000000
+    "salaryCap": 950000000
   },
   "teams": [
     {
@@ -82,7 +82,7 @@
             "defense": 79
           },
           "contract": {
-            "salary": 10000000,
+            "salary": 1000000,
             "years": 1
           }
         },
@@ -106,7 +106,7 @@
             "defense": 79
           },
           "contract": {
-            "salary": 15000000,
+            "salary": 1000000,
             "years": 1
           }
         },
@@ -226,7 +226,7 @@
             "defense": 76
           },
           "contract": {
-            "salary": 10000000,
+            "salary": 1000000,
             "years": 2
           }
         },
@@ -250,7 +250,7 @@
             "defense": 76
           },
           "contract": {
-            "salary": 12000000,
+            "salary": 1000000,
             "years": 1
           }
         },
@@ -442,7 +442,7 @@
             "defense": 68
           },
           "contract": {
-            "salary": 12000000,
+            "salary": 1000000,
             "years": 2
           }
         },
@@ -490,8 +490,9 @@
             "defense": 55
           },
           "contract": {
-            "salary": 4000000,
-            "years": 3
+            "salary": 1000000,
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -538,7 +539,7 @@
             "defense": 63
           },
           "contract": {
-            "salary": 7000000,
+            "salary": 1000000,
             "years": 2
           }
         },
@@ -586,7 +587,7 @@
             "defense": 70
           },
           "contract": {
-            "salary": 18000000,
+            "salary": 16000000,
             "years": 2
           }
         },
@@ -610,8 +611,9 @@
             "defense": 57
           },
           "contract": {
-            "salary": 4000000,
-            "years": 3
+            "salary": 1000000,
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -682,7 +684,7 @@
             "defense": 60
           },
           "contract": {
-            "salary": 7000000,
+            "salary": 1000000,
             "years": 2
           }
         },
@@ -787,7 +789,7 @@
             "endurance": 74
           },
           "contract": {
-            "salary": 8000000,
+            "salary": 1000000,
             "years": 2
           }
         },
@@ -888,30 +890,6 @@
           }
         },
         {
-          "id": "avt-d05",
-          "name": "Никита Ишимников",
-          "position": "З",
-          "age": 21,
-          "height": 189,
-          "weight": 83,
-          "number": 26,
-          "country": "Россия",
-          "overall": 70,
-          "potential": 78,
-          "skills": {
-            "skating": 71,
-            "shooting": 66,
-            "passing": 66,
-            "puckControl": 68,
-            "checking": 74,
-            "defense": 75
-          },
-          "contract": {
-            "salary": 8000000,
-            "years": 2
-          }
-        },
-        {
           "id": "avt-d06",
           "name": "Дмитрий Юдин",
           "position": "З",
@@ -956,30 +934,6 @@
           },
           "contract": {
             "salary": 20000000,
-            "years": 2
-          }
-        },
-        {
-          "id": "avt-d08",
-          "name": "Савелий Жиров",
-          "position": "З",
-          "age": 20,
-          "height": 176,
-          "weight": 74,
-          "number": 58,
-          "country": "Россия",
-          "overall": 68,
-          "potential": 78,
-          "skills": {
-            "skating": 71,
-            "shooting": 66,
-            "passing": 70,
-            "puckControl": 72,
-            "checking": 62,
-            "defense": 67
-          },
-          "contract": {
-            "salary": 5000000,
             "years": 2
           }
         },
@@ -1077,30 +1031,6 @@
           "contract": {
             "salary": 30000000,
             "years": 3
-          }
-        },
-        {
-          "id": "avt-d13",
-          "name": "Никита Некрасов",
-          "position": "З",
-          "age": 22,
-          "height": 185,
-          "weight": 90,
-          "number": 90,
-          "country": "Россия",
-          "overall": 70,
-          "potential": 78,
-          "skills": {
-            "skating": 70,
-            "shooting": 66,
-            "passing": 68,
-            "puckControl": 68,
-            "checking": 74,
-            "defense": 74
-          },
-          "contract": {
-            "salary": 8000000,
-            "years": 2
           }
         },
         {
@@ -1272,30 +1202,6 @@
           }
         },
         {
-          "id": "avt-c03",
-          "name": "Дмитрий Исаев",
-          "position": "Ц",
-          "age": 19,
-          "height": 174,
-          "weight": 67,
-          "number": 63,
-          "country": "Россия",
-          "overall": 66,
-          "potential": 80,
-          "skills": {
-            "skating": 74,
-            "shooting": 65,
-            "passing": 69,
-            "puckControl": 71,
-            "checking": 51,
-            "defense": 56
-          },
-          "contract": {
-            "salary": 4000000,
-            "years": 3
-          }
-        },
-        {
           "id": "avt-rw02",
           "name": "Данил Гущин",
           "position": "ПК",
@@ -1339,7 +1245,7 @@
             "defense": 65
           },
           "contract": {
-            "salary": 8000000,
+            "salary": 1000000,
             "years": 2
           }
         },
@@ -1387,7 +1293,7 @@
             "defense": 67
           },
           "contract": {
-            "salary": 7000000,
+            "salary": 5000000,
             "years": 2
           }
         },
@@ -1534,6 +1440,110 @@
             "salary": 15000000,
             "years": 2
           }
+        },
+        {
+          "id": "avt-d05",
+          "name": "Никита Ишимников",
+          "position": "З",
+          "age": 21,
+          "height": 189,
+          "weight": 83,
+          "number": 26,
+          "country": "Россия",
+          "overall": 70,
+          "potential": 78,
+          "skills": {
+            "skating": 71,
+            "shooting": 66,
+            "passing": 66,
+            "puckControl": 68,
+            "checking": 74,
+            "defense": 75
+          },
+          "contract": {
+            "salary": 8000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "avt-d08",
+          "name": "Савелий Жиров",
+          "position": "З",
+          "age": 20,
+          "height": 176,
+          "weight": 74,
+          "number": 58,
+          "country": "Россия",
+          "overall": 68,
+          "potential": 78,
+          "skills": {
+            "skating": 71,
+            "shooting": 66,
+            "passing": 70,
+            "puckControl": 72,
+            "checking": 62,
+            "defense": 67
+          },
+          "contract": {
+            "salary": 5000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "avt-d13",
+          "name": "Никита Некрасов",
+          "position": "З",
+          "age": 22,
+          "height": 185,
+          "weight": 90,
+          "number": 90,
+          "country": "Россия",
+          "overall": 70,
+          "potential": 78,
+          "skills": {
+            "skating": 70,
+            "shooting": 66,
+            "passing": 68,
+            "puckControl": 68,
+            "checking": 74,
+            "defense": 74
+          },
+          "contract": {
+            "salary": 8000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "avt-c03",
+          "name": "Дмитрий Исаев",
+          "position": "Ц",
+          "age": 19,
+          "height": 174,
+          "weight": 67,
+          "number": 63,
+          "country": "Россия",
+          "overall": 66,
+          "potential": 80,
+          "skills": {
+            "skating": 74,
+            "shooting": 65,
+            "passing": 69,
+            "puckControl": 71,
+            "checking": 51,
+            "defense": 56
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
         }
       ]
     },
@@ -2073,30 +2083,6 @@
           }
         },
         {
-          "id": "adm-rw05",
-          "name": "Дмитрий Мухтаров",
-          "position": "ПК",
-          "age": 20,
-          "height": 192,
-          "weight": 83,
-          "number": 45,
-          "country": "Россия",
-          "overall": 68,
-          "potential": 80,
-          "skills": {
-            "skating": 69,
-            "shooting": 69,
-            "passing": 65,
-            "puckControl": 68,
-            "checking": 69,
-            "defense": 62
-          },
-          "contract": {
-            "salary": 5000000,
-            "years": 3
-          }
-        },
-        {
           "id": "adm-rw06",
           "name": "Даниэль Усманов",
           "position": "Ц",
@@ -2287,6 +2273,32 @@
             "salary": 8000000,
             "years": 2
           }
+        },
+        {
+          "id": "adm-rw05",
+          "name": "Дмитрий Мухтаров",
+          "position": "ПК",
+          "age": 20,
+          "height": 192,
+          "weight": 83,
+          "number": 45,
+          "country": "Россия",
+          "overall": 68,
+          "potential": 80,
+          "skills": {
+            "skating": 69,
+            "shooting": 69,
+            "passing": 65,
+            "puckControl": 68,
+            "checking": 69,
+            "defense": 62
+          },
+          "contract": {
+            "salary": 5000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
         }
       ]
     },
@@ -2366,7 +2378,8 @@
           },
           "contract": {
             "salary": 4000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -2460,7 +2473,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -2580,7 +2594,8 @@
           },
           "contract": {
             "salary": 3000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -2988,7 +3003,8 @@
           },
           "contract": {
             "salary": 4000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -3094,30 +3110,6 @@
           "contract": {
             "salary": 15000000,
             "years": 2
-          }
-        },
-        {
-          "id": "amr-d01",
-          "name": "Ярослав Дёминский",
-          "position": "З",
-          "age": 17,
-          "height": 183,
-          "weight": 84,
-          "number": 2,
-          "country": "Россия",
-          "overall": 62,
-          "potential": 82,
-          "skills": {
-            "skating": 63,
-            "shooting": 57,
-            "passing": 61,
-            "puckControl": 61,
-            "checking": 65,
-            "defense": 65
-          },
-          "contract": {
-            "salary": 3000000,
-            "years": 3
           }
         },
         {
@@ -3553,30 +3545,6 @@
           }
         },
         {
-          "id": "amr-lw09",
-          "name": "Борис Борин",
-          "position": "ЛК",
-          "age": 18,
-          "height": 178,
-          "weight": 73,
-          "number": 25,
-          "country": "Россия",
-          "overall": 64,
-          "potential": 82,
-          "skills": {
-            "skating": 71,
-            "shooting": 64,
-            "passing": 64,
-            "puckControl": 68,
-            "checking": 53,
-            "defense": 54
-          },
-          "contract": {
-            "salary": 3000000,
-            "years": 3
-          }
-        },
-        {
           "id": "amr-lw10",
           "name": "Константин Лукин",
           "position": "ЛК",
@@ -3642,30 +3610,6 @@
             "puckControl": 70,
             "checking": 71,
             "defense": 66
-          },
-          "contract": {
-            "salary": 8000000,
-            "years": 2
-          }
-        },
-        {
-          "id": "amr-lw12",
-          "name": "Семён Демидов",
-          "position": "ЛК",
-          "age": 23,
-          "height": 177,
-          "weight": 79,
-          "number": 61,
-          "country": "Россия",
-          "overall": 70,
-          "potential": 78,
-          "skills": {
-            "skating": 76,
-            "shooting": 72,
-            "passing": 68,
-            "puckControl": 71,
-            "checking": 63,
-            "defense": 65
           },
           "contract": {
             "salary": 8000000,
@@ -3815,6 +3759,84 @@
             "salary": 20000000,
             "years": 1
           }
+        },
+        {
+          "id": "amr-d01",
+          "name": "Ярослав Дёминский",
+          "position": "З",
+          "age": 17,
+          "height": 183,
+          "weight": 84,
+          "number": 2,
+          "country": "Россия",
+          "overall": 62,
+          "potential": 82,
+          "skills": {
+            "skating": 63,
+            "shooting": 57,
+            "passing": 61,
+            "puckControl": 61,
+            "checking": 65,
+            "defense": 65
+          },
+          "contract": {
+            "salary": 3000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "amr-lw09",
+          "name": "Борис Борин",
+          "position": "ЛК",
+          "age": 18,
+          "height": 178,
+          "weight": 73,
+          "number": 25,
+          "country": "Россия",
+          "overall": 64,
+          "potential": 82,
+          "skills": {
+            "skating": 71,
+            "shooting": 64,
+            "passing": 64,
+            "puckControl": 68,
+            "checking": 53,
+            "defense": 54
+          },
+          "contract": {
+            "salary": 3000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "amr-lw12",
+          "name": "Семён Демидов",
+          "position": "ЛК",
+          "age": 23,
+          "height": 177,
+          "weight": 79,
+          "number": 61,
+          "country": "Россия",
+          "overall": 70,
+          "potential": 78,
+          "skills": {
+            "skating": 76,
+            "shooting": 72,
+            "passing": 68,
+            "puckControl": 71,
+            "checking": 63,
+            "defense": 65
+          },
+          "contract": {
+            "salary": 8000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
         }
       ]
     },
@@ -3871,6 +3893,29 @@
           },
           "contract": {
             "salary": 15000000,
+            "years": 2
+          }
+        },
+        {
+          "id": "brs-g03",
+          "name": "Дмитрий Николаев",
+          "position": "В",
+          "age": 26,
+          "height": 187,
+          "weight": 88,
+          "number": 70,
+          "country": "Россия",
+          "overall": 81,
+          "potential": 78,
+          "skills": {
+            "reflexes": 86,
+            "positioning": 82,
+            "reboundControl": 80,
+            "puckHandling": 73,
+            "endurance": 84
+          },
+          "contract": {
+            "salary": 18000000,
             "years": 2
           }
         },
@@ -3991,7 +4036,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -4207,7 +4253,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -4375,7 +4422,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -4578,30 +4626,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 3
-          }
-        },
-        {
-          "id": "dmn-g02",
-          "name": "Антон Круповец",
-          "position": "В",
-          "age": 20,
-          "height": 184,
-          "weight": 82,
-          "number": 35,
-          "country": "Беларусь",
-          "overall": 68,
-          "potential": 78,
-          "skills": {
-            "reflexes": 70,
-            "positioning": 68,
-            "reboundControl": 66,
-            "puckHandling": 64,
-            "endurance": 72
-          },
-          "contract": {
-            "salary": 5000000,
-            "years": 2
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -4843,30 +4869,6 @@
           }
         },
         {
-          "id": "dmn-d09",
-          "name": "Тимофей Маманович",
-          "position": "З",
-          "age": 19,
-          "height": 186,
-          "weight": 72,
-          "number": 49,
-          "country": "Беларусь",
-          "overall": 66,
-          "potential": 78,
-          "skills": {
-            "skating": 67,
-            "shooting": 61,
-            "passing": 65,
-            "puckControl": 65,
-            "checking": 69,
-            "defense": 69
-          },
-          "contract": {
-            "salary": 4000000,
-            "years": 3
-          }
-        },
-        {
           "id": "dmn-d10",
           "name": "Ксавье Уэлле",
           "position": "З",
@@ -4888,30 +4890,6 @@
           "contract": {
             "salary": 25000000,
             "years": 2
-          }
-        },
-        {
-          "id": "dmn-d11",
-          "name": "Кирилл Лозовский",
-          "position": "З",
-          "age": 19,
-          "height": 183,
-          "weight": 76,
-          "number": 62,
-          "country": "Беларусь",
-          "overall": 66,
-          "potential": 78,
-          "skills": {
-            "skating": 68,
-            "shooting": 65,
-            "passing": 64,
-            "puckControl": 64,
-            "checking": 67,
-            "defense": 68
-          },
-          "contract": {
-            "salary": 4000000,
-            "years": 3
           }
         },
         {
@@ -5107,30 +5085,6 @@
           }
         },
         {
-          "id": "dmn-lw04",
-          "name": "Арсений Чухраев",
-          "position": "ЛК",
-          "age": 21,
-          "height": 180,
-          "weight": 72,
-          "number": 37,
-          "country": "Беларусь",
-          "overall": 68,
-          "potential": 78,
-          "skills": {
-            "skating": 75,
-            "shooting": 69,
-            "passing": 67,
-            "puckControl": 70,
-            "checking": 59,
-            "defense": 62
-          },
-          "contract": {
-            "salary": 6000000,
-            "years": 2
-          }
-        },
-        {
           "id": "dmn-lw05",
           "name": "Сергей Калинин",
           "position": "ЛК",
@@ -5152,102 +5106,6 @@
           "contract": {
             "salary": 25000000,
             "years": 1
-          }
-        },
-        {
-          "id": "dmn-rw03",
-          "name": "Дмитрий Хобян",
-          "position": "ПК",
-          "age": 19,
-          "height": 184,
-          "weight": 81,
-          "number": 52,
-          "country": "Беларусь",
-          "overall": 66,
-          "potential": 78,
-          "skills": {
-            "skating": 71,
-            "shooting": 67,
-            "passing": 63,
-            "puckControl": 66,
-            "checking": 63,
-            "defense": 60
-          },
-          "contract": {
-            "salary": 4000000,
-            "years": 3
-          }
-        },
-        {
-          "id": "dmn-lw06",
-          "name": "Егор Карабань",
-          "position": "ЛК",
-          "age": 18,
-          "height": 184,
-          "weight": 77,
-          "number": 56,
-          "country": "Беларусь",
-          "overall": 64,
-          "potential": 80,
-          "skills": {
-            "skating": 66,
-            "shooting": 64,
-            "passing": 62,
-            "puckControl": 66,
-            "checking": 62,
-            "defense": 57
-          },
-          "contract": {
-            "salary": 3000000,
-            "years": 3
-          }
-        },
-        {
-          "id": "dmn-rw04",
-          "name": "Николай Сальго",
-          "position": "ПК",
-          "age": 20,
-          "height": 185,
-          "weight": 78,
-          "number": 58,
-          "country": "Беларусь",
-          "overall": 68,
-          "potential": 78,
-          "skills": {
-            "skating": 72,
-            "shooting": 71,
-            "passing": 66,
-            "puckControl": 70,
-            "checking": 61,
-            "defense": 61
-          },
-          "contract": {
-            "salary": 5000000,
-            "years": 2
-          }
-        },
-        {
-          "id": "dmn-lw07",
-          "name": "Богдан Белкин",
-          "position": "ЛК",
-          "age": 20,
-          "height": 180,
-          "weight": 86,
-          "number": 68,
-          "country": "Беларусь",
-          "overall": 68,
-          "potential": 78,
-          "skills": {
-            "skating": 71,
-            "shooting": 67,
-            "passing": 65,
-            "puckControl": 68,
-            "checking": 69,
-            "defense": 63
-          },
-          "contract": {
-            "salary": 5000000,
-            "years": 2
           }
         },
         {
@@ -5465,6 +5323,213 @@
             "salary": 25000000,
             "years": 1
           }
+        },
+        {
+          "id": "dmn-g02",
+          "name": "Антон Круповец",
+          "position": "В",
+          "age": 20,
+          "height": 184,
+          "weight": 82,
+          "number": 35,
+          "country": "Беларусь",
+          "overall": 68,
+          "potential": 78,
+          "skills": {
+            "reflexes": 70,
+            "positioning": 68,
+            "reboundControl": 66,
+            "puckHandling": 64,
+            "endurance": 72
+          },
+          "contract": {
+            "salary": 5000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "dmn-d09",
+          "name": "Тимофей Маманович",
+          "position": "З",
+          "age": 19,
+          "height": 186,
+          "weight": 72,
+          "number": 49,
+          "country": "Беларусь",
+          "overall": 66,
+          "potential": 78,
+          "skills": {
+            "skating": 67,
+            "shooting": 61,
+            "passing": 65,
+            "puckControl": 65,
+            "checking": 69,
+            "defense": 69
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "dmn-d11",
+          "name": "Кирилл Лозовский",
+          "position": "З",
+          "age": 19,
+          "height": 183,
+          "weight": 76,
+          "number": 62,
+          "country": "Беларусь",
+          "overall": 66,
+          "potential": 78,
+          "skills": {
+            "skating": 68,
+            "shooting": 65,
+            "passing": 64,
+            "puckControl": 64,
+            "checking": 67,
+            "defense": 68
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "dmn-lw04",
+          "name": "Арсений Чухраев",
+          "position": "ЛК",
+          "age": 21,
+          "height": 180,
+          "weight": 72,
+          "number": 37,
+          "country": "Беларусь",
+          "overall": 68,
+          "potential": 78,
+          "skills": {
+            "skating": 75,
+            "shooting": 69,
+            "passing": 67,
+            "puckControl": 70,
+            "checking": 59,
+            "defense": 62
+          },
+          "contract": {
+            "salary": 6000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "dmn-rw03",
+          "name": "Дмитрий Хобян",
+          "position": "ПК",
+          "age": 19,
+          "height": 184,
+          "weight": 81,
+          "number": 52,
+          "country": "Беларусь",
+          "overall": 66,
+          "potential": 78,
+          "skills": {
+            "skating": 71,
+            "shooting": 67,
+            "passing": 63,
+            "puckControl": 66,
+            "checking": 63,
+            "defense": 60
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "dmn-lw06",
+          "name": "Егор Карабань",
+          "position": "ЛК",
+          "age": 18,
+          "height": 184,
+          "weight": 77,
+          "number": 56,
+          "country": "Беларусь",
+          "overall": 64,
+          "potential": 80,
+          "skills": {
+            "skating": 66,
+            "shooting": 64,
+            "passing": 62,
+            "puckControl": 66,
+            "checking": 62,
+            "defense": 57
+          },
+          "contract": {
+            "salary": 3000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "dmn-rw04",
+          "name": "Николай Сальго",
+          "position": "ПК",
+          "age": 20,
+          "height": 185,
+          "weight": 78,
+          "number": 58,
+          "country": "Беларусь",
+          "overall": 68,
+          "potential": 78,
+          "skills": {
+            "skating": 72,
+            "shooting": 71,
+            "passing": 66,
+            "puckControl": 70,
+            "checking": 61,
+            "defense": 61
+          },
+          "contract": {
+            "salary": 5000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "dmn-lw07",
+          "name": "Богдан Белкин",
+          "position": "ЛК",
+          "age": 20,
+          "height": 180,
+          "weight": 86,
+          "number": 68,
+          "country": "Беларусь",
+          "overall": 68,
+          "potential": 78,
+          "skills": {
+            "skating": 71,
+            "shooting": 67,
+            "passing": 65,
+            "puckControl": 68,
+            "checking": 69,
+            "defense": 63
+          },
+          "contract": {
+            "salary": 5000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
         }
       ]
     },
@@ -5521,29 +5586,6 @@
           },
           "contract": {
             "salary": 50000000,
-            "years": 3
-          }
-        },
-        {
-          "id": "dms-g03",
-          "name": "Владимир Селиванов",
-          "position": "В",
-          "age": 18,
-          "height": 181,
-          "weight": 82,
-          "number": 94,
-          "country": "Россия",
-          "overall": 64,
-          "potential": 82,
-          "skills": {
-            "reflexes": 66,
-            "positioning": 64,
-            "reboundControl": 62,
-            "puckHandling": 62,
-            "endurance": 66
-          },
-          "contract": {
-            "salary": 4000000,
             "years": 3
           }
         },
@@ -5643,30 +5685,6 @@
           }
         },
         {
-          "id": "dms-d04",
-          "name": "Елисей Рыбаков",
-          "position": "З",
-          "age": 18,
-          "height": 187,
-          "weight": 88,
-          "number": 43,
-          "country": "Россия",
-          "overall": 66,
-          "potential": 84,
-          "skills": {
-            "skating": 67,
-            "shooting": 64,
-            "passing": 65,
-            "puckControl": 67,
-            "checking": 66,
-            "defense": 67
-          },
-          "contract": {
-            "salary": 4000000,
-            "years": 3
-          }
-        },
-        {
           "id": "dms-d05",
           "name": "Даниил Пыленков",
           "position": "З",
@@ -5711,7 +5729,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -5955,30 +5974,6 @@
           }
         },
         {
-          "id": "dms-rw02",
-          "name": "Михаил Меликс",
-          "position": "ПК",
-          "age": 19,
-          "height": 173,
-          "weight": 71,
-          "number": 27,
-          "country": "Россия",
-          "overall": 66,
-          "potential": 82,
-          "skills": {
-            "skating": 73,
-            "shooting": 68,
-            "passing": 67,
-            "puckControl": 70,
-            "checking": 52,
-            "defense": 57
-          },
-          "contract": {
-            "salary": 4000000,
-            "years": 2
-          }
-        },
-        {
           "id": "dms-lw04",
           "name": "Булат Шафигуллин",
           "position": "ПК",
@@ -6096,30 +6091,6 @@
           "contract": {
             "salary": 8000000,
             "years": 3
-          }
-        },
-        {
-          "id": "dms-rw06",
-          "name": "Иван Казаковцев",
-          "position": "ПК",
-          "age": 21,
-          "height": 181,
-          "weight": 70,
-          "number": 56,
-          "country": "Россия",
-          "overall": 68,
-          "potential": 80,
-          "skills": {
-            "skating": 74,
-            "shooting": 70,
-            "passing": 68,
-            "puckControl": 71,
-            "checking": 57,
-            "defense": 60
-          },
-          "contract": {
-            "salary": 6000000,
-            "years": 2
           }
         },
         {
@@ -6289,6 +6260,109 @@
             "salary": 55000000,
             "years": 3
           }
+        },
+        {
+          "id": "dms-g03",
+          "name": "Владимир Селиванов",
+          "position": "В",
+          "age": 18,
+          "height": 181,
+          "weight": 82,
+          "number": 94,
+          "country": "Россия",
+          "overall": 64,
+          "potential": 82,
+          "skills": {
+            "reflexes": 66,
+            "positioning": 64,
+            "reboundControl": 62,
+            "puckHandling": 62,
+            "endurance": 66
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "dms-d04",
+          "name": "Елисей Рыбаков",
+          "position": "З",
+          "age": 18,
+          "height": 187,
+          "weight": 88,
+          "number": 43,
+          "country": "Россия",
+          "overall": 66,
+          "potential": 84,
+          "skills": {
+            "skating": 67,
+            "shooting": 64,
+            "passing": 65,
+            "puckControl": 67,
+            "checking": 66,
+            "defense": 67
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "dms-rw02",
+          "name": "Михаил Меликс",
+          "position": "ПК",
+          "age": 19,
+          "height": 173,
+          "weight": 71,
+          "number": 27,
+          "country": "Россия",
+          "overall": 66,
+          "potential": 82,
+          "skills": {
+            "skating": 73,
+            "shooting": 68,
+            "passing": 67,
+            "puckControl": 70,
+            "checking": 52,
+            "defense": 57
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "dms-rw06",
+          "name": "Иван Казаковцев",
+          "position": "ПК",
+          "age": 21,
+          "height": 181,
+          "weight": 70,
+          "number": 56,
+          "country": "Россия",
+          "overall": 68,
+          "potential": 80,
+          "skills": {
+            "skating": 74,
+            "shooting": 70,
+            "passing": 68,
+            "puckControl": 71,
+            "checking": 57,
+            "defense": 60
+          },
+          "contract": {
+            "salary": 6000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
         }
       ]
     },
@@ -6516,30 +6590,6 @@
           }
         },
         {
-          "id": "lad-d07",
-          "name": "Максим Белоусов",
-          "position": "З",
-          "age": 21,
-          "height": 186,
-          "weight": 83,
-          "number": 64,
-          "country": "Россия",
-          "overall": 70,
-          "potential": 80,
-          "skills": {
-            "skating": 71,
-            "shooting": 69,
-            "passing": 69,
-            "puckControl": 68,
-            "checking": 70,
-            "defense": 73
-          },
-          "contract": {
-            "salary": 8000000,
-            "years": 2
-          }
-        },
-        {
           "id": "lad-d08",
           "name": "Жереми Гроло",
           "position": "З",
@@ -6633,30 +6683,6 @@
           "contract": {
             "salary": 10000000,
             "years": 2
-          }
-        },
-        {
-          "id": "lad-lw01",
-          "name": "Руслан Умеров",
-          "position": "ЛК",
-          "age": 17,
-          "height": 184,
-          "weight": 82,
-          "number": 9,
-          "country": "Россия",
-          "overall": 62,
-          "potential": 84,
-          "skills": {
-            "skating": 68,
-            "shooting": 64,
-            "passing": 62,
-            "puckControl": 65,
-            "checking": 51,
-            "defense": 52
-          },
-          "contract": {
-            "salary": 3000000,
-            "years": 3
           }
         },
         {
@@ -6900,30 +6926,6 @@
           }
         },
         {
-          "id": "lad-lw09",
-          "name": "Евгений Грошев",
-          "position": "ЛК",
-          "age": 26,
-          "height": 177,
-          "weight": 72,
-          "number": 63,
-          "country": "Россия",
-          "overall": 70,
-          "potential": 78,
-          "skills": {
-            "skating": 76,
-            "shooting": 72,
-            "passing": 70,
-            "puckControl": 70,
-            "checking": 62,
-            "defense": 64
-          },
-          "contract": {
-            "salary": 8000000,
-            "years": 2
-          }
-        },
-        {
           "id": "lad-lw10",
           "name": "Никита Михайлов",
           "position": "ЛК",
@@ -7044,30 +7046,6 @@
           }
         },
         {
-          "id": "lad-rw06",
-          "name": "Данил Бородин",
-          "position": "ПК",
-          "age": 21,
-          "height": 181,
-          "weight": 75,
-          "number": 87,
-          "country": "Россия",
-          "overall": 68,
-          "potential": 80,
-          "skills": {
-            "skating": 72,
-            "shooting": 71,
-            "passing": 69,
-            "puckControl": 69,
-            "checking": 59,
-            "defense": 61
-          },
-          "contract": {
-            "salary": 5000000,
-            "years": 3
-          }
-        },
-        {
           "id": "lad-lw13",
           "name": "Никита Седиков",
           "position": "ПК",
@@ -7114,6 +7092,110 @@
             "salary": 10000000,
             "years": 2
           }
+        },
+        {
+          "id": "lad-d07",
+          "name": "Максим Белоусов",
+          "position": "З",
+          "age": 21,
+          "height": 186,
+          "weight": 83,
+          "number": 64,
+          "country": "Россия",
+          "overall": 70,
+          "potential": 80,
+          "skills": {
+            "skating": 71,
+            "shooting": 69,
+            "passing": 69,
+            "puckControl": 68,
+            "checking": 70,
+            "defense": 73
+          },
+          "contract": {
+            "salary": 8000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "lad-lw01",
+          "name": "Руслан Умеров",
+          "position": "ЛК",
+          "age": 17,
+          "height": 184,
+          "weight": 82,
+          "number": 9,
+          "country": "Россия",
+          "overall": 62,
+          "potential": 84,
+          "skills": {
+            "skating": 68,
+            "shooting": 64,
+            "passing": 62,
+            "puckControl": 65,
+            "checking": 51,
+            "defense": 52
+          },
+          "contract": {
+            "salary": 3000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "lad-lw09",
+          "name": "Евгений Грошев",
+          "position": "ЛК",
+          "age": 26,
+          "height": 177,
+          "weight": 72,
+          "number": 63,
+          "country": "Россия",
+          "overall": 70,
+          "potential": 78,
+          "skills": {
+            "skating": 76,
+            "shooting": 72,
+            "passing": 70,
+            "puckControl": 70,
+            "checking": 62,
+            "defense": 64
+          },
+          "contract": {
+            "salary": 8000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "lad-rw06",
+          "name": "Данил Бородин",
+          "position": "ПК",
+          "age": 21,
+          "height": 181,
+          "weight": 75,
+          "number": 87,
+          "country": "Россия",
+          "overall": 68,
+          "potential": 80,
+          "skills": {
+            "skating": 72,
+            "shooting": 71,
+            "passing": 69,
+            "puckControl": 69,
+            "checking": 59,
+            "defense": 61
+          },
+          "contract": {
+            "salary": 5000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
         }
       ]
     },
@@ -7242,7 +7324,8 @@
           },
           "contract": {
             "salary": 6000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -7972,7 +8055,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -8308,7 +8392,8 @@
           },
           "contract": {
             "salary": 4000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -8509,7 +8594,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -8965,7 +9051,8 @@
           },
           "contract": {
             "salary": 3000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -8989,7 +9076,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -9013,7 +9101,8 @@
           },
           "contract": {
             "salary": 4000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -9382,7 +9471,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -9478,7 +9568,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -9670,7 +9761,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -9770,30 +9862,6 @@
           }
         },
         {
-          "id": "syu-lw13",
-          "name": "Алан Шайхлисламов",
-          "position": "ЛК",
-          "age": 18,
-          "height": 184,
-          "weight": 86,
-          "number": 91,
-          "country": "Россия",
-          "overall": 64,
-          "potential": 82,
-          "skills": {
-            "skating": 69,
-            "shooting": 65,
-            "passing": 63,
-            "puckControl": 66,
-            "checking": 57,
-            "defense": 58
-          },
-          "contract": {
-            "salary": 3000000,
-            "years": 3
-          }
-        },
-        {
           "id": "syu-lw14",
           "name": "Александр Жаровский",
           "position": "ПК",
@@ -9816,6 +9884,32 @@
             "salary": 4000000,
             "years": 3
           }
+        },
+        {
+          "id": "syu-lw13",
+          "name": "Алан Шайхлисламов",
+          "position": "ЛК",
+          "age": 18,
+          "height": 184,
+          "weight": 86,
+          "number": 91,
+          "country": "Россия",
+          "overall": 64,
+          "potential": 82,
+          "skills": {
+            "skating": 69,
+            "shooting": 65,
+            "passing": 63,
+            "puckControl": 66,
+            "checking": 57,
+            "defense": 58
+          },
+          "contract": {
+            "salary": 3000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
         }
       ]
     },
@@ -10677,30 +10771,6 @@
           }
         },
         {
-          "id": "sev-d05",
-          "name": "Иван Ремезовский",
-          "position": "З",
-          "age": 21,
-          "height": 186,
-          "weight": 80,
-          "number": 21,
-          "country": "Россия",
-          "overall": 68,
-          "potential": 78,
-          "skills": {
-            "skating": 69,
-            "shooting": 61,
-            "passing": 67,
-            "puckControl": 67,
-            "checking": 73,
-            "defense": 71
-          },
-          "contract": {
-            "salary": 5000000,
-            "years": 2
-          }
-        },
-        {
           "id": "sev-d06",
           "name": "Марк Козырев",
           "position": "З",
@@ -10842,54 +10912,6 @@
           "contract": {
             "salary": 15000000,
             "years": 2
-          }
-        },
-        {
-          "id": "sev-d12",
-          "name": "Макар Фомин",
-          "position": "З",
-          "age": 19,
-          "height": 180,
-          "weight": 75,
-          "number": 77,
-          "country": "Россия",
-          "overall": 66,
-          "potential": 78,
-          "skills": {
-            "skating": 68,
-            "shooting": 65,
-            "passing": 64,
-            "puckControl": 64,
-            "checking": 67,
-            "defense": 68
-          },
-          "contract": {
-            "salary": 4000000,
-            "years": 3
-          }
-        },
-        {
-          "id": "sev-d13",
-          "name": "Семён Чулков",
-          "position": "З",
-          "age": 18,
-          "height": 182,
-          "weight": 82,
-          "number": 78,
-          "country": "Россия",
-          "overall": 64,
-          "potential": 78,
-          "skills": {
-            "skating": 66,
-            "shooting": 58,
-            "passing": 62,
-            "puckControl": 62,
-            "checking": 70,
-            "defense": 66
-          },
-          "contract": {
-            "salary": 3000000,
-            "years": 3
           }
         },
         {
@@ -11085,30 +11107,6 @@
           }
         },
         {
-          "id": "sev-c02",
-          "name": "Иван Окунев",
-          "position": "Ц",
-          "age": 20,
-          "height": 181,
-          "weight": 81,
-          "number": 25,
-          "country": "Россия",
-          "overall": 66,
-          "potential": 78,
-          "skills": {
-            "skating": 69,
-            "shooting": 65,
-            "passing": 67,
-            "puckControl": 69,
-            "checking": 60,
-            "defense": 60
-          },
-          "contract": {
-            "salary": 4000000,
-            "years": 3
-          }
-        },
-        {
           "id": "sev-rw03",
           "name": "Илья Рейнгардт",
           "position": "ПК",
@@ -11153,54 +11151,6 @@
           },
           "contract": {
             "salary": 15000000,
-            "years": 2
-          }
-        },
-        {
-          "id": "sev-c03",
-          "name": "Егор Смирнов",
-          "position": "Ц",
-          "age": 21,
-          "height": 177,
-          "weight": 74,
-          "number": 47,
-          "country": "Россия",
-          "overall": 68,
-          "potential": 78,
-          "skills": {
-            "skating": 74,
-            "shooting": 68,
-            "passing": 70,
-            "puckControl": 72,
-            "checking": 56,
-            "defense": 61
-          },
-          "contract": {
-            "salary": 5000000,
-            "years": 2
-          }
-        },
-        {
-          "id": "sev-c04",
-          "name": "Илья Квочко",
-          "position": "Ц",
-          "age": 22,
-          "height": 175,
-          "weight": 76,
-          "number": 51,
-          "country": "Россия",
-          "overall": 70,
-          "potential": 76,
-          "skills": {
-            "skating": 75,
-            "shooting": 71,
-            "passing": 72,
-            "puckControl": 74,
-            "checking": 58,
-            "defense": 63
-          },
-          "contract": {
-            "salary": 8000000,
             "years": 2
           }
         },
@@ -11253,30 +11203,6 @@
           }
         },
         {
-          "id": "sev-lw06",
-          "name": "Егор Граф",
-          "position": "ЛК",
-          "age": 20,
-          "height": 180,
-          "weight": 72,
-          "number": 70,
-          "country": "Россия",
-          "overall": 68,
-          "potential": 78,
-          "skills": {
-            "skating": 77,
-            "shooting": 68,
-            "passing": 69,
-            "puckControl": 72,
-            "checking": 54,
-            "defense": 59
-          },
-          "contract": {
-            "salary": 5000000,
-            "years": 2
-          }
-        },
-        {
           "id": "sev-c06",
           "name": "Никита Попугаев",
           "position": "ЛК",
@@ -11321,30 +11247,6 @@
           },
           "contract": {
             "salary": 8000000,
-            "years": 2
-          }
-        },
-        {
-          "id": "sev-c07",
-          "name": "Даниил Казулаев",
-          "position": "Ц",
-          "age": 21,
-          "height": 193,
-          "weight": 78,
-          "number": 81,
-          "country": "Россия",
-          "overall": 68,
-          "potential": 78,
-          "skills": {
-            "skating": 72,
-            "shooting": 68,
-            "passing": 69,
-            "puckControl": 71,
-            "checking": 60,
-            "defense": 62
-          },
-          "contract": {
-            "salary": 5000000,
             "years": 2
           }
         },
@@ -11419,6 +11321,214 @@
             "salary": 15000000,
             "years": 2
           }
+        },
+        {
+          "id": "sev-d05",
+          "name": "Иван Ремезовский",
+          "position": "З",
+          "age": 21,
+          "height": 186,
+          "weight": 80,
+          "number": 21,
+          "country": "Россия",
+          "overall": 68,
+          "potential": 78,
+          "skills": {
+            "skating": 69,
+            "shooting": 61,
+            "passing": 67,
+            "puckControl": 67,
+            "checking": 73,
+            "defense": 71
+          },
+          "contract": {
+            "salary": 5000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "sev-d12",
+          "name": "Макар Фомин",
+          "position": "З",
+          "age": 19,
+          "height": 180,
+          "weight": 75,
+          "number": 77,
+          "country": "Россия",
+          "overall": 66,
+          "potential": 78,
+          "skills": {
+            "skating": 68,
+            "shooting": 65,
+            "passing": 64,
+            "puckControl": 64,
+            "checking": 67,
+            "defense": 68
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "sev-d13",
+          "name": "Семён Чулков",
+          "position": "З",
+          "age": 18,
+          "height": 182,
+          "weight": 82,
+          "number": 78,
+          "country": "Россия",
+          "overall": 64,
+          "potential": 78,
+          "skills": {
+            "skating": 66,
+            "shooting": 58,
+            "passing": 62,
+            "puckControl": 62,
+            "checking": 70,
+            "defense": 66
+          },
+          "contract": {
+            "salary": 3000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "sev-c02",
+          "name": "Иван Окунев",
+          "position": "Ц",
+          "age": 20,
+          "height": 181,
+          "weight": 81,
+          "number": 25,
+          "country": "Россия",
+          "overall": 66,
+          "potential": 78,
+          "skills": {
+            "skating": 69,
+            "shooting": 65,
+            "passing": 67,
+            "puckControl": 69,
+            "checking": 60,
+            "defense": 60
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "sev-c03",
+          "name": "Егор Смирнов",
+          "position": "Ц",
+          "age": 21,
+          "height": 177,
+          "weight": 74,
+          "number": 47,
+          "country": "Россия",
+          "overall": 68,
+          "potential": 78,
+          "skills": {
+            "skating": 74,
+            "shooting": 68,
+            "passing": 70,
+            "puckControl": 72,
+            "checking": 56,
+            "defense": 61
+          },
+          "contract": {
+            "salary": 5000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "sev-c04",
+          "name": "Илья Квочко",
+          "position": "Ц",
+          "age": 22,
+          "height": 175,
+          "weight": 76,
+          "number": 51,
+          "country": "Россия",
+          "overall": 70,
+          "potential": 76,
+          "skills": {
+            "skating": 75,
+            "shooting": 71,
+            "passing": 72,
+            "puckControl": 74,
+            "checking": 58,
+            "defense": 63
+          },
+          "contract": {
+            "salary": 8000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "sev-lw06",
+          "name": "Егор Граф",
+          "position": "ЛК",
+          "age": 20,
+          "height": 180,
+          "weight": 72,
+          "number": 70,
+          "country": "Россия",
+          "overall": 68,
+          "potential": 78,
+          "skills": {
+            "skating": 77,
+            "shooting": 68,
+            "passing": 69,
+            "puckControl": 72,
+            "checking": 54,
+            "defense": 59
+          },
+          "contract": {
+            "salary": 5000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "sev-c07",
+          "name": "Даниил Казулаев",
+          "position": "Ц",
+          "age": 21,
+          "height": 193,
+          "weight": 78,
+          "number": 81,
+          "country": "Россия",
+          "overall": 68,
+          "potential": 78,
+          "skills": {
+            "skating": 72,
+            "shooting": 68,
+            "passing": 69,
+            "puckControl": 71,
+            "checking": 60,
+            "defense": 62
+          },
+          "contract": {
+            "salary": 5000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
         }
       ]
     },
@@ -11498,31 +11608,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 2
-          }
-        },
-        {
-          "id": "sib-d01",
-          "name": "Даниил Волков",
-          "position": "З",
-          "age": 19,
-          "height": 183,
-          "weight": 81,
-          "number": 4,
-          "country": "Россия",
-          "overall": 66,
-          "potential": 78,
-          "skills": {
-            "skating": 68,
-            "shooting": 65,
-            "passing": 64,
-            "puckControl": 64,
-            "checking": 67,
-            "defense": 68
-          },
-          "contract": {
-            "salary": 4000000,
-            "years": 3
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -11642,7 +11729,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -11786,7 +11874,8 @@
           },
           "contract": {
             "salary": 4000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -11954,7 +12043,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -12050,54 +12140,6 @@
           },
           "contract": {
             "salary": 8000000,
-            "years": 2
-          }
-        },
-        {
-          "id": "sib-c04",
-          "name": "Иван Рябов",
-          "position": "Ц",
-          "age": 17,
-          "height": 173,
-          "weight": 65,
-          "number": 73,
-          "country": "Россия",
-          "overall": 62,
-          "potential": 78,
-          "skills": {
-            "skating": 69,
-            "shooting": 60,
-            "passing": 63,
-            "puckControl": 66,
-            "checking": 52,
-            "defense": 54
-          },
-          "contract": {
-            "salary": 3000000,
-            "years": 3
-          }
-        },
-        {
-          "id": "sib-c05",
-          "name": "Илья Люзенков",
-          "position": "Ц",
-          "age": 20,
-          "height": 184,
-          "weight": 82,
-          "number": 86,
-          "country": "Россия",
-          "overall": 66,
-          "potential": 78,
-          "skills": {
-            "skating": 70,
-            "shooting": 64,
-            "passing": 68,
-            "puckControl": 70,
-            "checking": 58,
-            "defense": 58
-          },
-          "contract": {
-            "salary": 4000000,
             "years": 2
           }
         },
@@ -12220,6 +12262,84 @@
             "salary": 50000000,
             "years": 1
           }
+        },
+        {
+          "id": "sib-d01",
+          "name": "Даниил Волков",
+          "position": "З",
+          "age": 19,
+          "height": 183,
+          "weight": 81,
+          "number": 4,
+          "country": "Россия",
+          "overall": 66,
+          "potential": 78,
+          "skills": {
+            "skating": 68,
+            "shooting": 65,
+            "passing": 64,
+            "puckControl": 64,
+            "checking": 67,
+            "defense": 68
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "sib-c04",
+          "name": "Иван Рябов",
+          "position": "Ц",
+          "age": 17,
+          "height": 173,
+          "weight": 65,
+          "number": 73,
+          "country": "Россия",
+          "overall": 62,
+          "potential": 78,
+          "skills": {
+            "skating": 69,
+            "shooting": 60,
+            "passing": 63,
+            "puckControl": 66,
+            "checking": 52,
+            "defense": 54
+          },
+          "contract": {
+            "salary": 3000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "sib-c05",
+          "name": "Илья Люзенков",
+          "position": "Ц",
+          "age": 20,
+          "height": 184,
+          "weight": 82,
+          "number": 86,
+          "country": "Россия",
+          "overall": 66,
+          "potential": 78,
+          "skills": {
+            "skating": 70,
+            "shooting": 64,
+            "passing": 68,
+            "puckControl": 70,
+            "checking": 58,
+            "defense": 58
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
         }
       ]
     },
@@ -12233,29 +12353,6 @@
       "secondaryColor": "#FFFFFF",
       "budget": 900000000,
       "players": [
-        {
-          "id": "soc-g01",
-          "name": "Пётр Андрюхов",
-          "position": "В",
-          "age": 19,
-          "height": 184,
-          "weight": 94,
-          "number": 1,
-          "country": "Россия",
-          "overall": 66,
-          "potential": 78,
-          "skills": {
-            "reflexes": 69,
-            "positioning": 66,
-            "reboundControl": 64,
-            "puckHandling": 63,
-            "endurance": 68
-          },
-          "contract": {
-            "salary": 4000000,
-            "years": 3
-          }
-        },
         {
           "id": "soc-g02",
           "name": "Алексей Щетилин",
@@ -12323,54 +12420,6 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 2
-          }
-        },
-        {
-          "id": "soc-d02",
-          "name": "Марат Калимуллин",
-          "position": "З",
-          "age": 20,
-          "height": 191,
-          "weight": 81,
-          "number": 12,
-          "country": "Россия",
-          "overall": 66,
-          "potential": 78,
-          "skills": {
-            "skating": 66,
-            "shooting": 62,
-            "passing": 64,
-            "puckControl": 64,
-            "checking": 72,
-            "defense": 68
-          },
-          "contract": {
-            "salary": 4000000,
-            "years": 2
-          }
-        },
-        {
-          "id": "soc-d03",
-          "name": "Ярослав Беляков",
-          "position": "З",
-          "age": 20,
-          "height": 184,
-          "weight": 82,
-          "number": 13,
-          "country": "Россия",
-          "overall": 66,
-          "potential": 78,
-          "skills": {
-            "skating": 69,
-            "shooting": 61,
-            "passing": 64,
-            "puckControl": 64,
-            "checking": 70,
-            "defense": 68
-          },
-          "contract": {
-            "salary": 4000000,
             "years": 2
           }
         },
@@ -12467,7 +12516,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -12539,30 +12589,6 @@
           },
           "contract": {
             "salary": 12000000,
-            "years": 2
-          }
-        },
-        {
-          "id": "soc-d11",
-          "name": "Илья Николаев",
-          "position": "З",
-          "age": 25,
-          "height": 184,
-          "weight": 78,
-          "number": 88,
-          "country": "Россия",
-          "overall": 68,
-          "potential": 74,
-          "skills": {
-            "skating": 72,
-            "shooting": 61,
-            "passing": 67,
-            "puckControl": 67,
-            "checking": 69,
-            "defense": 72
-          },
-          "contract": {
-            "salary": 5000000,
             "years": 2
           }
         },
@@ -12923,7 +12949,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -13045,6 +13072,109 @@
             "salary": 85000000,
             "years": 1
           }
+        },
+        {
+          "id": "soc-g01",
+          "name": "Пётр Андрюхов",
+          "position": "В",
+          "age": 19,
+          "height": 184,
+          "weight": 94,
+          "number": 1,
+          "country": "Россия",
+          "overall": 66,
+          "potential": 78,
+          "skills": {
+            "reflexes": 69,
+            "positioning": 66,
+            "reboundControl": 64,
+            "puckHandling": 63,
+            "endurance": 68
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "soc-d02",
+          "name": "Марат Калимуллин",
+          "position": "З",
+          "age": 20,
+          "height": 191,
+          "weight": 81,
+          "number": 12,
+          "country": "Россия",
+          "overall": 66,
+          "potential": 78,
+          "skills": {
+            "skating": 66,
+            "shooting": 62,
+            "passing": 64,
+            "puckControl": 64,
+            "checking": 72,
+            "defense": 68
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "soc-d03",
+          "name": "Ярослав Беляков",
+          "position": "З",
+          "age": 20,
+          "height": 184,
+          "weight": 82,
+          "number": 13,
+          "country": "Россия",
+          "overall": 66,
+          "potential": 78,
+          "skills": {
+            "skating": 69,
+            "shooting": 61,
+            "passing": 64,
+            "puckControl": 64,
+            "checking": 70,
+            "defense": 68
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "soc-d11",
+          "name": "Илья Николаев",
+          "position": "З",
+          "age": 25,
+          "height": 184,
+          "weight": 78,
+          "number": 88,
+          "country": "Россия",
+          "overall": 68,
+          "potential": 74,
+          "skills": {
+            "skating": 72,
+            "shooting": 61,
+            "passing": 67,
+            "puckControl": 67,
+            "checking": 69,
+            "defense": 72
+          },
+          "contract": {
+            "salary": 5000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
         }
       ]
     },
@@ -13248,30 +13378,6 @@
           }
         },
         {
-          "id": "spa-d06",
-          "name": "Николай Дроздов",
-          "position": "З",
-          "age": 18,
-          "height": 185,
-          "weight": 80,
-          "number": 49,
-          "country": "Россия",
-          "overall": 64,
-          "potential": 78,
-          "skills": {
-            "skating": 65,
-            "shooting": 60,
-            "passing": 61,
-            "puckControl": 61,
-            "checking": 69,
-            "defense": 68
-          },
-          "contract": {
-            "salary": 3000000,
-            "years": 3
-          }
-        },
-        {
           "id": "spa-d07",
           "name": "Дмитрий Вишневский",
           "position": "З",
@@ -13392,30 +13498,6 @@
           }
         },
         {
-          "id": "spa-lw01",
-          "name": "Егор Варюшкин",
-          "position": "ЛК",
-          "age": 21,
-          "height": 188,
-          "weight": 80,
-          "number": 2,
-          "country": "Россия",
-          "overall": 68,
-          "potential": 78,
-          "skills": {
-            "skating": 72,
-            "shooting": 70,
-            "passing": 66,
-            "puckControl": 69,
-            "checking": 63,
-            "defense": 60
-          },
-          "contract": {
-            "salary": 5000000,
-            "years": 2
-          }
-        },
-        {
           "id": "spa-c01",
           "name": "Иван Рябов",
           "position": "Ц",
@@ -13485,30 +13567,6 @@
           "contract": {
             "salary": 8000000,
             "years": 2
-          }
-        },
-        {
-          "id": "spa-lw02",
-          "name": "Евгений Якунин",
-          "position": "ЛК",
-          "age": 17,
-          "height": 190,
-          "weight": 88,
-          "number": 18,
-          "country": "Россия",
-          "overall": 62,
-          "potential": 78,
-          "skills": {
-            "skating": 71,
-            "shooting": 63,
-            "passing": 61,
-            "puckControl": 64,
-            "checking": 51,
-            "defense": 53
-          },
-          "contract": {
-            "salary": 3000000,
-            "years": 3
           }
         },
         {
@@ -13680,30 +13738,6 @@
           }
         },
         {
-          "id": "spa-rw04",
-          "name": "Силланти Коптёнков",
-          "position": "ПК",
-          "age": 20,
-          "height": 175,
-          "weight": 95,
-          "number": 71,
-          "country": "Россия",
-          "overall": 66,
-          "potential": 78,
-          "skills": {
-            "skating": 67,
-            "shooting": 67,
-            "passing": 62,
-            "puckControl": 66,
-            "checking": 68,
-            "defense": 59
-          },
-          "contract": {
-            "salary": 4000000,
-            "years": 2
-          }
-        },
-        {
           "id": "spa-lw08",
           "name": "Сергей Лукьянцев",
           "position": "ЛК",
@@ -13724,7 +13758,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -13772,7 +13807,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -13870,6 +13906,110 @@
             "salary": 12000000,
             "years": 2
           }
+        },
+        {
+          "id": "spa-d06",
+          "name": "Николай Дроздов",
+          "position": "З",
+          "age": 18,
+          "height": 185,
+          "weight": 80,
+          "number": 49,
+          "country": "Россия",
+          "overall": 64,
+          "potential": 78,
+          "skills": {
+            "skating": 65,
+            "shooting": 60,
+            "passing": 61,
+            "puckControl": 61,
+            "checking": 69,
+            "defense": 68
+          },
+          "contract": {
+            "salary": 3000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "spa-lw01",
+          "name": "Егор Варюшкин",
+          "position": "ЛК",
+          "age": 21,
+          "height": 188,
+          "weight": 80,
+          "number": 2,
+          "country": "Россия",
+          "overall": 68,
+          "potential": 78,
+          "skills": {
+            "skating": 72,
+            "shooting": 70,
+            "passing": 66,
+            "puckControl": 69,
+            "checking": 63,
+            "defense": 60
+          },
+          "contract": {
+            "salary": 5000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "spa-lw02",
+          "name": "Евгений Якунин",
+          "position": "ЛК",
+          "age": 17,
+          "height": 190,
+          "weight": 88,
+          "number": 18,
+          "country": "Россия",
+          "overall": 62,
+          "potential": 78,
+          "skills": {
+            "skating": 71,
+            "shooting": 63,
+            "passing": 61,
+            "puckControl": 64,
+            "checking": 51,
+            "defense": 53
+          },
+          "contract": {
+            "salary": 3000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "spa-rw04",
+          "name": "Силланти Коптёнков",
+          "position": "ПК",
+          "age": 20,
+          "height": 175,
+          "weight": 95,
+          "number": 71,
+          "country": "Россия",
+          "overall": 66,
+          "potential": 78,
+          "skills": {
+            "skating": 67,
+            "shooting": 67,
+            "passing": 62,
+            "puckControl": 66,
+            "checking": 68,
+            "defense": 59
+          },
+          "contract": {
+            "salary": 4000000,
+            "years": 2,
+            "twoWay": true
+          },
+          "inVhl": true
         }
       ]
     },
@@ -14141,7 +14281,8 @@
           },
           "contract": {
             "salary": 4000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -14217,30 +14358,6 @@
           }
         },
         {
-          "id": "tor-lw01",
-          "name": "Сергей Скворцов",
-          "position": "ЛК",
-          "age": 17,
-          "height": 183,
-          "weight": 70,
-          "number": 9,
-          "country": "Россия",
-          "overall": 62,
-          "potential": 78,
-          "skills": {
-            "skating": 71,
-            "shooting": 63,
-            "passing": 61,
-            "puckControl": 64,
-            "checking": 51,
-            "defense": 53
-          },
-          "contract": {
-            "salary": 3000000,
-            "years": 3
-          }
-        },
-        {
           "id": "tor-rw01",
           "name": "Владислав Фирстов",
           "position": "ПК",
@@ -14313,54 +14430,6 @@
           }
         },
         {
-          "id": "tor-lw02",
-          "name": "Виктор Фёдоров",
-          "position": "ЛК",
-          "age": 18,
-          "height": 187,
-          "weight": 80,
-          "number": 41,
-          "country": "Россия",
-          "overall": 64,
-          "potential": 78,
-          "skills": {
-            "skating": 69,
-            "shooting": 62,
-            "passing": 62,
-            "puckControl": 63,
-            "checking": 64,
-            "defense": 59
-          },
-          "contract": {
-            "salary": 3000000,
-            "years": 3
-          }
-        },
-        {
-          "id": "tor-lw03",
-          "name": "Глеб Пугачёв",
-          "position": "ЛК",
-          "age": 18,
-          "height": 190,
-          "weight": 91,
-          "number": 39,
-          "country": "Россия",
-          "overall": 64,
-          "potential": 78,
-          "skills": {
-            "skating": 67,
-            "shooting": 63,
-            "passing": 61,
-            "puckControl": 64,
-            "checking": 65,
-            "defense": 57
-          },
-          "contract": {
-            "salary": 3000000,
-            "years": 3
-          }
-        },
-        {
           "id": "tor-c02",
           "name": "Кирилл Сивяков",
           "position": "Ц",
@@ -14381,7 +14450,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -14501,7 +14571,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -14549,7 +14620,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -14671,6 +14743,84 @@
             "salary": 12000000,
             "years": 2
           }
+        },
+        {
+          "id": "tor-lw01",
+          "name": "Сергей Скворцов",
+          "position": "ЛК",
+          "age": 17,
+          "height": 183,
+          "weight": 70,
+          "number": 9,
+          "country": "Россия",
+          "overall": 62,
+          "potential": 78,
+          "skills": {
+            "skating": 71,
+            "shooting": 63,
+            "passing": 61,
+            "puckControl": 64,
+            "checking": 51,
+            "defense": 53
+          },
+          "contract": {
+            "salary": 3000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "tor-lw02",
+          "name": "Виктор Фёдоров",
+          "position": "ЛК",
+          "age": 18,
+          "height": 187,
+          "weight": 80,
+          "number": 41,
+          "country": "Россия",
+          "overall": 64,
+          "potential": 78,
+          "skills": {
+            "skating": 69,
+            "shooting": 62,
+            "passing": 62,
+            "puckControl": 63,
+            "checking": 64,
+            "defense": 59
+          },
+          "contract": {
+            "salary": 3000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
+        },
+        {
+          "id": "tor-lw03",
+          "name": "Глеб Пугачёв",
+          "position": "ЛК",
+          "age": 18,
+          "height": 190,
+          "weight": 91,
+          "number": 39,
+          "country": "Россия",
+          "overall": 64,
+          "potential": 78,
+          "skills": {
+            "skating": 67,
+            "shooting": 63,
+            "passing": 61,
+            "puckControl": 64,
+            "checking": 65,
+            "defense": 57
+          },
+          "contract": {
+            "salary": 3000000,
+            "years": 3,
+            "twoWay": true
+          },
+          "inVhl": true
         }
       ]
     },
@@ -14727,29 +14877,6 @@
           },
           "contract": {
             "salary": 25000000,
-            "years": 2
-          }
-        },
-        {
-          "id": "trk-g03",
-          "name": "Дмитрий Николаев",
-          "position": "В",
-          "age": 26,
-          "height": 187,
-          "weight": 88,
-          "number": 70,
-          "country": "Россия",
-          "overall": 81,
-          "potential": 78,
-          "skills": {
-            "reflexes": 86,
-            "positioning": 82,
-            "reboundControl": 80,
-            "puckHandling": 73,
-            "endurance": 84
-          },
-          "contract": {
-            "salary": 18000000,
             "years": 2
           }
         },
@@ -14966,7 +15093,8 @@
           },
           "contract": {
             "salary": 4000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -15014,7 +15142,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -15038,7 +15167,8 @@
           },
           "contract": {
             "salary": 5000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -15110,7 +15240,8 @@
           },
           "contract": {
             "salary": 3000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -15361,7 +15492,8 @@
           },
           "contract": {
             "salary": 4000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -15430,7 +15562,8 @@
           },
           "contract": {
             "salary": 3000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -15598,7 +15731,8 @@
           },
           "contract": {
             "salary": 4000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
@@ -16006,7 +16140,8 @@
           },
           "contract": {
             "salary": 3000000,
-            "years": 3
+            "years": 3,
+            "twoWay": true
           }
         },
         {
@@ -16231,7 +16366,8 @@
           },
           "contract": {
             "salary": 6000000,
-            "years": 2
+            "years": 2,
+            "twoWay": true
           }
         },
         {
