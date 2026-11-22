@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { MutableRefObject } from 'react';
-import type { Game, GameEvent, Lineup } from '../types';
+import type { AttackStyle, ForecheckStyle, Game, GameEvent, Lineup, PullGoaliePolicy } from '../types';
 import type { BlockKind } from '../game/engine';
 import { fmtClock } from '../game/engine';
 import { commitUserResult, makeUserSim, useGame } from '../game/state';
@@ -12,11 +12,24 @@ import { GoalReplay } from './GoalReplay';
 import { ShotMap } from './ShotMap';
 import { LineupPreview } from './LineupPreview';
 import { previewPowerPlay } from '../game/lineupCompare';
+import { ATTACK_STYLE_INFO, FORECHECK_INFO, freshnessTone, goalieFreshness, PULL_GOALIE_INFO } from '../game/chemistry';
+import { formatMoney } from '../game/ratings';
 
 const RATE: Record<1 | 2 | 4, number> = { 1: 30, 2: 60, 4: 120 };
 
 function cloneL(L: Lineup): Lineup {
-  return { F: L.F.map((l) => [...l]), D: L.D.map((l) => [...l]), pp1: [...L.pp1], pp2: [...L.pp2], pk1: [...L.pk1], pk2: [...L.pk2], starterG: L.starterG, backupG: L.backupG };
+  return {
+    F: L.F.map((l) => [...l]),
+    D: L.D.map((l) => [...l]),
+    pp1: [...L.pp1],
+    pp2: [...L.pp2],
+    pk1: [...L.pk1],
+    pk2: [...L.pk2],
+    starterG: L.starterG,
+    backupG: L.backupG,
+    u20F: L.u20F ?? null,
+    u20D: L.u20D ?? null,
+  };
 }
 
 const EVENT_COLOR: Record<string, string> = { goal: '#E5323E', shot: '#93A4BC', miss: '#93A4BC', penalty: '#F2B544', hit: '#8FD8F0', period_start: '#3FCF8E', period_end: '#3FCF8E', so_goal: '#E5323E', so_miss: '#93A4BC' };
@@ -53,6 +66,12 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const [swapSel, setSwapSel] = useState<number | null>(null);
   const [showPreLineup, setShowPreLineup] = useState(false);
   const [showPostMap, setShowPostMap] = useState(true);
+  const [forecheck, setForecheckState] = useState<ForecheckStyle>(sim.tactics[userIdx].forecheck);
+  const [attackStyle, setAttackStyleState] = useState<AttackStyle>(sim.tactics[userIdx].style);
+  const [pullPolicy, setPullPolicyState] = useState<PullGoaliePolicy>(sim.tactics[userIdx].pullGoalie);
+  const [timeoutUsed, setTimeoutUsed] = useState(false);
+  const [pulledNow, setPulledNow] = useState(false);
+  const [, setCoachTick] = useState(0);
   const periodEvs = useRef<GameEvent[]>([]);
   const idx = useRef(0);
   const clockRef = useRef(0);
@@ -167,6 +186,77 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     setStatus('done');
   };
 
+  const applyLiveCoaching = (mutate: () => string | null) => {
+    if (status === 'playing' && kind !== 'so') {
+      // Ensure at least period_start has been revealed before replanning
+      if (idx.current === 0 && periodEvs.current.length > 0) {
+        const e0 = periodEvs.current[0];
+        idx.current = 1;
+        applyEvent(live.current, e0, game.home);
+        setFeed((f) => [{ k: seq.current++, e: e0 }, ...f]);
+      }
+      const revealed = periodEvs.current.slice(0, idx.current);
+      const updated = sim.replanLivePeriod(revealed, clockRef.current, s.userTeamId, mutate);
+      if (updated) {
+        periodEvs.current = updated;
+        blockEnd.current = sim.sec;
+        // Immediately reveal the coaching info event on the feed if present
+        if (idx.current < updated.length && updated[idx.current].type === 'info') {
+          const infoEv = updated[idx.current++];
+          applyEvent(live.current, infoEv, game.home);
+          setFeed((f) => [{ k: seq.current++, e: infoEv }, ...f]);
+        }
+        setCoachTick((x) => x + 1);
+        return;
+      }
+    }
+    mutate();
+    setCoachTick((x) => x + 1);
+  };
+
+  const changeForecheck = (fc: ForecheckStyle) => {
+    if (fc === forecheck) return;
+    setForecheckState(fc);
+    applyLiveCoaching(() => {
+      sim.setForecheck(userIdx, fc);
+      return `Тренерский мостик «${s.teams[s.userTeamId].short}»: система форчекинга → ${FORECHECK_INFO[fc].label}`;
+    });
+  };
+
+  const changeAttackStyle = (st: AttackStyle) => {
+    if (st === attackStyle) return;
+    setAttackStyleState(st);
+    applyLiveCoaching(() => {
+      sim.setAttackStyle(userIdx, st);
+      return `Тренерский мостик «${s.teams[s.userTeamId].short}»: акцент в атаке → ${ATTACK_STYLE_INFO[st].label}`;
+    });
+  };
+
+  const changePullPolicy = (pl: PullGoaliePolicy) => {
+    setPullPolicyState(pl);
+    sim.setPullGoaliePolicy(userIdx, pl);
+  };
+
+  const callTimeoutNow = () => {
+    if (timeoutUsed || status === 'done') return;
+    setTimeoutUsed(true);
+    applyLiveCoaching(() => {
+      sim.useTeamTimeout(userIdx, clockRef.current);
+      return `⏱ ТАЙМ-АУТ (30 сек) «${s.teams[s.userTeamId].name}» — тренерский штаб сбивает кураж соперника и выпускает лидеров!`;
+    });
+  };
+
+  const toggleManualPullGoalie = () => {
+    const next = !pulledNow;
+    setPulledNow(next);
+    applyLiveCoaching(() => {
+      sim.setForceEmptyNet(userIdx, next);
+      return next
+        ? `⚡ ПУСТЫЕ ВОРОТА! «${s.teams[s.userTeamId].short}» меняет вратаря на шестого полевого игрока!`
+        : `Вратарь «${s.teams[s.userTeamId].short}» возвращается в ворота.`;
+    });
+  };
+
   const swapLine = (i: number, j: number) => {
     const c = cloneL(userL);
     const f = c.F[i];
@@ -180,13 +270,18 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     setSwapSel(null);
   };
   const switchGoalie = () => {
+    if (!userL.backupG) return;
     const c = cloneL(userL);
     const g = c.starterG;
     c.starterG = c.backupG;
     c.backupG = g;
     setUserL(c);
-    sim.setLineup(userIdx, c);
-    sim.setGoalie(userIdx, c.starterG);
+    applyLiveCoaching(() => {
+      sim.setLineup(userIdx, c);
+      sim.setGoalie(userIdx, c.starterG);
+      const newName = c.starterG && P[c.starterG] ? P[c.starterG].name : 'бэкап';
+      return `🔄 Замена вратаря «${s.teams[s.userTeamId].short}»: в игру вступает ${newName}!`;
+    });
   };
 
   const periodLabel = period === 0 ? '' : `${periodNameOf(period, kind)}`;
@@ -262,6 +357,15 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   return (
     <div className="min-h-screen rink-lines flex flex-col fade-in">
       <header className="bg-panel border-b border-line">
+        {sim.derby && (
+          <div className="bg-gradient-to-r from-accent/25 via-gold/20 to-accent/25 border-b border-gold/30 px-4 py-1 text-center text-xs" data-derby-banner>
+            <span className="font-display uppercase tracking-wider font-bold text-gold">🔥 {sim.derby.title}</span>
+            <span className="text-text/85 ml-2">{sim.derby.subtitle}</span>
+            {game.home === s.userTeamId && (
+              <span className="text-ok ml-2 font-semibold">· Аншлаг: +{formatMoney(sim.derby.gateBonus)} в бюджет</span>
+            )}
+          </div>
+        )}
         <div className="max-w-7xl mx-auto px-4 py-3 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
           <div className="flex items-center gap-3 min-w-0">
             <TeamLogo team={H} size={40} />
@@ -365,6 +469,103 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               </tbody>
             </table>
           </Panel>
+          <Panel title="Тренерский мостик (на лету)" data-live-coaching>
+            <div className="space-y-2.5 text-xs">
+              <div>
+                <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Форчекинг и средняя зона</div>
+                <div className="grid grid-cols-3 gap-1">
+                  {(['aggressive', 'balanced', 'trap'] as const).map((fc) => (
+                    <button
+                      key={fc}
+                      type="button"
+                      disabled={status === 'done'}
+                      onClick={() => changeForecheck(fc)}
+                      title={FORECHECK_INFO[fc].desc}
+                      className={cn(
+                        'px-1.5 py-1.5 rounded-sm font-semibold text-[11px] border transition cursor-pointer',
+                        forecheck === fc
+                          ? 'bg-accent text-white border-accent'
+                          : 'bg-panel2 border-line text-muted hover:text-text'
+                      )}
+                    >
+                      {FORECHECK_INFO[fc].short}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Акцент в атаке</div>
+                <div className="grid grid-cols-3 gap-1">
+                  {(['shoot', 'balanced', 'cycle'] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      disabled={status === 'done'}
+                      onClick={() => changeAttackStyle(st)}
+                      title={ATTACK_STYLE_INFO[st].desc}
+                      className={cn(
+                        'px-1.5 py-1.5 rounded-sm font-semibold text-[11px] border transition cursor-pointer',
+                        attackStyle === st
+                          ? 'bg-ice text-bg border-ice'
+                          : 'bg-panel2 border-line text-muted hover:text-text'
+                      )}
+                    >
+                      {ATTACK_STYLE_INFO[st].short}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Автоснятие вратаря в 3-м периоде</div>
+                <div className="grid grid-cols-3 gap-1">
+                  {(['early', 'normal', 'never'] as const).map((pl) => (
+                    <button
+                      key={pl}
+                      type="button"
+                      disabled={status === 'done'}
+                      onClick={() => changePullPolicy(pl)}
+                      className={cn(
+                        'px-1.5 py-1 rounded-sm font-semibold text-[11px] border transition cursor-pointer',
+                        pullPolicy === pl ? 'bg-gold/25 border-gold text-gold' : 'bg-panel2 border-line text-muted hover:text-text'
+                      )}
+                    >
+                      {PULL_GOALIE_INFO[pl].short}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {status !== 'done' && (
+                <div className="grid grid-cols-1 gap-1.5 pt-1 border-t border-line/60">
+                  <Button
+                    size="sm"
+                    variant={!timeoutUsed && sim.unansweredGoals[1 - userIdx] >= 2 ? 'primary' : 'secondary'}
+                    disabled={timeoutUsed || status === 'intro'}
+                    onClick={callTimeoutNow}
+                  >
+                    ⏱ {timeoutUsed ? 'Тайм-аут использован' : sim.unansweredGoals[1 - userIdx] >= 2 ? 'Взять тайм-аут (сбить натиск!)' : 'Тайм-аут 30 сек'}
+                  </Button>
+                  {userL.backupG && (
+                    <Button size="sm" variant="secondary" onClick={switchGoalie}>
+                      🔄 Сменить вратаря → {P[userL.backupG]?.name.split(' ').slice(-1)[0] ?? 'бэкап'}
+                    </Button>
+                  )}
+                  {period === 3 && kind === 'reg' && status === 'playing' && (
+                    <Button
+                      size="sm"
+                      variant={pulledNow ? 'danger' : 'secondary'}
+                      onClick={toggleManualPullGoalie}
+                    >
+                      {pulledNow ? 'Вернуть вратаря в ворота' : '⚡ Снять вратаря (6-й полевой)'}
+                    </Button>
+                  )}
+                </div>
+              )}
+            </div>
+          </Panel>
+
           <Panel title="Управление">
             <div className="flex items-center gap-2 text-xs text-muted mb-2">Скорость</div>
             <div className="grid grid-cols-3 gap-1.5">
@@ -377,23 +578,31 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
             <Button className="w-full mt-2" variant={paused ? 'ice' : 'secondary'} disabled={status !== 'playing'} onClick={() => setPaused((p) => !p)} title="Пробел">
               <Icon name={paused ? 'play' : 'pause'} /> {paused ? 'Возобновить' : 'Пауза'}
             </Button>
-            <div className="text-xs text-muted mt-3 mb-1">Пауза — клавиша «Пробел». Между периодами можно поменять звенья и вратаря.</div>
+            <div className="text-xs text-muted mt-3 mb-1">Пауза — клавиша «Пробел». Тактику, тайм-аут и вратаря можно менять прямо по ходу периода!</div>
             {status !== 'done' && (
               <Button className="w-full mt-2" onClick={finishNow}>
                 <Icon name="fast" /> Завершить мгновенно
               </Button>
             )}
           </Panel>
-          <Panel title="Вратари">
-            <div className="text-xs space-y-1">
-              <div className="flex justify-between">
-                <span className="truncate">{goalieName(0)}</span>
-                <span className="tabular text-muted">{goalieLine(0) ? `${goalieLine(0)?.saves ?? 0}/${goalieLine(0)?.shotsAgainst ?? 0}` : '—'}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="truncate">{goalieName(1)}</span>
-                <span className="tabular text-muted">{goalieLine(1) ? `${goalieLine(1)?.saves ?? 0}/${goalieLine(1)?.shotsAgainst ?? 0}` : '—'}</span>
-              </div>
+          <Panel title="Вратари и свежесть">
+            <div className="text-xs space-y-1.5">
+              {([0, 1] as const).map((ti) => {
+                const gid = sim.goalies[ti];
+                const gp = gid ? P[gid] : null;
+                const fr = goalieFreshness(gp);
+                const ft = freshnessTone(fr);
+                const gl = goalieLine(ti);
+                return (
+                  <div key={ti} className="flex items-center justify-between gap-2">
+                    <span className="truncate">{goalieName(ti)}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded tabular" style={{ background: ft.color + '22', color: ft.color }}>
+                      {fr}%
+                    </span>
+                    <span className="tabular text-muted">{gl ? `${gl.saves}/${gl.shotsAgainst}` : '—'}</span>
+                  </div>
+                );
+              })}
             </div>
           </Panel>
         </div>
@@ -407,10 +616,30 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         const [pp1, pp2] = previewPowerPlay(s, s.userTeamId, oppId, userL);
         return (
           <Overlay wide={showPreLineup}>
-            <div className="font-display text-3xl uppercase">Матч начинается</div>
-            <div className="text-muted text-sm mt-1">
-              {H.name} — {A.name}. Проверьте сравнение звеньев и бригады большинства до стартового вбрасывания.
+            <div className="font-display text-3xl uppercase">
+              {sim.derby ? `🔥 ${sim.derby.title}` : 'Матч начинается'}
             </div>
+            <div className="text-muted text-sm mt-1">
+              {H.name} — {A.name}. {sim.derby ? `${sim.derby.subtitle}. ` : ''}Проверьте тактику, свежесть вратаря и бригады большинства до стартового вбрасывания.
+            </div>
+            {(() => {
+              const stG = userL.starterG ? P[userL.starterG] : null;
+              const bkG = userL.backupG ? P[userL.backupG] : null;
+              const stFresh = goalieFreshness(stG);
+              if (stG && stFresh < 66 && bkG) {
+                return (
+                  <div className="mt-2 w-full rounded-md border border-gold/50 bg-gold/10 px-3 py-2 text-xs flex items-center justify-between gap-2">
+                    <span className="text-gold text-left">
+                      ⚠ Стартер <b>{stG.name}</b> подустал (свежесть <b>{stFresh}%</b>) — бэкап <b>{bkG.name}</b> свеж на <b>{goalieFreshness(bkG)}%</b>!
+                    </span>
+                    <Button size="sm" variant="secondary" onClick={switchGoalie}>
+                      Выпустить {bkG.name.split(' ').slice(-1)[0]}
+                    </Button>
+                  </div>
+                );
+              }
+              return null;
+            })()}
 
             {/* Compact pre-game PP preview right in the intro card */}
             <div className="mt-3 w-full rounded-lg border border-line bg-bg/55 p-3 text-left text-xs space-y-1.5">
@@ -591,7 +820,8 @@ class Ticker {
 }
 
 function ClockFace({ ticker, end, shootout }: { ticker: Ticker; end: MutableRefObject<number>; shootout: boolean }) {
-  const text = useSyncExternalStore(ticker.subscribe, () => (shootout ? 'Буллиты' : fmtClock(Math.max(0, end.current - ticker.sec))));
+  const get = () => (shootout ? 'Буллиты' : fmtClock(Math.max(0, end.current - ticker.sec)));
+  const text = useSyncExternalStore(ticker.subscribe, get, get);
   return (
     <div className="font-display text-2xl tabular leading-none" data-clock>
       {text}
@@ -600,7 +830,8 @@ function ClockFace({ ticker, end, shootout }: { ticker: Ticker; end: MutableRefO
 }
 
 function PenaltyTimer({ ticker, live }: { ticker: Ticker; live: MutableRefObject<LiveStats> }) {
-  const text = useSyncExternalStore(ticker.subscribe, () => fmtClock(Math.ceil(manpower(live.current, ticker.sec).remaining)));
+  const get = () => fmtClock(Math.ceil(manpower(live.current, ticker.sec).remaining));
+  const text = useSyncExternalStore(ticker.subscribe, get, get);
   return <>{text}</>;
 }
 

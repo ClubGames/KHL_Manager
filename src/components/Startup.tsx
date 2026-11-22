@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 const arena = './arena.jpg';
 import { downloadExampleRoster, fetchRoster, readLocalFile, ROSTER_EXAMPLE, rosterWithContracts, saveRosterFile } from '../game/roster';
 import type { NormalizedRoster } from '../game/roster';
-import { formatMoney, isGoalie, isSkater, payroll } from '../game/ratings';
+import { effectivePayroll } from '../game/cap';
+import { formatMoney, isGoalie, isSkater } from '../game/ratings';
 import { cn } from '../utils/cn';
 import { Button, Panel, Spinner, TeamLogo } from './ui';
 import { SavesList } from './Saves';
@@ -30,6 +31,9 @@ export function FormatDoc({ compact }: { compact?: boolean }) {
     ['players[].potential', 'number', 'Потолок развития 1–99 (для игроков до 25 лет)'],
     ['players[].skills', 'object', 'Полевые: skating, shooting, passing, puckControl, checking, defense. Вратари: reflexes, positioning, reboundControl, puckHandling, endurance (1–99)'],
     ['players[].contract', 'object', '{ salary: оклад за сезон ₽, years: осталось сезонов }. Если не указан — игра назначит контракт сама и предложит записать его в файл'],
+    ['players[].inVhl', 'boolean', 'true — игрок начинает сезон в фарм-клубе ВХЛ (также понимаются "vhl": true или "league": "ВХЛ")'],
+    ['players[].nmc', 'boolean', 'true — пункт ЗНО (запрет на обмен и отправку в список отказов)'],
+    ['players[].role', 'string', '"C" / "К" — капитан клуба, "A" / "А" — ассистент капитана (необязательно)'],
     ['players[].injury', 'object|null', '{ name: "Травма плеча", games: 6 } или null'],
     ['players[].morale', 'number', 'Мораль 20–99 (по умолчанию 72)'],
     ['freeAgents[]', 'array', 'Игроки без контракта — тот же формат, что players[]'],
@@ -104,7 +108,11 @@ function TeamSelect({ roster, onStart }: { roster: NormalizedRoster; onStart: (t
                       <div className="min-w-0 flex-1">
                         <div className="font-semibold truncate">{t.name}</div>
                         <div className="text-xs text-muted truncate">{t.city}</div>
-                        <div className="text-[11px] text-muted mt-0.5">{t.players.length} игроков · ФОТ {formatMoney(payroll(t.players, roster.players))}</div>
+                        <div className="text-[11px] text-muted mt-0.5">
+                          {t.players.length} игроков
+                          {t.players.some((pid) => roster.players[pid]?.inVhl) ? ` (ВХЛ: ${t.players.filter((pid) => roster.players[pid]?.inVhl).length})` : ''} · ФОТ{' '}
+                          {formatMoney(effectivePayroll(t, roster.players, 'season'))}
+                        </div>
                       </div>
                       <div className="text-right">
                         <div className="font-display text-xl tabular" style={{ color: s >= 80 ? '#E5323E' : s >= 77 ? '#8FD8F0' : '#E8EEF5' }}>

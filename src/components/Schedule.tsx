@@ -11,6 +11,7 @@ import {
   seasonWeekdayCap,
 } from '../game/schedule';
 import { getTradeWindowsSchedule, novemberTradeFreeze, tradeDeadline } from '../game/ai';
+import { getDerby } from '../game/derbies';
 import { roundName, useGame } from '../game/state';
 import { Button, Empty, Modal, Panel, TeamLogo, Tag, useUI } from './ui';
 import { ShotMap } from './ShotMap';
@@ -70,6 +71,14 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
       <div className="text-center text-[11px] text-muted mt-1">
         {seasonDate(game.day, regularSeasonLength(s.schedule), s.league.season)} · {game.kind === 'playoff' ? roundName(s.playoffs?.round ?? 0) : 'Регулярный чемпионат'}
       </div>
+      {(() => {
+        const dby = getDerby(H, A);
+        return dby ? (
+          <div className="mt-2 rounded-sm border border-gold/50 bg-gold/10 px-3 py-1.5 text-center text-xs">
+            <b className="text-gold">🔥 {dby.title}</b> <span className="text-muted">— {dby.subtitle}</span>
+          </div>
+        ) : null;
+      })()}
 
       {!r && isUserMatch && (
         <div className="mt-4">
@@ -459,6 +468,9 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                           <span className="text-[9px] text-muted">{isHome ? 'Д' : 'Г'}</span>
                           <TeamLogo team={opp} size={15} />
                           <span className="truncate">{opp.short}</span>
+                          {getDerby(s.teams[userGame.home], s.teams[userGame.away]) && (
+                            <span title={getDerby(s.teams[userGame.home], s.teams[userGame.away])!.title}>🔥</span>
+                          )}
                         </span>
                         {ur ? (
                           <span className={cn('font-display font-bold tabular-nums shrink-0', userWon ? 'text-good' : 'text-bad')}>
@@ -516,6 +528,7 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                         <span className="truncate">{s.teams[g.home].name}</span>
                       </span>
                       <span className="ml-auto flex items-center gap-2">
+                        {getDerby(s.teams[g.home], s.teams[g.away]) && <Tag tone="warn">🔥 {getDerby(s.teams[g.home], s.teams[g.away])!.title}</Tag>}
                         {mine && !r && inspectedDay === s.day && (
                           <Button size="sm" variant="primary" onClick={() => onPlay(g)}>
                             Играть
@@ -590,6 +603,7 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                             <span className="truncate">{s.teams[g.home].name}</span>
                           </span>
                           <span className="ml-auto flex items-center gap-2">
+                            {getDerby(s.teams[g.home], s.teams[g.away]) && <Tag tone="warn">🔥 {getDerby(s.teams[g.home], s.teams[g.away])!.title}</Tag>}
                             {mine && !r && isToday && (
                               <Button size="sm" variant="primary" onClick={() => onPlay(g)}>
                                 Играть

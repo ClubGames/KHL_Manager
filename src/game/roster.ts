@@ -1,7 +1,8 @@
 import type { Conference, Player, PosCode, Skills, Team } from '../types';
 import { computeOverall, isGoalie } from './ratings';
 import { autoLineup } from './ai';
-import { emptyLineup, emptyRecord, emptyStats } from './defaults';
+import { emptyLineup, emptyRecord, emptyStats, defaultTactics } from './defaults';
+import { ensureCaptains } from './chemistry';
 import { generateContract } from './contracts';
 import type { ContractTerms } from './contracts';
 import { DEFAULT_FOREIGN_LIMIT, teamForeignLimit } from './legionnaires';
@@ -102,6 +103,20 @@ export function normalizePlayer(raw: any, teamId: string | null, idx: number, pr
     skills = deriveSkills(position, explicitOvr || 65, hashStr(name));
   }
   const id = String(raw?.id ?? `${prefix}-p${idx + 1}`);
+  const rawLeague = String(raw?.league ?? raw?.status ?? '').trim().toLowerCase();
+  const inVhl =
+    !!teamId &&
+    (raw?.inVhl === true ||
+      raw?.vhl === true ||
+      raw?.farm === true ||
+      rawLeague === 'вхл' ||
+      rawLeague === 'vhl');
+  const explicitNmc =
+    typeof raw?.nmc === 'boolean'
+      ? raw.nmc
+      : typeof raw?.contract?.nmc === 'boolean'
+        ? raw.contract.nmc
+        : undefined;
   const player: Player = {
     id,
     name,
@@ -119,6 +134,8 @@ export function normalizePlayer(raw: any, teamId: string | null, idx: number, pr
       salary: Math.max(0, Math.round(num(raw?.contract?.salary ?? raw?.salary, 0))),
       years: Math.round(clampNum(raw?.contract?.years ?? raw?.years, 0, 0, 6)),
     },
+    ...(inVhl ? { inVhl: true } : {}),
+    ...(explicitNmc !== undefined ? { nmc: explicitNmc } : {}),
     injury: raw?.injury && typeof raw.injury === 'object' ? { name: String(raw.injury.name ?? 'Травма'), games: Math.round(clampNum(raw.injury.games, 3, 1, 60)) } : null,
     morale: Math.round(clampNum(raw?.morale, 72, 20, 99)),
     teamId,
@@ -215,7 +232,29 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
       capViolationDays: 0,
       capViolationGames: 0,
       capFinesTotal: 0,
+      tactics: defaultTactics(),
     };
+    const hasExplicitNmc = ids.some((pid) => players[pid]?.nmc !== undefined);
+    if (!hasExplicitNmc) {
+      const vetStar = ids
+        .map((pid) => players[pid])
+        .filter((p) => p && !p.inVhl && p.age >= 29 && p.overall >= 84 && p.contract.years >= 2)
+        .sort((a, b) => b.overall - a.overall)[0];
+      if (vetStar) vetStar.nmc = true;
+    }
+    // Optional captain / alternates from roster.json (team.captainId / assistantIds or player.role = "C"/"К" | "A"/"А")
+    if (typeof t?.captainId === 'string' && ids.includes(t.captainId)) team.captainId = t.captainId;
+    if (Array.isArray(t?.assistantIds)) team.assistantIds = t.assistantIds.filter((x: unknown) => typeof x === 'string' && ids.includes(x)).slice(0, 2);
+    rawPlayers.forEach((rp, j) => {
+      const pid = ids[j];
+      const role = String(rp?.role ?? rp?.captain ?? '').trim().toUpperCase();
+      if ((role === 'C' || role === 'К' || rp?.captain === true) && !team.captainId) team.captainId = pid;
+      else if (role === 'A' || role === 'А') {
+        team.assistantIds ??= [];
+        if (team.assistantIds.length < 2 && !team.assistantIds.includes(pid)) team.assistantIds.push(pid);
+      }
+    });
+    ensureCaptains(team, players);
     team.lineup = autoLineup(ids, players, { foreignLimit: teamForeignLimit(team, foreignLimit) });
     teams.push(team);
   });
@@ -343,6 +382,8 @@ export const ROSTER_EXAMPLE = `{
             "skating": 84, "shooting": 78, "passing": 88, "puckControl": 85, "checking": 62, "defense": 74
           },
           "contract": { "salary": 65000000, "years": 2 },
+          "inVhl": false,              // true — начать сезон сразу в фарм-клубе ВХЛ (также понимаются "vhl": true или "league": "ВХЛ")
+          "nmc": false,                // true — запрет на обмен и отказы (ЗНО)
           "injury": null,              // или { "name": "Травма плеча", "games": 6 }
           "morale": 78
         },

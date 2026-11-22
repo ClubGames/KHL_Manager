@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { Series, Team } from '../types';
-import { rankAll, rankConference, roundName, useGame } from '../game/state';
-import { Panel, Tag, TeamLogo } from './ui';
+import { rankAll, rankConference, roundName, simulateToNextUserGame, useGame } from '../game/state';
+import { Button, Icon, Panel, Tag, TeamLogo, useUI } from './ui';
 import { cn } from '../utils/cn';
 
 function Table({ teams, U }: { teams: Team[]; U: string }) {
@@ -80,10 +80,12 @@ function SeriesCard({ ser }: { ser: Series }) {
 
 export function Standings() {
   const s = useGame()!;
+  const ui = useUI();
   const U = s.userTeamId;
   const [mode, setMode] = useState<'conf' | 'all'>('conf');
   const po = s.playoffs;
   const rounds = [0, 1, 2, 3].map((r) => po?.series.filter((x) => x.round === r) ?? []);
+  const userActiveInPo = po ? po.series.some((x) => x.round === po.round && (x.high === U || x.low === U) && !x.done) : false;
   return (
     <div className="space-y-4 fade-in">
       <div className="flex gap-2">
@@ -110,7 +112,31 @@ export function Standings() {
         </Panel>
       )}
       {po && (
-        <Panel title="Сетка плей-офф · Кубок Гагарина" right={po.champion && <Tag color="#F2B544">Чемпион: {s.teams[po.champion].name}</Tag>}>
+        <Panel
+          title="Сетка плей-офф · Кубок Гагарина"
+          right={
+            <div className="flex items-center gap-2 flex-wrap">
+              {po.champion && <Tag color="#F2B544">Чемпион: {s.teams[po.champion].name}</Tag>}
+              {s.phase === 'offseason' && (
+                <Button size="sm" variant="primary" onClick={() => ui.nav('offseason')}>
+                  <Icon name="trophy" /> Перейти в «Межсезонье»
+                </Button>
+              )}
+              {s.phase === 'playoffs' && !userActiveInPo && (
+                <Button
+                  size="sm"
+                  variant="primary"
+                  onClick={() => {
+                    const res = simulateToNextUserGame();
+                    if (res === 'offseason') ui.nav('offseason');
+                  }}
+                >
+                  <Icon name="fast" /> Досимулировать раунд / плей-офф
+                </Button>
+              )}
+            </div>
+          }
+        >
           {po.awards.length > 0 && (
             <div className="mb-4 grid grid-cols-2 md:grid-cols-5 gap-2">
               {po.awards.map((a) => (

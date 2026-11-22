@@ -7,6 +7,8 @@ import { countRosterLegionnaires, teamForeignLimit } from '../game/legionnaires'
 import { isYouthPlayer } from '../game/training';
 import { tradeWindow } from '../game/ai';
 import { previewPowerPlay } from '../game/lineupCompare';
+import { FORECHECK_INFO, freshnessTone, getTeamTactics, goalieFreshness } from '../game/chemistry';
+import { getDerby } from '../game/derbies';
 import type { Game, NewsItem, Team } from '../types';
 import { Bar, Button, Icon, money, Panel, ResultPill, Stat, Tag, TeamLogo, useUI } from './ui';
 import { LineupPreview } from './LineupPreview';
@@ -46,8 +48,11 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
   const topPts = [...skaters].sort((a, b) => points(b) - points(a)).slice(0, 5);
   const goalies = U.players.map((id) => P[id]).filter(isGoalie).sort((a, b) => b.stats.wins - a.stats.wins);
   const injured = U.players.map((id) => P[id]).filter((p) => p.injury);
-  const alive = s.playoffs ? s.playoffs.series.filter((x) => (x.high === U.id || x.low === U.id) && !x.done) : [];
-  const eliminated = s.phase === 'playoffs' && alive.length === 0;
+  const curRoundSeries = s.playoffs
+    ? s.playoffs.series.find((x) => x.round === s.playoffs!.round && (x.high === U.id || x.low === U.id)) ?? null
+    : null;
+  const waitingNextRound = s.phase === 'playoffs' && !!curRoundSeries?.done && curRoundSeries.winner === U.id;
+  const eliminated = s.phase === 'playoffs' && (!curRoundSeries || (curRoundSeries.done && curRoundSeries.winner !== U.id));
   const [showTactics, setShowTactics] = useState(false);
   const cap = s.league.salaryCap;
   const capInfo = getCapSummary(s, U.id);
@@ -107,6 +112,25 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
           <Panel title={userGame ? 'Матч сегодня' : 'Следующий матч'} right={upcoming && <Tag color={upcoming.kind === 'playoff' ? '#F2B544' : '#93A4BC'}>{upcoming.kind === 'playoff' ? 'Плей-офф' : 'Регулярный чемпионат'} · {dayLabel(upcoming)}</Tag>}>
             {upcoming ? (
               <>
+                {(() => {
+                  const dby = getDerby(s.teams[upcoming.home], s.teams[upcoming.away]);
+                  return dby ? (
+                    <div
+                      data-dashboard-derby
+                      className="mb-2 rounded-md border border-gold/50 bg-gold/10 px-3 py-2 text-xs flex flex-wrap items-center justify-between gap-2"
+                    >
+                      <div>
+                        <b className="uppercase font-display tracking-wider text-gold">
+                          🔥 {dby.title}
+                        </b>
+                        <span className="text-muted ml-2">{dby.subtitle}</span>
+                      </div>
+                      <span className="text-[11px] text-gold font-semibold">
+                        Аншлаг +{money(dby.gateBonus)} · ×{dby.moraleMult} мораль и Совет
+                      </span>
+                    </div>
+                  ) : null;
+                })()}
                 <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 py-2">
                   <TeamBlock team={s.teams[upcoming.home]} place={rankConference(s, s.teams[upcoming.home].conference).findIndex((t) => t.id === upcoming.home) + 1} />
                   <div className="text-center px-2">
@@ -189,8 +213,57 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
                 )}
                 {eliminated && <div className="mt-3 text-xs text-amber">Команда выбыла из борьбы за Кубок Гагарина. Досимулируйте плей-офф, чтобы перейти к межсезонью.</div>}
               </>
+            ) : waitingNextRound ? (
+              <div className="space-y-3" data-playoff-wait>
+                <div className="text-sm text-ok font-medium">
+                  ✓ Вы выиграли серию ({curRoundSeries!.wins[0]}:{curRoundSeries!.wins[1]}) и вышли в следующий раунд Кубка Гагарина! Дождитесь завершения остальных пар раунда.
+                </div>
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
+                  <Button variant="primary" size="lg" onClick={simToNext}>
+                    <Icon name="fast" /> Симулировать до следующего раунда
+                  </Button>
+                  <Button size="lg" onClick={() => simulateDay(true)}>
+                    Симулировать день
+                  </Button>
+                  <Button size="lg" variant="ghost" onClick={() => ui.nav('standings')}>
+                    Сетка плей-офф
+                  </Button>
+                </div>
+              </div>
+            ) : eliminated ? (
+              <div className="space-y-3" data-playoff-eliminated>
+                <div className="text-sm text-amber">
+                  Ваша команда завершила выступление в этом розыгрыше сезона. Досимулируйте оставшиеся матчи Кубка Гагарина, чтобы перейти в раздел «Межсезонье» (Ярмарка юниоров КХЛ, продление контрактов и старт нового сезона).
+                </div>
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
+                  <Button variant="primary" size="lg" onClick={simToNext}>
+                    <Icon name="fast" /> Досимулировать плей-офф и перейти в межсезонье
+                  </Button>
+                  <Button size="lg" onClick={() => simulateDay(true)}>
+                    Симулировать день
+                  </Button>
+                  <Button size="lg" variant="ghost" onClick={() => ui.nav('standings')}>
+                    Сетка плей-офф
+                  </Button>
+                </div>
+              </div>
             ) : (
-              <div className="text-muted text-sm">Матчей не осталось. Перейдите в раздел «Межсезонье», чтобы начать новый сезон.</div>
+              <div className="space-y-3" data-offseason-cta>
+                <div className="text-sm text-text/90">
+                  Сезон <b className="text-ice">{s.league.season}</b> завершён! В разделе <b className="text-gold">«Межсезонье»</b> вас ждут итоги Кубка Гагарина, Ярмарка юниоров КХЛ, продление контрактов и переход в новый сезон.
+                </div>
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
+                  <Button variant="primary" size="lg" onClick={() => ui.nav('offseason')}>
+                    <Icon name="trophy" /> Перейти в «Межсезонье»
+                  </Button>
+                  <Button size="lg" variant="secondary" onClick={() => ui.nav('contracts')}>
+                    Контракты
+                  </Button>
+                  <Button size="lg" variant="secondary" onClick={() => ui.nav('market')}>
+                    Рынок агентов
+                  </Button>
+                </div>
+              </div>
             )}
           </Panel>
 
@@ -280,6 +353,9 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
                 <li key={p.id}>
                   <button onClick={() => ui.openPlayer(p.id)} className="w-full flex items-center gap-2 hover:text-ice">
                     <span className="flex-1 truncate text-left">{p.name}</span>
+                    <span className="text-[10px] tabular" style={{ color: freshnessTone(goalieFreshness(p)).color }}>
+                      свеж. {goalieFreshness(p)}%
+                    </span>
                     <span className="text-xs text-muted tabular">{p.stats.wins}−{p.stats.losses}−{p.stats.otl}</span>
                     <span className="font-display tabular w-12 text-right">{p.stats.shotsAgainst ? ((p.stats.saves / p.stats.shotsAgainst) * 100).toFixed(1) + '%' : '—'}</span>
                   </button>
@@ -319,6 +395,19 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
                 <span className="text-muted">Молодёжь U23</span>
                 <button onClick={() => ui.nav('roster')} className="text-ice hover:underline">{youthCount} игр. (планы →)</button>
               </div>
+              <div className="flex justify-between">
+                <span className="text-muted">Тактика / Капитан</span>
+                <button onClick={() => ui.nav('lines')} className="text-gold hover:underline truncate max-w-[165px]">
+                  {FORECHECK_INFO[getTeamTactics(U).forecheck].short}
+                  {U.captainId && P[U.captainId] ? ` · К: ${P[U.captainId].name.split(' ').slice(-1)[0]}` : ''}
+                </button>
+              </div>
+              {(s.waivers?.length ?? 0) > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted">Драфт отказов</span>
+                  <button onClick={() => ui.nav('market')} className="text-amber hover:underline">{s.waivers!.length} на отказах →</button>
+                </div>
+              )}
             </div>
             <ul className="mt-3 pt-2 border-t border-line/60 space-y-1 text-xs">
               {topSal.map((id) => (

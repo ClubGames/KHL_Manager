@@ -3,8 +3,9 @@ import type { Player } from '../types';
 import { askingSalary, buyoutCost, commitments, maxYears, TALKS, talksLeft } from '../game/contracts';
 import { buyoutDeadCap, CAP_GAMES_PER_POINT_DEDUCTION, dailyCapFine, getCapSummary } from '../game/cap';
 import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
+import { canHaveNmc, isRfaEligibleAge, offerSheetCompensation, playerStatusTag, qualifyingOfferSalary, vhlPlayerCapRelief } from '../game/khlRules';
 import { formatMoney } from '../game/ratings';
-import { letGo, offerContract, releasePlayer, useGame } from '../game/state';
+import { letGo, offerContract, releasePlayer, respondRfaOfferSheet, tenderQualifyingOffer, useGame } from '../game/state';
 import type { ContractAnswer } from '../game/state';
 import { Button, Modal, OverallChip, Panel, PosBadge, Stat, Tag, useUI } from './ui';
 import { cn } from '../utils/cn';
@@ -25,12 +26,17 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
   const maxY = p ? maxYears(p.age) : 1;
   const [years, setYears] = useState(Math.min(2, maxY));
   const [pct, setPct] = useState(100);
+  const [nmc, setNmc] = useState<boolean>(!!p?.nmc);
   const [answer, setAnswer] = useState<ContractAnswer | null>(null);
   if (!p || (p.teamId && p.teamId !== U.id)) return null;
   const free = !p.teamId;
   const extension = !free && p.contract.years === 1;
-  const ask = askingSalary(s, p, years, U.id);
+  const allowNmc = canHaveNmc(p);
+  const effectiveNmc = allowNmc && nmc;
+  const ask = askingSalary(s, p, years, U.id, effectiveNmc);
   const salary = Math.max(500_000, Math.round((ask * pct) / 100 / 500_000) * 500_000);
+  const isForeignRfa = free && !!p.rightsTeamId && p.rightsTeamId !== U.id && isRfaEligibleAge(p.age);
+  const rfaCompCash = isForeignRfa ? offerSheetCompensation(salary, p.overall) : 0;
   const left = talksLeft(s, p);
   const signed = !!answer?.ok;
   const cap = s.league.salaryCap;
@@ -40,7 +46,7 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
   const legBlocked = free && isLegionnaire(p) && fl !== null && curLegs >= fl;
   const committed = extension ? commitments(U.players, s.players, 2)[1] : capInfo.totalPayroll;
   const after = committed + salary;
-  const offer = (value: number) => setAnswer(offerContract(p.id, value, years));
+  const offer = (value: number) => setAnswer(offerContract(p.id, value, years, effectiveNmc));
   const tone = !answer ? '' : answer.ok ? 'border-ok/50 text-ok bg-ok/10' : 'border-accent/50 text-accent bg-accent/10';
   return (
     <Modal open onClose={onClose} width="max-w-xl" title={<span className="font-display uppercase tracking-wide">{free ? 'Переговоры со свободным агентом' : extension ? 'Продление контракта' : 'Новый контракт'}</span>}>
@@ -61,6 +67,11 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
       {legBlocked && (
         <div className="mt-3 rounded-sm border border-gold/50 bg-gold/10 px-3 py-2 text-xs text-gold">
           ⛔ В составе уже {curLegs} из {fl} легионеров — освободите легионерскую вакансию перед подписанием иностранца.
+        </div>
+      )}
+      {isForeignRfa && rfaCompCash > 0 && (
+        <div className="mt-3 rounded-sm border border-ice/50 bg-ice/10 px-3 py-2 text-xs text-ice">
+          📋 <b>Оффершит ОСА (до 28 лет):</b> спортивные права принадлежат клубу <b>{s.teams[p.rightsTeamId!]?.name}</b>. Если тот не повторит ваше предложение, вы выплатите денежную компенсацию <b>{formatMoney(rfaCompCash)}</b>.
         </div>
       )}
 
@@ -90,6 +101,23 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
             <span>игрок согласится не на всякую скидку — у него есть свой минимум</span>
             <span>115%</span>
           </div>
+          {allowNmc && (
+            <label className="mt-3 flex items-center justify-between gap-2 rounded-sm border border-line bg-panel2/60 px-3 py-2 text-xs cursor-pointer">
+              <div>
+                <div className="font-semibold text-gold">Пункт о запрете на обмен и ВХЛ (ЗНО / NMC)</div>
+                <div className="text-[11px] text-muted">Игрок снижает зарплатные ожидания на 7%, но его нельзя обменять или отправить на отказы.</div>
+              </div>
+              <input
+                type="checkbox"
+                checked={effectiveNmc}
+                onChange={(e) => {
+                  setNmc(e.target.checked);
+                  setAnswer(null);
+                }}
+                className="w-4 h-4 accent-[#F2B544]"
+              />
+            </label>
+          )}
           <div className="mt-3 text-xs space-y-1">
             <div className="flex justify-between">
               <span className="text-muted">{extension ? `ФОТ сезона ${seasonLabel(s.league.season, 1)} с этим контрактом` : 'ФОТ с этим контрактом'}</span>
@@ -249,6 +277,49 @@ export function Contracts() {
       {msg && <div className="text-xs rounded-sm border border-accent/50 text-accent bg-accent/10 px-2.5 py-2">{msg}</div>}
 
       <Panel title={`Контракты · ${U.name}`} noPad>
+        {(s.rfaOffers ?? []).length > 0 && (
+          <div className="p-3 border-b border-gold/40 bg-gold/10 space-y-2" data-rfa-offersheets>
+            <div className="text-xs font-display uppercase tracking-wider text-gold font-bold">
+              ⚡ Входящие оффершиты КХЛ по вашим ограниченно свободным агентам (ОСА)
+            </div>
+            {(s.rfaOffers ?? []).map((os) => {
+              const op = P[os.playerId];
+              const fromT = s.teams[os.fromTeamId];
+              if (!op) return null;
+              return (
+                <div key={os.id} className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-line bg-panel px-3 py-2 text-xs">
+                  <div>
+                    <b>{fromT?.name}</b> предложил вашему ОСА <b>{op.name}</b> ({op.age} л., OVR {op.overall}) контракт{' '}
+                    <b className="text-gold">{formatMoney(os.salary)} × {os.years} г.</b> Компенсация при отказе:{' '}
+                    <b className="text-ok">+{formatMoney(os.compensation)}</b>.
+                  </div>
+                  <div className="flex gap-1.5">
+                    <Button
+                      size="sm"
+                      variant="primary"
+                      onClick={() => {
+                        const err = respondRfaOfferSheet(os.id, true);
+                        setMsg(err ?? `Оффершит повторён — ${op.name} остаётся в клубе!`);
+                      }}
+                    >
+                      Повторить контракт
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => {
+                        const err = respondRfaOfferSheet(os.id, false);
+                        setMsg(err ?? `Получена денежная компенсация ${formatMoney(os.compensation)} за права ОСА ${op.name}.`);
+                      }}
+                    >
+                      Взять {formatMoney(os.compensation)}
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full text-sm tabular" data-contracts>
             <thead className="bg-panel2/40 text-[11px] uppercase tracking-wider text-muted">
@@ -274,6 +345,13 @@ export function Contracts() {
                       <button className="hover:text-ice text-left" onClick={() => ui.openPlayer(p.id)}>
                         {p.name}
                       </button>
+                      <span className="ml-1.5 text-[10px] text-muted">{playerStatusTag(p)}</span>
+                      {p.nmc && <Tag tone="warn" className="ml-1.5">ЗНО</Tag>}
+                      {p.inVhl && (
+                        <span title={`В потолке КХЛ учитывается ${formatMoney(c.salary - vhlPlayerCapRelief(p))}`}>
+                          <Tag tone="accent" className="ml-1.5">ВХЛ</Tag>
+                        </span>
+                      )}
                       {isLegionnaire(p) && <Tag tone="warn" className="ml-1.5">ЛЕГ</Tag>}
                       {suspendedSet.has(p.id) && <Tag tone="bad" className="ml-1.5">блок потолка</Tag>}
                       {p.tradeFlag === 'block' && <Tag color="#F2B544" className="ml-2">на обмен</Tag>}
@@ -294,6 +372,19 @@ export function Contracts() {
                     <td className="px-2 py-1.5 text-right text-muted whitespace-nowrap">{canTalk ? `${formatMoney(askingSalary(s, p, 1, U.id))} / год` : '—'}</td>
                     <td className="pr-4 px-2 py-1.5">
                       <div className="flex gap-1.5 justify-end">
+                        {c.years === 0 && isRfaEligibleAge(p.age) && (
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            title={`Квалификационное предложение ОСА на 1 год (${formatMoney(qualifyingOfferSalary(p))}) или закрепление прав`}
+                            onClick={() => {
+                              const err = tenderQualifyingOffer(p.id);
+                              setMsg(err ?? `Квалификационное предложение сделано — права ОСА на ${p.name} закреплены за клубом!`);
+                            }}
+                          >
+                            КП (ОСА)
+                          </Button>
+                        )}
                         {canTalk && (
                           <Button size="sm" variant={c.years === 0 ? 'primary' : 'secondary'} disabled={left <= 0} onClick={() => ui.negotiate(p.id)} title={left <= 0 ? 'Игрок прервал переговоры' : undefined}>
                             {left <= 0 ? 'Отказ' : c.years === 0 ? 'Переговоры' : 'Продлить'}

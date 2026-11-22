@@ -112,10 +112,16 @@ function CompareLineRow({
         <div className="flex items-center gap-2 text-[11px] tabular-nums">
           <span className="text-ice">
             АТК <b>{row.leftAtt}</b> / ОБ <b>{row.leftDef}</b>
+            <span className={cn('ml-1 text-[10px]', row.leftChem >= 2 ? 'text-ok' : row.leftChem <= -1 ? 'text-accent' : 'text-muted')}>
+              (хим {row.leftChem > 0 ? `+${row.leftChem}` : row.leftChem})
+            </span>
           </span>
           <EdgeBadge edge={row.edge} />
           <span className="text-muted">
             АТК <b className="text-ice">{row.rightAtt}</b> / ОБ <b className="text-ice">{row.rightDef}</b>
+            <span className={cn('ml-1 text-[10px]', row.rightChem >= 2 ? 'text-ok' : row.rightChem <= -1 ? 'text-accent' : 'text-muted')}>
+              (хим {row.rightChem > 0 ? `+${row.rightChem}` : row.rightChem})
+            </span>
           </span>
         </div>
       </div>
@@ -414,10 +420,10 @@ export function LineupPreview({
               <div>
                 <div className="text-[11px] uppercase font-display tracking-wider text-muted">Дуэль стартовых вратарей</div>
                 <div className="mt-1 font-medium">
-                  {cmp.goalieLeft ? `${cmp.goalieLeft.name} (${cmp.goalieLeft.overall}, ${(goalieSavePct(cmp.goalieLeft.overall) * 100).toFixed(1)}%)` : 'Замена (55)'}
+                  {cmp.goalieLeft ? `${cmp.goalieLeft.name} (${cmp.goalieLeft.overall}, ${(goalieSavePct(cmp.goalieLeft.overall) * 100).toFixed(1)}% · свеж. ${cmp.goalieLeftFresh}%)` : 'Замена (55)'}
                 </div>
                 <div className="text-muted mt-0.5">
-                  vs {cmp.goalieRight ? `${cmp.goalieRight.name} (${cmp.goalieRight.overall}, ${(goalieSavePct(cmp.goalieRight.overall) * 100).toFixed(1)}%)` : 'Замена (55)'}
+                  vs {cmp.goalieRight ? `${cmp.goalieRight.name} (${cmp.goalieRight.overall}, ${(goalieSavePct(cmp.goalieRight.overall) * 100).toFixed(1)}% · свеж. ${cmp.goalieRightFresh}%)` : 'Замена (55)'}
                 </div>
               </div>
               <EdgeBadge edge={cmp.goalieEdge} />

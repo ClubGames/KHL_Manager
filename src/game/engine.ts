@@ -1,15 +1,43 @@
-import type { GameEvent, GameResult, Lineup, Player, PlayerGameLine, ScoringPlay, ShotPoint, ShotZone, Strength, TeamGameStats } from '../types';
+import type { AttackStyle, ForecheckStyle, GameEvent, GameResult, Lineup, Player, PlayerGameLine, PullGoaliePolicy, ScoringPlay, ShotPoint, ShotZone, Strength, TeamGameStats, TeamTactics } from '../types';
 import { clamp, goalieSavePct, isGoalie, lineAttack, lineDefense, pairAttack, pairDefense, unitAttack, unitDefense } from './ratings';
+import { defaultTactics } from './defaults';
+import { ATTACK_STYLE_INFO, calcDefenseChemistry, calcForwardChemistry, effectiveGoalieOvr, FORECHECK_INFO, PULL_GOALIE_INFO } from './chemistry';
+import type { DerbyInfo } from './derbies';
 
 export interface SimTeam {
   id: string;
   lineup: Lineup;
   /** club name used in commentary (as written in the roster) */
   name?: string;
+  tactics?: TeamTactics;
+  chemGP?: Record<string, number>;
+  leadershipBonus?: number;
+  roadStreak?: number;
 }
 type TI = 0 | 1;
 type Mode = 'ev' | '4v4' | 'pp' | 'pk' | 'ot3' | 'ot5';
 export type BlockKind = 'reg' | 'ot3' | 'ot5' | 'so';
+
+interface SimSnap {
+  score: [number, number];
+  shots: [number, number];
+  stats: [TeamGameStats, TeamGameStats];
+  scorersLen: number;
+  shotMapLen: number;
+  lines: Record<string, PlayerGameLine>;
+  penEnd: [number, number];
+  penMinor: [boolean, boolean];
+  unitIdx: [number, number];
+  unansweredGoals: [number, number];
+}
+
+interface ActiveBlockMeta {
+  kind: BlockKind;
+  dur: number;
+  startEventIdx: number;
+  s0: [number, number];
+  blockStart: number;
+}
 
 const SHIFT = 40;
 const F_SHARE = [0.33, 0.27, 0.22, 0.18];
@@ -68,7 +96,8 @@ function generateShotGeometry(
   sp: Player,
   onPP: boolean,
   mode: Mode,
-  emptyNetOpp: boolean
+  emptyNetOpp: boolean,
+  style: AttackStyle
 ): { x: number; y: number; zone: ShotZone; zMult: number; shotType: NonNullable<GameEvent['shotType']> } {
   if (emptyNetOpp) {
     const depth = Math.random() < 0.45 ? 48 + Math.random() * 20 : 72 + Math.random() * 15;
@@ -79,23 +108,24 @@ function generateShotGeometry(
 
   let zone: ShotZone;
   const r = Math.random();
+  const cycleShift = style === 'cycle' ? 0.06 : style === 'shoot' ? -0.04 : 0;
   if (sp.position === 'D') {
-    if (r < 0.03) zone = 'crease';
-    else if (r < 0.15) zone = 'slot';
+    if (r < 0.03 + (style === 'cycle' ? 0.02 : 0)) zone = 'crease';
+    else if (r < 0.15 + cycleShift) zone = 'slot';
     else if (r < 0.37) zone = 'circles';
-    else if (r < 0.9) zone = 'point';
+    else if (r < 0.92) zone = 'point';
     else zone = 'perimeter';
   } else if (onPP || mode === 'ot3') {
-    if (r < 0.21) zone = 'crease';
-    else if (r < 0.52) zone = 'slot';
+    if (r < 0.21 + cycleShift * 0.5) zone = 'crease';
+    else if (r < 0.52 + cycleShift) zone = 'slot';
     else if (r < 0.85) zone = 'circles';
     else if (r < 0.91) zone = 'point';
     else zone = 'perimeter';
   } else {
-    if (r < 0.13) zone = 'crease';
-    else if (r < 0.38) zone = 'slot';
+    if (r < 0.13 + cycleShift * 0.6) zone = 'crease';
+    else if (r < 0.38 + cycleShift) zone = 'slot';
     else if (r < 0.76) zone = 'circles';
-    else if (r < 0.83) zone = 'point';
+    else if (r < 0.84) zone = 'point';
     else zone = 'perimeter';
   }
 
@@ -141,6 +171,12 @@ function generateShotGeometry(
   };
 }
 
+function cloneLines(src: Record<string, PlayerGameLine>): Record<string, PlayerGameLine> {
+  const out: Record<string, PlayerGameLine> = {};
+  for (const k in src) out[k] = { ...src[k] };
+  return out;
+}
+
 export class GameSim {
   score: [number, number] = [0, 0];
   shots: [number, number] = [0, 0];
@@ -151,6 +187,11 @@ export class GameSim {
   periodScores: [number, number][] = [];
   lines: Record<string, PlayerGameLine> = {};
   goalies: [string | null, string | null] = [null, null];
+  tactics: [TeamTactics, TeamTactics];
+  timeoutUsed: [boolean, boolean] = [false, false];
+  focusUntil: [number, number] = [0, 0];
+  unansweredGoals: [number, number] = [0, 0];
+  forceEmptyNet: [boolean, boolean] = [false, false];
   /** absolute game second until which each team is short-handed */
   penEnd: [number, number] = [0, 0];
   /** true while the running penalty is a single minor: it ends early if the opponent scores on the power play */
@@ -163,9 +204,21 @@ export class GameSim {
   private blockKind: BlockKind = 'reg';
   private blockStart = 0;
   private teamOf: Record<string, TI> = {};
+  private snaps = new WeakMap<GameEvent, SimSnap>();
+  private curBlockMeta: ActiveBlockMeta | null = null;
 
-  constructor(public home: SimTeam, public away: SimTeam, public P: Record<string, Player>, public playoff = false) {
+  constructor(
+    public home: SimTeam,
+    public away: SimTeam,
+    public P: Record<string, Player>,
+    public playoff = false,
+    public derby: DerbyInfo | null = null
+  ) {
     this.goalies = [home.lineup.starterG || null, away.lineup.starterG || null];
+    this.tactics = [
+      home.tactics ? { ...defaultTactics(), ...home.tactics } : defaultTactics(),
+      away.tactics ? { ...defaultTactics(), ...away.tactics } : defaultTactics(),
+    ];
   }
 
   team(i: TI): SimTeam {
@@ -176,21 +229,74 @@ export class GameSim {
     else this.away = { ...this.away, lineup };
     this.units.clear();
   }
+  setTactics(i: TI, patch: Partial<TeamTactics>) {
+    this.tactics[i] = { ...this.tactics[i], ...patch };
+  }
+  setForecheck(i: TI, forecheck: ForecheckStyle) {
+    this.tactics[i] = { ...this.tactics[i], forecheck };
+  }
+  setAttackStyle(i: TI, style: AttackStyle) {
+    this.tactics[i] = { ...this.tactics[i], style };
+  }
+  setPullGoaliePolicy(i: TI, pullGoalie: PullGoaliePolicy) {
+    this.tactics[i] = { ...this.tactics[i], pullGoalie };
+  }
+  setForceEmptyNet(i: TI, active: boolean) {
+    this.forceEmptyNet[i] = active;
+  }
+  useTeamTimeout(i: TI, atSec: number): boolean {
+    if (this.timeoutUsed[i]) return false;
+    this.timeoutUsed[i] = true;
+    this.unansweredGoals[1 - i] = 0;
+    this.focusUntil[i] = atSec + 300;
+    return true;
+  }
+
   /** When true no play-by-play is produced (nobody watches the game): only the box score. */
   quiet = false;
   /** Keep shot coordinates even when quiet=true (used for user team's simulated games). */
   keepShotMap = false;
   private units = new Map<string, { ids: (string | null)[]; skaters: string[]; att: number; def: number }>();
-  /** The five (four, three) on the ice for a line and manpower situation, with its ratings — computed once per game. */
-  private unit(i: TI, li: number, mode: Mode) {
+
+  private captureSnap(): SimSnap {
+    return {
+      score: [this.score[0], this.score[1]],
+      shots: [this.shots[0], this.shots[1]],
+      stats: [{ ...this.stats[0] }, { ...this.stats[1] }],
+      scorersLen: this.scorers.length,
+      shotMapLen: this.shotMap.length,
+      lines: cloneLines(this.lines),
+      penEnd: [this.penEnd[0], this.penEnd[1]],
+      penMinor: [this.penMinor[0], this.penMinor[1]],
+      unitIdx: [this.unitIdx[0], this.unitIdx[1]],
+      unansweredGoals: [this.unansweredGoals[0], this.unansweredGoals[1]],
+    };
+  }
+
+  private restoreSnap(s: SimSnap) {
+    this.score = [s.score[0], s.score[1]];
+    this.shots = [s.shots[0], s.shots[1]];
+    this.stats = [{ ...s.stats[0] }, { ...s.stats[1] }];
+    this.scorers.length = s.scorersLen;
+    this.shotMap.length = s.shotMapLen;
+    this.lines = cloneLines(s.lines);
+    this.penEnd = [s.penEnd[0], s.penEnd[1]];
+    this.penMinor = [s.penMinor[0], s.penMinor[1]];
+    this.unitIdx = [s.unitIdx[0], s.unitIdx[1]];
+    this.unansweredGoals = [s.unansweredGoals[0], s.unansweredGoals[1]];
+  }
+
+  /** The five (four, three) on the ice for a line and manpower situation, with its ratings. */
+  private unit(i: TI, li: number, mode: Mode, useU20 = false) {
     const special = mode === 'pp' || mode === 'pk';
-    const key = `${i}|${mode}|${special ? this.unitIdx[i] % 2 : mode === 'ot3' ? 0 : li}`;
+    const u20Tag = useU20 && mode === 'ev' && li === 3 ? '|u20' : '';
+    const key = `${i}|${mode}|${special ? this.unitIdx[i] % 2 : mode === 'ot3' ? 0 : li}${u20Tag}`;
     let u = this.units.get(key);
     if (!u) {
-      const ids = this.onIce(i, li, mode);
+      const ids = this.onIce(i, li, mode, useU20);
       const skaters = skatersOf(ids, this.P);
       for (const id of skaters) this.teamOf[id] = i;
-      u = { ids, skaters, att: this.attackOf(i, li, mode), def: this.defenseOf(i, li, mode) };
+      u = { ids, skaters, att: this.attackOf(i, li, mode, ids), def: this.defenseOf(i, li, mode, ids) };
       this.units.set(key, u);
     }
     return u;
@@ -222,7 +328,9 @@ export class GameSim {
   }
   private push(e: Partial<GameEvent> & { type: GameEvent['type']; text: string }) {
     if (this.quiet) return;
-    this.events.push({ sec: this.sec, period: this.period, time: this.clock(), team: null, ...e });
+    const ev: GameEvent = { sec: this.sec, period: this.period, time: this.clock(), team: null, ...e };
+    this.events.push(ev);
+    this.snaps.set(ev, this.captureSnap());
   }
 
   private unitIds(i: TI, kind: 'pp' | 'pk'): (string | null)[] {
@@ -242,7 +350,7 @@ export class GameSim {
     return out;
   }
 
-  private onIce(i: TI, li: number, mode: Mode): (string | null)[] {
+  private onIce(i: TI, li: number, mode: Mode, useU20 = false): (string | null)[] {
     const L = this.team(i).lineup;
     const F = L.F[li] ?? [null, null, null];
     const D = L.D[li % 3] ?? [null, null];
@@ -258,31 +366,44 @@ export class GameSim {
         const d0 = L.D[0] ?? [];
         return [f0[0] ?? null, f0[1] ?? null, d0[0] ?? null];
       }
-      default:
-        return [F[0] ?? null, F[1] ?? null, F[2] ?? null, D[0] ?? null, D[1] ?? null];
+      default: {
+        const f2 = useU20 && li === 3 && L.u20F && this.P[L.u20F] ? L.u20F : (F[2] ?? null);
+        const d1 = useU20 && li === 3 && L.u20D && this.P[L.u20D] ? L.u20D : (D[1] ?? null);
+        return [F[0] ?? null, F[1] ?? null, f2, D[0] ?? null, d1];
+      }
     }
   }
 
-  private attackOf(i: TI, li: number, mode: Mode): number {
-    const L = this.team(i).lineup;
-    const P = this.P;
-    if (mode === 'ot3') return unitAttack(this.onIce(i, 0, 'ot3'), 3, P);
-    if (mode === 'pp') return unitAttack(this.unitIds(i, 'pp'), 5, P);
-    if (mode === 'pk') return unitAttack(this.unitIds(i, 'pk'), 4, P) + 3;
-    return 0.6 * lineAttack(L.F[li], P) + 0.4 * pairAttack(L.D[li % 3], P);
+  private lineChemBonus(i: TI, li: number): number {
+    const T = this.team(i);
+    const L = T.lineup;
+    const cf = calcForwardChemistry(L.F[li], this.P, T.chemGP).score;
+    const cd = calcDefenseChemistry(L.D[li % 3], this.P, T.chemGP).score;
+    return (0.6 * cf + 0.4 * cd - 0.5) * 0.55;
   }
-  private defenseOf(o: TI, lo: number, modeO: Mode): number {
-    const L = this.team(o).lineup;
+
+  private attackOf(i: TI, li: number, mode: Mode, ids: (string | null)[]): number {
     const P = this.P;
-    if (modeO === 'ot3') return unitDefense(this.onIce(o, 0, 'ot3'), 3, P);
-    if (modeO === 'pk') return unitDefense(this.unitIds(o, 'pk'), 4, P) + 4;
-    if (modeO === 'pp') return unitDefense(this.unitIds(o, 'pp'), 5, P) - 10;
-    return 0.5 * lineDefense(L.F[lo], P) + 0.5 * pairDefense(L.D[lo % 3], P);
+    if (mode === 'ot3') return unitAttack(ids, 3, P);
+    if (mode === 'pp') return unitAttack(ids, 5, P);
+    if (mode === 'pk') return unitAttack(ids, 4, P) + 3;
+    return 0.6 * lineAttack(ids.slice(0, 3), P) + 0.4 * pairAttack(ids.slice(3, 5), P) + this.lineChemBonus(i, li);
+  }
+  private defenseOf(o: TI, lo: number, modeO: Mode, ids: (string | null)[]): number {
+    const P = this.P;
+    if (modeO === 'ot3') return unitDefense(ids, 3, P);
+    if (modeO === 'pk') return unitDefense(ids, 4, P) + 4;
+    if (modeO === 'pp') return unitDefense(ids, 5, P) - 10;
+    return 0.5 * lineDefense(ids.slice(0, 3), P) + 0.5 * pairDefense(ids.slice(3, 5), P) + this.lineChemBonus(o, lo) * 0.35;
   }
 
   private pickLine(i: TI, kind: BlockKind): number {
     if (kind !== 'reg') return 0;
     const w = [...F_SHARE];
+    if (this.focusUntil[i] > this.sec) {
+      w[0] *= 1.35;
+      w[1] *= 1.15;
+    }
     if (this.period === 3) {
       const diff = this.score[i] - this.score[1 - i];
       if (diff < 0 && diff >= -2) { w[0] *= 1.5; w[1] *= 1.2; w[3] *= 0.5; }
@@ -323,6 +444,55 @@ export class GameSim {
     return this.result();
   }
 
+  /**
+   * Live mid-period coaching intervention: keeps all revealed events of the active period untouched,
+   * applies the manager's tactical / goalie / timeout action at `currentClockSec`, and re-simulates
+   * only the remaining shifts of the period.
+   */
+  replanLivePeriod(
+    revealedPeriodEvents: GameEvent[],
+    currentClockSec: number,
+    teamId: string,
+    applyAction: () => string | null
+  ): GameEvent[] | null {
+    const meta = this.curBlockMeta;
+    if (this.quiet || !meta || meta.kind === 'so' || revealedPeriodEvents.length === 0) return null;
+    const lastEv = revealedPeriodEvents[revealedPeriodEvents.length - 1];
+    const snap = this.snaps.get(lastEv);
+    if (!snap) return null;
+
+    this.restoreSnap(snap);
+    this.events.length = meta.startEventIdx + revealedPeriodEvents.length;
+    this.periodScores.length = Math.max(0, this.period - 1);
+    this.blockKind = meta.kind;
+    this.blockStart = meta.blockStart;
+
+    const clampedSec = clamp(Math.floor(currentClockSec), meta.blockStart, meta.blockStart + meta.dur - 1);
+    this.sec = Math.max(lastEv.sec, clampedSec);
+
+    const note = applyAction();
+    if (note) {
+      this.push({
+        type: 'info',
+        team: teamId,
+        penUntil: this.penUntil(),
+        score: [this.score[0], this.score[1]],
+        text: note,
+      });
+    }
+
+    const nextT = (Math.floor(Math.max(0, this.sec - meta.blockStart) / SHIFT) + 1) * SHIFT;
+    this.runShiftsFrom(meta.kind, meta.dur, nextT, meta.s0);
+
+    if (meta.kind === 'reg') {
+      if (this.period >= 3) this.status = this.tied ? 'ot' : 'done';
+      else this.status = 'playing';
+    } else {
+      this.status = this.tied ? (this.playoff ? 'ot' : 'so') : 'done';
+    }
+    return this.events.slice(meta.startEventIdx);
+  }
+
   private simBlock(kind: BlockKind): GameEvent[] {
     const start = this.events.length;
     const period = ++this.period;
@@ -330,14 +500,31 @@ export class GameSim {
     const s0: [number, number] = [this.score[0], this.score[1]];
     this.blockKind = kind;
     this.blockStart = this.sec;
+    if (!this.quiet) {
+      this.curBlockMeta = { kind, dur, startEventIdx: start, s0, blockStart: this.blockStart };
+    }
+    if (period === 1 && this.derby && !this.quiet) {
+      this.push({
+        type: 'info',
+        text: `🔥 ${this.derby.title}! ${this.derby.subtitle} — аншлаг на трибунах!`,
+      });
+    }
     this.push({ type: 'period_start', text: `${periodName(period, kind)} начался` });
+    this.runShiftsFrom(kind, dur, 0, s0);
+    return this.events.slice(start);
+  }
+
+  private runShiftsFrom(kind: BlockKind, dur: number, startT: number, s0: [number, number]) {
+    const period = this.period;
     let ended = false;
-    for (let t = 0; t < dur && !ended; t += SHIFT) {
+    for (let t = startT; t < dur && !ended; t += SHIFT) {
       const sec = this.blockStart + t;
       this.sec = sec;
       const li: [number, number] = [this.pickLine(0, kind), this.pickLine(1, kind)];
-      // Manpower is evaluated at the exact second of every event: a penalty may start, expire or be
-      // cancelled by a power-play goal in the middle of a shift.
+      const u20Shift: [boolean, boolean] = [
+        kind === 'reg' && li[0] === 3 && Math.random() < 0.25,
+        kind === 'reg' && li[1] === 3 && Math.random() < 0.25,
+      ];
       const situation = (): { modes: [Mode, Mode]; ice: [(string | null)[], (string | null)[]] } => {
         const short0 = this.penEnd[0] > this.sec;
         const short1 = this.penEnd[1] > this.sec;
@@ -346,22 +533,31 @@ export class GameSim {
         const four = short0 && short1;
         const modeOf = (i: TI): Mode => (kind === 'ot3' ? 'ot3' : kind === 'ot5' ? 'ot5' : four ? '4v4' : (i === 0 ? homePP : awayPP) ? 'pp' : (i === 0 ? awayPP : homePP) ? 'pk' : 'ev');
         const modes: [Mode, Mode] = [modeOf(0), modeOf(1)];
-        const ice: [(string | null)[], (string | null)[]] = [this.unit(0, li[0], modes[0]).ids, this.unit(1, li[1], modes[1]).ids];
+        const ice: [(string | null)[], (string | null)[]] = [
+          this.unit(0, li[0], modes[0], u20Shift[0]).ids,
+          this.unit(1, li[1], modes[1], u20Shift[1]).ids,
+        ];
         return { modes, ice };
       };
       let { modes, ice } = situation();
       let emptyNet: TI | -1 = -1;
-      if (kind === 'reg' && period === 3 && dur - t <= 150) {
+      if (this.forceEmptyNet[0]) emptyNet = 0;
+      else if (this.forceEmptyNet[1]) emptyNet = 1;
+      else if (kind === 'reg' && period === 3) {
         const diff = Math.abs(this.score[0] - this.score[1]);
-        if (diff >= 1 && diff <= 2) emptyNet = this.score[0] < this.score[1] ? 0 : 1;
+        if (diff >= 1 && diff <= 2) {
+          const trailing: TI = this.score[0] < this.score[1] ? 0 : 1;
+          const pullSec = PULL_GOALIE_INFO[this.tactics[trailing].pullGoalie].secondsLeft;
+          if (pullSec > 0 && dur - t <= pullSec) emptyNet = trailing;
+        }
       }
-      // Events of one shift are spread over its 40 seconds (in this order), so the feed does not tick in 40-second steps.
+
       const order: TI[] = Math.random() < 0.5 ? [0, 1] : [1, 0];
       for (let k = 0; k < order.length; k++) {
         const i = order[k];
         this.sec = sec + (k === 0 ? 1 + Math.floor(Math.random() * 14) : 16 + Math.floor(Math.random() * 12));
         ({ modes, ice } = situation());
-        const r = this.tryShot(i, (1 - i) as TI, kind, ice, modes, emptyNet, li);
+        const r = this.tryShot(i, (1 - i) as TI, kind, ice, modes, emptyNet, li, u20Shift);
         if (kind !== 'reg' && r === 'goal') {
           ended = true;
           break;
@@ -371,13 +567,19 @@ export class GameSim {
         this.sec += 4;
         break;
       }
-      if (kind === 'reg' && Math.random() < PENALTY_RATE) {
-        const pi: TI = Math.random() < 0.5 ? 0 : 1;
+
+      const fc0 = FORECHECK_INFO[this.tactics[0].forecheck];
+      const fc1 = FORECHECK_INFO[this.tactics[1].forecheck];
+      const penChance = PENALTY_RATE * 0.5 * (fc0.penMult + fc1.penMult) * (this.derby?.penMult ?? 1);
+      if (kind === 'reg' && Math.random() < penChance) {
+        const pi: TI = Math.random() < 0.5 * (fc0.penMult / ((fc0.penMult + fc1.penMult) * 0.5)) ? 0 : 1;
         this.sec = sec + 29 + Math.floor(Math.random() * 5);
         ({ modes, ice } = situation());
         this.takePenalty(pi, ice[pi]);
       }
-      if (Math.random() < 0.14) {
+
+      const hitChance = 0.14 * 0.5 * (fc0.hitMult + fc1.hitMult) * (this.derby?.hitMult ?? 1);
+      if (Math.random() < hitChance) {
         const hi: TI = Math.random() < 0.5 ? 0 : 1;
         this.sec = sec + 35 + Math.floor(Math.random() * 5);
         this.takeHit(hi, ice[hi], ice[1 - hi]);
@@ -391,29 +593,47 @@ export class GameSim {
       text: `${periodName(period, kind)} завершён. Счёт ${this.score[0]}:${this.score[1]}`,
       score: [this.score[0], this.score[1]],
     });
-    return this.events.slice(start);
   }
 
-  private tryShot(i: TI, o: TI, _kind: BlockKind, ice: [(string | null)[], (string | null)[]], modes: [Mode, Mode], emptyNet: TI | -1, li: [number, number]): 'none' | 'goal' | 'shot' {
-    const mine = this.unit(i, li[i], modes[i]);
-    const theirs = this.unit(o, li[o], modes[o]);
+  private tryShot(
+    i: TI,
+    o: TI,
+    kind: BlockKind,
+    ice: [(string | null)[], (string | null)[]],
+    modes: [Mode, Mode],
+    emptyNet: TI | -1,
+    li: [number, number],
+    u20Shift: [boolean, boolean]
+  ): 'none' | 'goal' | 'shot' {
+    const mine = this.unit(i, li[i], modes[i], u20Shift[i]);
+    const theirs = this.unit(o, li[o], modes[o], u20Shift[o]);
     const skaters = mine.skaters;
     const oppSkaters = theirs.skaters;
     if (!skaters.length) return 'none';
     const mode = modes[i];
     const onPP = mode === 'pp';
     const onSH = mode === 'pk';
-    const att = mine.att;
-    const def = theirs.def;
+
+    const clutch = kind !== 'reg' || this.playoff || !!this.derby || (this.period === 3 && Math.abs(this.score[0] - this.score[1]) <= 1);
+    const att = mine.att + (clutch ? (this.team(i).leadershipBonus ?? 0) : 0);
+    const def = theirs.def + (clutch ? (this.team(o).leadershipBonus ?? 0) * 0.6 : 0);
+
+    const fcI = FORECHECK_INFO[this.tactics[i].forecheck];
+    const fcO = FORECHECK_INFO[this.tactics[o].forecheck];
+    const stI = ATTACK_STYLE_INFO[this.tactics[i].style];
+
     let pShot = 0.33 + (att - def) * 0.0035;
-    pShot *= i === 0 ? HOME_EDGE : 2 - HOME_EDGE; // last change and home crowd
+    pShot *= i === 0 ? HOME_EDGE : 2 - HOME_EDGE;
+    pShot *= fcI.shotMult * fcO.oppShotMult * stI.shotMult;
+    if (this.focusUntil[i] > this.sec) pShot *= 1.07;
+    if (this.unansweredGoals[i] >= 2) pShot *= 1.04;
     if (onPP) pShot *= PP_SHOT;
     if (onSH) pShot *= 0.6;
     if (mode === '4v4') pShot *= 1.1;
     if (mode === 'ot3') pShot *= 1.3;
-    if (emptyNet === i) pShot *= 1.15;
+    if (emptyNet === i) pShot *= 1.18;
     if (emptyNet === o) pShot *= 1.1;
-    pShot = clamp(pShot, 0.1, 0.62);
+    pShot = clamp(pShot, 0.1, 0.64);
     if (Math.random() > pShot) return 'none';
 
     const shooter = pickWeighted(skaters, (id) => {
@@ -429,15 +649,18 @@ export class GameSim {
 
     const goalieId = emptyNet === o ? null : this.goalies[o];
     const g = goalieId ? this.P[goalieId] : null;
-    let sv = goalieSavePct(g ? g.overall : 55) + ((g?.skills.endurance ?? 70) - 70) * 0.0003;
+    const gEffOvr = g ? effectiveGoalieOvr(g, this.team(o).roadStreak ?? 0) : 55;
+    let sv = goalieSavePct(gEffOvr) + ((g?.skills.endurance ?? 70) - 70) * 0.0003;
     const sa = goalieId ? this.line(goalieId).shotsAgainst : this.shots[i];
     if (sa > 22) sv -= Math.min(0.012, (sa - 22) * 0.0005);
     let q = 1 + ((sp.skills.shooting ?? 65) - 70) * 0.006;
+    q *= fcI.xgMult * fcO.oppXgMult * stI.xgMult;
+    if (this.focusUntil[i] > this.sec) q *= 1.05;
     if (onPP) q *= PP_QUALITY;
     if (onSH) q *= 0.75;
     if (mode === '4v4' || mode === 'ot3') q *= 1.1;
 
-    const geo = generateShotGeometry(i, sp, onPP, mode, emptyNet === o);
+    const geo = generateShotGeometry(i, sp, onPP, mode, emptyNet === o, this.tactics[i].style);
     const avgSv = goalieSavePct(77);
     const rawXg = emptyNet === o ? 0.32 : clamp((1 - avgSv) * q * geo.zMult, 0.015, 0.42);
     const xg = Math.round(rawXg * 1000) / 1000;
@@ -470,9 +693,11 @@ export class GameSim {
 
     if (goal) {
       this.score[i]++;
+      this.unansweredGoals[i]++;
+      this.unansweredGoals[o] = 0;
+      if (this.forceEmptyNet[i] && this.score[i] >= this.score[o]) this.forceEmptyNet[i] = false;
       if (onPP) {
         this.stats[i].ppGoals++;
-        // a power-play goal ends a minor penalty
         if (this.penMinor[o]) {
           this.penEnd[o] = this.sec;
           this.penMinor[o] = false;
@@ -622,7 +847,9 @@ export class GameSim {
       const g = gid ? this.P[gid] : null;
       if (!sh) return false;
       const sp = this.P[sh];
-      const p = clamp(0.33 + ((sp.skills.shooting ?? 65) - 70) * 0.004 + ((sp.skills.skating ?? 65) - 70) * 0.001 - ((g?.overall ?? 55) - 70) * 0.0035, 0.12, 0.6);
+      const gOvr = g ? effectiveGoalieOvr(g, this.team((1 - i) as TI).roadStreak ?? 0) : 55;
+      const lead = (this.team(i).leadershipBonus ?? 0) * 0.008;
+      const p = clamp(0.33 + lead + ((sp.skills.shooting ?? 65) - 70) * 0.004 + ((sp.skills.skating ?? 65) - 70) * 0.001 - (gOvr - 70) * 0.0035, 0.12, 0.6);
       const ok = Math.random() < p;
       this.push({ type: ok ? 'so_goal' : 'so_miss', team: this.team(i).id, player: sh, time: `${r + 1}-й раунд`, text: `${sp.name} — ${ok ? 'ЗАБИВАЕТ' : 'не реализует буллит'} (${g?.name ?? ''})` });
       return ok;
@@ -685,7 +912,10 @@ export class GameSim {
       const gid = this.goalies[i];
       if (gid) this.line(gid).minutes = mins;
     }
-    const dressed = (st: SimTeam) => [...st.lineup.F.flat(), ...st.lineup.D.flat(), st.lineup.starterG, st.lineup.backupG].filter((x): x is string => !!x);
+    const dressed = (st: SimTeam) =>
+      [...st.lineup.F.flat(), ...st.lineup.D.flat(), st.lineup.u20F, st.lineup.u20D, st.lineup.starterG, st.lineup.backupG].filter(
+        (x): x is string => !!x
+      );
     for (const id of [...dressed(this.home), ...dressed(this.away)]) this.line(id);
     return {
       home: this.home.id,

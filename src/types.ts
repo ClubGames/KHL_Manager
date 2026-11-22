@@ -3,6 +3,15 @@ export type Conference = 'Запад' | 'Восток';
 export type Strength = 'EV' | 'PP' | 'SH' | 'EN' | '4v4' | 'SO';
 export type ShotZone = 'crease' | 'slot' | 'circles' | 'point' | 'perimeter';
 export type YouthTrainingPlan = 'balanced' | 'sniper' | 'playmaker' | 'twoway' | 'intensive' | 'goalie_reflex' | 'goalie_pos';
+export type ForecheckStyle = 'aggressive' | 'balanced' | 'trap';
+export type AttackStyle = 'shoot' | 'balanced' | 'cycle';
+export type PullGoaliePolicy = 'early' | 'normal' | 'never';
+
+export interface TeamTactics {
+  forecheck: ForecheckStyle;
+  style: AttackStyle;
+  pullGoalie: PullGoaliePolicy;
+}
 
 export interface Skills {
   skating?: number;
@@ -75,6 +84,14 @@ export interface Player {
   trainingXp?: number;
   /** skill increases gained during the current season */
   seasonGrowth?: Record<string, number>;
+  /** goalie / travel fatigue (0 = 100% fresh, 100 = exhausted) */
+  fatigue?: number;
+  /** assigned to the club's VHL farm team */
+  inVhl?: boolean;
+  /** No-Move Clause (запрет на обмен и драфт отказов) */
+  nmc?: boolean;
+  /** KHL club holding RFA sports rights (for players < 28) */
+  rightsTeamId?: string | null;
   injury: Injury | null;
   morale: number;
   teamId: string | null;
@@ -91,6 +108,10 @@ export interface Lineup {
   pk2: (string | null)[];
   starterG: string | null;
   backupG: string | null;
+  /** KHL U20 young-player extra match slot: 13th forward */
+  u20F?: string | null;
+  /** KHL U20 young-player extra match slot: 7th defenseman */
+  u20D?: string | null;
 }
 
 export interface TeamRecord {
@@ -133,6 +154,16 @@ export interface Team {
   capViolationGames?: number;
   /** total league fines paid this season for cap violations */
   capFinesTotal?: number;
+  /** team captain player ID */
+  captainId?: string | null;
+  /** up to two assistant captains */
+  assistantIds?: string[];
+  /** bench & tactical preset */
+  tactics?: TeamTactics;
+  /** games played together by forward trios and D pairs */
+  chemGP?: Record<string, number>;
+  /** consecutive away matches played */
+  roadStreak?: number;
 }
 
 export type GameKind = 'regular' | 'playoff';
@@ -328,10 +359,72 @@ export interface SeasonSummary {
   boardBonus?: number;
 }
 
+export interface HallOfFameEntry {
+  id: string;
+  name: string;
+  position: PosCode;
+  number: number;
+  teamId: string | null;
+  teamName: string;
+  retiredSeason: string;
+  age: number;
+  peakOverall: number;
+  gp: number;
+  goals: number;
+  assists: number;
+  wins: number;
+  shutouts: number;
+  jerseyRetired: boolean;
+}
+
+export interface DraftProspectMeta {
+  id: string;
+  tag: 'Топ-проспект' | 'Готов к КХЛ' | 'Выпускник МХЛ' | 'Тёмная лошадка';
+  grade: string;
+  potRange: [number, number];
+  school: string;
+}
+
+export interface DraftPickRecord {
+  overallPick: number;
+  round: number;
+  teamId: string;
+  playerId: string;
+}
+
+export interface JuniorDraftState {
+  rounds: number;
+  pickIndex: number;
+  order: string[];
+  prospects: DraftProspectMeta[];
+  picks: DraftPickRecord[];
+  completed: boolean;
+}
+
+export interface WaiverItem {
+  playerId: string;
+  fromTeamId: string;
+  postedDay: number;
+  expiresDay: number;
+}
+
+export interface RfaOfferSheet {
+  id: number;
+  playerId: string;
+  fromTeamId: string;
+  rightsTeamId: string;
+  salary: number;
+  years: number;
+  compensation: number;
+  day: number;
+}
+
 export interface OffseasonPlan {
   expiring: string[];
   progressions: { id: string; from: number; to: number; plan?: YouthTrainingPlan }[];
   revenue: number;
+  retired?: HallOfFameEntry[];
+  draft?: JuniorDraftState;
 }
 
 export interface LeagueInfo {
@@ -372,4 +465,10 @@ export interface GameState {
   deadlinePassed?: boolean;
   /** announced trade window transitions during the current season */
   announcedWindows?: string[];
+  /** league & club Hall of Fame of retired legends */
+  hallOfFame?: HallOfFameEntry[];
+  /** active 48-hour KHL waiver wire entries */
+  waivers?: WaiverItem[];
+  /** incoming RFA offer sheets awaiting the user's decision */
+  rfaOffers?: RfaOfferSheet[];
 }

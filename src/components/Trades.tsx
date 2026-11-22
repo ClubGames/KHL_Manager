@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getTradeWindowsSchedule, groupOf, tradeValue, tradeWindow } from '../game/ai';
 import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
+import { isRfaEligibleAge, offerSheetCompensation } from '../game/khlRules';
 import { regularSeasonLength, seasonDateOnly } from '../game/schedule';
 import { formatMoney, payroll } from '../game/ratings';
-import { proposeTrade, respondOffer, useGame } from '../game/state';
-import { Button, Empty, OverallChip, Panel, PosBadge, TeamLogo, money, useUI } from './ui';
+import { acquireRfaRights, proposeTrade, respondOffer, useGame } from '../game/state';
+import { Button, Empty, OverallChip, Panel, PosBadge, Tag, TeamLogo, money, useUI } from './ui';
 import { cn } from '../utils/cn';
 
 function PlayerList({ ids, selected, onToggle, title, empty, footer }: { ids: string[]; selected: string[]; onToggle: (id: string) => void; title: React.ReactNode; empty: string; footer?: React.ReactNode }) {
@@ -33,13 +34,23 @@ function PlayerList({ ids, selected, onToggle, title, empty, footer }: { ids: st
                 {list.map((id) => {
                   const p = P[id];
                   const sel = selected.includes(id);
+                  const nmc = !!p.nmc;
                   return (
                     <li key={id}>
-                      <div className={cn('flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer transition-colors border-l-2', sel ? 'bg-accent/10 border-accent' : 'border-transparent hover:bg-panel2', p.injury && 'opacity-60')} onClick={() => onToggle(id)}>
+                      <div
+                        className={cn(
+                          'flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer transition-colors border-l-2',
+                          sel ? 'bg-accent/10 border-accent' : 'border-transparent hover:bg-panel2',
+                          (p.injury || nmc) && 'opacity-60'
+                        )}
+                        onClick={() => onToggle(id)}
+                        title={nmc ? 'Контракт содержит пункт ЗНО (запрет на обмен)' : undefined}
+                      >
                         <PosBadge pos={p.position} />
                         <button className="flex-1 truncate text-left hover:text-ice min-w-0" onClick={(e) => { e.stopPropagation(); ui.openPlayer(id); }} title={p.name}>
                           {p.name}
                         </button>
+                        {nmc && <span className="text-[9px] font-bold px-1 rounded bg-gold/25 text-gold" title="Запрет на обмен (NMC)">ЗНО</span>}
                         {isLegionnaire(p) && <span className="text-[9px] font-bold px-1 rounded bg-gold/20 text-gold" title={p.country}>ЛЕГ {countryCode(p.country)}</span>}
                         <span className="text-xs text-muted w-6 tabular">{p.age}</span>
                         <OverallChip value={p.overall} size="sm" />
@@ -273,6 +284,43 @@ export function Trades({ preselect }: { preselect: string | null }) {
             {salaryDumpOk && <div className="text-[11px] text-amber mt-1">Разгрузка ФОТ: сделка разрешена для снижения превышения потолка</div>}
             {legBlocked && <div className="text-[11px] text-accent mt-1">Обмен превышает лимит легионеров КХЛ ({fl})</div>}
           </Panel>
+          {(() => {
+            const rfaPool = s.freeAgents
+              .map((id) => P[id])
+              .filter((p) => p && p.rightsTeamId && p.rightsTeamId !== U.id && isRfaEligibleAge(p.age));
+            if (!rfaPool.length) return null;
+            return (
+              <Panel title="Выкуп спортивных прав ОСА" right={<Tag tone="accent">{rfaPool.length}</Tag>}>
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1 text-xs">
+                  {rfaPool.slice(0, 8).map((rp) => {
+                    const price = Math.round(offerSheetCompensation(rp.contract.salary || 25_000_000, rp.overall) * 0.75);
+                    const holder = s.teams[rp.rightsTeamId!];
+                    return (
+                      <div key={rp.id} className="flex items-center justify-between gap-2 py-1 border-b border-line/50">
+                        <div className="min-w-0">
+                          <button onClick={() => ui.openPlayer(rp.id)} className="font-semibold hover:text-ice truncate block text-left">
+                            {rp.name} ({rp.age} л., OVR {rp.overall})
+                          </button>
+                          <span className="text-[10px] text-muted">Права: {holder?.short} · {formatMoney(price)}</span>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={!win.open || U.budget < price}
+                          onClick={() => {
+                            const res = acquireRfaRights(rp.id, price);
+                            setMsg({ ok: res.ok, text: res.reason });
+                          }}
+                        >
+                          Выкупить права
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Panel>
+            );
+          })()}
           <Panel title="Как оценивают клубы">
             <ul className="text-xs text-text/80 space-y-1.5">
               <li>• Ценность игрока зависит от рейтинга, возраста, потенциала и контракта.</li>
