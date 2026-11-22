@@ -387,6 +387,20 @@ export class GameSim {
       }
       const time = this.clock();
       this.scorers.push({ period: this.period, time, team: teamId, scorer: shooter, assists, strength });
+      // classify the goal by how the puck went in (descriptive — drives 3D replay variety)
+      let shotType: GameEvent['shotType'] = 'wrist';
+      if (sp.position === 'D') {
+        shotType = Math.random() < 0.6 ? 'slap' : 'wrist';
+      } else {
+        const r = Math.random();
+        // tips/rebounds need traffic in front: more likely on the power play or from the slot
+        const traffic = onPP || mode === 'ot3' ? 0.22 : 0.1;
+        if (r < traffic * 0.5) shotType = 'tip';
+        else if (r < traffic) shotType = 'rebound';
+        else if (r < traffic + 0.22) shotType = 'snap';
+        else if (r < traffic + 0.4) shotType = 'backhand';
+        else shotType = 'wrist';
+      }
       const label = onPP ? ' — в большинстве' : onSH ? ' — в меньшинстве' : emptyNet === o ? ' — пустые ворота!' : '';
       this.push({
         type: 'goal',
@@ -394,6 +408,7 @@ export class GameSim {
         player: shooter,
         players: assists,
         strength,
+        shotType,
         score: [this.score[0], this.score[1]],
         lines: liTuple,
         goalie: goalieId,
