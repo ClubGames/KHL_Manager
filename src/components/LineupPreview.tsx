@@ -104,12 +104,12 @@ function CompareLineRow({
 }) {
   return (
     <div className="rounded-lg border border-line/80 bg-bg/45 px-3 py-2 space-y-1.5">
-      <div className="flex items-center justify-between gap-2 text-xs">
+      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
         <div className="flex items-center gap-2">
           <span className="font-display font-semibold uppercase tracking-wider text-ice">{row.label}</span>
           {row.shareLabel && <span className="text-[11px] text-muted">{row.shareLabel}</span>}
         </div>
-        <div className="flex items-center gap-2 text-[11px] tabular-nums">
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2 text-[11px] tabular-nums">
           <span className="text-ice">
             АТК <b>{row.leftAtt}</b> / ОБ <b>{row.leftDef}</b>
             <span className={cn('ml-1 text-[10px]', row.leftChem >= 2 ? 'text-ok' : row.leftChem <= -1 ? 'text-accent' : 'text-muted')}>

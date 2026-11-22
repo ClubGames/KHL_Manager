@@ -45,27 +45,27 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
 
   return (
     <Modal open onClose={onClose} width="max-w-3xl">
-      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-        <div className="flex items-center gap-3">
-          <TeamLogo team={A} size={44} />
-          <div>
-            <div className="font-display text-lg uppercase leading-tight">{A.name}</div>
-            <div className="text-[11px] text-muted">гости</div>
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
+        <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3 min-w-0 text-center sm:text-left">
+          <TeamLogo team={A} size={38} className="sm:w-11 sm:h-11" />
+          <div className="min-w-0 max-w-full">
+            <div className="font-display text-sm sm:text-lg uppercase leading-tight truncate">{A.name}</div>
+            <div className="text-[10px] sm:text-[11px] text-muted">гости</div>
           </div>
         </div>
-        <div className="text-center">
-          <div className="font-display text-4xl tabular leading-none">{r ? `${r.awayScore}:${r.homeScore}` : 'VS'}</div>
-          <div className="text-[11px] text-muted mt-1">
-            {r ? (r.so ? 'победа по буллитам' : r.ot ? 'овертайм' : 'основное время') : 'предстоящий матч'}
-            {game.kind === 'playoff' && ser ? ` · матч ${ser.games.indexOf(game.id) + 1} · серия ${ser.wins[0]}:${ser.wins[1]}` : ''}
+        <div className="text-center px-1">
+          <div className="font-display text-2xl sm:text-4xl tabular leading-none">{r ? `${r.awayScore}:${r.homeScore}` : 'VS'}</div>
+          <div className="text-[10px] sm:text-[11px] text-muted mt-1">
+            {r ? (r.so ? 'буллиты' : r.ot ? 'овертайм' : 'осн. время') : 'предстоящий'}
+            {game.kind === 'playoff' && ser ? ` · м.${ser.games.indexOf(game.id) + 1} (${ser.wins[0]}:${ser.wins[1]})` : ''}
           </div>
         </div>
-        <div className="flex items-center gap-3 justify-end text-right">
-          <div>
-            <div className="font-display text-lg uppercase leading-tight">{H.name}</div>
-            <div className="text-[11px] text-muted">хозяева</div>
+        <div className="flex flex-col-reverse sm:flex-row items-center gap-1.5 sm:gap-3 justify-end text-center sm:text-right min-w-0">
+          <div className="min-w-0 max-w-full">
+            <div className="font-display text-sm sm:text-lg uppercase leading-tight truncate">{H.name}</div>
+            <div className="text-[10px] sm:text-[11px] text-muted">хозяева</div>
           </div>
-          <TeamLogo team={H} size={44} />
+          <TeamLogo team={H} size={38} className="sm:w-11 sm:h-11" />
         </div>
       </div>
       <div className="text-center text-[11px] text-muted mt-1">
@@ -277,7 +277,7 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
     <div className="space-y-3.5 fade-in" data-calendar-screen>
       {/* Trade Windows Schedule Strip */}
       <Panel title="Окна обменов и трансферный регламент сезона">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2" data-trade-windows-timeline>
+        <div className="flex overflow-x-auto no-scrollbar sm:grid sm:grid-cols-2 lg:grid-cols-5 gap-2 pb-0.5" data-trade-windows-timeline>
           {windows.map((w) => {
             const active = w.status === 'active';
             const dateRange =
@@ -288,7 +288,7 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
               <div
                 key={w.id}
                 className={cn(
-                  'rounded-lg border p-2.5 text-xs transition',
+                  'rounded-lg border p-2.5 text-xs transition min-w-[215px] sm:min-w-0 shrink-0',
                   active
                     ? w.open
                       ? 'border-good/60 bg-good/10'
@@ -361,14 +361,14 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
         <div className="space-y-3">
           <Panel
             title={
-              <div className="flex flex-wrap items-center gap-1.5">
+              <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar sm:flex-wrap max-w-[78vw] sm:max-w-none">
                 {months.map((m) => (
                   <button
                     key={m.key}
                     type="button"
                     onClick={() => setSelMonthKey(m.key)}
                     className={cn(
-                      'px-2.5 py-1 rounded text-xs font-display uppercase tracking-wider cursor-pointer transition',
+                      'px-2.5 py-1 rounded text-xs font-display uppercase tracking-wider cursor-pointer transition shrink-0',
                       m.key === activeMonth.key
                         ? 'bg-accent text-white font-bold'
                         : m.key === currentMonthKey
@@ -381,14 +381,14 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                 ))}
               </div>
             }
-            right={<span className="text-xs text-muted">{activeMonth.label}</span>}
+            right={<span className="text-xs text-muted hidden sm:inline">{activeMonth.label}</span>}
           >
-            <div className="grid grid-cols-7 gap-1.5 mb-1.5" data-weekday-headers>
+            <div className="grid grid-cols-7 gap-1 sm:gap-1.5 mb-1 sm:mb-1.5" data-weekday-headers>
               {MONDAY_FIRST_HEADERS.map((wd, idx) => (
                 <div
                   key={wd}
                   className={cn(
-                    'text-center text-[11px] font-display font-bold uppercase tracking-wider py-1 rounded bg-bg/60',
+                    'text-center text-[10px] sm:text-[11px] font-display font-bold uppercase tracking-wider py-1 rounded bg-bg/60',
                     idx >= 5 ? 'text-gold' : 'text-muted'
                   )}
                 >
@@ -397,9 +397,9 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
               ))}
             </div>
 
-            <div className="grid grid-cols-7 gap-1.5" data-calendar-grid>
+            <div className="grid grid-cols-7 gap-1 sm:gap-1.5" data-calendar-grid>
               {activeMonth.cells.map((cell, idx) => {
-                if (!cell) return <div key={`empty-${idx}`} className="min-h-[78px] rounded-md bg-bg/20 border border-line/20" />;
+                if (!cell) return <div key={`empty-${idx}`} className="min-h-[54px] sm:min-h-[78px] rounded-md bg-bg/20 border border-line/20" />;
                 const { date, dayIdx, games } = cell;
                 const isToday = dayIdx !== null && dayIdx === s.day;
                 const isSelected = dayIdx !== null && dayIdx === inspectedDay;
@@ -420,7 +420,7 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                     key={date.toISOString()}
                     onClick={() => dayIdx !== null && setSelectedDay(dayIdx)}
                     className={cn(
-                      'min-h-[82px] rounded-lg border p-1.5 flex flex-col justify-between text-xs transition select-none',
+                      'min-h-[54px] sm:min-h-[82px] rounded-md sm:rounded-lg border p-1 sm:p-1.5 flex flex-col justify-between text-xs transition select-none overflow-hidden',
                       dayIdx !== null ? 'cursor-pointer hover:border-accent/60' : 'opacity-45',
                       isToday
                         ? 'border-accent bg-accent/12 ring-1 ring-accent/50'
@@ -431,17 +431,18 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                             : 'border-line/50 bg-bg/40'
                     )}
                   >
-                    <div className="flex items-center justify-between gap-1">
-                      <span className={cn('font-display text-sm font-bold tabular-nums leading-none', isToday ? 'text-accent' : weekend ? 'text-gold' : 'text-ice')}>
+                    <div className="flex items-center justify-between gap-0.5">
+                      <span className={cn('font-display text-xs sm:text-sm font-bold tabular-nums leading-none', isToday ? 'text-accent' : weekend ? 'text-gold' : 'text-ice')}>
                         {date.getDate()}
                       </span>
-                      {isToday && <span className="text-[9px] uppercase font-bold px-1 rounded bg-accent text-white">сегодня</span>}
-                      {!isToday && games.length > 0 && <span className="text-[10px] text-muted tabular-nums">{games.length} м.</span>}
+                      {isToday && <span className="hidden sm:inline text-[9px] uppercase font-bold px-1 rounded bg-accent text-white">сегодня</span>}
+                      {isToday && <span className="sm:hidden w-1.5 h-1.5 rounded-full bg-accent shrink-0" />}
+                      {!isToday && games.length > 0 && <span className="hidden sm:inline text-[10px] text-muted tabular-nums">{games.length} м.</span>}
                     </div>
 
                     {/* Trade window milestone badges */}
                     {(isDeadline || inFreeze || isWinterOpen) && (
-                      <div className="my-0.5">
+                      <div className="hidden sm:block my-0.5">
                         {isDeadline && <span className="block text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-red/25 text-red truncate">Дедлайн КХЛ</span>}
                         {isWinterOpen && <span className="block text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-good/20 text-good truncate">Зимнее окно</span>}
                         {inFreeze && !isDeadline && <span className="block text-[9px] uppercase px-1 py-0.5 rounded bg-gold/15 text-gold truncate">Мораторий</span>}
@@ -450,38 +451,57 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
 
                     {/* User match pill inside calendar cell */}
                     {userGame && opp ? (
-                      <div
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          ui.openGame(userGame.id);
-                        }}
-                        className={cn(
-                          'mt-1 rounded px-1.5 py-1 flex items-center justify-between gap-1 border text-[11px]',
-                          ur
-                            ? userWon
-                              ? 'bg-good/15 border-good/40 text-ice'
-                              : 'bg-bad/15 border-bad/40 text-ice'
-                            : 'bg-bg/80 border-line hover:border-accent/60'
-                        )}
-                      >
-                        <span className="flex items-center gap-1 min-w-0 truncate font-semibold">
-                          <span className="text-[9px] text-muted">{isHome ? 'Д' : 'Г'}</span>
-                          <TeamLogo team={opp} size={15} />
-                          <span className="truncate">{opp.short}</span>
-                          {getDerby(s.teams[userGame.home], s.teams[userGame.away]) && (
-                            <span title={getDerby(s.teams[userGame.home], s.teams[userGame.away])!.title}>🔥</span>
+                      <>
+                        {/* Compact mobile pill (fits 42px cell width cleanly) */}
+                        <div
+                          className={cn(
+                            'sm:hidden mt-0.5 rounded px-0.5 py-0.5 text-center border text-[9px] leading-tight font-semibold truncate',
+                            ur
+                              ? userWon
+                                ? 'bg-good/20 border-good/40 text-good'
+                                : 'bg-bad/20 border-bad/40 text-bad'
+                              : 'bg-bg/85 border-line text-ice'
                           )}
-                        </span>
-                        {ur ? (
-                          <span className={cn('font-display font-bold tabular-nums shrink-0', userWon ? 'text-good' : 'text-bad')}>
-                            {ur.awayScore}:{ur.homeScore}
+                        >
+                          <div className="truncate">{opp.short}</div>
+                          <div className="tabular-nums text-[8.5px]">
+                            {ur ? `${ur.awayScore}:${ur.homeScore}` : isHome ? 'дом' : 'выезд'}
+                          </div>
+                        </div>
+                        {/* Full sm+ pill */}
+                        <div
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            ui.openGame(userGame.id);
+                          }}
+                          className={cn(
+                            'hidden sm:flex mt-1 rounded px-1.5 py-1 items-center justify-between gap-1 border text-[11px]',
+                            ur
+                              ? userWon
+                                ? 'bg-good/15 border-good/40 text-ice'
+                                : 'bg-bad/15 border-bad/40 text-ice'
+                              : 'bg-bg/80 border-line hover:border-accent/60'
+                          )}
+                        >
+                          <span className="flex items-center gap-1 min-w-0 truncate font-semibold">
+                            <span className="text-[9px] text-muted">{isHome ? 'Д' : 'Г'}</span>
+                            <TeamLogo team={opp} size={15} />
+                            <span className="truncate">{opp.short}</span>
+                            {getDerby(s.teams[userGame.home], s.teams[userGame.away]) && (
+                              <span title={getDerby(s.teams[userGame.home], s.teams[userGame.away])!.title}>🔥</span>
+                            )}
                           </span>
-                        ) : (
-                          <span className="text-[9px] text-accent shrink-0">разбор</span>
-                        )}
-                      </div>
+                          {ur ? (
+                            <span className={cn('font-display font-bold tabular-nums shrink-0', userWon ? 'text-good' : 'text-bad')}>
+                              {ur.awayScore}:{ur.homeScore}
+                            </span>
+                          ) : (
+                            <span className="text-[9px] text-accent shrink-0">разбор</span>
+                          )}
+                        </div>
+                      </>
                     ) : (
-                      <div className="text-[10px] text-muted/60 mt-auto">{dayIdx !== null ? 'выходной клуба' : ''}</div>
+                      <div className="hidden sm:block text-[10px] text-muted/60 mt-auto">{dayIdx !== null ? 'выходной клуба' : ''}</div>
                     )}
                   </div>
                 );
@@ -507,28 +527,30 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                   const r = g.result;
                   const mine = g.home === U || g.away === U;
                   return (
-                    <li key={g.id} className={cn('flex items-center gap-3 px-4 py-2 text-sm', mine && 'bg-ice/5')}>
-                      <span className="w-16 text-[11px] text-muted shrink-0">
+                    <li key={g.id} className={cn('flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-2 text-sm', mine && 'bg-ice/5')}>
+                      <span className="hidden sm:inline w-16 text-[11px] text-muted shrink-0">
                         {seasonWeekdayCap(g.day, regLen, s.league.season)} · {g.kind === 'playoff' ? 'ПО' : `#${g.id}`}
                       </span>
-                      <span className="flex items-center gap-2 w-[28%] min-w-0 justify-end">
-                        <span className="truncate">{s.teams[g.away].name}</span>
+                      <span className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:w-[28%] sm:flex-none min-w-0 justify-end">
+                        <span className="truncate sm:hidden font-semibold">{s.teams[g.away].short}</span>
+                        <span className="truncate hidden sm:inline">{s.teams[g.away].name}</span>
                         <TeamLogo team={s.teams[g.away]} size={22} />
                       </span>
                       {r ? (
-                        <button onClick={() => ui.openGame(g.id)} className="font-display text-lg tabular w-24 text-center hover:text-ice cursor-pointer">
+                        <button onClick={() => ui.openGame(g.id)} className="font-display text-base sm:text-lg tabular w-16 sm:w-24 text-center hover:text-ice cursor-pointer shrink-0">
                           {r.awayScore}:{r.homeScore}
                           <span className="text-[10px] text-muted ml-0.5">{scoreTag(g)}</span>
                         </button>
                       ) : (
-                        <span className="w-24 text-center text-muted text-xs">—</span>
+                        <span className="w-12 sm:w-24 text-center text-muted text-xs shrink-0">VS</span>
                       )}
-                      <span className="flex items-center gap-2 w-[28%] min-w-0">
+                      <span className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:w-[28%] sm:flex-none min-w-0">
                         <TeamLogo team={s.teams[g.home]} size={22} />
-                        <span className="truncate">{s.teams[g.home].name}</span>
+                        <span className="truncate sm:hidden font-semibold">{s.teams[g.home].short}</span>
+                        <span className="truncate hidden sm:inline">{s.teams[g.home].name}</span>
                       </span>
-                      <span className="ml-auto flex items-center gap-2">
-                        {getDerby(s.teams[g.home], s.teams[g.away]) && <Tag tone="warn">🔥 {getDerby(s.teams[g.home], s.teams[g.away])!.title}</Tag>}
+                      <span className="w-full sm:w-auto sm:ml-auto flex items-center justify-end gap-2">
+                        {getDerby(s.teams[g.home], s.teams[g.away]) && <Tag tone="warn" className="hidden md:inline-flex">🔥 {getDerby(s.teams[g.home], s.teams[g.away])!.title}</Tag>}
                         {mine && !r && inspectedDay === s.day && (
                           <Button size="sm" variant="primary" onClick={() => onPlay(g)}>
                             Играть
@@ -584,26 +606,28 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                       const r = g.result;
                       const mine = g.home === U || g.away === U;
                       return (
-                        <li key={g.id} className={cn('flex items-center gap-3 px-4 py-2 text-sm', mine && 'bg-ice/5')}>
-                          <span className="w-16 text-[11px] text-muted shrink-0">{g.kind === 'playoff' ? 'ПО' : `#${g.id}`}</span>
-                          <span className="flex items-center gap-2 w-[30%] min-w-0 justify-end">
-                            <span className="truncate">{s.teams[g.away].name}</span>
+                        <li key={g.id} className={cn('flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-2 text-sm', mine && 'bg-ice/5')}>
+                          <span className="hidden sm:inline w-16 text-[11px] text-muted shrink-0">{g.kind === 'playoff' ? 'ПО' : `#${g.id}`}</span>
+                          <span className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:w-[30%] sm:flex-none min-w-0 justify-end">
+                            <span className="truncate sm:hidden font-semibold">{s.teams[g.away].short}</span>
+                            <span className="truncate hidden sm:inline">{s.teams[g.away].name}</span>
                             <TeamLogo team={s.teams[g.away]} size={22} />
                           </span>
                           {r ? (
-                            <button onClick={() => ui.openGame(g.id)} className="font-display text-lg tabular w-20 text-center hover:text-ice cursor-pointer">
+                            <button onClick={() => ui.openGame(g.id)} className="font-display text-base sm:text-lg tabular w-16 sm:w-20 text-center hover:text-ice cursor-pointer shrink-0">
                               {r.awayScore}:{r.homeScore}
                               <span className="text-[10px] text-muted ml-0.5">{scoreTag(g)}</span>
                             </button>
                           ) : (
-                            <span className="w-20 text-center text-muted text-xs">—</span>
+                            <span className="w-12 sm:w-20 text-center text-muted text-xs shrink-0">VS</span>
                           )}
-                          <span className="flex items-center gap-2 w-[30%] min-w-0">
+                          <span className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:w-[30%] sm:flex-none min-w-0">
                             <TeamLogo team={s.teams[g.home]} size={22} />
-                            <span className="truncate">{s.teams[g.home].name}</span>
+                            <span className="truncate sm:hidden font-semibold">{s.teams[g.home].short}</span>
+                            <span className="truncate hidden sm:inline">{s.teams[g.home].name}</span>
                           </span>
-                          <span className="ml-auto flex items-center gap-2">
-                            {getDerby(s.teams[g.home], s.teams[g.away]) && <Tag tone="warn">🔥 {getDerby(s.teams[g.home], s.teams[g.away])!.title}</Tag>}
+                          <span className="w-full sm:w-auto sm:ml-auto flex items-center justify-end gap-2">
+                            {getDerby(s.teams[g.home], s.teams[g.away]) && <Tag tone="warn" className="hidden md:inline-flex">🔥 {getDerby(s.teams[g.home], s.teams[g.away])!.title}</Tag>}
                             {mine && !r && isToday && (
                               <Button size="sm" variant="primary" onClick={() => onPlay(g)}>
                                 Играть

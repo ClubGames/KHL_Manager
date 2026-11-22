@@ -92,50 +92,52 @@ export function Market() {
       )}
       <Panel
         title="Рынок свободных агентов (НСА и ОСА)"
-        right={
-          <div className="flex flex-wrap items-center gap-2">
-            <div className="flex items-center gap-1">
+        noPad
+      >
+        {/* Clean scrollable filter toolbar (never crushes header on narrow phones) */}
+        <div className="px-3 sm:px-4 py-2.5 border-b border-line/60 bg-panel2/30 space-y-2">
+          <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+            {(['ALL', 'F', 'D', 'G'] as const).map((k) => (
+              <button key={k} onClick={() => setPos(k)} className={cn('text-xs px-2.5 py-1.5 sm:py-1 rounded-sm font-semibold whitespace-nowrap shrink-0', pos === k ? 'bg-accent text-white' : 'text-muted hover:text-text bg-panel2')}>
+                {k === 'ALL' ? 'Все позиции' : k === 'F' ? 'Нападающие' : k === 'D' ? 'Защитники' : 'Вратари'}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+            <div className="flex items-center gap-1 shrink-0">
               {([
                 ['ALL', 'НСА + ОСА'],
                 ['UFA', 'НСА (28+)'],
-                ['RFA', 'ОСА (оффершит)'],
+                ['RFA', 'ОСА (<28)'],
               ] as const).map(([k, lbl]) => (
                 <button
                   key={k}
                   onClick={() => setFaFilter(k)}
-                  className={cn('text-[11px] px-2 py-1 rounded-sm font-semibold cursor-pointer', faFilter === k ? 'bg-gold text-bg' : 'text-muted hover:text-text bg-bg/60')}
+                  className={cn('text-[11px] px-2 py-1 rounded-sm font-semibold cursor-pointer whitespace-nowrap', faFilter === k ? 'bg-gold text-bg' : 'text-muted hover:text-text bg-bg/60')}
                 >
                   {lbl}
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-1">
+            <span className="w-px h-4 bg-line shrink-0" />
+            <div className="flex items-center gap-1 shrink-0">
               {([
                 ['ALL', 'Все паспорта'],
-                ['EAEU', 'ЕАЭС (без лимита)'],
+                ['EAEU', 'ЕАЭС'],
                 ['LEG', 'Легионеры'],
               ] as const).map(([k, lbl]) => (
                 <button
                   key={k}
                   onClick={() => setNatFilter(k)}
-                  className={cn('text-[11px] px-2 py-1 rounded-sm font-semibold', natFilter === k ? 'bg-ice text-bg' : 'text-muted hover:text-text bg-bg/60')}
+                  className={cn('text-[11px] px-2 py-1 rounded-sm font-semibold whitespace-nowrap', natFilter === k ? 'bg-ice text-bg' : 'text-muted hover:text-text bg-bg/60')}
                 >
                   {lbl}
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-1">
-              {(['ALL', 'F', 'D', 'G'] as const).map((k) => (
-                <button key={k} onClick={() => setPos(k)} className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold', pos === k ? 'bg-accent text-white' : 'text-muted hover:text-text bg-panel2')}>
-                  {k === 'ALL' ? 'Все' : k === 'F' ? 'Нападающие' : k === 'D' ? 'Защитники' : 'Вратари'}
-                </button>
-              ))}
-            </div>
           </div>
-        }
-        noPad
-      >
-        <div className="px-4 py-2 text-xs text-muted flex gap-4 flex-wrap border-b border-line/60">
+        </div>
+        <div className="px-3 sm:px-4 py-2 text-xs text-muted flex gap-x-3 gap-y-1 flex-wrap border-b border-line/60">
           <span>
             Игроков на рынке: <b className="text-text">{s.freeAgents.length}</b>
           </span>
@@ -159,7 +161,7 @@ export function Market() {
             {farmRosterCount > 0 ? <span className="text-ice"> (+{farmRosterCount} в ВХЛ)</span> : null}
           </span>
         </div>
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm tabular" data-market>
             <thead className="text-[11px] uppercase tracking-wider text-muted">
               <tr>
@@ -232,6 +234,56 @@ export function Market() {
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Free-Agent Cards */}
+        <div className="md:hidden divide-y divide-line/60">
+          {list.length === 0 ? (
+            <div className="py-6 text-center text-sm text-muted">Свободных агентов по этому фильтру нет</div>
+          ) : (
+            list.map((p) => {
+              const ask = askingSalary(s, p, 1, U.id);
+              const left = talksLeft(s, p);
+              const noRoom = fol + ask * 0.87 > cap;
+              const leg = isLegionnaire(p);
+              const legFull = leg && fl !== null && curLegs >= fl;
+              return (
+                <div key={p.id} className="p-3 flex items-center justify-between gap-2.5">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <PosBadge pos={p.position} />
+                      <button type="button" className="font-semibold text-sm truncate hover:text-ice text-left" onClick={() => ui.openPlayer(p.id)}>
+                        {p.name}
+                      </button>
+                      <OverallChip value={p.overall} size="sm" />
+                      {p.age <= 25 && p.potential > p.overall && (
+                        <span className="text-[10px] font-display text-ice tabular shrink-0">→{p.potential}</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-muted tabular">
+                      <span>{p.age} л. · {countryCode(p.country)}</span>
+                      {p.rightsTeamId && isRfaEligibleAge(p.age) ? (
+                        <Tag tone={p.rightsTeamId === U.id ? 'good' : 'accent'}>ОСА ({s.teams[p.rightsTeamId]?.short ?? 'КХЛ'})</Tag>
+                      ) : (
+                        <Tag>НСА</Tag>
+                      )}
+                      {leg && <Tag tone={legFull ? 'bad' : 'warn'}>ЛЕГ</Tag>}
+                      <span className={cn('font-semibold', noRoom ? 'text-muted' : 'text-text')}>{formatMoney(ask)}/г.</span>
+                    </div>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={left > 0 ? 'primary' : 'ghost'}
+                    disabled={left <= 0 || khlRosterCount >= 30}
+                    onClick={() => ui.negotiate(p.id)}
+                    className="shrink-0"
+                  >
+                    {left <= 0 ? 'Отказ' : 'Переговоры'}
+                  </Button>
+                </div>
+              );
+            })
+          )}
         </div>
       </Panel>
       <Panel title="Правила подписания">

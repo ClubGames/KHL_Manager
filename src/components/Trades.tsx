@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getTradeWindowsSchedule, groupOf, tradeValue, tradeWindow } from '../game/ai';
-import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
+import { countRosterLegionnaires, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
 import { isRfaEligibleAge, offerSheetCompensation } from '../game/khlRules';
 import { regularSeasonLength, seasonDateOnly } from '../game/schedule';
 import { formatMoney, payroll } from '../game/ratings';
@@ -39,23 +39,35 @@ function PlayerList({ ids, selected, onToggle, title, empty, footer }: { ids: st
                     <li key={id}>
                       <div
                         className={cn(
-                          'flex items-center gap-2 px-3 py-1.5 text-sm cursor-pointer transition-colors border-l-2',
-                          sel ? 'bg-accent/10 border-accent' : 'border-transparent hover:bg-panel2',
+                          'flex items-center gap-2 px-3 py-2 sm:py-1.5 text-sm cursor-pointer transition-colors border-l-2',
+                          sel ? 'bg-accent/15 border-accent' : 'border-transparent hover:bg-panel2',
                           (p.injury || nmc) && 'opacity-60'
                         )}
                         onClick={() => onToggle(id)}
                         title={nmc ? 'Контракт содержит пункт ЗНО (запрет на обмен)' : undefined}
                       >
+                        <span className={cn('w-4 h-4 rounded-sm border text-[10px] inline-flex items-center justify-center shrink-0 font-bold', sel ? 'bg-accent border-accent text-white' : 'border-line text-muted')}>
+                          {sel ? '✓' : '+'}
+                        </span>
                         <PosBadge pos={p.position} />
-                        <button className="flex-1 truncate text-left hover:text-ice min-w-0" onClick={(e) => { e.stopPropagation(); ui.openPlayer(id); }} title={p.name}>
-                          {p.name}
-                        </button>
-                        {nmc && <span className="text-[9px] font-bold px-1 rounded bg-gold/25 text-gold" title="Запрет на обмен (NMC)">ЗНО</span>}
-                        {isLegionnaire(p) && <span className="text-[9px] font-bold px-1 rounded bg-gold/20 text-gold" title={p.country}>ЛЕГ {countryCode(p.country)}</span>}
-                        <span className="text-xs text-muted w-6 tabular">{p.age}</span>
+                        <span className="flex-1 truncate text-left min-w-0 font-medium">{p.name}</span>
+                        {nmc && <span className="text-[9px] font-bold px-1 rounded bg-gold/25 text-gold shrink-0" title="Запрет на обмен (NMC)">ЗНО</span>}
+                        {isLegionnaire(p) && <span className="text-[9px] font-bold px-1 rounded bg-gold/20 text-gold shrink-0" title={p.country}>ЛЕГ</span>}
+                        <span className="hidden sm:inline text-xs text-muted w-6 tabular">{p.age}</span>
                         <OverallChip value={p.overall} size="sm" />
-                        <span className="text-xs text-muted w-20 text-right tabular">{money(p.contract.salary)}</span>
-                        <span className="text-xs text-muted w-8 text-right tabular">{p.contract.years} г.</span>
+                        <span className="text-xs text-muted w-16 sm:w-20 text-right tabular shrink-0">{money(p.contract.salary)}</span>
+                        <span className="hidden sm:inline text-xs text-muted w-8 text-right tabular">{p.contract.years} г.</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            ui.openPlayer(id);
+                          }}
+                          className="px-1.5 py-0.5 text-xs text-muted hover:text-ice rounded border border-line/60 shrink-0"
+                          title="Карточка игрока"
+                        >
+                          ⓘ
+                        </button>
                       </div>
                     </li>
                   );
@@ -78,6 +90,7 @@ export function Trades({ preselect }: { preselect: string | null }) {
   const [partnerId, setPartnerId] = useState(s.teamOrder.find((id) => id !== U.id) ?? '');
   const [give, setGive] = useState<string[]>([]);
   const [get, setGet] = useState<string[]>([]);
+  const [mobileSide, setMobileSide] = useState<'give' | 'get'>('give');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => {
     if (!preselect) return;
@@ -86,11 +99,13 @@ export function Trades({ preselect }: { preselect: string | null }) {
     setMsg(null);
     if (pl.teamId === s.userTeamId) {
       setGive([preselect]);
+      setMobileSide('give');
     } else {
       // a player of another club: open that club and put him on the "we get" side
       setPartnerId(pl.teamId);
       setGet([preselect]);
       setGive([]);
+      setMobileSide('get');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preselect]);
@@ -132,8 +147,8 @@ export function Trades({ preselect }: { preselect: string | null }) {
         <span>{win.text}</span>
       </div>
 
-      {/* Trade Windows Visual Schedule */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2" data-trades-windows>
+      {/* Trade Windows Visual Schedule (horizontal swipe strip on phones) */}
+      <div className="flex overflow-x-auto no-scrollbar sm:grid sm:grid-cols-2 lg:grid-cols-5 gap-2 pb-0.5" data-trades-windows>
         {windows.map((w) => {
           const active = w.status === 'active';
           const range = w.id === 'offseason' ? 'Межсезонье' : `${seasonDateOnly(w.startDay, regLen, s.league.season)} — ${seasonDateOnly(w.endDay, regLen, s.league.season)}`;
@@ -141,7 +156,7 @@ export function Trades({ preselect }: { preselect: string | null }) {
             <div
               key={w.id}
               className={cn(
-                'rounded-md border px-2.5 py-2 text-xs',
+                'rounded-md border px-2.5 py-2 text-xs min-w-[205px] sm:min-w-0 shrink-0',
                 active ? (w.open ? 'border-ok/60 bg-ok/10' : 'border-amber/60 bg-amber/10') : 'border-line/70 bg-panel/70 opacity-80'
               )}
             >
@@ -199,27 +214,57 @@ export function Trades({ preselect }: { preselect: string | null }) {
         </Panel>
       )}
 
+      {/* Mobile 2-Club Switcher (prevents scrolling past 30 players on phones) */}
+      <div className="xl:hidden grid grid-cols-2 gap-1 rounded-md border border-line bg-panel p-1 sticky top-[49px] z-20">
+        <button
+          type="button"
+          onClick={() => setMobileSide('give')}
+          className={cn(
+            'py-2 px-2 rounded-sm text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors',
+            mobileSide === 'give' ? 'bg-accent text-white' : 'bg-panel2/50 text-muted'
+          )}
+        >
+          <TeamLogo team={U} size={18} />
+          <span className="truncate">Отдаём ({give.length})</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setMobileSide('get')}
+          className={cn(
+            'py-2 px-2 rounded-sm text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors',
+            mobileSide === 'get' ? 'bg-ok text-bg' : 'bg-panel2/50 text-muted'
+          )}
+        >
+          <TeamLogo team={partner} size={18} />
+          <span className="truncate">Получаем: {partner.short} ({get.length})</span>
+        </button>
+      </div>
+
       <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr_320px] gap-4">
-        <PlayerList ids={U.players} selected={give} onToggle={(id) => toggle(id, give, setGive, get)} title={<span className="flex items-center gap-2"><TeamLogo team={U} size={20} /> Отдаём: {U.short}</span>} empty="Нет игроков" footer="Клик — добавить/убрать из обмена. До 3 игроков с каждой стороны." />
-        <PlayerList
-          ids={partner.players}
-          selected={get}
-          onToggle={(id) => toggle(id, get, setGet, give)}
-          title={
-            <span className="flex items-center gap-2">
-              <TeamLogo team={partner} size={20} />
-              <select value={partnerId} onChange={(e) => { setPartnerId(e.target.value); setGet([]); }} className="bg-panel2 border border-line rounded-sm text-sm px-2 py-1 text-text max-w-[180px]">
-                {s.teamOrder.filter((id) => id !== U.id).map((id) => (
-                  <option key={id} value={id}>
-                    {s.teams[id].name}
-                  </option>
-                ))}
-              </select>
-            </span>
-          }
-          empty="Нет игроков"
-          footer={`${partner.name}: ${partner.record.points} очков, ФОТ ${formatMoney(payroll(partner.players, P))}`}
-        />
+        <div className={cn(mobileSide !== 'give' && 'hidden xl:block')}>
+          <PlayerList ids={U.players} selected={give} onToggle={(id) => toggle(id, give, setGive, get)} title={<span className="flex items-center gap-2"><TeamLogo team={U} size={20} /> Отдаём: {U.short}</span>} empty="Нет игроков" footer="Нажмите игрока — добавить/убрать из обмена (до 3 с каждой стороны)." />
+        </div>
+        <div className={cn(mobileSide !== 'get' && 'hidden xl:block')}>
+          <PlayerList
+            ids={partner.players}
+            selected={get}
+            onToggle={(id) => toggle(id, get, setGet, give)}
+            title={
+              <span className="flex items-center gap-2">
+                <TeamLogo team={partner} size={20} />
+                <select value={partnerId} onChange={(e) => { setPartnerId(e.target.value); setGet([]); }} className="bg-panel2 border border-line rounded-sm text-sm px-2 py-1 text-text max-w-[180px]">
+                  {s.teamOrder.filter((id) => id !== U.id).map((id) => (
+                    <option key={id} value={id}>
+                      {s.teams[id].name}
+                    </option>
+                  ))}
+                </select>
+              </span>
+            }
+            empty="Нет игроков"
+            footer={`${partner.name}: ${partner.record.points} очков, ФОТ ${formatMoney(payroll(partner.players, P))}`}
+          />
+        </div>
 
         <div className="space-y-4">
           <Panel title="Условия обмена">
@@ -333,6 +378,52 @@ export function Trades({ preselect }: { preselect: string | null }) {
           </Panel>
         </div>
       </div>
+
+      {/* Floating Sticky Mobile Trade Summary Bar when players are selected */}
+      {(give.length > 0 || get.length > 0) && (
+        <div className="xl:hidden sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 rounded-md border border-ice/50 bg-panel/95 backdrop-blur p-3 shadow-2xl space-y-2 text-xs">
+          <div className="flex items-center justify-between gap-2 tabular">
+            <span>
+              Отдаём ({give.length}): <b className="text-accent">{gv.toFixed(1)}</b>
+            </span>
+            <span>
+              Получаем ({get.length}): <b className="text-ok">{rv.toFixed(1)}</b>
+            </span>
+            <span className={cn(capBlocked ? 'text-accent font-semibold' : 'text-muted')}>
+              ФОТ: {formatMoney(afterPayroll)}
+            </span>
+          </div>
+          {msg && (
+            <div className={cn('rounded-sm border px-2 py-1', msg.ok ? 'border-ok/50 text-ok bg-ok/10' : 'border-accent/50 text-accent bg-accent/10')}>
+              {msg.text}
+            </div>
+          )}
+          <div className="flex gap-2">
+            {give.length > 0 && get.length === 0 ? (
+              <Button size="sm" variant="ice" className="flex-1" onClick={() => setMobileSide('get')}>
+                Выбрать кого получаем ({partner.short}) →
+              </Button>
+            ) : get.length > 0 && give.length === 0 ? (
+              <Button size="sm" variant="ice" className="flex-1" onClick={() => setMobileSide('give')}>
+                ← Выбрать кого отдаём ({U.short})
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                variant="primary"
+                className="flex-1"
+                disabled={!give.length || !get.length || capBlocked || legBlocked || !win.open}
+                onClick={propose}
+              >
+                Предложить обмен
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" className="border border-line" onClick={() => { setGive([]); setGet([]); setMsg(null); }}>
+              Сброс
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

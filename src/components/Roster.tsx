@@ -146,7 +146,7 @@ export function Roster({ teamId }: { teamId?: string }) {
           )}
         </div>
         {isOwnTeam && (
-          <div className="flex flex-wrap gap-1.5">
+          <div className="hidden md:flex flex-wrap gap-1.5">
             <button
               type="button"
               onClick={() => setTab(tab === 'VHL' ? 'F' : 'VHL')}
@@ -183,6 +183,53 @@ export function Roster({ teamId }: { teamId?: string }) {
         )}
       </div>
 
+      {/* Mobile horizontal tab scroller */}
+      <div className="md:hidden flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5">
+        {(['F', 'D', 'G'] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={cn(
+              'text-xs px-3 py-2 rounded-sm font-semibold whitespace-nowrap shrink-0 border transition-colors',
+              tab === t ? 'bg-accent text-white border-accent' : 'text-muted bg-panel border-line'
+            )}
+          >
+            {t === 'F' ? `Нап (${counts.F})` : t === 'D' ? `Защ (${counts.D})` : `Вр (${counts.G})`}
+          </button>
+        ))}
+        {isOwnTeam && (
+          <>
+            <button
+              onClick={() => setTab('U23')}
+              className={cn(
+                'text-xs px-3 py-2 rounded-sm font-semibold whitespace-nowrap shrink-0 border transition-colors',
+                tab === 'U23' ? 'bg-gold text-bg border-gold' : 'text-gold bg-panel border-gold/40'
+              )}
+            >
+              U23 ({youthList.length})
+            </button>
+            <button
+              onClick={() => setTab('VHL')}
+              className={cn(
+                'text-xs px-3 py-2 rounded-sm font-semibold whitespace-nowrap shrink-0 border transition-colors',
+                tab === 'VHL' ? 'bg-ice text-bg border-ice' : 'text-ice bg-panel border-ice/40'
+              )}
+            >
+              ВХЛ / Отказы ({vhlList.length}/{activeWaivers.length})
+            </button>
+            <button
+              onClick={() => setTab('HOF')}
+              className={cn(
+                'text-xs px-3 py-2 rounded-sm font-semibold whitespace-nowrap shrink-0 border transition-colors',
+                tab === 'HOF' ? 'bg-gold text-bg border-gold' : 'text-muted bg-panel border-line'
+              )}
+            >
+              Зал славы ({(s.hallOfFame ?? []).length})
+            </button>
+          </>
+        )}
+      </div>
+
       {vhlNotice && (
         <div className={cn('rounded-md border px-3 py-2 text-xs', vhlNotice.ok ? 'border-ok/40 bg-ok/10 text-ok' : 'border-accent/40 bg-accent/10 text-accent')}>
           {vhlNotice.msg}
@@ -191,19 +238,21 @@ export function Roster({ teamId }: { teamId?: string }) {
 
       <Panel
         title={
-          <span className="flex items-center gap-2">
+          <span className="flex items-center gap-2 min-w-0">
             <TeamLogo team={team} size={22} />{' '}
-            {tab === 'U23'
-              ? `Развитие молодёжи (U23) · ${team.name}`
-              : tab === 'VHL'
-                ? `Фарм-клуб ВХЛ и драфт отказов · ${team.name}`
-                : tab === 'HOF'
-                  ? `Зал славы и выведенные номера · ${team.name}`
-                  : `Состав · ${team.name}`}
+            <span className="truncate">
+              {tab === 'U23'
+                ? `Развитие U23 · ${team.short}`
+                : tab === 'VHL'
+                  ? `ВХЛ и отказы · ${team.short}`
+                  : tab === 'HOF'
+                    ? `Зал славы · ${team.short}`
+                    : `Состав · ${team.name}`}
+            </span>
           </span>
         }
         right={
-          <div className="flex flex-wrap gap-1">
+          <div className="hidden md:flex flex-wrap gap-1">
             {(['F', 'D', 'G'] as const).map((t) => (
               <button key={t} onClick={() => setTab(t)} className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold transition-colors cursor-pointer', tab === t ? 'bg-accent text-white' : 'text-muted hover:text-text bg-panel2')}>
                 {t === 'F' ? `Нападающие ${counts.F}` : t === 'D' ? `Защитники ${counts.D}` : `Вратари ${counts.G}`}
@@ -520,8 +569,138 @@ export function Roster({ teamId }: { teamId?: string }) {
             )}
           </div>
         ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm tabular">
+        <>
+          {/* Mobile Sort Bar + Zero-Horizontal-Scroll Player Cards */}
+          <div className="md:hidden">
+            <div className="flex items-center gap-1 overflow-x-auto no-scrollbar px-3 py-2 border-b border-line/70 bg-panel2/30 text-[11px]">
+              <span className="text-muted shrink-0 mr-1">Сорт.:</span>
+              {(
+                tab === 'G'
+                  ? ([
+                      ['overall', 'ОВР'],
+                      ['sv', '%ОБ'],
+                      ['wins', 'Победы'],
+                      ['salary', 'Оклад'],
+                      ['age', 'Возраст'],
+                    ] as [SortKey, string][])
+                  : ([
+                      ['overall', 'ОВР'],
+                      ['points', 'Очки'],
+                      ['goals', 'Шайбы'],
+                      ['salary', 'Оклад'],
+                      ['age', 'Возраст'],
+                      ['potential', 'Пот'],
+                    ] as [SortKey, string][])
+              ).map(([k, lbl]) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setSort({ k, d: sort.k === k ? -sort.d : -1 })}
+                  className={cn(
+                    'px-2 py-1 rounded-sm font-semibold shrink-0 transition-colors',
+                    sort.k === k ? 'bg-ice text-bg' : 'bg-panel2 text-muted'
+                  )}
+                >
+                  {lbl}
+                  {sort.k === k && <span className="ml-0.5">{sort.d > 0 ? '▲' : '▼'}</span>}
+                </button>
+              ))}
+            </div>
+            <div className="divide-y divide-line/70">
+              {list.map((p) => {
+                const sv = p.stats.shotsAgainst ? (p.stats.saves / p.stats.shotsAgainst) * 100 : 0;
+                const leg = isLegionnaire(p);
+                const susp = suspendedSet.has(p.id);
+                const capRole = playerCaptainRole(team, p.id);
+                const arch = getArchetype(p);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => ui.openPlayer(p.id)}
+                    className={cn(
+                      'w-full text-left px-3 py-2.5 hover:bg-panel2 active:bg-panel2/80 transition-colors space-y-1.5',
+                      susp && 'bg-red/5',
+                      p.inVhl && 'opacity-75'
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="font-display text-xs text-muted w-5 tabular shrink-0">#{p.number}</span>
+                        <PosBadge pos={p.position} />
+                        <span className="font-semibold text-sm truncate">{p.name}</span>
+                        {capRole && (
+                          <span className={cn('text-[9px] font-bold px-1 rounded shrink-0', capRole === 'C' ? 'bg-gold/25 text-gold' : 'bg-ice/20 text-ice')}>
+                            {capRole === 'C' ? 'К' : 'А'}
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {p.age <= 25 && p.potential > p.overall && (
+                          <span className="text-[10px] font-display text-ice tabular">→{p.potential}</span>
+                        )}
+                        <OverallChip value={p.overall} size="sm" />
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 text-xs tabular text-muted flex-wrap">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span>{p.age} л. · {countryCode(p.country)}</span>
+                        {!isGoalie(p) && (
+                          <span className="text-[10px] px-1 rounded bg-panel2" style={{ color: arch.color }}>
+                            {arch.short}
+                          </span>
+                        )}
+                        {p.inVhl && <span className="text-[9px] font-bold px-1 rounded bg-ice/20 text-ice">ВХЛ</span>}
+                        {hasTwoWayContract(p) && <span className="text-[9px] font-bold px-1 rounded bg-ok/20 text-ok">2-СТОР</span>}
+                        {p.inLtir && <span className="text-[9px] font-bold px-1 rounded bg-ice/25 text-ice">ДСБТ</span>}
+                        {p.nmc && <span className="text-[9px] font-bold px-1 rounded bg-gold/20 text-gold">ЗНО</span>}
+                        {leg && <span className="text-[9px] font-bold px-1 rounded bg-gold/20 text-gold">ЛЕГ</span>}
+                        {isU20Limiter(p) && <span className="text-[9px] font-bold px-1 rounded bg-ok/20 text-ok">U20</span>}
+                        {p.injury && (
+                          <span className="text-[10px] font-semibold text-accent">
+                            🏥 {formatInjuryDays(p.injury.days, true)}
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-text/90">
+                        {tab === 'G' ? (
+                          <span>
+                            {p.stats.gp}И · {p.stats.wins}В · <b className="text-ice">{sv ? `${sv.toFixed(1)}%` : '—'}</b>
+                          </span>
+                        ) : (
+                          <span>
+                            {p.stats.gp}И · {p.stats.goals}+{p.stats.assists}=<b className="text-ice">{p.stats.goals + p.stats.assists}</b> ({p.stats.plusMinus > 0 ? `+${p.stats.plusMinus}` : p.stats.plusMinus})
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between text-[11px] text-muted tabular">
+                      <span>
+                        {formatMoney(p.contract.salary)} ·{' '}
+                        {p.contract.years === 0 ? <span className="text-amber">истекает</span> : `${p.contract.years} г.`}
+                      </span>
+                      <span>
+                        {susp
+                          ? <span className="text-red font-semibold">блок потолка</span>
+                          : isGoalie(p)
+                            ? <span style={{ color: freshnessTone(goalieFreshness(p)).color }}>свеж. {goalieFreshness(p)}%</span>
+                            : p.morale >= 80
+                              ? <span className="text-ok">в тонусе</span>
+                              : p.morale < 50
+                                ? <span className="text-amber">мораль ↓</span>
+                                : 'готов'}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="hidden md:block overflow-x-auto">
+            <table className="w-full text-sm tabular">
             <thead className="bg-panel2/40">
               <tr>
                 <Th k="number" className="pl-4">№</Th>
@@ -648,7 +827,8 @@ export function Roster({ teamId }: { teamId?: string }) {
               })}
             </tbody>
           </table>
-        </div>
+          </div>
+        </>
         )}
       </Panel>
     </div>
@@ -890,7 +1070,7 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
       {modalNotice && (
         <div className="mt-3 rounded-sm border border-ice/40 bg-ice/10 px-3 py-1.5 text-xs text-ice">{modalNotice}</div>
       )}
-      <div className="flex flex-wrap gap-2 mt-5 pt-4 border-t border-line justify-end">
+      <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2 mt-5 pt-4 border-t border-line sm:justify-end">
         {isUser && canPlaceInLtir(p) && s.phase !== 'offseason' && (
           <Button
             variant="ice"

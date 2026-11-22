@@ -98,10 +98,34 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
             <Stat label="Запрос игрока" value={formatMoney(ask)} sub={`за сезон, на ${years} ${yearsWord(years)}`} color="#F2B544" />
             <Stat label="Ваше предложение" value={<span data-neg-salary>{formatMoney(salary)}</span>} sub={`${pct}% от запроса`} color={pct >= 100 ? '#3FCF8E' : '#E8EEF5'} />
           </div>
-          <input type="range" min={70} max={115} step={1} value={pct} onChange={(e) => { setPct(Number(e.target.value)); setAnswer(null); }} className="w-full mt-3 accent-[#e5323e]" aria-label="Оклад в процентах от запроса игрока" />
-          <div className="flex justify-between text-[11px] text-muted">
+          <div className="flex items-center justify-between gap-1 mt-3">
+            {[
+              [-5, '−5%'],
+              [-1, '−1%'],
+              [0, '100%'],
+              [1, '+1%'],
+              [5, '+5%'],
+            ].map(([delta, lbl]) => (
+              <button
+                key={String(lbl)}
+                type="button"
+                onClick={() => {
+                  setPct((cur) => (delta === 0 ? 100 : Math.max(70, Math.min(115, cur + Number(delta)))));
+                  setAnswer(null);
+                }}
+                className={cn(
+                  'flex-1 py-1.5 rounded-sm border text-xs font-semibold tabular transition-colors',
+                  delta === 0 && pct === 100 ? 'border-ice bg-ice/15 text-ice' : 'border-line bg-panel2 text-muted hover:text-text'
+                )}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+          <input type="range" min={70} max={115} step={1} value={pct} onChange={(e) => { setPct(Number(e.target.value)); setAnswer(null); }} className="w-full h-6 mt-2 accent-[#e5323e]" aria-label="Оклад в процентах от запроса игрока" />
+          <div className="flex justify-between text-[11px] text-muted gap-2">
             <span>70%</span>
-            <span>игрок согласится не на всякую скидку — у него есть свой минимум</span>
+            <span className="text-center">у игрока есть скрытый минимум</span>
             <span>115%</span>
           </div>
           {allowTwoWay && (
@@ -170,20 +194,20 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
           {left <= 0 && !answer && <div className="mt-3 text-sm rounded-sm border border-accent/50 text-accent bg-accent/10 px-3 py-2">Игрок прервал переговоры. Вернуться к ним можно {s.phase === 'offseason' ? 'в следующем сезоне' : 'в межсезонье'}.</div>}
         </>
       )}
-      <div className="flex gap-2 justify-end mt-5 pt-4 border-t border-line flex-wrap">
+      <div className="flex flex-col-reverse sm:flex-row gap-2 sm:justify-end mt-5 pt-4 border-t border-line">
         {signed ? (
-          <Button variant="primary" onClick={onClose}>
+          <Button variant="primary" className="w-full sm:w-auto" onClick={onClose}>
             Готово
           </Button>
         ) : (
           <>
-            <Button variant="ghost" onClick={onClose}>
+            <Button variant="ghost" className="w-full sm:w-auto" onClick={onClose}>
               Закрыть
             </Button>
-            <Button disabled={left <= 0} onClick={() => offer(ask)} title="Игрок гарантированно согласится на собственный запрос">
+            <Button className="w-full sm:w-auto" disabled={left <= 0} onClick={() => offer(ask)} title="Игрок гарантированно согласится на собственный запрос">
               Принять запрос игрока
             </Button>
-            <Button variant="primary" disabled={left <= 0} onClick={() => offer(salary)}>
+            <Button variant="primary" className="w-full sm:w-auto" disabled={left <= 0} onClick={() => offer(salary)}>
               Сделать предложение
             </Button>
           </>
@@ -199,6 +223,7 @@ export function Contracts() {
   const P = s.players;
   const U = s.teams[s.userTeamId];
   const [msg, setMsg] = useState<string | null>(null);
+  const [onlyExpiring, setOnlyExpiring] = useState(false);
   const rows = U.players.map((id) => P[id]).sort((a, b) => b.contract.salary - a.contract.salary);
   const plan = commitments(U.players, P, 4);
   const cap = s.league.salaryCap;
@@ -309,7 +334,28 @@ export function Contracts() {
 
       {msg && <div className="text-xs rounded-sm border border-accent/50 text-accent bg-accent/10 px-2.5 py-2">{msg}</div>}
 
-      <Panel title={`Контракты · ${U.name}`} noPad>
+      <Panel
+        title={`Контракты · ${U.name}`}
+        right={
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setOnlyExpiring(false)}
+              className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold', !onlyExpiring ? 'bg-accent text-white' : 'bg-panel2 text-muted hover:text-text')}
+            >
+              Все ({rows.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setOnlyExpiring(true)}
+              className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold', onlyExpiring ? 'bg-amber text-bg' : 'bg-panel2 text-muted hover:text-text')}
+            >
+              Истекают ({ending.length})
+            </button>
+          </div>
+        }
+        noPad
+      >
         {(s.rfaOffers ?? []).length > 0 && (
           <div className="p-3 border-b border-gold/40 bg-gold/10 space-y-2" data-rfa-offersheets>
             <div className="text-xs font-display uppercase tracking-wider text-gold font-bold">
@@ -353,7 +399,7 @@ export function Contracts() {
             })}
           </div>
         )}
-        <div className="overflow-x-auto">
+        <div className="hidden md:block overflow-x-auto">
           <table className="w-full text-sm tabular" data-contracts>
             <thead className="bg-panel2/40 text-[11px] uppercase tracking-wider text-muted">
               <tr>
@@ -368,7 +414,7 @@ export function Contracts() {
               </tr>
             </thead>
             <tbody>
-              {rows.map((p) => {
+              {(onlyExpiring ? ending : rows).map((p) => {
                 const c = p.contract;
                 const canTalk = c.years <= 1 && !c.next;
                 const left = talksLeft(s, p);
@@ -444,6 +490,92 @@ export function Contracts() {
               })}
             </tbody>
           </table>
+        </div>
+
+        {/* Mobile Contract Cards (Zero Horizontal Scroll) */}
+        <div className="md:hidden divide-y divide-line/60">
+          {(onlyExpiring ? ending : rows).map((p) => {
+            const c = p.contract;
+            const canTalk = c.years <= 1 && !c.next;
+            const left = talksLeft(s, p);
+            return (
+              <div key={p.id} className="p-3 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <PosBadge pos={p.position} />
+                    <button type="button" className="font-semibold text-sm truncate hover:text-ice text-left" onClick={() => ui.openPlayer(p.id)}>
+                      {p.name}
+                    </button>
+                    <span className="text-[11px] text-muted shrink-0">{p.age} л.</span>
+                  </div>
+                  <OverallChip value={p.overall} size="sm" />
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                  <Tag>{playerStatusTag(p)}</Tag>
+                  {hasTwoWayContract(p) && <Tag tone="good">2-СТОР</Tag>}
+                  {p.nmc && <Tag tone="warn">ЗНО</Tag>}
+                  {p.inVhl && <Tag tone="accent">ВХЛ</Tag>}
+                  {isLegionnaire(p) && <Tag tone="warn">ЛЕГ</Tag>}
+                  {suspendedSet.has(p.id) && <Tag tone="bad">Блок потолка</Tag>}
+                </div>
+
+                <div className="flex items-center justify-between gap-2 text-xs tabular">
+                  <div>
+                    <span className="font-semibold text-text">{formatMoney(c.salary)}</span>
+                    <span className="text-muted"> · </span>
+                    {c.years === 0 ? (
+                      <span className="text-accent font-semibold">истёк</span>
+                    ) : c.years === 1 ? (
+                      <span className={c.next ? 'text-text' : 'text-amber'}>последний год</span>
+                    ) : (
+                      <span className="text-muted">ещё {c.years} {yearsWord(c.years)}</span>
+                    )}
+                    {c.next && <span className="text-ok"> → {formatMoney(c.next.salary)} × {c.next.years} г.</span>}
+                  </div>
+                  {canTalk && (
+                    <span className="text-[11px] text-ice shrink-0">запрос {formatMoney(askingSalary(s, p, 1, U.id))}</span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1.5 flex-wrap pt-1">
+                  {c.years === 0 && isRfaEligibleAge(p.age) && (
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="flex-1"
+                      onClick={() => {
+                        const err = tenderQualifyingOffer(p.id);
+                        setMsg(err ?? `Квалификационное предложение сделано — права ОСА на ${p.name} закреплены за клубом!`);
+                      }}
+                    >
+                      КП (ОСА)
+                    </Button>
+                  )}
+                  {canTalk && (
+                    <Button
+                      size="sm"
+                      variant={c.years === 0 ? 'primary' : 'secondary'}
+                      className="flex-1"
+                      disabled={left <= 0}
+                      onClick={() => ui.negotiate(p.id)}
+                    >
+                      {left <= 0 ? 'Отказ' : c.years === 0 ? 'Переговоры' : 'Продлить'}
+                    </Button>
+                  )}
+                  {c.years === 0 ? (
+                    <Button size="sm" variant="ghost" className="border border-line" onClick={() => letGo(p.id)}>
+                      Отпустить
+                    </Button>
+                  ) : (
+                    <Button size="sm" variant="ghost" className="border border-line" onClick={() => terminate(p)}>
+                      Расторгнуть
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </Panel>
 

@@ -87,14 +87,30 @@ function strength(r: NormalizedRoster, teamId: string): number {
 
 function TeamSelect({ roster, onStart }: { roster: NormalizedRoster; onStart: (teamId: string) => void }) {
   const [chosen, setChosen] = useState<string | null>(null);
-  const confs = ['Запад', 'Восток'];
+  const [confFilter, setConfFilter] = useState<'Все' | 'Запад' | 'Восток'>('Все');
+  const confs = (['Запад', 'Восток'] as const).filter((c) => confFilter === 'Все' || confFilter === c);
   const team = chosen ? roster.teams.find((t) => t.id === chosen) : null;
   return (
     <div className="space-y-4">
+      <div className="md:hidden inline-flex rounded-sm border border-line bg-panel p-0.5 w-full">
+        {(['Все', 'Запад', 'Восток'] as const).map((cf) => (
+          <button
+            key={cf}
+            type="button"
+            onClick={() => setConfFilter(cf)}
+            className={cn(
+              'flex-1 py-1.5 text-xs font-semibold rounded-sm transition-colors',
+              confFilter === cf ? 'bg-accent text-white' : 'text-muted hover:text-text'
+            )}
+          >
+            {cf === 'Все' ? 'Обе конференции' : cf}
+          </button>
+        ))}
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {confs.map((c) => (
           <Panel key={c} title={`Конференция «${c}»`} noPad>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2.5 sm:p-3">
               {roster.teams
                 .filter((t) => t.conference === c)
                 .map((t) => {
@@ -103,19 +119,19 @@ function TeamSelect({ roster, onStart }: { roster: NormalizedRoster; onStart: (t
                     <button
                       key={t.id}
                       onClick={() => setChosen(t.id)}
-                      className={cn('flex items-center gap-3 p-3 rounded-md border text-left transition-all duration-150 hover:bg-panel2', chosen === t.id ? 'border-accent bg-accent/10 ring-1 ring-accent/50' : 'border-line bg-panel2/40')}
+                      className={cn('flex items-center gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-md border text-left transition-all duration-150 hover:bg-panel2', chosen === t.id ? 'border-accent bg-accent/10 ring-1 ring-accent/50' : 'border-line bg-panel2/40')}
                     >
-                      <TeamLogo team={t} size={44} />
+                      <TeamLogo team={t} size={40} />
                       <div className="min-w-0 flex-1">
                         <div className="font-semibold truncate">{t.name}</div>
                         <div className="text-xs text-muted truncate">{t.city}</div>
-                        <div className="text-[11px] text-muted mt-0.5">
-                          {t.players.length} игроков
-                          {t.players.some((pid) => roster.players[pid]?.inVhl) ? ` (ВХЛ: ${t.players.filter((pid) => roster.players[pid]?.inVhl).length})` : ''} · ФОТ{' '}
+                        <div className="text-[11px] text-muted mt-0.5 truncate">
+                          {t.players.length} игр.
+                          {t.players.some((pid) => roster.players[pid]?.inVhl) ? ` (ВХЛ ${t.players.filter((pid) => roster.players[pid]?.inVhl).length})` : ''} · ФОТ{' '}
                           {formatMoney(effectivePayroll(t, roster.players, 'season'))}
                         </div>
                       </div>
-                      <div className="text-right">
+                      <div className="text-right shrink-0">
                         <div className="font-display text-xl tabular" style={{ color: s >= 80 ? '#E5323E' : s >= 77 ? '#8FD8F0' : '#E8EEF5' }}>
                           {s}
                         </div>
@@ -137,10 +153,10 @@ function TeamSelect({ roster, onStart }: { roster: NormalizedRoster; onStart: (t
           </ul>
         </Panel>
       )}
-      <div className="sticky bottom-4 z-10">
-        <div className="bg-panel2/95 backdrop-blur border border-line rounded-md p-3 flex items-center justify-between gap-4 shadow-xl">
-          <div className="text-sm text-muted">{team ? <>Выбран клуб: <b className="text-text">{team.name}</b>. Сезон {roster.season}, {roster.gamesPerTeam} матчей.</> : 'Выберите клуб, которым будете управлять'}</div>
-          <Button variant="primary" size="lg" disabled={!team} onClick={() => team && onStart(team.id)}>
+      <div className="sticky bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-10">
+        <div className="bg-panel2/95 backdrop-blur border border-line rounded-md p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 shadow-xl">
+          <div className="text-xs sm:text-sm text-muted">{team ? <>Выбран клуб: <b className="text-text">{team.name}</b>. Сезон {roster.season}, {roster.gamesPerTeam} матчей.</> : 'Выберите клуб, которым будете управлять'}</div>
+          <Button variant="primary" size="lg" className="w-full sm:w-auto" disabled={!team} onClick={() => team && onStart(team.id)}>
             Начать карьеру
           </Button>
         </div>
@@ -187,16 +203,16 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
   return (
     <div className="relative min-h-screen rink-lines overflow-hidden">
       <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at 50% -10%, rgba(229,50,62,.14), transparent 55%)' }} />
-      <div className="relative max-w-6xl mx-auto px-4 py-8 md:py-12">
-        <header className="relative -mx-4 md:mx-0 mb-8 md:rounded-md overflow-hidden border-0 md:border border-line bg-cover bg-center" style={{ backgroundImage: `url(${arena})`, backgroundPosition: 'center 55%' }}>
+      <div className="relative max-w-6xl mx-auto px-3 sm:px-4 py-5 sm:py-8 md:py-12">
+        <header className="relative -mx-3 sm:-mx-4 md:mx-0 mb-6 sm:mb-8 md:rounded-md overflow-hidden border-0 md:border border-line bg-cover bg-center" style={{ backgroundImage: `url(${arena})`, backgroundPosition: 'center 55%' }}>
           <div className="absolute inset-0 bg-gradient-to-r from-bg via-bg/85 to-bg/25" />
-          <div className="relative px-6 md:px-10 py-8 md:py-10">
-            <p className="text-accent font-display uppercase tracking-[0.3em] text-xs">Симулятор генерального менеджера</p>
-            <h1 className="font-display text-5xl md:text-7xl font-bold uppercase leading-none mt-2">
+          <div className="relative px-4 sm:px-6 md:px-10 py-6 sm:py-8 md:py-10">
+            <p className="text-accent font-display uppercase tracking-[0.25em] sm:tracking-[0.3em] text-[11px] sm:text-xs">Симулятор генерального менеджера</p>
+            <h1 className="font-display text-4xl sm:text-5xl md:text-7xl font-bold uppercase leading-none mt-1.5 sm:mt-2">
               КХЛ <span className="text-accent">ГМ</span>
             </h1>
-            <p className="text-muted mt-3 max-w-2xl text-sm md:text-base">Возьмите под управление хоккейный клуб Континентальной лиги: собирайте звенья, проводите обмены, ведите команду через регулярный чемпионат к Кубку Гагарина. Ростер лиги загружается из вашего файла <code className="bg-panel2 px-1.5 py-0.5 rounded text-ice">roster.json</code>.</p>
-            <div className="flex flex-wrap gap-2 mt-5">
+            <p className="text-muted mt-2.5 sm:mt-3 max-w-2xl text-xs sm:text-sm md:text-base">Возьмите под управление хоккейный клуб Континентальной лиги: собирайте звенья, проводите обмены, ведите команду через регулярный чемпионат к Кубку Гагарина. Ростер лиги загружается из вашего файла <code className="bg-panel2 px-1.5 py-0.5 rounded text-ice">roster.json</code>.</p>
+            <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-4 sm:mt-5">
               {['Регулярный чемпионат и плей-офф', 'Звенья, большинство, меньшинство', 'Обмены, рынок, контракты'].map((t) => (
                 <span key={t} className="inline-block text-[11px] uppercase tracking-wider bg-panel/80 border border-line rounded-sm pl-2.5 pr-3.5 py-1 text-text/85 slash">
                   {t}

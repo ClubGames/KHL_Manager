@@ -39,6 +39,9 @@ function githubPagesBundle(): Plugin {
 export default defineConfig({
   base: "./",
   plugins: [react(), tailwindcss(), viteSingleFile(), githubPagesBundle()],
+  build: {
+    target: ["es2020", "safari15", "ios15", "chrome90"],
+  },
   server: {
     host: "0.0.0.0",
     allowedHosts: true,
