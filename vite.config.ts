@@ -10,7 +10,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 /**
- * Ensures `dist/` is a self-contained static bundle ready for GitHub Pages (subpath `./`):
+ * Ensures `dist/` is a self-contained static bundle ready for GitHub Pages (`/KHL_Manager/` or any static path):
  * copies root `roster.json` alongside `dist/index.html`, removes internal test fixtures, and writes `.nojekyll`.
  */
 function githubPagesBundle(): Plugin {
@@ -36,7 +36,6 @@ function githubPagesBundle(): Plugin {
   };
 }
 
-// https://vite.dev/config/
 export default defineConfig({
   base: "./",
   plugins: [react(), tailwindcss(), viteSingleFile(), githubPagesBundle()],
