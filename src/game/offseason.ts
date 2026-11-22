@@ -1,30 +1,13 @@
-import type { GameState, OffseasonPlan, Player } from '../types';
+import type { GameState, OffseasonPlan, YouthTrainingPlan } from '../types';
 import { buildSchedule } from './schedule';
-import { clamp, computeOverall, formatMoney, isDefense, isGoalie, payroll, salaryDemand } from './ratings';
-import { autoLineup, byOvr, clearTradeCache, groupOf, sanitizeLineup } from './ai';
+import { formatMoney, isDefense, isGoalie, payroll, salaryDemand } from './ratings';
+import { autoLineup, byOvr, clearTradeCache, groupOf, lineupConstraintsFor, sanitizeLineup } from './ai';
 import { emptyRecord, emptyStats } from './defaults';
 import { addNews } from './state';
 import { maxYears } from './contracts';
 import { setBoardGoal } from './board';
-
-function progressPlayer(p: Player) {
-  p.age += 1;
-  let d = 0;
-  if (p.age <= 23) d = Math.max(0, p.potential - p.overall) * (0.25 + Math.random() * 0.35) - (Math.random() < 0.15 ? 1 : 0);
-  else if (p.age <= 25) d = Math.max(0, p.potential - p.overall) * (0.15 + Math.random() * 0.3) + Math.random() * 1.5 - 0.5;
-  else if (p.age <= 29) d = Math.random() * 3 - 1;
-  else if (p.age <= 32) d = -(Math.random() * 2.5);
-  else d = -(1 + Math.random() * 3.5);
-  d = Math.round(d);
-  const sk = p.skills as Record<string, number | undefined>;
-  for (const k in sk) {
-    const v = sk[k];
-    if (v !== undefined) sk[k] = clamp(Math.round(v + d + (Math.random() * 2 - 1)), 30, 99);
-  }
-  p.overall = computeOverall(p);
-  if (p.age > 28) p.potential = Math.max(p.overall, p.potential - 1);
-  if (p.age <= 27) p.potential = Math.max(p.potential, p.overall);
-}
+import { countRosterLegionnaires, isLegionnaire, teamForeignLimit } from './legionnaires';
+import { getPlayerPlan, isYouthPlayer, progressPlayerWithTraining, recommendYouthPlan } from './training';
 
 export function toFreeAgency(state: GameState, id: string) {
   const p = state.players[id];
@@ -32,7 +15,8 @@ export function toFreeAgency(state: GameState, id: string) {
   if (p.teamId) {
     const t = state.teams[p.teamId];
     t.players = t.players.filter((x) => x !== id);
-    t.lineup = t.id === state.userTeamId ? sanitizeLineup(t.lineup, t.players, state.players) : autoLineup(t.players, state.players);
+    const opts = lineupConstraintsFor(state, t.id);
+    t.lineup = t.id === state.userTeamId ? sanitizeLineup(t.lineup, t.players, state.players, opts) : autoLineup(t.players, state.players, opts);
   }
   p.teamId = null;
   p.contract = { salary: 0, years: 0 };
@@ -46,12 +30,17 @@ const aiYears = (age: number) => 1 + Math.floor(Math.random() * Math.min(3, maxY
 
 export function startOffseason(state: GameState): OffseasonPlan {
   const P = state.players;
-  const progressions: { id: string; from: number; to: number }[] = [];
+  const progressions: { id: string; from: number; to: number; plan?: YouthTrainingPlan }[] = [];
   for (const id in P) {
     const p = P[id];
+    const wasYouth = isYouthPlayer(p);
+    const planUsed = wasYouth ? getPlayerPlan(p).id : undefined;
     const from = p.overall;
-    progressPlayer(p);
-    if (p.teamId && p.overall !== from) progressions.push({ id, from, to: p.overall });
+    progressPlayerWithTraining(p);
+    if (isYouthPlayer(p) && !p.trainingPlan) p.trainingPlan = recommendYouthPlan(p);
+    if (p.teamId && p.overall !== from) {
+      progressions.push({ id, from, to: p.overall, plan: planUsed });
+    }
     const c = p.contract;
     c.years = Math.max(0, c.years - 1);
     // an extension signed during the season takes over when the old deal runs out
@@ -61,16 +50,26 @@ export function startOffseason(state: GameState): OffseasonPlan {
   const cap = state.league.salaryCap;
   const expiring: string[] = [];
   for (const t of Object.values(state.teams)) {
+    t.deadCap = 0;
+    t.capViolationDays = 0;
+    t.capViolationGames = 0;
+    t.capFinesTotal = 0;
     if (t.id === state.userTeamId) {
       for (const id of t.players) if (P[id].contract.years === 0) expiring.push(id);
       continue;
     }
+    const fl = teamForeignLimit(t, state.league.foreignLimit);
     for (const id of [...t.players]) {
       const p = P[id];
       if (p.contract.years !== 0) continue;
       const salary = salaryDemand(p.overall, p.age, p.potential);
-      if (Math.random() < 0.78 && payroll(t.players, P) + salary <= cap) p.contract = { salary, years: aiYears(p.age) };
-      else toFreeAgency(state, id);
+      const legAfter = countRosterLegionnaires(t.players, P);
+      const overLeg = fl !== null && isLegionnaire(p) && legAfter > fl;
+      if (!overLeg && Math.random() < 0.78 && payroll(t.players, P) + salary <= cap) {
+        p.contract = { salary, years: aiYears(p.age) };
+      } else {
+        toFreeAgency(state, id);
+      }
     }
   }
   clearTradeCache();
@@ -84,13 +83,18 @@ export function letGoUser(state: GameState, id: string) {
   if (p) addNews(state, 'trade', `${p.name} покидает ${state.teams[state.userTeamId].name} как свободный агент`, state.userTeamId);
 }
 
-function fillRoster(state: GameState, t: { id: string; players: string[] }) {
+function fillRoster(state: GameState, t: GameState['teams'][string]) {
   const P = state.players;
   const cap = state.league.salaryCap;
+  const fl = teamForeignLimit(t, state.league.foreignLimit);
   const need = (g: string, min: number) => {
     let n = t.players.filter((id) => groupOf(P[id]) === g).length;
     while (n < min) {
-      const best = state.freeAgents.map((id) => P[id]).filter((p) => p && groupOf(p) === g).sort(byOvr)[0];
+      const curLeg = countRosterLegionnaires(t.players, P);
+      const best = state.freeAgents
+        .map((id) => P[id])
+        .filter((p) => p && groupOf(p) === g && (fl === null || !isLegionnaire(p) || curLeg < fl))
+        .sort(byOvr)[0];
       if (!best) break;
       const salary = salaryDemand(best.overall, best.age, best.potential);
       if (t.players.length >= 18 && payroll(t.players, P) + salary > cap) break;
@@ -124,15 +128,23 @@ export function beginNewSeason(state: GameState) {
     if (p.stats.gp || p.history.length) p.history.push({ season: state.league.season, teamId: p.teamId, overall: p.overall, gp: p.stats.gp, goals: p.stats.goals, assists: p.stats.assists, wins: p.stats.wins, shutouts: p.stats.shutouts });
     p.stats = emptyStats();
     p.injury = null;
+    delete p.seasonGrowth;
     p.morale = 70 + Math.round(Math.random() * 10);
     delete p.talks;
   }
+  state.seasonNumber += 1;
+  state.league.season = nextSeasonLabel(state.league.season);
   for (const t of Object.values(state.teams)) {
     t.record = emptyRecord();
     t.seed = null;
-    t.lineup = t.id === user.id ? sanitizeLineup(t.lineup, t.players, P) : autoLineup(t.players, P);
+    t.deadCap = 0;
+    t.capViolationDays = 0;
+    t.capViolationGames = 0;
+    t.capFinesTotal = 0;
+    const opts = lineupConstraintsFor(state, t.id);
+    t.lineup = t.id === user.id ? sanitizeLineup(t.lineup, t.players, P, opts) : autoLineup(t.players, P, opts);
   }
-  const { days, nextId } = buildSchedule(state.teamOrder, state.league.gamesPerTeam, 1);
+  const { days, nextId } = buildSchedule(state.teamOrder, state.league.gamesPerTeam, 1, state.league.season);
   state.schedule = days;
   state.day = 0;
   state.nextGameId = nextId;
@@ -141,8 +153,7 @@ export function beginNewSeason(state: GameState) {
   state.offseason = null;
   state.offers = [];
   state.deadlinePassed = false;
-  state.seasonNumber += 1;
-  state.league.season = nextSeasonLabel(state.league.season);
+  state.announcedWindows = [];
   clearTradeCache();
   setBoardGoal(state);
   const fs = user.players.filter((id) => groupOf(P[id]) === 'F').length;

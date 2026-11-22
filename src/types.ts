@@ -1,6 +1,8 @@
 export type PosCode = 'C' | 'LW' | 'RW' | 'D' | 'G';
 export type Conference = 'Запад' | 'Восток';
 export type Strength = 'EV' | 'PP' | 'SH' | 'EN' | '4v4' | 'SO';
+export type ShotZone = 'crease' | 'slot' | 'circles' | 'point' | 'perimeter';
+export type YouthTrainingPlan = 'balanced' | 'sniper' | 'playmaker' | 'twoway' | 'intensive' | 'goalie_reflex' | 'goalie_pos';
 
 export interface Skills {
   skating?: number;
@@ -67,6 +69,12 @@ export interface Player {
   talks?: { key: string; left: number };
   /** manager's trade note: on the block / not for sale */
   tradeFlag?: 'block' | 'keep';
+  /** youth development training focus (for players aged <= 23) */
+  trainingPlan?: YouthTrainingPlan;
+  /** accumulated in-season youth development progress (0..100) */
+  trainingXp?: number;
+  /** skill increases gained during the current season */
+  seasonGrowth?: Record<string, number>;
   injury: Injury | null;
   morale: number;
   teamId: string | null;
@@ -99,6 +107,8 @@ export interface TeamRecord {
   streak: number;
   streakType: 'W' | 'L' | null;
   last: string[];
+  /** standings points deducted by the league for salary cap violations */
+  capPenaltyPoints?: number;
 }
 
 export interface Team {
@@ -115,6 +125,14 @@ export interface Team {
   lineup: Lineup;
   record: TeamRecord;
   seed: number | null;
+  /** buyout dead-money penalty counted against this season's salary cap */
+  deadCap?: number;
+  /** days spent above the salary cap this season */
+  capViolationDays?: number;
+  /** matches played while above the salary cap */
+  capViolationGames?: number;
+  /** total league fines paid this season for cap violations */
+  capFinesTotal?: number;
 }
 
 export type GameKind = 'regular' | 'playoff';
@@ -158,6 +176,28 @@ export interface GameEvent {
   ice?: [(string | null)[], (string | null)[]];
   /** shootout result, on the event that ends the shootout */
   so?: [number, number];
+  /** rink shot coordinates 0..100 (away attacks left net x=7, home attacks right net x=93) */
+  x?: number;
+  y?: number;
+  /** expected goal probability of this shot (0..1) */
+  xg?: number;
+  /** rink zone of the shot */
+  zone?: ShotZone;
+}
+
+export interface ShotPoint {
+  /** 0 = home, 1 = away */
+  t: 0 | 1;
+  x: number;
+  y: number;
+  xg: number;
+  zone: ShotZone;
+  outcome: 'goal' | 'save' | 'miss';
+  period: number;
+  time: string;
+  player?: string;
+  shotType?: GameEvent['shotType'];
+  strength?: Strength;
 }
 
 export interface TeamGameStats {
@@ -166,6 +206,8 @@ export interface TeamGameStats {
   ppChances: number;
   pim: number;
   hits: number;
+  xg?: number;
+  dangerShots?: number;
 }
 
 export interface PlayerGameLine {
@@ -209,6 +251,8 @@ export interface GameResult {
   homeDressed: string[];
   awayDressed: string[];
   stars: string[];
+  /** shot coordinates and xG for the mini-map and heatmap */
+  shotMap?: ShotPoint[];
 }
 
 export type NewsType = 'result' | 'injury' | 'trade' | 'offer' | 'info' | 'milestone' | 'playoff';
@@ -286,7 +330,7 @@ export interface SeasonSummary {
 
 export interface OffseasonPlan {
   expiring: string[];
-  progressions: { id: string; from: number; to: number }[];
+  progressions: { id: string; from: number; to: number; plan?: YouthTrainingPlan }[];
   revenue: number;
 }
 
@@ -295,6 +339,8 @@ export interface LeagueInfo {
   season: string;
   gamesPerTeam: number;
   salaryCap: number;
+  /** max foreign (non-EAEU) players for Russian KHL clubs (default 5) */
+  foreignLimit?: number;
 }
 
 export type Phase = 'season' | 'playoffs' | 'offseason';
@@ -324,4 +370,6 @@ export interface GameState {
   board: Board;
   /** the trade deadline of the current season has been announced */
   deadlinePassed?: boolean;
+  /** announced trade window transitions during the current season */
+  announcedWindows?: string[];
 }

@@ -1,4 +1,4 @@
-import type { GameEvent } from '../types';
+import type { GameEvent, ShotPoint } from '../types';
 
 /**
  * Match statistics as the viewer has seen them so far. The engine computes a whole period at once,
@@ -8,6 +8,9 @@ import type { GameEvent } from '../types';
 export interface LiveStats {
   score: [number, number];
   shots: [number, number];
+  xg: [number, number];
+  dangerShots: [number, number];
+  shotMap: ShotPoint[];
   hits: [number, number];
   pim: [number, number];
   ppGoals: [number, number];
@@ -22,6 +25,9 @@ export interface LiveStats {
 export const emptyLive = (): LiveStats => ({
   score: [0, 0],
   shots: [0, 0],
+  xg: [0, 0],
+  dangerShots: [0, 0],
+  shotMap: [],
   hits: [0, 0],
   pim: [0, 0],
   ppGoals: [0, 0],
@@ -38,6 +44,26 @@ function row(L: LiveStats, period: number): [number, number] {
   while (L.periods.length < period) L.periods.push([0, 0]);
   return L.periods[period - 1];
 }
+function recordShot(L: LiveStats, ti: 0 | 1, e: GameEvent, outcome: ShotPoint['outcome']) {
+  const xg = e.xg ?? 0;
+  L.xg[ti] = Math.round((L.xg[ti] + xg) * 1000) / 1000;
+  if (xg >= 0.12) L.dangerShots[ti]++;
+  if (e.x !== undefined && e.y !== undefined) {
+    L.shotMap.push({
+      t: ti,
+      player: e.player,
+      period: e.period,
+      time: e.time,
+      x: e.x,
+      y: e.y,
+      xg,
+      outcome,
+      zone: e.zone ?? 'slot',
+      strength: e.strength ?? 'EV',
+      shotType: e.shotType ?? 'wrist',
+    });
+  }
+}
 
 /** Add one revealed event. Mutates and returns the same object. */
 export function applyEvent(L: LiveStats, e: GameEvent, homeId: string): LiveStats {
@@ -53,6 +79,7 @@ export function applyEvent(L: LiveStats, e: GameEvent, homeId: string): LiveStat
     case 'goal':
       if (ti === null) break;
       L.shots[ti]++;
+      recordShot(L, ti, e, 'goal');
       row(L, e.period)[ti]++;
       if (e.pp || e.strength === 'PP') L.ppGoals[ti]++;
       if (e.goalie) {
@@ -64,6 +91,7 @@ export function applyEvent(L: LiveStats, e: GameEvent, homeId: string): LiveStat
     case 'shot':
       if (ti === null) break;
       L.shots[ti]++;
+      recordShot(L, ti, e, 'save');
       if (e.goalie) {
         const g = goalie(L, e.goalie);
         g.shotsAgainst++;
@@ -71,7 +99,10 @@ export function applyEvent(L: LiveStats, e: GameEvent, homeId: string): LiveStat
       }
       break;
     case 'miss':
-      if (ti !== null) L.shots[ti]++;
+      if (ti !== null) {
+        L.shots[ti]++;
+        recordShot(L, ti, e, 'miss');
+      }
       break;
     case 'hit':
       if (ti !== null) L.hits[ti]++;

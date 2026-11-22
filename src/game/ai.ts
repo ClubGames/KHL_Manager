@@ -1,12 +1,37 @@
 import type { GameState, Lineup, NewsItem, Player, PosCode, Team, TradeOffer } from '../types';
 import { attackRating, clamp, defenseRating, fairSalary, isDefense, isForward, isGoalie, isSkater, payroll, POS_RU } from './ratings';
 import { emptyLineup } from './defaults';
+import { countRosterLegionnaires, isLegionnaire, teamForeignLimit } from './legionnaires';
+import { capSuspendedPlayers } from './cap';
 
 export const byOvr = (a: Player, b: Player) => b.overall - a.overall || a.age - b.age;
 export const groupOf = (p: Player): 'F' | 'D' | 'G' => (isGoalie(p) ? 'G' : isDefense(p) ? 'D' : 'F');
 
-export function autoLineup(ids: string[], P: Record<string, Player>): Lineup {
-  const avail = ids.map((id) => P[id]).filter((p): p is Player => !!p && !p.injury);
+export interface LineupConstraints {
+  foreignLimit?: number | null;
+  excluded?: Set<string>;
+}
+
+export function autoLineup(ids: string[], P: Record<string, Player>, opts?: LineupConstraints): Lineup {
+  const excluded = opts?.excluded;
+  const foreignLimit = opts?.foreignLimit ?? null;
+  let avail = ids.map((id) => P[id]).filter((p): p is Player => !!p && !p.injury && !excluded?.has(p.id));
+  if (foreignLimit !== null) {
+    const legs = avail.filter((p) => isLegionnaire(p)).sort(byOvr);
+    if (legs.length > foreignLimit) {
+      const hasDomGoalie = avail.some((p) => isGoalie(p) && !isLegionnaire(p));
+      const allowedLegs = new Set<string>();
+      if (!hasDomGoalie) {
+        const topLegG = legs.find(isGoalie);
+        if (topLegG && foreignLimit > 0) allowedLegs.add(topLegG.id);
+      }
+      for (const p of legs) {
+        if (allowedLegs.size >= foreignLimit) break;
+        allowedLegs.add(p.id);
+      }
+      avail = avail.filter((p) => !isLegionnaire(p) || allowedLegs.has(p.id));
+    }
+  }
   const F = avail.filter(isForward);
   const D = avail.filter(isDefense).sort(byOvr);
   const G = avail.filter(isGoalie).sort(byOvr);
@@ -45,24 +70,51 @@ export function autoLineup(ids: string[], P: Record<string, Player>): Lineup {
   return L;
 }
 
-export function sanitizeLineup(L: Lineup, ids: string[], P: Record<string, Player>): Lineup {
-  const ok = (id: string | null) => !!id && !!P[id] && !P[id].injury && ids.includes(id) && isSkater(P[id]);
+export function sanitizeLineup(L: Lineup, ids: string[], P: Record<string, Player>, opts?: LineupConstraints): Lineup {
+  const excluded = opts?.excluded;
+  const foreignLimit = opts?.foreignLimit ?? null;
+  let legCount = 0;
+  const canTakeLeg = (id: string) => foreignLimit === null || !isLegionnaire(P[id]) || legCount < foreignLimit;
+  const markUsed = (id: string, set: Set<string>) => {
+    set.add(id);
+    if (isLegionnaire(P[id])) legCount++;
+  };
+
+  const ok = (id: string | null) => !!id && !!P[id] && !P[id].injury && !excluded?.has(id) && ids.includes(id) && isSkater(P[id]);
   const used = new Set<string>();
-  const avail = ids.map((id) => P[id]).filter((p) => !!p && !p.injury);
+  const avail = ids.map((id) => P[id]).filter((p): p is Player => !!p && !p.injury && !excluded?.has(p.id));
   const F = avail.filter(isForward).sort(byOvr);
   const D = avail.filter(isDefense).sort(byOvr);
   const G = avail.filter(isGoalie).sort(byOvr);
   const out = emptyLineup();
+
+  const gokBase = (id: string | null) => !!id && !!P[id] && isGoalie(P[id]) && !P[id].injury && !excluded?.has(id) && ids.includes(id);
+  const pickGoalie = (preferred: (string | null)[]): string | null => {
+    for (const id of preferred) {
+      if (id && gokBase(id) && !used.has(id) && canTakeLeg(id)) {
+        markUsed(id, used);
+        return id;
+      }
+    }
+    const g = G.find((x) => !used.has(x.id) && canTakeLeg(x.id)) ?? G.find((x) => !used.has(x.id));
+    if (g) {
+      markUsed(g.id, used);
+      return g.id;
+    }
+    return null;
+  };
+  out.starterG = pickGoalie([L.starterG, L.backupG]);
+
   const slot = (id: string | null | undefined, pref: PosCode | 'D'): string | null => {
-    if (id && ok(id) && !used.has(id)) {
-      used.add(id);
+    if (id && ok(id) && !used.has(id) && canTakeLeg(id)) {
+      markUsed(id, used);
       return id;
     }
     const list = pref === 'D' ? D : F;
     let best: Player | null = null;
     let bv = -1e9;
     for (const p of list) {
-      if (used.has(p.id)) continue;
+      if (used.has(p.id) || !canTakeLeg(p.id)) continue;
       const pen = pref === 'D' ? 0 : p.position === pref ? 0 : p.position === 'C' ? 5 : 3;
       const v = p.overall - pen;
       if (v > bv) {
@@ -70,18 +122,20 @@ export function sanitizeLineup(L: Lineup, ids: string[], P: Record<string, Playe
         best = p;
       }
     }
-    if (best) used.add(best.id);
+    if (best) markUsed(best.id, used);
     return best ? best.id : null;
   };
   for (let i = 0; i < 4; i++) out.F[i] = [slot(L.F[i]?.[0], 'C'), slot(L.F[i]?.[1], 'LW'), slot(L.F[i]?.[2], 'RW')];
   for (let i = 0; i < 3; i++) out.D[i] = [slot(L.D[i]?.[0], 'D'), slot(L.D[i]?.[1], 'D')];
+  out.backupG = pickGoalie([L.backupG]);
+
   const dressed = new Set<string>([...out.F.flat(), ...out.D.flat()].filter((x): x is string => !!x));
   const df = [...dressed].filter((id) => isForward(P[id]));
   const dd = [...dressed].filter((id) => isDefense(P[id]));
   const fAtt = [...df].sort((a, b) => attackRating(P[b]) - attackRating(P[a]));
   const dAtt = [...dd].sort((a, b) => attackRating(P[b]) - attackRating(P[a]));
-  const fDef = [...df].sort((a, b) => defenseRating(P[b]) - defenseRating(P[a]));
-  const dDef = [...dd].sort((a, b) => defenseRating(P[b]) - defenseRating(P[a]));
+  const fDef = [...dressed].filter((id) => isForward(P[id])).sort((a, b) => defenseRating(P[b]) - defenseRating(P[a]));
+  const dDef = [...dressed].filter((id) => isDefense(P[id])).sort((a, b) => defenseRating(P[b]) - defenseRating(P[a]));
   const unit = (u: (string | null)[] | undefined, n: number, fb: string[], reserved = new Set<string>()): string[] => {
     const res: string[] = [];
     for (const id of u ?? []) {
@@ -94,24 +148,28 @@ export function sanitizeLineup(L: Lineup, ids: string[], P: Record<string, Playe
     }
     return res;
   };
-  // Each special-teams unit is internally unique, and the two units of the same
-  // type do not share players. Players may still appear in regular lines as expected.
   out.pp1 = unit(L.pp1, 5, [...fAtt, ...dAtt]);
-  const ppUsed = new Set(out.pp1);
+  const ppUsed = new Set(out.pp1.filter((x): x is string => !!x));
   out.pp2 = unit(L.pp2, 5, [...fAtt.slice(3), ...dAtt.slice(2), ...fAtt, ...dAtt], ppUsed);
   out.pk1 = unit(L.pk1, 4, [...fDef, ...dDef]);
-  const pkUsed = new Set(out.pk1);
+  const pkUsed = new Set(out.pk1.filter((x): x is string => !!x));
   out.pk2 = unit(L.pk2, 4, [...fDef.slice(2), ...dDef.slice(2), ...fDef, ...dDef], pkUsed);
-  const gok = (id: string | null) => !!id && !!P[id] && isGoalie(P[id]) && !P[id].injury && ids.includes(id);
-  out.starterG = gok(L.starterG) ? L.starterG : gok(L.backupG) ? L.backupG : G[0]?.id ?? null;
-  out.backupG = gok(L.backupG) && L.backupG !== out.starterG ? L.backupG : G.find((g) => g.id !== out.starterG)?.id ?? null;
   return out;
+}
+
+export function lineupConstraintsFor(state: GameState, teamId: string): LineupConstraints {
+  const t = state.teams[teamId];
+  return {
+    foreignLimit: teamForeignLimit(t, state.league.foreignLimit),
+    excluded: new Set(capSuspendedPlayers(state, teamId)),
+  };
 }
 
 export function prepareLineup(state: GameState, teamId: string): Lineup {
   const t = state.teams[teamId];
-  if (teamId === state.userTeamId) return sanitizeLineup(t.lineup, t.players, state.players);
-  const L = autoLineup(t.players, state.players);
+  const opts = lineupConstraintsFor(state, teamId);
+  if (teamId === state.userTeamId) return sanitizeLineup(t.lineup, t.players, state.players, opts);
+  const L = autoLineup(t.players, state.players, opts);
   if (L.starterG && L.backupG) {
     const s = state.players[L.starterG];
     const b = state.players[L.backupG];
@@ -158,13 +216,131 @@ export function regularDays(state: GameState): number {
 export function tradeDeadline(state: GameState): number {
   return Math.floor(regularDays(state) * 0.66);
 }
-export function tradeWindow(state: GameState): { open: boolean; daysLeft: number; text: string } {
-  if (state.phase === 'offseason') return { open: true, daysLeft: Infinity, text: 'Межсезонье: обмены открыты.' };
-  if (state.phase === 'season') {
-    const left = tradeDeadline(state) - state.day;
-    if (left > 0) return { open: true, daysLeft: left, text: `До дедлайна обменов: ${left} игровых дн.` };
+
+/** International pause / trade moratorium in early November (for full-length seasons). */
+export function novemberTradeFreeze(state: GameState): [number, number] | null {
+  const reg = regularDays(state);
+  if (reg < 80) return null;
+  const start = Math.floor(reg * 0.39);
+  return [start, Math.min(start + 5, tradeDeadline(state) - 10)];
+}
+
+export interface TradeWindowPeriod {
+  id: 'autumn' | 'freeze' | 'winter' | 'closed' | 'offseason';
+  title: string;
+  open: boolean;
+  startDay: number;
+  endDay: number;
+  status: 'past' | 'active' | 'upcoming';
+  note: string;
+}
+
+export function getTradeWindowsSchedule(state: GameState): TradeWindowPeriod[] {
+  const reg = regularDays(state);
+  const deadline = tradeDeadline(state);
+  const freeze = novemberTradeFreeze(state);
+  const d = state.day;
+  const isOff = state.phase === 'offseason';
+
+  const statusOf = (s: number, e: number): 'past' | 'active' | 'upcoming' => {
+    if (isOff) return 'past';
+    if (d > e) return 'past';
+    if (d < s) return 'upcoming';
+    return 'active';
+  };
+
+  const out: TradeWindowPeriod[] = [];
+  if (freeze && freeze[1] > freeze[0]) {
+    out.push({
+      id: 'autumn',
+      title: 'Осеннее окно обменов',
+      open: true,
+      startDay: 0,
+      endDay: freeze[0] - 1,
+      status: statusOf(0, freeze[0] - 1),
+      note: 'Старт регулярного чемпионата — открыты обмены между всеми клубами.',
+    });
+    out.push({
+      id: 'freeze',
+      title: 'Пауза сборных (мораторий)',
+      open: false,
+      startDay: freeze[0],
+      endDay: freeze[1] - 1,
+      status: statusOf(freeze[0], freeze[1] - 1),
+      note: 'Временный мораторий на обмены на время международного окна сборных.',
+    });
+    out.push({
+      id: 'winter',
+      title: 'Зимнее окно («Преддедлайновое»)',
+      open: true,
+      startDay: freeze[1],
+      endDay: Math.max(freeze[1], deadline - 1),
+      status: statusOf(freeze[1], Math.max(freeze[1], deadline - 1)),
+      note: 'Горячий рынок перед дедлайном: претенденты активно ищут усиление.',
+    });
+  } else {
+    out.push({
+      id: 'autumn',
+      title: 'Регулярное окно обменов',
+      open: true,
+      startDay: 0,
+      endDay: Math.max(0, deadline - 1),
+      status: statusOf(0, Math.max(0, deadline - 1)),
+      note: 'Обмены разрешены до наступления дедлайна КХЛ.',
+    });
   }
-  return { open: false, daysLeft: 0, text: 'Дедлайн обменов прошёл. Окно откроется в межсезонье; свободных агентов подписывать можно.' };
+  out.push({
+    id: 'closed',
+    title: 'Запрет после дедлайна и плей-офф',
+    open: false,
+    startDay: deadline,
+    endDay: Math.max(deadline, Math.max(reg, state.schedule.length) - 1),
+    status: isOff ? 'past' : d >= deadline || state.phase === 'playoffs' ? 'active' : 'upcoming',
+    note: 'Обмены закрыты до конца Кубка Гагарина; доступно только подписание свободных агентов.',
+  });
+  out.push({
+    id: 'offseason',
+    title: 'Межсезонное окно обменов',
+    open: true,
+    startDay: Math.max(reg, state.schedule.length),
+    endDay: Math.max(reg, state.schedule.length),
+    status: isOff ? 'active' : 'upcoming',
+    note: 'После финала Кубка Гагарина все ограничения на переходы снимаются.',
+  });
+  return out;
+}
+
+export function tradeWindow(state: GameState): { open: boolean; daysLeft: number; windowId: string; windowTitle: string; text: string } {
+  if (state.phase === 'offseason') {
+    return { open: true, daysLeft: Infinity, windowId: 'offseason', windowTitle: 'Межсезонное окно', text: 'Межсезонье: окно обменов открыто без ограничений.' };
+  }
+  if (state.phase === 'season') {
+    const deadline = tradeDeadline(state);
+    const freeze = novemberTradeFreeze(state);
+    if (freeze && state.day >= freeze[0] && state.day < freeze[1]) {
+      const freezeLeft = freeze[1] - state.day;
+      return {
+        open: false,
+        daysLeft: Math.max(0, deadline - state.day),
+        windowId: 'freeze',
+        windowTitle: 'Пауза сборных (мораторий)',
+        text: `Мораторий на обмены на время паузы сборных (ещё ${freezeLeft} дн.). До дедлайна обменов: ${deadline - state.day} дн.`,
+      };
+    }
+    const left = deadline - state.day;
+    if (left > 0) {
+      const isWinter = freeze ? state.day >= freeze[1] : state.day >= Math.floor(deadline * 0.6);
+      const title = isWinter ? 'Зимнее окно обменов' : 'Осеннее окно обменов';
+      return {
+        open: true,
+        daysLeft: left,
+        windowId: isWinter ? 'winter' : 'autumn',
+        windowTitle: title,
+        text: `${title} · До дедлайна обменов: ${left} игровых дн.`,
+      };
+    }
+  }
+  return { open: false, daysLeft: 0, windowId: 'closed', windowTitle: 'Окно закрыто', text: 'Дедлайн обменов прошёл. Окно откроется в межсезонье; свободных агентов подписывать можно.' };
 }
 
 export interface TeamCtx {
@@ -268,7 +444,22 @@ function sideProblem(state: GameState, teamId: string, gives: string[], gets: st
     if (n < min[g]) return `у клуба «${t.name}» останется слишком мало ${GROUP_MANY[g]} (${n}, нужно минимум ${min[g]})`;
   }
   if (after.length > MAX_ROSTER) return `в составе «${t.name}» окажется больше ${MAX_ROSTER} игроков`;
-  if (payroll(after, P) > state.league.salaryCap) return `«${t.name}» не укладывается в потолок зарплат`;
+  const fl = teamForeignLimit(t, state.league.foreignLimit);
+  if (fl !== null) {
+    const beforeLeg = countRosterLegionnaires(t.players, P);
+    const afterLeg = countRosterLegionnaires(after, P);
+    if (afterLeg > fl && (afterLeg > beforeLeg || gets.some((id) => isLegionnaire(P[id])))) {
+      return `«${t.name}» превышает лимит легионеров (${afterLeg} из ${fl})`;
+    }
+  }
+  const dead = state.phase === 'offseason' ? 0 : (t.deadCap ?? 0);
+  const beforePay = payroll(t.players, P) + dead;
+  const afterPay = payroll(after, P) + dead;
+  const cap = state.league.salaryCap;
+  if (afterPay > cap) {
+    const isUserDump = teamId === state.userTeamId && beforePay > cap && afterPay <= beforePay - 5_000_000;
+    if (!isUserDump) return `«${t.name}» не укладывается в потолок зарплат`;
+  }
   return null;
 }
 /** Roster and salary-cap check for the manager's club. */
@@ -330,8 +521,9 @@ export function executeTrade(state: GameState, aId: string, bId: string, aGives:
   for (const id of bGives) move(id, B, A);
   state.offers = state.offers.filter((o) => ![...o.give, ...o.get].some((id) => aGives.includes(id) || bGives.includes(id)));
   for (const t of [A, B]) {
-    if (t.id === state.userTeamId) t.lineup = sanitizeLineup(t.lineup, t.players, P);
-    else t.lineup = autoLineup(t.players, P);
+    const opts = lineupConstraintsFor(state, t.id);
+    if (t.id === state.userTeamId) t.lineup = sanitizeLineup(t.lineup, t.players, P, opts);
+    else t.lineup = autoLineup(t.players, P, opts);
   }
   clearTradeCache();
 }
@@ -440,10 +632,12 @@ const shuffled = <T,>(xs: T[]): T[] => {
   }
   return a;
 };
-/** Trade talk gets busier as the deadline approaches. */
+/** Trade talk gets busier in the winter window and peaks right before the deadline. */
 const deadlineHeat = (state: GameState) => {
   const w = tradeWindow(state);
-  return w.open && w.daysLeft <= 8 ? 2.5 : 1;
+  if (!w.open) return 0;
+  if (w.daysLeft <= 8) return 2.2;
+  return w.windowId === 'winter' ? 1.15 : 0.9;
 };
 
 export function maybeIncomingOffer(state: GameState): TradeOffer | null {
@@ -452,11 +646,14 @@ export function maybeIncomingOffer(state: GameState): TradeOffer | null {
   const user = state.teams[state.userTeamId];
   const onBlock = user.players.some((id) => state.players[id].tradeFlag === 'block');
   if (Math.random() > 0.09 * deadlineHeat(state) * (onBlock ? 1.6 : 1)) return null;
+  const freeze = novemberTradeFreeze(state);
+  const maxDay = freeze && state.day < freeze[0] ? freeze[0] - 1 : tradeDeadline(state) - 1;
+  if (maxDay < state.day) return null;
   for (const id of shuffled(state.teamOrder.filter((x) => x !== user.id)).slice(0, 6)) {
     const p = generateProposal(state, id, user.id);
     if (!p) continue;
     if (state.offers.some((o) => o.get.some((x) => p.get.includes(x)) || o.give.some((x) => p.give.includes(x)))) continue;
-    return { id: Date.now() + Math.floor(Math.random() * 1000), from: id, give: p.give, get: p.get, expires: Math.min(state.day + 5, tradeDeadline(state) - 1), day: state.day, reason: p.reason };
+    return { id: Date.now() + Math.floor(Math.random() * 1000), from: id, give: p.give, get: p.get, expires: Math.min(state.day + 5, maxDay), day: state.day, reason: p.reason };
   }
   return null;
 }

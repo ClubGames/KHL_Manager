@@ -4,12 +4,15 @@ import { autoLineup } from './ai';
 import { emptyLineup, emptyRecord, emptyStats } from './defaults';
 import { generateContract } from './contracts';
 import type { ContractTerms } from './contracts';
+import { DEFAULT_FOREIGN_LIMIT, teamForeignLimit } from './legionnaires';
+import { isYouthPlayer, recommendYouthPlan } from './training';
 
 export interface NormalizedRoster {
   leagueName: string;
   season: string;
   gamesPerTeam: number;
   salaryCap: number;
+  foreignLimit: number;
   teams: Team[];
   players: Record<string, Player>;
   freeAgents: string[];
@@ -124,6 +127,7 @@ export function normalizePlayer(raw: any, teamId: string | null, idx: number, pr
   };
   player.overall = computeOverall(player);
   if (!player.potential) player.potential = age <= 25 ? Math.min(99, Math.max(player.overall, player.overall + Math.round((26 - age) * 1.6))) : player.overall;
+  if (isYouthPlayer(player)) player.trainingPlan = recommendYouthPlan(player);
   // A club player without a (complete) contract in the file gets one; it is the same on every launch.
   if (teamId && (!player.contract.salary || !player.contract.years)) {
     const g = generateContract(player);
@@ -157,6 +161,7 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
   const rawTeams: any[] = Array.isArray(root.teams) ? root.teams : [];
   if (rawTeams.length < 2) throw new Error('В файле должно быть как минимум две команды в массиве "teams"');
   const league = root.league ?? {};
+  const foreignLimit = Math.round(clampNum(league.foreignLimit ?? root.foreignLimit, DEFAULT_FOREIGN_LIMIT, 0, 25));
   const players: Record<string, Player> = {};
   const teams: Team[] = [];
   const filled: NormalizedRoster['filled'] = [];
@@ -206,8 +211,12 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
       lineup: emptyLineup(),
       record: emptyRecord(),
       seed: null,
+      deadCap: 0,
+      capViolationDays: 0,
+      capViolationGames: 0,
+      capFinesTotal: 0,
     };
-    team.lineup = autoLineup(ids, players);
+    team.lineup = autoLineup(ids, players, { foreignLimit: teamForeignLimit(team, foreignLimit) });
     teams.push(team);
   });
   const fas: string[] = [];
@@ -229,6 +238,7 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
     season: String(league.season ?? root.season ?? '2025/26'),
     gamesPerTeam: Math.round(clampNum(league.gamesPerTeam ?? root.gamesPerTeam, DEFAULT_GAMES, 2, 120)),
     salaryCap: Math.max(1, num(league.salaryCap ?? root.salaryCap, DEFAULT_CAP)),
+    foreignLimit,
     teams,
     players,
     freeAgents: fas,

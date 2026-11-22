@@ -1,5 +1,6 @@
 import { talksLeft, askingSalary } from '../game/contracts';
 import { formatMoney } from '../game/ratings';
+import { TRAINING_PLANS } from '../game/training';
 import { letGo, startNewSeason, useGame } from '../game/state';
 import { Button, Empty, OverallChip, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { cn } from '../utils/cn';
@@ -120,6 +121,9 @@ export function Offseason() {
                       <button className="flex-1 truncate text-left hover:text-ice" onClick={() => ui.openPlayer(x.id)}>
                         {p.name}
                       </button>
+                      {x.plan && TRAINING_PLANS[x.plan] && (
+                        <Tag tone="accent">{TRAINING_PLANS[x.plan].short}</Tag>
+                      )}
                       <span className="text-xs text-muted">{p.age} л.</span>
                       <span className="font-display tabular">
                         {x.from} → <span className={d > 0 ? 'text-ok' : 'text-accent'}>{x.to}</span>

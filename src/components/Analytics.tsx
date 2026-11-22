@@ -51,7 +51,7 @@ function baseOptions(unit: string): ChartConfiguration['options'] {
         titleColor: TEXT,
         bodyColor: TEXT,
         padding: 9,
-        callbacks: { label: (c) => ` ${c.dataset.label}: ${c.formattedValue}${unit}` },
+        callbacks: { label: (c: any) => ` ${c.dataset.label}: ${c.formattedValue}${unit}` },
       },
     },
     scales: {

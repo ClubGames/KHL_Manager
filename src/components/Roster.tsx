@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { Player } from '../types';
-import { formatMoney, isDefense, isForward, isGoalie, POS_NAME, salaryDemand, skillList } from '../game/ratings';
-import { releasePlayer, setTradeFlag, useGame } from '../game/state';
+import { formatMoney, isDefense, isForward, isGoalie, POS_NAME, salaryDemand, SKILL_LABELS, skillList } from '../game/ratings';
+import { autoAssignYouthPlans, releasePlayer, setTradeFlag, setTrainingPlan, useGame } from '../game/state';
 import { buyoutCost } from '../game/contracts';
+import { buyoutDeadCap, getCapSummary } from '../game/cap';
+import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
+import { getPlayerPlan, isYouthPlayer, playerIceRole, plansForPlayer } from '../game/training';
 import { Bar, Button, Empty, Modal, OverallChip, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { cn } from '../utils/cn';
 
@@ -57,9 +60,16 @@ export function Roster({ teamId }: { teamId?: string }) {
   const P = s.players;
   const tid = teamId ?? s.userTeamId;
   const team = s.teams[tid];
-  const [tab, setTab] = useState<'F' | 'D' | 'G'>('F');
+  const isOwnTeam = tid === s.userTeamId;
+  const [tab, setTab] = useState<'F' | 'D' | 'G' | 'U23'>('F');
   const [sort, setSort] = useState<{ k: SortKey; d: number }>({ k: 'overall', d: -1 });
   const all = team.players.map((id) => P[id]);
+  const youthList = useMemo(() => all.filter((p) => isYouthPlayer(p)).sort((a, b) => b.potential - a.potential || b.overall - a.overall), [all]);
+  const fl = teamForeignLimit(team, s.league.foreignLimit);
+  const legCount = countRosterLegionnaires(team.players, P);
+  const capInfo = getCapSummary(s, tid);
+  const suspendedSet = new Set(capInfo.suspendedIds);
+
   const list = useMemo(() => {
     const f = all.filter((p) => (tab === 'G' ? isGoalie(p) : tab === 'D' ? isDefense(p) : isForward(p)));
     return [...f].sort((a, b) => {
@@ -78,23 +88,142 @@ export function Roster({ teamId }: { teamId?: string }) {
   const counts = { F: all.filter(isForward).length, D: all.filter(isDefense).length, G: all.filter(isGoalie).length };
   return (
     <div className="space-y-4 fade-in">
+      {/* Legionnaire Limit & Cap Compliance Summary Strip */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-4 py-2.5 text-xs" data-roster-limits>
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="text-muted">Лимит легионеров КХЛ:</span>
+          {fl !== null ? (
+            <Tag tone={legCount > fl ? 'bad' : legCount === fl ? 'warn' : 'accent'}>
+              {legCount} / {fl} легионеров {legCount > fl ? '(лишние вне заявки на матч)' : ''}
+            </Tag>
+          ) : (
+            <Tag tone="good">Иностранный клуб · без лимита ({legCount} лег.)</Tag>
+          )}
+          <span className="text-muted ml-1">ФОТ под потолком:</span>
+          <Tag tone={capInfo.over ? 'bad' : 'good'}>
+            {formatMoney(capInfo.totalPayroll)} / {formatMoney(capInfo.cap)}
+            {capInfo.deadCap > 0 ? ` (вкл. выкупы ${formatMoney(capInfo.deadCap)})` : ''}
+          </Tag>
+          {capInfo.sanctionsActive && <Tag tone="bad">Санкции потолка активны (−{capInfo.pointsDeducted} очк.)</Tag>}
+        </div>
+        {isOwnTeam && (
+          <button
+            type="button"
+            onClick={() => setTab(tab === 'U23' ? 'F' : 'U23')}
+            className={cn(
+              'px-2.5 py-1 rounded font-semibold transition cursor-pointer',
+              tab === 'U23' ? 'bg-gold text-bg' : 'bg-gold/15 text-gold border border-gold/40 hover:bg-gold/25'
+            )}
+          >
+            ★ Тренировочные планы молодёжи U23 ({youthList.length})
+          </button>
+        )}
+      </div>
+
       <Panel
         title={
           <span className="flex items-center gap-2">
-            <TeamLogo team={team} size={22} /> Состав · {team.name}
+            <TeamLogo team={team} size={22} /> {tab === 'U23' ? `Развитие молодёжи (U23) · ${team.name}` : `Состав · ${team.name}`}
           </span>
         }
         right={
-          <div className="flex gap-1">
+          <div className="flex flex-wrap gap-1">
             {(['F', 'D', 'G'] as const).map((t) => (
-              <button key={t} onClick={() => setTab(t)} className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold transition-colors', tab === t ? 'bg-accent text-white' : 'text-muted hover:text-text bg-panel2')}>
+              <button key={t} onClick={() => setTab(t)} className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold transition-colors cursor-pointer', tab === t ? 'bg-accent text-white' : 'text-muted hover:text-text bg-panel2')}>
                 {t === 'F' ? `Нападающие ${counts.F}` : t === 'D' ? `Защитники ${counts.D}` : `Вратари ${counts.G}`}
               </button>
             ))}
+            {isOwnTeam && (
+              <button
+                onClick={() => setTab('U23')}
+                className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold transition-colors cursor-pointer', tab === 'U23' ? 'bg-gold text-bg' : 'text-gold hover:text-ice bg-panel2')}
+              >
+                Планы U23 ({youthList.length})
+              </button>
+            )}
           </div>
         }
-        noPad
+        noPad={tab !== 'U23'}
       >
+        {tab === 'U23' && isOwnTeam ? (
+          <div className="space-y-3" data-youth-plans>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line/70 bg-bg/50 p-3 text-xs">
+              <div className="text-muted max-w-3xl">
+                Игроки до <b className="text-ice">23 лет</b> включительно каждую неделю регулярного сезона набирают опыт по выбранному плану и получают профильную прибавку в межсезонье. Практика в топ-звеньях ускоряет рост (<b className="text-good">×1.45</b>), в запасе — замедляет (<b className="text-gold">×0.65</b>). План <b className="text-gold">«Интенсив»</b> даёт +40% к скорости и шанс пробить потолок потенциала, но требует места в составе.
+              </div>
+              <Button size="sm" variant="secondary" onClick={() => autoAssignYouthPlans()}>
+                Автоподбор планов U23
+              </Button>
+            </div>
+
+            {youthList.length === 0 ? (
+              <Empty text="В составе нет молодых игроков до 23 лет" />
+            ) : (
+              <div className="space-y-2.5">
+                {youthList.map((p) => {
+                  const curPlan = getPlayerPlan(p);
+                  const options = plansForPlayer(p);
+                  const role = playerIceRole(team.lineup, p.id);
+                  const xp = Math.min(100, Math.round(p.trainingXp ?? 0));
+                  const growthEntries = Object.entries(p.seasonGrowth ?? {});
+                  return (
+                    <div key={p.id} className="rounded-lg border border-line/80 bg-bg/40 p-3 space-y-2">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <PosBadge pos={p.position} />
+                          <button type="button" onClick={() => ui.openPlayer(p.id)} className="font-semibold text-sm hover:text-accent cursor-pointer truncate">
+                            {p.name}
+                          </button>
+                          <span className="text-xs text-muted">{p.age} л.</span>
+                          <OverallChip value={p.overall} size="sm" />
+                          <span className="text-xs text-ice font-display">→ ПОТ {p.potential}</span>
+                          <Tag tone={role === 'top' ? 'good' : role === 'depth' ? 'accent' : 'warn'}>
+                            {role === 'top' ? 'Топ-звенья ×1.45' : role === 'depth' ? 'Основа ×1.15' : 'Вне основы ×0.65'}
+                          </Tag>
+                          {growthEntries.length > 0 && (
+                            <span className="text-[11px] text-good font-medium">
+                              Рост за сезон: {growthEntries.map(([k, v]) => `+${v} ${SKILL_LABELS[k] ?? k}`).join(', ')}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 w-48">
+                          <span className="text-[11px] text-muted shrink-0">Опыт:</span>
+                          <Bar value={xp} color="#38BDF8" className="flex-1" height={6} />
+                          <span className="text-[11px] tabular-nums text-ice w-8 text-right">{xp}%</span>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {options.map((pl) => {
+                          const active = curPlan.id === pl.id;
+                          return (
+                            <button
+                              key={pl.id}
+                              type="button"
+                              onClick={() => setTrainingPlan(p.id, pl.id)}
+                              title={pl.description}
+                              className={cn(
+                                'px-2.5 py-1 rounded text-xs font-medium border transition cursor-pointer',
+                                active
+                                  ? pl.id === 'intensive'
+                                    ? 'bg-gold/25 border-gold text-gold font-bold'
+                                    : 'bg-accent/20 border-accent text-accent font-bold'
+                                  : 'bg-panel2/60 border-line text-muted hover:text-ice'
+                              )}
+                            >
+                              {pl.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="text-[11px] text-muted">{curPlan.description}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm tabular">
             <thead className="bg-panel2/40">
@@ -130,11 +259,19 @@ export function Roster({ teamId }: { teamId?: string }) {
             <tbody>
               {list.map((p) => {
                 const sv = p.stats.shotsAgainst ? (p.stats.saves / p.stats.shotsAgainst) * 100 : 0;
+                const leg = isLegionnaire(p);
+                const susp = suspendedSet.has(p.id);
                 return (
-                  <tr key={p.id} onClick={() => ui.openPlayer(p.id)} className="border-t border-line/70 hover:bg-panel2 cursor-pointer transition-colors">
+                  <tr key={p.id} onClick={() => ui.openPlayer(p.id)} className={cn('border-t border-line/70 hover:bg-panel2 cursor-pointer transition-colors', susp && 'bg-red/5')}>
                     <td className="pl-4 px-2 py-1.5 text-muted">{p.number}</td>
                     <td className="px-2 py-1.5 font-medium whitespace-nowrap">
                       {p.name}
+                      <span className="ml-1.5 text-[10px] text-muted">{countryCode(p.country)}</span>
+                      {leg && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-gold/20 text-gold">ЛЕГ</span>}
+                      {isYouthPlayer(p) && isOwnTeam && (
+                        <span className="ml-1 text-[9px] px-1 rounded bg-accent/15 text-accent">{getPlayerPlan(p).short}</span>
+                      )}
+                      {susp && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-red/25 text-red">БЛОК ФОТ</span>}
                       {p.injury && <span className="ml-1.5 text-[10px] text-accent uppercase">травма</span>}
                     </td>
                     {tab !== 'G' && (
@@ -166,13 +303,14 @@ export function Roster({ teamId }: { teamId?: string }) {
                         <td className="px-2 py-1.5 text-muted">{p.stats.pim}</td>
                       </>
                     )}
-                    <td className="px-2 py-1.5 pr-4 text-xs text-muted">{p.injury ? `${p.injury.games} матч.` : p.morale >= 80 ? 'в тонусе' : p.morale < 50 ? 'мораль низкая' : 'готов'}</td>
+                    <td className="px-2 py-1.5 pr-4 text-xs text-muted">{susp ? <span className="text-red font-semibold">блок потолка</span> : p.injury ? `${p.injury.games} матч.` : p.morale >= 80 ? 'в тонусе' : p.morale < 50 ? 'мораль низкая' : 'готов'}</td>
                   </tr>
                 );
               })}
             </tbody>
           </table>
         </div>
+        )}
       </Panel>
     </div>
   );
@@ -205,6 +343,7 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
           <div className="text-xs text-muted mt-1">{POS_NAME[p.position]} · {p.age} лет · {p.height} см · {p.weight} кг · {p.country || '—'} · хват {p.hand === 'L' ? 'левый' : 'правый'}</div>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             {team && <span className="text-sm">{team.name}</span>}
+            {isLegionnaire(p) ? <Tag tone="warn">Легионер ({p.country})</Tag> : <Tag tone="good">Не легионер · ЕАЭС</Tag>}
             {p.injury && <Tag color="#E5323E">Травма: {p.injury.name} · {p.injury.games} матчей</Tag>}
             {!p.teamId && <Tag color="#F2B544">Свободный агент</Tag>}
             {p.contract.years === 0 && p.teamId && <Tag color="#F2B544">Контракт истекает</Tag>}
@@ -241,6 +380,34 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
             <Bar value={p.morale} color={p.morale >= 70 ? '#3FCF8E' : p.morale >= 50 ? '#F2B544' : '#E5323E'} className="flex-1" />
             <span className="tabular text-muted">{p.morale}</span>
           </div>
+
+          {isUser && isYouthPlayer(p) && (
+            <div className="mt-4 rounded-sm border border-accent/35 bg-accent/5 p-3 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-display uppercase tracking-wider text-accent font-semibold">План развития молодёжи (U23)</span>
+                <span className="text-muted tabular-nums">Опыт недели: {Math.round(p.trainingXp ?? 0)}%</span>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {plansForPlayer(p).map((pl) => {
+                  const active = getPlayerPlan(p).id === pl.id;
+                  return (
+                    <button
+                      key={pl.id}
+                      type="button"
+                      onClick={() => setTrainingPlan(p.id, pl.id)}
+                      className={cn(
+                        'px-2 py-0.5 rounded text-[11px] border cursor-pointer transition',
+                        active ? 'bg-accent text-white border-accent font-bold' : 'bg-panel border-line text-muted hover:text-ice'
+                      )}
+                    >
+                      {pl.short}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="text-[11px] text-muted">{getPlayerPlan(p).description}</div>
+            </div>
+          )}
         </div>
         <div className="space-y-3">
           <div className="bg-panel2/70 border border-line/70 rounded-sm p-3 text-sm">
@@ -361,9 +528,10 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
             variant="danger"
             onClick={() => {
               const cost = buyoutCost(s, p);
+              const dead = s.phase !== 'offseason' ? buyoutDeadCap(p.contract.salary) : 0;
               ui.confirm({
                 title: 'Расторгнуть контракт?',
-                text: `${p.name} покинет команду и станет свободным агентом. ${cost > 0 ? `Клуб выплатит компенсацию ${formatMoney(cost)} — треть суммы, оставшейся по контракту.` : ''} ФОТ уменьшится на ${formatMoney(p.contract.salary)}.`,
+                text: `${p.name} покинет команду и станет свободным агентом. ${cost > 0 ? `Клуб выплатит компенсацию ${formatMoney(cost)} из бюджета.` : ''} ${dead > 0 ? `Внимание: ${formatMoney(dead)} (20% оклада) останется в «мёртвых деньгах» под потолком зарплат до конца сезона!` : `ФОТ уменьшится на ${formatMoney(p.contract.salary)}.`}`,
                 danger: true,
                 confirmLabel: cost > 0 ? `Расторгнуть за ${formatMoney(cost)}` : 'Расторгнуть',
                 onYes: () => {

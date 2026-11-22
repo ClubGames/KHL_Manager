@@ -10,8 +10,12 @@
   --color-accent: #e5323e;
   --color-accent-dark: #b8202c;
   --color-amber: #f2b544;
+  --color-gold: #f2b544;
   --color-ice: #8fd8f0;
   --color-ok: #3fcf8e;
+  --color-good: #3fcf8e;
+  --color-bad: #e5323e;
+  --color-red: #e5323e;
   --font-display: "Oswald", "Arial Narrow", "Roboto Condensed", "Segoe UI", sans-serif;
   --font-sans: "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", "PingFang SC", "Microsoft YaHei", sans-serif;
 }

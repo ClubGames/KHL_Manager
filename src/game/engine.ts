@@ -1,4 +1,4 @@
-import type { GameEvent, GameResult, Lineup, Player, PlayerGameLine, ScoringPlay, Strength, TeamGameStats } from '../types';
+import type { GameEvent, GameResult, Lineup, Player, PlayerGameLine, ScoringPlay, ShotPoint, ShotZone, Strength, TeamGameStats } from '../types';
 import { clamp, goalieSavePct, isGoalie, lineAttack, lineDefense, pairAttack, pairDefense, unitAttack, unitDefense } from './ratings';
 
 export interface SimTeam {
@@ -55,12 +55,99 @@ export function periodName(period: number, kind: BlockKind): string {
 const skatersOf = (ids: (string | null)[], P: Record<string, Player>): string[] =>
   ids.filter((id): id is string => !!id && !!P[id] && !isGoalie(P[id]));
 
+const ZONE_MULT: Record<ShotZone, number> = {
+  crease: 2.04,
+  slot: 1.48,
+  circles: 0.96,
+  point: 0.54,
+  perimeter: 0.41,
+};
+
+function generateShotGeometry(
+  ti: TI,
+  sp: Player,
+  onPP: boolean,
+  mode: Mode,
+  emptyNetOpp: boolean
+): { x: number; y: number; zone: ShotZone; zMult: number; shotType: NonNullable<GameEvent['shotType']> } {
+  if (emptyNetOpp) {
+    const depth = Math.random() < 0.45 ? 48 + Math.random() * 20 : 72 + Math.random() * 15;
+    const x = ti === 0 ? depth : 100 - depth;
+    const y = 26 + Math.random() * 48;
+    return { x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10, zone: 'slot', zMult: 1, shotType: 'wrist' };
+  }
+
+  let zone: ShotZone;
+  const r = Math.random();
+  if (sp.position === 'D') {
+    if (r < 0.03) zone = 'crease';
+    else if (r < 0.15) zone = 'slot';
+    else if (r < 0.37) zone = 'circles';
+    else if (r < 0.9) zone = 'point';
+    else zone = 'perimeter';
+  } else if (onPP || mode === 'ot3') {
+    if (r < 0.21) zone = 'crease';
+    else if (r < 0.52) zone = 'slot';
+    else if (r < 0.85) zone = 'circles';
+    else if (r < 0.91) zone = 'point';
+    else zone = 'perimeter';
+  } else {
+    if (r < 0.13) zone = 'crease';
+    else if (r < 0.38) zone = 'slot';
+    else if (r < 0.76) zone = 'circles';
+    else if (r < 0.83) zone = 'point';
+    else zone = 'perimeter';
+  }
+
+  let depth = 80;
+  let y = 50;
+  const wingSign = sp.position === 'LW' ? (Math.random() < 0.72 ? -1 : 1) : sp.position === 'RW' ? (Math.random() < 0.72 ? 1 : -1) : Math.random() < 0.5 ? -1 : 1;
+  switch (zone) {
+    case 'crease':
+      depth = 86.5 + Math.random() * 4.5;
+      y = 50 + (Math.random() - 0.5) * 18;
+      break;
+    case 'slot':
+      depth = 77.5 + Math.random() * 8.5;
+      y = 50 + (Math.random() - 0.5) * 24;
+      break;
+    case 'circles':
+      depth = 74 + Math.random() * 11.5;
+      y = 50 + wingSign * (14 + Math.random() * 19);
+      break;
+    case 'point':
+      depth = 69.5 + Math.random() * 6;
+      y = 50 + (Math.random() - 0.5) * 64;
+      break;
+    case 'perimeter':
+      depth = 74 + Math.random() * 15;
+      y = 50 + wingSign * (34 + Math.random() * 11);
+      break;
+  }
+  const x = ti === 0 ? depth : 100 - depth;
+  const rs = Math.random();
+  let shotType: NonNullable<GameEvent['shotType']> = 'wrist';
+  if (zone === 'point') shotType = rs < 0.65 ? 'slap' : 'wrist';
+  else if (zone === 'crease') shotType = rs < 0.36 ? 'tip' : rs < 0.74 ? 'rebound' : 'backhand';
+  else if (zone === 'slot') shotType = rs < 0.44 ? 'snap' : rs < 0.86 ? 'wrist' : 'backhand';
+  else shotType = rs < 0.22 ? 'slap' : rs < 0.56 ? 'snap' : 'wrist';
+
+  return {
+    x: Math.round(clamp(x, 4, 96) * 10) / 10,
+    y: Math.round(clamp(y, 6, 94) * 10) / 10,
+    zone,
+    zMult: ZONE_MULT[zone],
+    shotType,
+  };
+}
+
 export class GameSim {
   score: [number, number] = [0, 0];
   shots: [number, number] = [0, 0];
   stats: [TeamGameStats, TeamGameStats] = [this.blank(), this.blank()];
   events: GameEvent[] = [];
   scorers: ScoringPlay[] = [];
+  shotMap: ShotPoint[] = [];
   periodScores: [number, number][] = [];
   lines: Record<string, PlayerGameLine> = {};
   goalies: [string | null, string | null] = [null, null];
@@ -91,6 +178,8 @@ export class GameSim {
   }
   /** When true no play-by-play is produced (nobody watches the game): only the box score. */
   quiet = false;
+  /** Keep shot coordinates even when quiet=true (used for user team's simulated games). */
+  keepShotMap = false;
   private units = new Map<string, { ids: (string | null)[]; skaters: string[]; att: number; def: number }>();
   /** The five (four, three) on the ice for a line and manpower situation, with its ratings — computed once per game. */
   private unit(i: TI, li: number, mode: Mode) {
@@ -120,7 +209,7 @@ export class GameSim {
     return this.score[0] === this.score[1];
   }
   blank(): TeamGameStats {
-    return { shots: 0, ppGoals: 0, ppChances: 0, pim: 0, hits: 0 };
+    return { shots: 0, ppGoals: 0, ppChances: 0, pim: 0, hits: 0, xg: 0, dangerShots: 0 };
   }
   line(id: string): PlayerGameLine {
     if (!this.lines[id])
@@ -347,11 +436,37 @@ export class GameSim {
     if (onPP) q *= PP_QUALITY;
     if (onSH) q *= 0.75;
     if (mode === '4v4' || mode === 'ot3') q *= 1.1;
-    const pGoal = emptyNet === o ? 0.32 : clamp((1 - sv) * q, 0.02, 0.35);
+
+    const geo = generateShotGeometry(i, sp, onPP, mode, emptyNet === o);
+    const avgSv = goalieSavePct(77);
+    const rawXg = emptyNet === o ? 0.32 : clamp((1 - avgSv) * q * geo.zMult, 0.015, 0.42);
+    const xg = Math.round(rawXg * 1000) / 1000;
+    const pGoal = emptyNet === o ? 0.32 : clamp((1 - sv) * q * geo.zMult, 0.015, 0.42);
     const goal = Math.random() < pGoal;
     const strength: Strength = emptyNet === o ? 'EN' : onPP ? 'PP' : onSH ? 'SH' : mode === '4v4' ? '4v4' : 'EV';
     const teamId = this.team(i).id;
     const liTuple: [number, number] = [li[0], li[1]];
+    const time = this.clock();
+
+    this.stats[i].xg = Math.round(((this.stats[i].xg ?? 0) + xg) * 1000) / 1000;
+    if (xg >= 0.12) this.stats[i].dangerShots = (this.stats[i].dangerShots ?? 0) + 1;
+
+    if (!this.quiet || this.keepShotMap) {
+      const outcome: ShotPoint['outcome'] = goal ? 'goal' : goalieId ? 'save' : 'miss';
+      this.shotMap.push({
+        t: i,
+        player: shooter,
+        period: this.period,
+        time,
+        x: geo.x,
+        y: geo.y,
+        xg,
+        outcome,
+        zone: geo.zone,
+        strength,
+        shotType: geo.shotType,
+      });
+    }
 
     if (goal) {
       this.score[i]++;
@@ -385,22 +500,8 @@ export class GameSim {
         gl.shotsAgainst++;
         gl.goalsAgainst++;
       }
-      const time = this.clock();
       this.scorers.push({ period: this.period, time, team: teamId, scorer: shooter, assists, strength });
-      // classify the goal by how the puck went in (descriptive — drives 3D replay variety)
-      let shotType: GameEvent['shotType'] = 'wrist';
-      if (sp.position === 'D') {
-        shotType = Math.random() < 0.6 ? 'slap' : 'wrist';
-      } else {
-        const r = Math.random();
-        // tips/rebounds need traffic in front: more likely on the power play or from the slot
-        const traffic = onPP || mode === 'ot3' ? 0.22 : 0.1;
-        if (r < traffic * 0.5) shotType = 'tip';
-        else if (r < traffic) shotType = 'rebound';
-        else if (r < traffic + 0.22) shotType = 'snap';
-        else if (r < traffic + 0.4) shotType = 'backhand';
-        else shotType = 'wrist';
-      }
+      const shotType = geo.shotType;
       const label = onPP ? ' — в большинстве' : onSH ? ' — в меньшинстве' : emptyNet === o ? ' — пустые ворота!' : '';
       this.push({
         type: 'goal',
@@ -409,6 +510,10 @@ export class GameSim {
         players: assists,
         strength,
         shotType,
+        x: geo.x,
+        y: geo.y,
+        xg,
+        zone: geo.zone,
         score: [this.score[0], this.score[1]],
         lines: liTuple,
         goalie: goalieId,
@@ -423,9 +528,38 @@ export class GameSim {
       const gl = this.line(goalieId);
       gl.shotsAgainst++;
       gl.saves++;
-      if (!this.quiet) this.push({ type: 'shot', team: teamId, player: shooter, lines: liTuple, goalie: goalieId, ice: [ice[0], ice[1]], text: `Бросок ${sp.name} — сейв ${g?.name ?? ''}` });
+      if (!this.quiet)
+        this.push({
+          type: 'shot',
+          team: teamId,
+          player: shooter,
+          shotType: geo.shotType,
+          strength,
+          x: geo.x,
+          y: geo.y,
+          xg,
+          zone: geo.zone,
+          lines: liTuple,
+          goalie: goalieId,
+          ice: [ice[0], ice[1]],
+          text: `Бросок ${sp.name} — сейв ${g?.name ?? ''}`,
+        });
     } else {
-      this.push({ type: 'miss', team: teamId, player: shooter, lines: liTuple, goalie: null, ice: [ice[0], ice[1]], text: `Бросок ${sp.name} — мимо пустых ворот (${this.label(o)})` });
+      this.push({
+        type: 'miss',
+        team: teamId,
+        player: shooter,
+        shotType: geo.shotType,
+        strength,
+        x: geo.x,
+        y: geo.y,
+        xg,
+        zone: geo.zone,
+        lines: liTuple,
+        goalie: null,
+        ice: [ice[0], ice[1]],
+        text: `Бросок ${sp.name} — мимо пустых ворот (${this.label(o)})`,
+      });
     }
     return 'shot';
   }
@@ -572,6 +706,7 @@ export class GameSim {
       homeDressed: dressed(this.home),
       awayDressed: dressed(this.away),
       stars: this.computeStars(winner),
+      shotMap: this.shotMap.length ? this.shotMap : undefined,
     };
   }
 }

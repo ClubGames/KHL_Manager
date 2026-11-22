@@ -17,7 +17,8 @@ import { Contracts, NegotiationModal } from './components/Contracts';
 import { SaveIndicator, SavesList } from './components/Saves';
 import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, useGame, useSaveStatus } from './game/state';
 import { regularSeasonLength, seasonDate } from './game/schedule';
-import { payroll } from './game/ratings';
+import { effectivePayroll } from './game/cap';
+import { countRosterLegionnaires, teamForeignLimit } from './game/legionnaires';
 import { cn } from './utils/cn';
 
 const NAV: { id: View; label: string; icon: string }[] = [
@@ -190,7 +191,19 @@ export default function App() {
               </div>
               <div className="flex justify-between">
                 <span>ФОТ</span>
-                <span className="tabular">{money(payroll(U.players, s.players))}</span>
+                <span className={cn('tabular', effectivePayroll(U, s.players, s.phase) > s.league.salaryCap && 'text-accent font-semibold')}>
+                  {money(effectivePayroll(U, s.players, s.phase))}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Легионеры</span>
+                <span className="tabular text-ice">
+                  {(() => {
+                    const fl = teamForeignLimit(U, s.league.foreignLimit);
+                    const n = countRosterLegionnaires(U.players, s.players);
+                    return fl !== null ? `${n} / ${fl}` : `${n} (без лим.)`;
+                  })()}
+                </span>
               </div>
               <button onClick={() => setSavesOpen(true)} className="flex items-center gap-2 hover:text-text w-full pt-1">
                 <Icon name="save" /> Сохранения
