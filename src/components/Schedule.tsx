@@ -113,8 +113,9 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
               <tbody>
                 <tr className="border-t border-line/60">
                   <td className="py-1.5 flex items-center gap-2"><TeamLogo team={A} size={18} />{A.short}</td>
+                  {/* periodScores are [home, away] */}
                   {r.periodScores.map((p, i) => (
-                    <td key={i} className="text-right px-2">{p[0]}</td>
+                    <td key={i} className="text-right px-2">{p[1]}</td>
                   ))}
                   <td className="text-right px-2">{r.awayStats.shots}</td>
                   <td className="text-right px-2 text-accent font-semibold">{(r.awayStats.xg ?? 0).toFixed(2)}</td>
@@ -126,7 +127,7 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
                 <tr className="border-t border-line/60">
                   <td className="py-1.5 flex items-center gap-2"><TeamLogo team={H} size={18} />{H.short}</td>
                   {r.periodScores.map((p, i) => (
-                    <td key={i} className="text-right px-2">{p[1]}</td>
+                    <td key={i} className="text-right px-2">{p[0]}</td>
                   ))}
                   <td className="text-right px-2">{r.homeStats.shots}</td>
                   <td className="text-right px-2 text-accent font-semibold">{(r.homeStats.xg ?? 0).toFixed(2)}</td>

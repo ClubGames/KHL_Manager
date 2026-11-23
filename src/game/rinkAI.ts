@@ -93,6 +93,8 @@ export class RinkAI {
   private poss: { side: Side; until: number } = { side: 0, until: 0 };
   private decideAt = new Map<string, number>();
   private carryTarget = new Map<string, V2>();
+  /** Current offensive-zone possession: who has it, since when, how many passes, and the last passer. */
+  private oz = { side: -1 as Side | -1, t0: 0, passes: 0, lastPasser: '' };
   private lastIds: string[] = [];
   private lastGoalie: [string | null, string | null];
   private zoneEntry: Side | null = null;
@@ -695,7 +697,7 @@ export class RinkAI {
     for (const s of [0, 1] as Side[]) {
       const x = this.puckLocal(s).x;
       if (x > OPP_BLUE) this.zoneIn[s] = true;
-      else if (x < OPP_BLUE - 0.3) this.zoneIn[s] = false;
+      else if (x < OPP_BLUE - 0.3) { this.zoneIn[s] = false; if (this.oz.side === s) this.oz.side = -1; }
     }
   }
   private keepOnside(a: Agent, prevX: number) {
@@ -713,27 +715,6 @@ export class RinkAI {
   }
   private onsideOk(passer: Agent, receiver: Agent) {
     return this.zoneIn[passer.side] || loc(passer.side, receiver).x < OPP_BLUE - 0.3;
-  }
-  private attackSpot(a: Agent): { p: V2; urg: number } {
-    const P = this.puckLocal(a.side), s = a.side;
-    let t: V2;
-    if (P.x >= OPP_BLUE) {
-      const style = this.opts.tactics?.()[s].style ?? 'balanced';
-      const low = style === 'cycle' ? 2 : style === 'shoot' ? -1.5 : 0;
-      t = ({
-        LD: { x: 44.4, y: P.y < MID ? 4.5 : 8.5 }, RD: { x: 44.4, y: P.y > MID ? 25.5 : 21.5 },
-        C: { x: 47.5 + low, y: MID + (P.y - MID) * 0.3 },
-        LW: P.y < MID ? { x: clamp(P.x - 3 + low, 45, 54), y: clamp(P.y + 4, 3, 13) } : { x: 52.6, y: 13.4 },
-        RW: P.y >= MID ? { x: clamp(P.x - 3 + low, 45, 54), y: clamp(P.y - 4, 17, 27) } : { x: 52.6, y: 16.6 },
-        X: { x: 51.5, y: MID },
-      } as Record<Role, V2>)[a.role];
-    } else if (P.x >= BLUE) {
-      const ahead = Math.min(P.x + 8, OPP_BLUE - 0.7);
-      t = ({ LW: { x: ahead, y: 4.5 }, RW: { x: ahead, y: 25.5 }, C: { x: Math.min(P.x + 4, OPP_BLUE - 0.7), y: MID - (P.y - MID) * 0.4 }, LD: { x: P.x - 8, y: 10 }, RD: { x: P.x - 8, y: 20 }, X: { x: ahead, y: MID } } as Record<Role, V2>)[a.role];
-    } else {
-      t = ({ LW: { x: 22, y: 3.2 }, RW: { x: 22, y: 26.8 }, C: { x: P.x + 5, y: P.y < MID ? 19 : 11 }, LD: { x: Math.max(GOAL + 1.5, P.x - 2.5), y: P.y < MID ? P.y + 2 : 8 }, RD: { x: Math.max(GOAL + 1.5, P.x - 2.5), y: P.y > MID ? P.y - 2 : 22 }, X: { x: 26, y: MID } } as Record<Role, V2>)[a.role];
-    }
-    return { p: this.onsideClamp(a, loc(s, t)), urg: 0.7 };
   }
   private defendSpot(a: Agent): { p: V2; urg: number } {
     const P = this.puckLocal(a.side), s = a.side;
@@ -805,16 +786,101 @@ export class RinkAI {
     const ps: Side | null = carrier?.side ?? (p.leg?.by?.side ?? p.last);
     // the defender nearest the carrier pressures goal-side; the rest hold structure
     const presser = carrier ? this.nearest(this.skaters((1 - carrier.side) as Side).filter(a => !a.scripted), carrier) : null;
-    for (const a of this.onIce()) {
-      if (a.scripted || a === carrier) continue;
-      if (a === presser && carrier) {
-        const own = loc(a.side, { x: GOAL, y: MID }), dx = own.x - carrier.x, dy = own.y - carrier.y, d = Math.hypot(dx, dy) || 1;
-        const style = this.opts.tactics?.()[a.side].forecheck ?? 'balanced';
-        if (!(style === 'trap' && loc(a.side, carrier).x > RED + 4)) { this.setT(a, { x: carrier.x + (dx / d) * 0.9, y: carrier.y + (dy / d) * 0.9 }, 0.95); continue; }
-      }
-      const spot = ps === a.side ? this.attackSpot(a) : this.defendSpot(a);
-      this.setT(a, spot.p, spot.urg);
+    let pressing = false;
+    if (presser && carrier) {
+      const own = loc(presser.side, { x: GOAL, y: MID }), dx = own.x - carrier.x, dy = own.y - carrier.y, d = Math.hypot(dx, dy) || 1;
+      const style = this.opts.tactics?.()[presser.side].forecheck ?? 'balanced';
+      // gap control: tight in the own zone, a stick-length further out higher up the ice
+      const gap = loc(presser.side, carrier).x < BLUE + 2 ? 0.9 : 1.6;
+      if (!(style === 'trap' && loc(presser.side, carrier).x > RED + 4)) { this.setT(presser, { x: carrier.x + (dx / d) * gap, y: carrier.y + (dy / d) * gap }, 0.95); pressing = true; }
     }
+    for (const side of [0, 1] as Side[]) {
+      const free = this.skaters(side).filter(a => !a.scripted && a !== carrier && !(pressing && a === presser));
+      if (ps === side) this.attackShape(side, free);
+      else this.defendShape(side, free, pressing ? carrier : null);
+    }
+  }
+
+  /** Slow per-player wander (±amp m, 4–7 s period) so nobody freezes on a spot. Deterministic in game time. */
+  private drift(a: Agent, amp: number): V2 {
+    let h = 7;
+    for (let i = 0; i < a.id.length; i++) h = (Math.imul(h, 31) + a.id.charCodeAt(i)) | 0;
+    const ph = ((h & 1023) / 1023) * Math.PI * 2, w = 0.9 + (((h >>> 10) & 255) / 255) * 0.6;
+    return { x: Math.sin(this.g * w + ph) * amp, y: Math.cos(this.g * w * 0.73 + ph * 1.7) * amp * 0.8 };
+  }
+  private isD(a: Agent) { return a.role === 'LD' || a.role === 'RD'; }
+  /** Team in possession: point men, a puck-side support option, a net-front/back-door threat; lanes; breakout outlets. */
+  private attackShape(s: Side, free: Agent[]) {
+    if (!free.length) return;
+    const p = this.puck, fut = p.leg ? this.legTarget(p.leg) : p, P = loc(s, fut);
+    const recv = p.leg && (p.leg.kind === 'pass' || p.leg.kind === 'giveaway') && isAgent(p.leg.to) ? p.leg.to : null;
+    const owner = p.carrier ?? recv;
+    const carrierIsD = !!owner && owner.side === s && this.isD(owner);
+    const low = P.y < MID, sideY = (k: number) => (low ? k : W - k);
+    const put = (a: Agent, t: V2, urg: number, amp: number) => {
+      const d = this.drift(a, amp);
+      this.setT(a, this.onsideClamp(a, loc(s, { x: t.x + d.x, y: t.y + d.y })), urg);
+    };
+    if (this.zoneIn[s] || P.x >= OPP_BLUE) {
+      const style = this.opts.tactics?.()[s].style ?? 'balanced', sl = style === 'cycle' ? 1.2 : style === 'shoot' ? -1 : 0;
+      for (const a of free.filter(x => this.isD(x))) {
+        const left = a.role === 'LD', strong = left === low;
+        const y = left ? (strong ? clamp(P.y * 0.35 + 3, 3.5, 8) : 11.5) : (strong ? clamp(W - (W - P.y) * 0.35 - 3, 22, 26.5) : 18.5);
+        const pinch = strong && P.x > 49.5 && Math.abs(P.y - MID) > 9 ? 2.4 : 0;
+        put(a, { x: 44.9 + pinch, y }, 0.65, 0.9);
+      }
+      const fw = free.filter(x => !this.isD(x)).sort((a, b) => dist(loc(s, a), P) - dist(loc(s, b), P));
+      fw.forEach((a, i) => {
+        let t: V2;
+        if (carrierIsD) t = i === 0 ? { x: 52.6, y: MID + (low ? -1.3 : 1.3) } : i === 1 ? { x: 51, y: sideY(5) } : { x: 49, y: W - sideY(8) };
+        else if (i === 0) t = P.x > 50.5 ? { x: Math.max(46.5, P.x - 6.5) + sl, y: sideY(4.2) } : { x: 54.8, y: sideY(7) };
+        else if (i === 1) t = Math.sin(this.g * 0.31 + (a.id.length * 1.7)) > 0.3 ? { x: 53.2, y: W - sideY(9.5) } : { x: 52.6 - Math.max(0, sl), y: MID + (low ? 1.5 : -1.5) };
+        else t = { x: 48.5 + sl * 0.8, y: MID - (P.y - MID) * 0.2 };
+        put(a, t, i === 0 ? 0.78 : 0.62, i === 1 ? 0.7 : 1.3);
+      });
+    } else if (P.x >= BLUE) {
+      for (const a of free) {
+        const t: V2 = this.isD(a) ? { x: P.x - 9, y: a.role === 'LD' ? 10 : 20 }
+          : a.role === 'LW' ? { x: P.x + 4.5, y: 4.2 } : a.role === 'RW' ? { x: P.x + 4.5, y: 25.8 }
+          : { x: P.x + 1.5, y: MID - (P.y - MID) * 0.5 };
+        put(a, t, 0.88, 0.6);
+      }
+    } else {
+      for (const a of free) {
+        let t: V2;
+        if (a.role === 'LW' || a.role === 'RW') { const strong = (a.role === 'LW') === low; t = { x: strong ? 13.8 : 17.6, y: a.role === 'LW' ? 2.7 : 27.3 }; }
+        else if (a.role === 'C' || a.role === 'X') t = { x: clamp(P.x + 4.5, 9, 20), y: MID + (low ? 4 : -4) };
+        else if (carrierIsD) t = { x: GOAL + 2, y: W - sideY(6) };
+        else t = { x: Math.max(GOAL + 1.5, P.x - 3), y: a.role === 'LD' ? (low ? P.y + 2.5 : 8) : (low ? 22 : P.y - 2.5) };
+        put(a, t, 0.75, 0.6);
+      }
+    }
+  }
+  /** Team without the puck: zone coverage marks attackers goal-side (no pile in the crease); elsewhere gap and forecheck. */
+  private defendShape(s: Side, free: Agent[], pressed: Agent | null) {
+    if (!free.length) return;
+    const P = this.puckLocal(s), net: V2 = { x: GOAL + 0.5, y: MID };
+    if (P.x > BLUE + 1.5) {
+      for (const a of free) { const spot = this.defendSpot(a), d = this.drift(a, 0.5); this.setT(a, { x: spot.p.x + d.x, y: spot.p.y + d.y }, spot.urg); }
+      return;
+    }
+    const attackers = this.skaters((1 - s) as Side).filter(o => o !== pressed).map(o => ({ o, l: loc(s, o) }));
+    const markSpot = (l: V2) => { const dn = dist(l, net), k = dn < 9 ? 0.3 : 0.45; return { x: l.x + (net.x - l.x) * k, y: l.y + (net.y - l.y) * k }; };
+    const left = new Set(free), open = new Set(attackers);
+    while (left.size && open.size) {
+      let best: [Agent, (typeof attackers)[number]] | null = null, bc = 1e9;
+      for (const a of left) for (const t of open) {
+        const near = dist(t.l, net) < 9;
+        const c = dist(loc(s, a), markSpot(t.l)) + (this.isD(a) ? (near ? -2 : 3) : near ? 1.5 : 0);
+        if (c < bc) { bc = c; best = [a, t]; }
+      }
+      if (!best) break;
+      const [a, t] = best, m = markSpot(t.l), d = this.drift(a, 0.3);
+      this.setT(a, loc(s, { x: Math.max(GOAL + 0.8, m.x + d.x), y: m.y + d.y }), 0.85);
+      left.delete(a); open.delete(t);
+    }
+    let k = 0;
+    for (const a of left) { const d = this.drift(a, 0.4); this.setT(a, loc(s, { x: GOAL + 4 + k * 2, y: MID + (k % 2 ? 2.5 : -2.5) + d.y }), 0.8); k++; }
   }
 
   /* --- puck carrier decisions --- */
@@ -824,7 +890,8 @@ export class RinkAI {
     const pressure = Math.min(99, ...opps.map(o => dist(o, a)));
     const sh = this.skaters(s).length < opps.length;
     if (this.g >= (this.decideAt.get(a.id) ?? 0)) {
-      this.decideAt.set(a.id, this.g + 0.45 + this.rand() * 0.45);
+      // unpressured carriers read the play longer instead of flipping the puck every half second
+      this.decideAt.set(a.id, this.g + (pressure > 4.5 ? 0.85 + this.rand() * 0.7 : 0.45 + this.rand() * 0.45));
       const r = this.rand();
       const allOnside = mates.every(m => loc(s, m).x <= OPP_BLUE);
       if (me.x < BLUE) {
@@ -850,15 +917,34 @@ export class RinkAI {
           if (r < 0.45) { this.freeShot(a); return; }
           if (r < 0.75 && this.passBest(a, false)) return;
           this.carryTarget.set(a.id, loc(s, { x: 50, y: MID }));
-        } else {
-          if ((pressure < 3 || r < 0.45) && this.passBest(a, true)) return;
-          if (me.x > 46 && Math.abs(me.y - MID) < 6 && r > 0.9) { this.freeShot(a); return; }
-          this.carryTarget.set(a.id, loc(s, r < 0.6 ? { x: Math.min(me.x + 4, 54.5), y: me.y < MID ? 3.5 : 26.5 } : { x: 47, y: me.y < MID ? 9 : 21 }));
-        }
+        } else this.ozKeep(a, me, pressure, r);
       }
     }
     const t = this.carryTarget.get(a.id) ?? loc(s, { x: me.x + 6, y: me.y });
     this.setT(a, this.onsideClamp(a, t, true), keep ? 0.85 : 0.7);
+  }
+  /**
+   * Offensive-zone possession the engine wants kept until its next shot event. Real teams cycle, walk the
+   * boards, go low-to-high and throw pucks at the net — they don't ping-pong tape-to-tape passes around the crease.
+   * Passing gets rarer the longer the possession lasts; shots taken here go wide or are blocked (never on goal).
+   */
+  private ozKeep(a: Agent, me: V2, pressure: number, r: number) {
+    const s = a.side, oz = this.oz;
+    if (oz.side !== s) { oz.side = s; oz.t0 = this.g; oz.passes = 0; oz.lastPasser = ''; }
+    const age = this.g - oz.t0, n = oz.passes, top = me.y < MID;
+    const slot = me.x > 46 && Math.abs(me.y - MID) < 6.5, point = me.x < 47.5 && !slot, behind = me.x > OPP_GOAL - 0.5;
+    const passW = (n < 2 ? 0.5 : n < 4 ? 0.28 : 0.12) * (pressure < 2.2 ? 1.6 : 1);
+    if (slot && r < (age > 5 ? 0.35 : 0.14)) { this.freeShot(a); return; }
+    if (point && r < (age > 7 ? 0.22 : 0.07)) { this.freeShot(a); return; }
+    if (this.rand() < passW && this.passBest(a, true)) return;
+    let t: V2;
+    if (behind) t = { x: OPP_GOAL + 1.6, y: top ? MID + 4.5 : MID - 4.5 }; // walk out the other side of the cage
+    else if (point) t = this.rand() < 0.5 ? { x: 45, y: clamp(me.y + (top ? 7 : -7), 4, 26) } : { x: 48.5, y: top ? 9.5 : 20.5 }; // walk the line / step down
+    else if (me.x > 51 && Math.abs(me.y - MID) > 7) t = r < 0.55 ? { x: OPP_GOAL + 2.3, y: top ? MID - 3 : MID + 3 } : { x: 47.5, y: top ? 2.8 : 27.2 }; // cycle: behind the net or up the wall
+    else if (slot) t = { x: 49, y: top ? 7 : 23 }; // peel off to the half-wall
+    else t = { x: Math.min(me.x + 4, 54.5), y: top ? 3.5 : 26.5 };
+    if (pressure < 2.2) { const o = this.nearest(this.skaters((1 - s) as Side), a); if (o) { const ol = loc(s, o), dx = me.x - ol.x, dy = me.y - ol.y, d = Math.hypot(dx, dy) || 1; t = { x: me.x + (dx / d) * 4 + (t.x - me.x) * 0.3, y: me.y + (dy / d) * 4 + (t.y - me.y) * 0.3 }; } }
+    this.carryTarget.set(a.id, loc(s, { x: clamp(t.x, OPP_BLUE + 1, 58), y: clamp(t.y, 1.5, 28.5) }));
   }
   private passBest(a: Agent, safe: boolean): boolean {
     const s = a.side, opps = this.skaters((1 - s) as Side);
@@ -869,10 +955,16 @@ export class RinkAI {
       if (d < 3 || d > 30) continue;
       const open = Math.min(9, ...opps.map(o => dist(o, m)));
       const lane = Math.min(9, ...opps.map(o => segDist(o, a, m)));
-      const sc = (loc(s, m).x - loc(s, a).x) * 0.25 + open + (safe ? lane * 1.5 : 0) - d * 0.05;
+      let sc = (loc(s, m).x - loc(s, a).x) * 0.25 + open + (safe ? lane * 1.5 : 0) - d * 0.05;
+      if (this.oz.side === s && this.zoneIn[s]) {
+        if (m.id === this.oz.lastPasser) sc -= 6; // no instant give-and-go ping-pong
+        const net = loc(s, { x: OPP_GOAL, y: MID });
+        if (d < 7 && dist(a, net) < 11 && dist(m, net) < 11) sc -= 5; // no tic-tac-toe around the crease
+      }
       if (sc > score) { score = sc; best = m; }
     }
     if (!best) return false;
+    if (this.oz.side === s && this.zoneIn[s]) { this.oz.passes++; this.oz.lastPasser = a.id; }
     const t1 = this.g + clamp(dist(a, best) / 16, 0.25, 1.8);
     this.startLeg('pass', best, t1, { exitSpeed: 5, protect: safe && this.rand() < 0.85 });
     return true;

@@ -5,7 +5,8 @@ import { TRAINING_PLANS } from '../game/training';
 import { getArchetype } from '../game/chemistry';
 import { currentDraftTeamId } from '../game/dynasty';
 import { isRfaEligibleAge, qualifyingOfferSalary } from '../game/khlRules';
-import { finishJuniorDraftAuto, letGo, pickJuniorProspect, respondRfaOfferSheet, startNewSeason, tenderQualifyingOffer, useGame } from '../game/state';
+import { finishJuniorDraftAuto, letGo, pickJuniorProspect, respondRfaOfferSheet, simulateToNextUserGame, startNewSeason, tenderQualifyingOffer, useGame } from '../game/state';
+import { nextUserGame } from '../game/schedule';
 import { Button, Empty, OverallChip, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { cn } from '../utils/cn';
 
@@ -26,9 +27,26 @@ export function Offseason() {
   const [offNotice, setOffNotice] = useState<string | null>(null);
   const [draftPos, setDraftPos] = useState<'ALL' | 'F' | 'D' | 'G'>('ALL');
   if (!plan) {
+    // Reached before the season is over (e.g. the club has no games left but others still play).
+    const userHasGames = !!nextUserGame(s, U.id);
+    const finish = () => {
+      if (simulateToNextUserGame() !== 'offseason') ui.nav('dashboard');
+    };
     return (
       <Panel>
-        <Empty text="Межсезонье ещё не началось" />
+        <div className="space-y-3 py-2" data-offseason-pending>
+          <div className="text-sm text-text/90">
+            {s.phase === 'playoffs' ? 'Межсезонье начнётся после финала Кубка Гагарина.' : 'Межсезонье начнётся после регулярного чемпионата и плей-офф.'}
+            {userHasGames ? ' У вашей команды ещё есть матчи.' : ' Ваша команда свои матчи уже сыграла.'}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {userHasGames ? (
+              <Button variant="primary" onClick={() => ui.nav('dashboard')}>К ближайшему матчу</Button>
+            ) : (
+              <Button variant="primary" onClick={finish}>Досимулировать сезон и перейти в межсезонье</Button>
+            )}
+          </div>
+        </div>
       </Panel>
     );
   }
