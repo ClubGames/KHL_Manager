@@ -93,7 +93,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
 
       <div className={`rounded-md border p-3 flex flex-wrap items-center justify-between gap-3 text-xs ${teamForm.crisis ? 'border-accent/60 bg-accent/10' : 'border-line bg-panel'}`} data-team-management-link>
         <div><b>{teamForm.crisis ? `Кризис: ${teamForm.losses} поражений в ${teamForm.played} матчах.` : 'Управляйте не только звеньями.'}</b><span className="text-muted ml-2">Штаб, тренировки, восстановление и работа с раздевалкой — в разделе «Клуб».</span></div>
-        <Button size="sm" variant={teamForm.crisis ? 'primary' : 'secondary'} onClick={() => ui.nav('club')}>Управление командой →</Button>
+        <Button size="sm" variant={teamForm.crisis ? 'primary' : 'secondary'} onClick={() => ui.nav('management')}>Управление командой →</Button>
       </div>
 
       {capInfo.over && (

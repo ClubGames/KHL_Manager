@@ -33,6 +33,7 @@ function boot(seed = {}) {
   app.click(app.find('Управление командой →')); await pause();
   assert.ok(app.d.querySelector('[data-coaching-hub]'));
   assert.ok(app.text().includes('Андрей Разин'));
+  app.click(app.find('Подготовка и раздевалка')); await pause();
   let focus = [...app.d.querySelectorAll('[aria-pressed]')].find((b) => b.textContent.startsWith('Оборона'));
   app.click(focus); await pause(); assert.equal(focus.getAttribute('aria-pressed'), 'true');
   console.log('ok navigation and team-focus control');
@@ -40,9 +41,10 @@ function boot(seed = {}) {
   assert.ok(app.text().includes('Следующее собрание через 14 дн.'));
   assert.ok([...app.d.querySelectorAll('button')].filter((b) => b.textContent.trim() === 'Провести бесплатно').every((b) => b.disabled));
   console.log('ok confirmation and shared meeting cooldown');
-  const candidate = app.d.querySelector('[data-coach="generated-head-attack"]');
+  app.click(app.find('Штаб и рынок')); await pause();
+  const candidate = app.d.querySelector('[data-coach="market-tambiev"]');
   app.click(candidate.parentElement.querySelector('button')); await pause(); app.click(app.find('Назначить')); await pause();
-  assert.ok(app.text().includes('Михаил Северин назначен'));
+  assert.ok(app.text().includes('Леонид Тамбиев назначен'));
   assert.ok(app.text().includes('Следующая замена на этой должности через 30 дн.'));
   assert.ok(app.d.querySelector('[data-coaching-hub]').textContent.includes('40%'));
   console.log('ok appointment, adaptation penalty and hire cooldown');
@@ -51,10 +53,11 @@ function boot(seed = {}) {
   for (let i = 0; i < storage.length; i++) seed[storage.key(i)] = storage.getItem(storage.key(i));
   app.dom.window.close(); app = boot(seed); await pause(900);
   app.click(app.find('Продолжить')); await pause(450); app.click(app.find('Управление командой →')); await pause();
-  assert.ok(app.text().includes('Михаил Северин'));
+  assert.ok(app.text().includes('Леонид Тамбиев'));
+  assert.ok(app.text().includes('Следующая замена на этой должности через 30 дн.'));
+  app.click(app.find('Подготовка и раздевалка')); await pause();
   assert.ok(app.text().includes('Следующее собрание через 14 дн.'));
   assert.ok([...app.d.querySelectorAll('[aria-pressed="true"]')].some((b) => b.textContent.startsWith('Оборона')));
-  assert.ok(app.text().includes('Следующая замена на этой должности через 30 дн.'));
   console.log('ok persisted staff, focus and cooldowns after closing/reopening browser');
   app.dom.window.close(); assert.deepEqual(errors, []);
   console.log('PASS: coaching UI flow; no runtime errors');

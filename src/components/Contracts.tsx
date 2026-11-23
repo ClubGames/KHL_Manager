@@ -128,27 +128,16 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
             <span className="text-center">у игрока есть скрытый минимум</span>
             <span>115%</span>
           </div>
-          {allowTwoWay && (
-            <label className="mt-3 flex items-center justify-between gap-2 rounded-sm border border-line bg-panel2/60 px-3 py-2 text-xs cursor-pointer">
-              <div>
-                <div className="font-semibold text-ice">Двусторонний контракт КХЛ / ВХЛ (без драфта отказов)</div>
-                <div className="text-[11px] text-muted">
-                  Бесплатные переводы в фарм-клуб ВХЛ и обратно сколько угодно раз в сезоне + 100% разгрузка потолка КХЛ в ВХЛ
-                  {p.age > 22 ? ' (+6% к запросу по окладу).' : '.'}
-                </div>
-              </div>
-              <input
-                type="checkbox"
-                checked={effectiveTwoWay}
-                onChange={(e) => {
-                  setTwoWay(e.target.checked);
-                  if (e.target.checked) setNmc(false);
-                  setAnswer(null);
-                }}
-                className="w-4 h-4 accent-[#8FD8F0]"
-              />
-            </label>
-          )}
+          <fieldset className="mt-4" data-contract-type>
+            <legend className="text-[11px] uppercase tracking-wider text-muted mb-2">Тип контракта</legend>
+            <div className="grid grid-cols-2 gap-2">
+              {[false, true].map(value => <label key={String(value)} className={cn('rounded border px-3 py-2 text-sm cursor-pointer', effectiveTwoWay === value ? 'border-ice bg-ice/10' : 'border-line bg-panel2', value && !allowTwoWay && 'opacity-50')}>
+                <input type="radio" name="contract-type" value={value ? 'two-way' : 'one-way'} checked={effectiveTwoWay === value} disabled={value && !allowTwoWay} onChange={() => { setTwoWay(value); if (value) setNmc(false); setAnswer(null); }} className="mr-2 accent-sky-300" />
+                {value ? 'Двусторонний' : 'Односторонний'}
+              </label>)}
+            </div>
+            <p className="mt-2 text-xs text-muted">{!allowTwoWay ? 'Игрок не согласен на двусторонний контракт: доступен молодым и игрокам ротации (до 76 OVR).' : effectiveTwoWay ? `КХЛ / ВХЛ: свободные переводы, в ВХЛ оклад не учитывается в потолке${p.age > 22 ? ' · +6% к запросу' : ''}.` : 'КХЛ: перевод в ВХЛ по общим правилам.'}</p>
+          </fieldset>
           {allowNmc && (
             <label className="mt-3 flex items-center justify-between gap-2 rounded-sm border border-line bg-panel2/60 px-3 py-2 text-xs cursor-pointer">
               <div>
@@ -160,6 +149,7 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
                 checked={effectiveNmc}
                 onChange={(e) => {
                   setNmc(e.target.checked);
+                  if (e.target.checked) setTwoWay(false);
                   setAnswer(null);
                 }}
                 className="w-4 h-4 accent-[#F2B544]"

@@ -1,4 +1,4 @@
-import type { Coach, GameState, Player, Team, TeamFocus, TeamIntervention, TeamManagement } from '../types';
+import type { CoachRole, Coach, GameState, Player, Team, TeamFocus, TeamIntervention, TeamManagement } from '../types';
 import { COACH_PROFILES, defaultCoachMarket, defaultStaff } from './coachData';
 import { getOfficialClubPalette, OFFICIAL_KHL_PALETTES } from './clubColors';
 import { clamp, mean } from './ratings';
@@ -24,7 +24,7 @@ export function normalizeCoach(raw: unknown, fallback: Coach): Coach {
   const r = raw as Partial<Coach>;
   const profile = typeof r.profile === 'string' && Object.prototype.hasOwnProperty.call(COACH_PROFILES, r.profile) ? r.profile : fallback.profile;
   const c: Coach = { ...fallback, ...COACH_PROFILES[profile], profile };
-  delete c.source; delete c.snapshot; delete c.acting;
+  delete c.source; delete c.snapshot; delete c.acting; delete c.actingFromAssistant;
   c.id = typeof r.id === 'string' && r.id.trim() ? r.id.trim().slice(0, 120) : fallback.id;
   c.name = typeof r.name === 'string' && r.name.trim() ? r.name.trim().slice(0, 100) : fallback.name;
   for (const k of ['attack', 'defense', 'special', 'development', 'motivation'] as const) c[k] = finite(r[k], c[k], 40, 95);
@@ -32,16 +32,22 @@ export function normalizeCoach(raw: unknown, fallback: Coach): Coach {
   c.fictional = typeof r.fictional === 'boolean' ? r.fictional : !r.source;
   if (typeof r.source === 'string' && /^https:\/\//.test(r.source)) c.source = r.source.slice(0, 800);
   if (typeof r.snapshot === 'string') c.snapshot = r.snapshot.slice(0, 40);
-  if (r.acting === true && c.role === 'head') c.acting = true;
+  if (typeof r.acting === 'boolean') c.acting = r.acting && c.role === 'head';
+  if (typeof r.actingFromAssistant === 'boolean') c.actingFromAssistant = r.actingFromAssistant && !!c.acting;
   return c;
 }
 export function ensureTeamManagement(t: Team): TeamManagement {
   const palette = getOfficialClubPalette(t);
   const key = Object.keys(OFFICIAL_KHL_PALETTES).find((id) => OFFICIAL_KHL_PALETTES[id] === palette) ?? t.id;
   const defaults = defaultStaff(key);
-  t.coaches = defaults.map((fallback) => normalizeCoach((Array.isArray(t.coaches) ? t.coaches : []).find((c) => c?.role === fallback.role), fallback));
+  const saved = Array.isArray(t.coaches) ? t.coaches : [];
+  t.coaches = defaults.flatMap((fallback) => {
+    const raw = saved.find((c) => c?.role === fallback.role);
+    return !raw && t.management?.staffVersion === 2 ? [] : [normalizeCoach(raw, fallback)];
+  });
   const r = t.management;
   t.management = {
+    staffVersion: 2,
     focus: typeof r?.focus === 'string' && Object.prototype.hasOwnProperty.call(TEAM_FOCUS, r.focus) ? r.focus : 'balanced',
     focusDays: finite(r?.focusDays, 0, 0, 30), load: finite(r?.load, 20, 0, 100),
     cohesion: finite(r?.cohesion, 65, 0, 100), trust: finite(r?.trust, 65, 0, 100),
@@ -55,16 +61,22 @@ export function ensureTeamManagement(t: Team): TeamManagement {
 }
 export function ensureCoachingState(s: GameState) {
   Object.values(s.teams).forEach(ensureTeamManagement);
-  const occupied = new Set(Object.values(s.teams).flatMap((t) => t.coaches!.map((c) => c.id)));
+  const identity = (c: Coach) => c.name.toLowerCase().replace(/ё/g, 'е').trim();
+  const staff = Object.values(s.teams).flatMap((t) => t.coaches ?? []);
+  const occupied = new Set(staff.map(identity));
+  const ids = new Set(staff.map(c => c.id));
   const defaults = defaultCoachMarket();
-  s.coachMarket = (Array.isArray(s.coachMarket) ? s.coachMarket : defaults).flatMap((raw) => {
+  // Migrate only unoccupied market entries; never rewrite coaches already hired in a saved career.
+  const saved = Array.isArray(s.coachMarket) ? s.coachMarket : [];
+  const market = s.coachMarketVersion === 2 && Array.isArray(s.coachMarket) ? saved : [...saved.filter(c => !c?.id?.startsWith('generated-')), ...defaults];
+  s.coachMarket = market.flatMap((raw) => {
     if (!raw || (raw.role !== 'head' && raw.role !== 'assistant')) return [];
-    const fallback = defaults.find((c) => c.role === raw.role)!;
-    const c = normalizeCoach(raw, { ...fallback, role: raw.role });
-    if (occupied.has(c.id)) return [];
-    occupied.add(c.id);
+    const c = normalizeCoach(raw, { ...defaults[0], role: raw.role });
+    if (occupied.has(identity(c)) || ids.has(c.id)) return [];
+    occupied.add(identity(c)); ids.add(c.id);
     return [c];
   });
+  s.coachMarketVersion = 2;
 }
 
 export interface CoachingEffects { attack: number; defense: number; special: number; development: number; goalie: number }
@@ -105,27 +117,55 @@ export function recentTeamForm(s: GameState, tid: string) {
   return { played: games.length, wins, losses: games.length - wins, gf, ga, crisis: games.length >= 5 && wins <= 1 };
 }
 
-export function coachHireCost(t: Team, candidate: Coach): number {
-  const outgoing = t.coaches?.find((c) => c.role === candidate.role);
-  return Math.round((outgoing?.salary ?? 0) * 0.5 + candidate.salary * 0.25);
+export function coachHireCost(t: Team, candidate: Coach, role: CoachRole = candidate.role): number {
+  const outgoing = t.coaches?.find((c) => c.role === role);
+  return Math.round((outgoing?.actingFromAssistant ? 0 : outgoing?.salary ?? 0) * 0.5 + candidate.salary * 0.25);
 }
-export function hireCoach(s: GameState, candidateId: string): string | null {
+export function hireCoach(s: GameState, candidateId: string, chosenRole?: CoachRole): string | null {
   const t = s.teams[s.userTeamId]; const m = ensureTeamManagement(t);
   const candidate = s.coachMarket?.find((c) => c.id === candidateId);
   if (!candidate) return 'Этот тренер уже недоступен.';
-  if (m.staffCooldown[candidate.role] > 0) return `Следующая смена на этой должности через ${Math.ceil(m.staffCooldown[candidate.role])} дн.`;
-  const cost = coachHireCost(t, candidate);
+  const role = chosenRole ?? candidate.role;
+  if (role !== 'head' && role !== 'assistant') return 'Выберите должность.';
+  const old = t.coaches!.find((c) => c.role === role);
+  if (old && !old.acting && m.staffCooldown[role] > 0) return `Следующая смена на этой должности через ${Math.ceil(m.staffCooldown[role])} дн.`;
+  const cost = coachHireCost(t, candidate, role);
   if (t.budget < cost) return 'Недостаточно средств на компенсацию и подписной бонус.';
-  if (Object.values(s.teams).some((team) => team.coaches?.some((c) => c.id === candidateId))) return 'У тренера уже есть клуб.';
-  const old = t.coaches!.find((c) => c.role === candidate.role)!;
+  if (Object.values(s.teams).some((team) => team.coaches?.some((c) => c.id === candidateId || c.name === candidate.name))) return 'У тренера уже есть клуб.';
   s.coachMarket = s.coachMarket!.filter((c) => c.id !== candidateId);
-  s.coachMarket.push(old);
-  t.coaches = t.coaches!.map((c) => c.role === candidate.role ? { ...candidate } : c);
+  t.coaches = t.coaches!.filter(c => c.role !== role);
+  if (old?.actingFromAssistant) {
+    // An acting assistant returns to his own post, unless a new assistant already occupies it.
+    if (!t.coaches.some(c => c.role === 'assistant')) t.coaches.push({ ...old, role: 'assistant', acting: false, actingFromAssistant: false });
+    else s.coachMarket.push({ ...old, role: 'assistant', acting: false, actingFromAssistant: false });
+  } else if (old) s.coachMarket.push({ ...old, acting: false, actingFromAssistant: false });
+  t.coaches.push({ ...candidate, role, acting: false, actingFromAssistant: false });
+  t.coaches.sort((a, b) => Number(b.role === 'head') - Number(a.role === 'head'));
   t.budget -= cost;
-  m.familiarity = candidate.role === 'head' ? 40 : Math.min(m.familiarity, 70);
-  if (candidate.role === 'head') m.trust = 60; // no instant morale/freshness reward for firing
-  m.staffCooldown[candidate.role] = 30;
-  m.lastAction = `${old.name} → ${candidate.name}. Штабу нужно время на адаптацию.`;
+  m.familiarity = role === 'head' ? 40 : Math.min(m.familiarity, 70);
+  if (role === 'head') m.trust = 60;
+  m.staffCooldown[role] = 30;
+  m.lastAction = `${candidate.name}: ${role === 'head' ? 'главный тренер' : 'ассистент'}. Штабу нужно время на адаптацию.`;
+  return null;
+}
+export function fireCoach(s: GameState, role: CoachRole): string | null {
+  const t = s.teams[s.userTeamId]; const m = ensureTeamManagement(t);
+  const old = t.coaches!.find(c => c.role === role);
+  if (!old) return 'Должность уже свободна.';
+  const assistant = t.coaches!.find(c => c.role === 'assistant');
+  if (role === 'head' && !assistant) return 'Сначала наймите ассистента или назначьте нового главного: нельзя оставить команду без руководителя.';
+  const cost = Math.round(old.salary * .5);
+  if (t.budget < cost) return 'Недостаточно средств на компенсацию.';
+  t.budget -= cost;
+  t.coaches = t.coaches!.filter(c => c.id !== old.id && !(role === 'head' && c.id === assistant!.id));
+  s.coachMarket ??= [];
+  s.coachMarket.push({ ...old, acting: false, actingFromAssistant: false });
+  if (role === 'head') {
+    t.coaches.push({ ...assistant!, role: 'head', acting: true, actingFromAssistant: true });
+    m.familiarity = Math.min(m.familiarity, 70); m.trust = 60;
+  }
+  m.staffCooldown[role] = 30;
+  m.lastAction = `${old.name} уволен.${role === 'head' ? ` ${assistant!.name} — и. о. главного до назначения нового тренера.` : ' Вакансия ассистента открыта.'}`;
   return null;
 }
 export function changeTeamFocus(s: GameState, focus: TeamFocus): string | null {

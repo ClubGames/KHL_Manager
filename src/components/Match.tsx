@@ -10,6 +10,7 @@ import { Button, Icon, Panel, PosBadge, shortName, TeamLogo } from './ui';
 import { cn } from '../utils/cn';
 import { GoalReplay } from './GoalReplay';
 import { ShotMap } from './ShotMap';
+import { advanceRinkClock, buildRinkTimeline, timelineFrame, timelineGoalClip, type RinkTimeline } from '../game/rinkPlayback';
 import { LiveRink } from './RinkView';
 import { LineupPreview } from './LineupPreview';
 import { previewPowerPlay } from '../game/lineupCompare';
@@ -77,6 +78,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const [visibleGoalies, setVisibleGoalies] = useState<[string | null, string | null]>([sim.goalies[0], sim.goalies[1]]);
   const [, setCoachTick] = useState(0);
   const periodEvs = useRef<GameEvent[]>([]);
+  const rinkTimeline = useRef<RinkTimeline>([]);
   const idx = useRef(0);
   const clockRef = useRef(0);
   const blockStart = useRef(0);
@@ -93,6 +95,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     idx.current = 0;
     blockStart.current = evs[0]?.sec ?? sim.sec;
     blockEnd.current = sim.sec;
+    rinkTimeline.current = k === 'so' ? [] : buildRinkTimeline(evs, H, A, P, blockStart.current, blockEnd.current);
     clockRef.current = blockStart.current;
     ticker.set(blockStart.current);
     setCurIce(null);
@@ -110,7 +113,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     const loop = (t: number) => {
       const dt = Math.min(0.1, (t - last) / 1000);
       last = t;
-      clockRef.current += dt * RATE[speed];
+      clockRef.current = rinkTimeline.current.length ? advanceRinkClock(rinkTimeline.current, clockRef.current, dt, speed) : clockRef.current + dt * RATE[speed];
       const evs = periodEvs.current;
       let c = Math.min(clockRef.current, blockEnd.current);
       let hitGoal = false;
@@ -212,6 +215,9 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       const revealed = periodEvs.current.slice(0, idx.current);
       const updated = sim.replanLivePeriod(revealed, clockRef.current, s.userTeamId, mutate);
       if (updated) {
+        const anchor = timelineFrame(rinkTimeline.current, clockRef.current) ?? undefined;
+        const playedMotion = rinkTimeline.current.filter(segment => segment.end <= clockRef.current);
+        rinkTimeline.current = [...playedMotion, ...buildRinkTimeline(updated.filter(e => e.sec > clockRef.current), H, A, P, clockRef.current, sim.sec, anchor)];
         periodEvs.current = updated;
         blockEnd.current = sim.sec;
         // Immediately reveal the coaching info event on the feed if present
@@ -328,7 +334,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     const count = kind === 'so' ? 0 : kind === 'ot3' ? 3 : mpState === 'even' || (mpState !== null && mpState !== ti) ? 4 : 6;
     return [...new Set(base)].filter((id): id is string => !!id && !!P[id] && P[id].position !== 'G').slice(0, count);
   }) as [string[], string[]];
-  // The simulator has already computed the whole period. Only revealed events may drive this view.
+  // Outcomes and lineup/goalie UI use only revealed state; private motion paths share this clock.
   const rinkGoalies = ([0, 1] as const).map(ti => {
     if (ti === userIdx && pulledNow) return null;
     return visibleGoalies[ti];
@@ -515,7 +521,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         <div className="space-y-3 min-w-0">
           <div className={cn(mobileTab !== 'live' && 'hidden lg:block')}>
             <button type="button" className="text-xs text-ice mb-2" aria-expanded={showRink} onClick={() => setShowRink(v => !v)}>{showRink ? 'Скрыть площадку 2D' : 'Показать площадку 2D'}</button>
-            {showRink && <LiveRink ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} running={status === 'playing' && !paused && !replayEvent} />}
+            {showRink && <LiveRink ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} timeline={rinkTimeline.current} running={status === 'playing' && !paused && !replayEvent} />}
           </div>
           <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-2', mobileTab !== 'live' && 'hidden lg:grid')}>
             {renderOnIce(0)}
@@ -733,7 +739,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       </div>
 
       {replayEvent && (
-        <GoalReplay event={replayEvent} home={H} away={A} players={P} onClose={() => setReplayEvent(null)} />
+        <GoalReplay motionClip={timelineGoalClip(rinkTimeline.current, replayEvent)} event={replayEvent} home={H} away={A} players={P} onClose={() => setReplayEvent(null)} />
       )}
       {status === 'intro' && (() => {
         const oppId = game.home === s.userTeamId ? game.away : game.home;

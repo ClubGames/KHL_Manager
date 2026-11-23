@@ -23,11 +23,13 @@ export interface Coach {
   fictional: boolean;
   source?: string;
   snapshot?: string;
-  acting?: boolean; // Reference appointment was interim at the snapshot date.
+  acting?: boolean; // Interim head, including an assistant promoted in the career.
+  actingFromAssistant?: boolean;
 }
 export type TeamFocus = 'balanced' | 'attack' | 'defense' | 'special' | 'recovery';
 export type TeamIntervention = 'support' | 'demand' | 'bonding';
 export interface TeamManagement {
+  staffVersion?: number; // v2 preserves intentional vacancies and interim appointments.
   focus: TeamFocus;
   focusDays: number;
   load: number;
@@ -553,6 +555,7 @@ export interface GameState {
   rfaOffers?: RfaOfferSheet[];
   /** Free coaches persist across seasons, including dismissed real specialists. */
   coachMarket?: Coach[];
+  coachMarketVersion?: number;
   /** KHL All-Star Weekend result for the current season */
   allStar?: AllStarResult | null;
 }

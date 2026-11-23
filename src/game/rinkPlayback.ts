@@ -1,7 +1,7 @@
 import type { GameEvent, Player, Team } from '../types';
 
 // Presentation only. The engine records shot locations, not tracking data.
-// All paths are deterministic reconstructions; never consume unrevealed engine events here.
+// Deterministic motion is prepared privately; scores, names and outcomes are revealed only by Match at event.sec.
 export type Point = { x: number; y: number; h: number };
 export type Key = Point & { t: number };
 export type Track = { id: string; side: 0 | 1; goalie?: boolean; keys: Key[] };
@@ -26,7 +26,7 @@ export function eventSeed(e: GameEvent): number {
   return n >>> 0;
 }
 export function lineupIds(team: Team, players: Record<string, Player>): string[] {
-  return team.players.filter(id => players[id] && players[id].position !== 'G' && !players[id].inVhl).slice(0, 5);
+  return [...new Set([...(team.lineup.F[0] ?? []), ...(team.lineup.D[0] ?? []), ...team.players])].filter((id): id is string => !!id && !!players[id] && players[id].position !== 'G' && !players[id].inVhl).slice(0, 5);
 }
 export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: Record<string, Player>): ReplayClip | null {
   if (!e.player || !players[e.player]) return null;
@@ -66,7 +66,7 @@ export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: R
     puck = secondary ? [at(secondary, 0), at(secondary, .16), at(primary, .29), at(primary, .32), at(primary, .43)] : [at(primary, 0), at(primary, .32), at(primary, .43)];
     puck.push(at(e.player, .56), at(e.player, release));
   } else puck = scorer.filter(k => k.t <= release).map(k => ({ ...k }));
-  const targetY = 50 + sign * (1.6 + seed % 13 / 10);
+  const targetY = e.type === 'miss' ? 50 + sign * 9 : 50 + sign * (1.6 + seed % 13 / 10);
   const height = shot === 'rebound' ? .14 : shot === 'backhand' ? .7 : .4 + seed % 60 / 100;
   if (shot === 'tip' || shot === 'rebound') {
     // First attempt from the point; rebound off the goalie or a stick deflection at the actual shot location.
@@ -75,7 +75,10 @@ export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: R
     if (shot === 'rebound') puck.push(key(.53, 90, 50 + (origin.y - 50) * .12, .15));
     puck.push(key(.61, sx, sy, shot === 'tip' ? .28 : 0), key(release, sx, sy, shot === 'tip' ? .28 : 0));
   }
-  puck.push(key(release + flight / 2, (sx + 93) / 2, (sy + targetY) / 2, height), key(goal, 93.3, targetY, height * .8), key(goal + .06, 95.4, targetY, .2), key(1, 94.4, targetY + .5, 0));
+  const endX = e.type === 'shot' ? 90.8 : 93.3;
+  puck.push(key(release + flight / 2, (sx + endX) / 2, (sy + targetY) / 2, height), key(goal, endX, targetY, e.type === 'shot' ? .1 : height * .8));
+  if (e.type === 'shot') puck.push(key(1, endX, targetY, 0));
+  else puck.push(key(goal + .06, 95.4, targetY, .2), key(1, 94.4, targetY + .5, 0));
   if (e.goalie !== null && e.strength !== 'EN') {
     const gid = e.goalie ?? teams[other].players.find(id => players[id]?.position === 'G');
     if (gid && players[gid]) {
@@ -88,40 +91,116 @@ export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: R
       tracks.push({ id: gid, side: other, goalie: true, keys: goalieKeys });
     }
   }
+  const ownGoalie = teams[side].lineup.starterG;
+  if (ownGoalie && players[ownGoalie]) tracks.push({ id: ownGoalie, side, goalie: true, keys: [key(0, 10, 50), key(1, 10, 50)] });
   const mirror = (p: Key) => side ? { ...p, x: 100 - p.x } : p;
   return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[shot], duration: 8, release, goal, tracks: tracks.map(tr => ({ ...tr, keys: tr.keys.map(mirror) })), puck: puck.map(mirror), scorer: e.player, attacking: side };
 }
 
-export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: Point; goalie?: boolean }[] };
-export function liveRinkFrame(sec: number, ids: [string[], string[]], goalies: [string | null, string | null], event: GameEvent | null, homeId: string): LiveFrame {
-  // Continuous presentation between discrete events. The same clock as the feed freezes on pause/replay.
-  const phase = sec / 110;
-  const cx = 50 + 23 * Math.sin(phase), cy = 50 + 22 * Math.sin(phase * 1.7);
-  let puck: Point = { x: cx + 5 * Math.sin(phase * 4), y: cy + 4 * Math.cos(phase * 3), h: 0 };
+export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: Point; goalie?: boolean }[]; faceoff?: boolean };
+export function clipFrame(clip: ReplayClip, time: number): LiveFrame {
+  return { puck: samplePath(clip.puck, time), skaters: clip.tracks.map(tr => ({ id: tr.id, side: tr.side, goalie: tr.goalie, pos: samplePath(tr.keys, time) })) };
+}
+/** Stable formation, used before play and at faceoffs. No event-triggered teleport logic. */
+export function liveRinkFrame(sec: number, ids: [string[], string[]], goalies: [string | null, string | null], _event: GameEvent | null, _homeId: string): LiveFrame {
   const skaters: LiveFrame['skaters'] = [];
-  ids.forEach((list, side) => list.forEach((id, i) => {
-    const attack = side === 0 ? 1 : -1;
-    skaters.push({ id, side: side as 0 | 1, pos: { x: clamp(cx + attack * (i < 3 ? 5 : -16) + 8 * Math.sin(phase * 1.3 + i * 2 + side), 9, 91), y: clamp(cy + (i % 3 - 1) * 21 + 5 * Math.cos(phase * 2 + i), 8, 92), h: 0 } });
-  }));
-  // Carry, then pass to a moving teammate, rather than letting a free-floating puck orbit the rink.
-  const possession = Math.floor(phase / 2) % 2;
-  const carriers = skaters.filter(s => s.side === possession);
-  if (carriers.length) {
-    const cycle = phase * 2, index = Math.floor(cycle) % carriers.length;
-    const a = carriers[index].pos, b = carriers[(index + 1) % carriers.length].pos;
-    const pass = clamp(((cycle % 1) - .70) / .30, 0, 1);
-    puck = { x: a.x + (b.x - a.x) * pass + .8, y: a.y + (b.y - a.y) * pass, h: 0 };
-  }
-  const age = event ? sec - event.sec : Infinity;
-  if (event && event.x !== undefined && event.y !== undefined && age >= 0 && age < 35) {
-    const u = clamp(age / 12, 0, 1), right = event.team === homeId;
-    const shooter = skaters.find(s => s.id === event.player);
-    if (shooter) shooter.pos = { x: event.x, y: event.y, h: 0 };
-    const endX = event.type === 'goal' ? (right ? 94 : 6) : (right ? 90 : 10);
-    puck = { x: event.x + (endX - event.x) * u, y: event.y + (50 - event.y) * u, h: 0 };
-  }
-  goalies.forEach((id, side) => {
-    if (id) skaters.push({ id, side: side as 0 | 1, goalie: true, pos: { x: side ? 90 : 10, y: 50 + (puck.y - 50) * .1, h: 0 } });
+  ids.forEach((list, side) => list.forEach((id, i) => skaters.push({ id, side: side as 0 | 1, pos: {
+    x: (side ? 53 : 47) + (side ? 1 : -1) * (i > 2 ? 17 : i * 6) + Math.sin(sec / 3 + i) * 2,
+    y: [50, 24, 76, 35, 65, 50][i % 6], h: 0,
+  } })));
+  goalies.forEach((id, side) => { if (id) skaters.push({ id, side: side as 0 | 1, goalie: true, pos: { x: side ? 90 : 10, y: 50, h: 0 } }); });
+  return { puck: { ...(skaters.find(s => !s.goalie)?.pos ?? { x: 50, y: 50, h: 0 }) }, skaters };
+}
+export type MotionSegment = { start: number; end: number; duration: number; clip?: ReplayClip; event?: GameEvent; from?: LiveFrame; to?: LiveFrame; faceoff?: boolean };
+export type RinkTimeline = MotionSegment[];
+const mix = (a: Point, b: Point, u: number): Point => ({ x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, h: a.h + (b.h - a.h) * u });
+function blendFrames(a: LiveFrame, b: LiveFrame, u: number): LiveFrame {
+  return { puck: mix(a.puck, b.puck, u), skaters: b.skaters.map((p, i) => {
+    const old = a.skaters.find(q => q.id === p.id) ?? a.skaters.filter(q => q.side === p.side && !!q.goalie === !!p.goalie)[i % Math.max(1, a.skaters.filter(q => q.side === p.side && !!q.goalie === !!p.goalie).length)];
+    return { ...p, pos: mix(old?.pos ?? p.pos, p.pos, u) };
+  }) };
+}
+function faceoffFrame(ids: [string[], string[]], goalies: [string | null, string | null], x = 50, y = 50): LiveFrame {
+  const frame = liveRinkFrame(0, ids, goalies, null, '');
+  frame.skaters.forEach(p => { if (!p.goalie) {
+    const index = ids[p.side].indexOf(p.id), sign = p.side ? 1 : -1;
+    p.pos = { x: clamp(x + sign * (index === 0 ? 2 : index > 2 ? 17 : 9), 8, 92), y: clamp(y + [0, -19, 19, -12, 12, 0][index % 6], 8, 92), h: 0 };
+  } });
+  frame.puck = { x, y, h: .8 }; frame.faceoff = true; return frame;
+}
+/** One authoritative set of paths. The 3D viewer receives these very clip objects, not a second reconstruction. */
+export function buildRinkTimeline(events: GameEvent[], home: Team, away: Team, players: Record<string, Player>, start: number, end: number, initialFrame?: LiveFrame): RinkTimeline {
+  const result: RinkTimeline = [];
+  const ids: [string[], string[]] = [lineupIds(home, players), lineupIds(away, players)];
+  const goalies: [string | null, string | null] = [home.lineup.starterG, away.lineup.starterG];
+  let previous = initialFrame ?? faceoffFrame(ids, goalies), cursor = start;
+  const bridge = (to: LiveFrame, until: number) => {
+    if (until > cursor) result.push({ start: cursor, end: until, duration: clamp((until - cursor) / 15, 1.2, 2.5), from: previous, to });
+    cursor = until; previous = to;
+  };
+  const faceoff = (until: number, x = 50, y = 50) => {
+    const ready = faceoffFrame(ids, goalies, x, y);
+    bridge(ready, Math.min(until, cursor + .5));
+    if (until > cursor) {
+      const dropped = { ...ready, puck: { x, y, h: 0 } };
+      result.push({ start: cursor, end: until, duration: 1.5, from: ready, to: dropped, faceoff: true });
+      previous = dropped; cursor = until;
+    }
+  };
+  const shots = events.filter(e => ['goal', 'shot', 'miss', 'penalty'].includes(e.type) && e.player && players[e.player]).sort((a, b) => a.sec - b.sec || Number(b.type === 'goal') - Number(a.type === 'goal'));
+  if (!initialFrame) faceoff(Math.min(end, start + 1, start + ((shots[0]?.sec ?? start + 5) - start) * .2));
+  shots.forEach((e, i) => {
+    if (e.sec <= cursor + .05) return;
+    if (e.type === 'penalty') {
+      bridge(previous, e.sec);
+      faceoff(Math.min(end, (shots[i + 1]?.sec ?? end) - .1, e.sec + 1), e.team === home.id ? 19 : 81, 24);
+      return;
+    }
+    const clip = buildReplayClip(e, home, away, players);
+    if (!clip) return;
+    const span = Math.min(8, (e.sec - cursor) * .8 / clip.goal);
+    const begins = e.sec - clip.goal * span;
+    // Never cross the next event or period boundary; event always lands at clip.goal.
+    const nextSec = Math.min(end, shots[i + 1]?.sec ?? end);
+    const tail = Math.min((1 - clip.goal) * span, Math.max(0, nextSec - e.sec) * .2);
+    bridge(clipFrame(clip, 0), begins);
+    result.push({ start: begins, end: e.sec, duration: clip.duration * clip.goal, clip, event: e });
+    // Prefix and tail use normalized clip time separately (see timelineFrame).
+    cursor = e.sec; previous = clipFrame(clip, clip.goal);
+    if (tail > 0) {
+      result.push({ start: cursor, end: cursor + tail, duration: clip.duration * (1 - clip.goal), clip, event: e });
+      cursor += tail; previous = clipFrame(clip, 1);
+    }
+    if (e.ice) { ids[0] = e.ice[0].filter((id): id is string => !!id && !!players[id] && players[id].position !== 'G'); ids[1] = e.ice[1].filter((id): id is string => !!id && !!players[id] && players[id].position !== 'G'); }
+    if (e.type !== 'miss' && nextSec > cursor + 1) faceoff(Math.min(nextSec - .1, cursor + 1), e.type === 'goal' ? 50 : e.team === home.id ? 81 : 19, e.type === 'goal' ? 50 : (e.y ?? 50) > 50 ? 76 : 24);
   });
-  return { puck, skaters };
+  bridge(previous, end);
+  return result;
+}
+export function timelineFrame(timeline: RinkTimeline, sec: number): LiveFrame | null {
+  const segment = timeline.find(s => sec <= s.end && sec >= s.start) ?? (sec < (timeline[0]?.start ?? 0) ? timeline[0] : timeline.at(-1));
+  if (!segment) return null;
+  const u = clamp((sec - segment.start) / (segment.end - segment.start || 1), 0, 1);
+  if (segment.clip && segment.event) {
+    const t = segment.end === segment.event.sec ? u * segment.clip.goal : segment.clip.goal + u * (1 - segment.clip.goal);
+    return clipFrame(segment.clip, t);
+  }
+  const frame = blendFrames(segment.from!, segment.to!, u);
+  frame.faceoff = segment.faceoff;
+  return frame;
+}
+/** Consume wall time at selected speed, stopping at segment boundaries even on a slow frame. */
+export function advanceRinkClock(timeline: RinkTimeline, sec: number, dt: number, speed: number): number {
+  let remaining = dt * speed, clock = sec;
+  for (const segment of timeline) {
+    if (segment.end <= clock) continue;
+    const rate = (segment.end - segment.start) / Math.max(.01, segment.duration);
+    const needed = (segment.end - clock) / rate;
+    if (remaining <= needed) return clock + remaining * rate;
+    remaining -= needed; clock = segment.end;
+  }
+  return clock;
+}
+export function timelineGoalClip(timeline: RinkTimeline, event: GameEvent): ReplayClip | undefined {
+  return timeline.find(s => s.event === event && s.end === event.sec)?.clip;
 }

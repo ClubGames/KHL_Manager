@@ -1,4 +1,3 @@
-import { Coaching } from './Coaching';
 import { useState } from 'react';
 import { getCapSummary } from '../game/cap';
 import {
@@ -48,7 +47,6 @@ export function Club() {
 
   return (
     <div className="space-y-4 fade-in" data-club-hub>
-      <Coaching />
       {/* Top KPI Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat

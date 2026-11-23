@@ -14,6 +14,7 @@ import { Market } from './components/Market';
 import { Offseason } from './components/Offseason';
 import { Leaders } from './components/Leaders';
 import { Contracts, NegotiationModal } from './components/Contracts';
+import { Coaching } from './components/Coaching';
 import { Club } from './components/Club';
 import { SaveIndicator, SavesList } from './components/Saves';
 import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, useGame, useSaveStatus } from './game/state';
@@ -32,6 +33,7 @@ const NAV: { id: View; label: string; icon: string }[] = [
   { id: 'trades', label: 'Обмены', icon: 'trade' },
   { id: 'market', label: 'Рынок', icon: 'market' },
   { id: 'contracts', label: 'Контракты', icon: 'contract' },
+  { id: 'management', label: 'Управление командой', icon: 'roster' },
   { id: 'club', label: 'Инфраструктура', icon: 'trophy' },
 ];
 
@@ -164,7 +166,7 @@ export default function App() {
           <Icon name={icon} className={mobile ? 'w-5 h-5' : ''} />
           {badge > 0 && <span className="absolute -top-1.5 -right-2 bg-amber text-bg text-[9px] font-bold px-1 rounded-sm leading-3">{badge}</span>}
         </span>
-        <span className={cn('truncate max-w-full', mobile && 'font-medium')}>{label}</span>
+        <span className={cn('min-w-0 max-w-full', v === 'management' ? 'whitespace-normal text-left leading-tight' : 'truncate', mobile && 'font-medium')}>{label}</span>
       </button>
     );
   };
@@ -187,6 +189,7 @@ export default function App() {
         return <Market />;
       case 'contracts':
         return <Contracts />;
+      case 'management': return <Coaching />;
       case 'club':
         return <Club />;
       case 'offseason':

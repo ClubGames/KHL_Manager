@@ -1,4 +1,4 @@
-import { changeTeamFocus, coachingEffects, ensureCoachingState, hireCoach, interveneTeam, recordCoachingResult, stepTeamManagement } from './coaching';
+import { changeTeamFocus, coachingEffects, ensureCoachingState, fireCoach, hireCoach, interveneTeam, recordCoachingResult, stepTeamManagement } from './coaching';
 import type { TeamFocus, TeamIntervention } from '../types';
 import { useSyncExternalStore } from 'react';
 import type { Award, FacilityKey, Game, GameResult, GameState, Lineup, NewsItem, NewsType, Series, Team, TeamTactics, YouthTrainingPlan } from '../types';
@@ -578,7 +578,8 @@ function coachingAction(action: (s: GameState) => string | null): string | null 
   });
   return error;
 }
-export const hireUserCoach = (id: string) => coachingAction((s) => hireCoach(s, id));
+export const hireUserCoach = (id: string, role?: import('../types').CoachRole) => coachingAction((s) => hireCoach(s, id, role));
+export const fireUserCoach = (role: import('../types').CoachRole) => coachingAction((s) => fireCoach(s, role));
 export const setUserTeamFocus = (focus: TeamFocus) => coachingAction((s) => changeTeamFocus(s, focus));
 export const holdTeamMeeting = (action: TeamIntervention) => coachingAction((s) => interveneTeam(s, action));
 
@@ -1444,7 +1445,8 @@ export function offerContract(id: string, salary: number, years: number, withNmc
     salary = Math.round(salary / 100_000) * 100_000;
     years = Math.round(years);
     const applyNmc = withNmc && canHaveNmc(p) && years >= 2 && !twoWay;
-    const applyTwoWay = twoWay && canSignTwoWay(p) && !applyNmc;
+    if (twoWay && !canSignTwoWay(p)) return fail('Игрок не согласен на двусторонний контракт. Выберите односторонний.');
+    const applyTwoWay = twoWay && !applyNmc;
     if (!free && !own) return fail('Игрок принадлежит другому клубу — его можно получить только обменом');
     if (!(salary > 0) || years < 1) return fail('Укажите оклад и срок контракта');
     const capState = getCapSummary(state, t.id);
@@ -1493,7 +1495,7 @@ export function offerContract(id: string, salary: number, years: number, withNmc
     delete p.talks;
     const nmcTag = applyNmc ? ' (с пунктом ЗНО)' : applyTwoWay ? ' (двусторонний КХЛ/ВХЛ)' : '';
     const term = `${years} ${years === 1 ? 'год' : years < 5 ? 'года' : 'лет'}, ${formatMoney(salary)} за сезон${nmcTag}`;
-    const cFlags = applyTwoWay ? { twoWay: true } : p.age <= 22 && !twoWay ? { twoWay: false } : {};
+    const cFlags = { twoWay: applyTwoWay };
 
     if (free) {
       if (rfaOwnerId) {
@@ -1545,7 +1547,7 @@ export function offerContract(id: string, salary: number, years: number, withNmc
       addNews(state, 'trade', `${p.name} остаётся в ${t.name}: новый контракт на ${term}`, t.id);
       out = { ok: true, text: `${p.name} подписал новый контракт: ${term}.`, left: v.left };
     } else {
-      p.contract.next = { salary, years, ...(applyTwoWay ? { twoWay: true } : {}) };
+      p.contract.next = { salary, years, ...cFlags };
       if (applyNmc) p.nmc = true;
       p.morale = clamp(p.morale + 5, 30, 99);
       addNews(state, 'trade', `${p.name} продлил контракт с ${t.name}: со следующего сезона — ${term}`, t.id);
