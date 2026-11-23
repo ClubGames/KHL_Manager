@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import type { GameState } from '../src/types';
 import { parseRosterText } from '../src/game/roster';
 import * as G from '../src/game/state';
-import { coachingEffects, coachHireCost, changeTeamFocus, ensureCoachingState, ensureTeamManagement, fireCoach, hireCoach, interveneTeam, recentTeamForm, stepTeamManagement, recordCoachingResult } from '../src/game/coaching';
+import { adoptRosterCoachMarket, coachingEffects, coachHireCost, changeTeamFocus, ensureCoachingState, ensureTeamManagement, fireCoach, hireCoach, interveneTeam, recentTeamForm, stepTeamManagement, recordCoachingResult } from '../src/game/coaching';
 import { REAL_STAFF, defaultStaff } from '../src/game/coachData';
 import { beginNewSeason } from '../src/game/offseason';
 import { stepYouthTrainingWeek } from '../src/game/training';
@@ -32,12 +32,18 @@ test('22 real starting staffs and editable roster entries; real available market
   const raw = JSON.parse(rosterText);
   for (const id of s.teamOrder) {
     assert.equal(s.teams[id].coaches?.length, 2);
+    // roster.json is the source of truth: staff names, roles and ratings are taken from the file
     const entries = raw.teams.find((t: { id: string }) => t.id === id).coaches;
-    assert.deepEqual(entries, defaultStaff(id).map((c, i) => ({ ...entries[i], ...c })));
+    const pick = (c: Record<string, unknown>) => ({ name: c.name, role: c.role, profile: c.profile === 'motivation' ? 'motivator' : c.profile, label: c.label, attack: c.attack, defense: c.defense, special: c.special, development: c.development, motivation: c.motivation, salary: c.salary });
+    assert.deepEqual(s.teams[id].coaches!.map(pick), entries.map(pick));
     assert.deepEqual(s.teams[id].coaches!.map((c) => c.name), REAL_STAFF[id].slice(0, 2));
     assert.ok(s.teams[id].coaches!.every((c) => c.source && !c.fictional && c.snapshot === '2026/27 · 23.11.2026'));
   }
-  assert.equal(s.coachMarket?.length, 6); assert.ok(s.coachMarket!.every((c) => !c.fictional && c.source));
+  // free coaches come from roster.json `freeCoaches`, not from the built-in list
+  assert.equal(s.coachMarketSource, 'roster');
+  assert.deepEqual(s.coachMarket!.map((c) => c.name), raw.freeCoaches.map((c: { name: string }) => c.name));
+  assert.deepEqual(s.coachMarket!.map((c) => c.attack), raw.freeCoaches.map((c: { attack: number }) => c.attack));
+  assert.ok(s.coachMarket!.every((c) => !c.fictional && c.source));
 });
 test('autumn appointments, interim status and existing historical saves', () => {
   const s = fresh();
@@ -221,4 +227,19 @@ test('market migration removes legacy fictional offers, preserves old hires and 
 });
 
 G.store.set(null);
+test('free coaches are read from roster.json freeCoaches; old careers switch from the built-in list once', () => {
+  const raw = JSON.parse(rosterText);
+  const parsed = parseRosterText(rosterText);
+  assert.equal(parsed.freeCoaches?.length, raw.freeCoaches.length);
+  const bad = parseRosterText(JSON.stringify({ ...raw, freeCoaches: [{ role: 'head' }, { name: raw.teams[0].coaches[0].name }, { name: 'Тест Тестов', role: 'ассистент', profile: 'Мотиватор', attack: 200, label: 'Плей-офф' }, { name: 'Тест Тестов' }] }));
+  assert.deepEqual(bad.freeCoaches!.map((c) => [c.name, c.role, c.profile, c.attack, c.label]), [['Тест Тестов', 'assistant', 'motivator', 95, 'Плей-офф']]);
+  assert.equal(bad.warnings.filter((w) => w.startsWith('freeCoaches')).length, 3);
+  const { freeCoaches: _omit, ...noList } = raw;
+  const legacy = G.createGameState(parseRosterText(JSON.stringify(noList)), 'ska');
+  assert.equal(legacy.coachMarketSource, 'builtin'); assert.ok(legacy.coachMarket!.every((c) => c.id.startsWith('market-')));
+  legacy.coachMarket!.push({ ...legacy.teams.cska.coaches![1], id: 'released-assistant', name: 'Отпущенный Ассистент' });
+  assert.ok(adoptRosterCoachMarket(legacy, parsed.freeCoaches!));
+  assert.deepEqual(legacy.coachMarket!.map((c) => c.name), ['Отпущенный Ассистент', ...raw.freeCoaches.map((c: { name: string }) => c.name)]);
+  const once = copy(legacy.coachMarket); assert.equal(adoptRosterCoachMarket(legacy, []), false); assert.deepEqual(legacy.coachMarket, once);
+});
 console.log(`PASS: ${checks} coaching checks`);

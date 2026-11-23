@@ -42,9 +42,9 @@ function boot(seed = {}) {
   assert.ok([...app.d.querySelectorAll('button')].filter((b) => b.textContent.trim() === 'Провести бесплатно').every((b) => b.disabled));
   console.log('ok confirmation and shared meeting cooldown');
   app.click(app.find('Штаб и рынок')); await pause();
-  const candidate = app.d.querySelector('[data-coach="market-tambiev"]');
+  const candidate = app.d.querySelector('[data-coach="free-coach-krikunov"]');
   app.click(candidate.parentElement.querySelector('button')); await pause(); app.click(app.find('Назначить')); await pause();
-  assert.ok(app.text().includes('Леонид Тамбиев назначен'));
+  assert.ok(app.text().includes('Владимир Крикунов назначен'));
   assert.ok(app.text().includes('Следующая замена на этой должности через 30 дн.'));
   assert.ok(app.d.querySelector('[data-coaching-hub]').textContent.includes('40%'));
   console.log('ok appointment, adaptation penalty and hire cooldown');
@@ -53,7 +53,7 @@ function boot(seed = {}) {
   for (let i = 0; i < storage.length; i++) seed[storage.key(i)] = storage.getItem(storage.key(i));
   app.dom.window.close(); app = boot(seed); await pause(900);
   app.click(app.find('Продолжить')); await pause(450); app.click(app.find('Управление командой →')); await pause();
-  assert.ok(app.text().includes('Леонид Тамбиев'));
+  assert.ok(app.text().includes('Владимир Крикунов'));
   assert.ok(app.text().includes('Следующая замена на этой должности через 30 дн.'));
   app.click(app.find('Подготовка и раздевалка')); await pause();
   assert.ok(app.text().includes('Следующее собрание через 14 дн.'));

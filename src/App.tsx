@@ -17,7 +17,7 @@ import { Contracts, NegotiationModal } from './components/Contracts';
 import { Coaching } from './components/Coaching';
 import { Club } from './components/Club';
 import { SaveIndicator, SavesList } from './components/Saves';
-import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, useGame, useSaveStatus } from './game/state';
+import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, syncCoachMarketFromRoster, useGame, useSaveStatus } from './game/state';
 import { regularSeasonLength, seasonDate } from './game/schedule';
 import { effectivePayroll } from './game/cap';
 import { countRosterLegionnaires, teamForeignLimit } from './game/legionnaires';
@@ -72,6 +72,12 @@ export default function App() {
   useEffect(() => {
     if (phase === 'offseason') setView('offseason');
   }, [phase]);
+
+  // Older careers kept the built-in coach list: pick up `freeCoaches` from roster.json once.
+  const coachSource = s?.coachMarketSource;
+  useEffect(() => {
+    if (saveId && coachSource !== 'roster') void syncCoachMarketFromRoster(saveId);
+  }, [saveId, coachSource]);
 
   const api = useMemo<UIApi>(
     () => ({

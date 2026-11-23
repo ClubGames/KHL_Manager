@@ -1,4 +1,4 @@
-import type { CoachRole, Coach, GameState, Player, Team, TeamFocus, TeamIntervention, TeamManagement } from '../types';
+import type { CoachProfile, CoachRole, Coach, GameState, Player, Team, TeamFocus, TeamIntervention, TeamManagement } from '../types';
 import { COACH_PROFILES, defaultCoachMarket, defaultStaff } from './coachData';
 import { getOfficialClubPalette, OFFICIAL_KHL_PALETTES } from './clubColors';
 import { clamp, mean } from './ratings';
@@ -19,12 +19,21 @@ export const INTERVENTIONS: Record<TeamIntervention, { label: string; descriptio
 function finite(v: unknown, fallback: number, lo: number, hi: number): number {
   return typeof v === 'number' && Number.isFinite(v) ? clamp(v, lo, hi) : fallback;
 }
+const PROFILE_ALIASES: Record<string, CoachProfile> = {
+  motivation: 'motivator', 'мотиватор': 'motivator', mentor: 'development', 'наставник': 'development', 'развитие': 'development',
+  offense: 'attack', offensive: 'attack', 'атакующий': 'attack', defensive: 'defense', 'оборонительный': 'defense', system: 'balanced', 'системный': 'balanced',
+};
+function coachProfile(v: unknown, fallback: CoachProfile): CoachProfile {
+  if (typeof v !== 'string') return fallback;
+  if (Object.prototype.hasOwnProperty.call(COACH_PROFILES, v)) return v as CoachProfile;
+  return PROFILE_ALIASES[v.trim().toLowerCase()] ?? fallback;
+}
 export function normalizeCoach(raw: unknown, fallback: Coach): Coach {
   if (!raw || typeof raw !== 'object') return { ...fallback };
   const r = raw as Partial<Coach>;
-  const profile = typeof r.profile === 'string' && Object.prototype.hasOwnProperty.call(COACH_PROFILES, r.profile) ? r.profile : fallback.profile;
+  const profile = coachProfile(r.profile, fallback.profile);
   const c: Coach = { ...fallback, ...COACH_PROFILES[profile], profile };
-  delete c.source; delete c.snapshot; delete c.acting; delete c.actingFromAssistant;
+  delete c.source; delete c.snapshot; delete c.acting; delete c.actingFromAssistant; delete c.label;
   c.id = typeof r.id === 'string' && r.id.trim() ? r.id.trim().slice(0, 120) : fallback.id;
   c.name = typeof r.name === 'string' && r.name.trim() ? r.name.trim().slice(0, 100) : fallback.name;
   for (const k of ['attack', 'defense', 'special', 'development', 'motivation'] as const) c[k] = finite(r[k], c[k], 40, 95);
@@ -32,6 +41,7 @@ export function normalizeCoach(raw: unknown, fallback: Coach): Coach {
   c.fictional = typeof r.fictional === 'boolean' ? r.fictional : !r.source;
   if (typeof r.source === 'string' && /^https:\/\//.test(r.source)) c.source = r.source.slice(0, 800);
   if (typeof r.snapshot === 'string') c.snapshot = r.snapshot.slice(0, 40);
+  if (typeof r.label === 'string' && r.label.trim()) c.label = r.label.trim().slice(0, 30);
   if (typeof r.acting === 'boolean') c.acting = r.acting && c.role === 'head';
   if (typeof r.actingFromAssistant === 'boolean') c.actingFromAssistant = r.actingFromAssistant && !!c.acting;
   return c;
@@ -77,6 +87,21 @@ export function ensureCoachingState(s: GameState) {
     return [c];
   });
   s.coachMarketVersion = 2;
+}
+
+/**
+ * Careers started before free coaches were read from roster.json still hold the built-in list
+ * (`market-*` ids). Replace those entries with the roster's `freeCoaches`; coaches released during
+ * the career stay on the market, and anyone already in a club staff is skipped. Runs once per save.
+ */
+export function adoptRosterCoachMarket(s: GameState, freeCoaches: Coach[]): boolean {
+  if (s.coachMarketSource === 'roster') return false;
+  const kept = (s.coachMarket ?? []).filter((c) => !c?.id?.startsWith('market-'));
+  s.coachMarket = [...kept, ...freeCoaches.map((c) => ({ ...c }))];
+  s.coachMarketVersion = 2;
+  s.coachMarketSource = 'roster';
+  ensureCoachingState(s);
+  return true;
 }
 
 export interface CoachingEffects { attack: number; defense: number; special: number; development: number; goalie: number }
