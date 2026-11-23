@@ -17617,7 +17617,8 @@
         "puckControl": 86,
         "checking": 72,
         "defense": 70
-      }
+      },
+      "snapshot": "2026/27 · 23.11.2026"
     },
     {
       "id": "fa-02",
@@ -17637,7 +17638,8 @@
         "puckControl": 77,
         "checking": 74,
         "defense": 68
-      }
+      },
+      "snapshot": "2026/27 · 23.11.2026"
     },
     {
       "id": "fa-03",
@@ -17657,7 +17659,8 @@
         "puckControl": 60,
         "checking": 30,
         "defense": 78
-      }
+      },
+      "snapshot": "2026/27 · 23.11.2026"
     },
     {
       "id": "fa-04",
@@ -17677,7 +17680,8 @@
         "puckControl": 73,
         "checking": 82,
         "defense": 84
-      }
+      },
+      "snapshot": "2026/27 · 23.11.2026"
     },
     {
       "id": "fa-05",
@@ -17697,7 +17701,8 @@
         "puckControl": 76,
         "checking": 70,
         "defense": 65
-      }
+      },
+      "snapshot": "2026/27 · 23.11.2026"
     },
     {
       "id": "fa-06",
@@ -17717,7 +17722,8 @@
         "puckControl": 78,
         "checking": 71,
         "defense": 64
-      }
+      },
+      "snapshot": "2026/27 · 23.11.2026"
     },
     {
       "id": "fa-07",
@@ -17737,7 +17743,8 @@
         "puckControl": 73,
         "checking": 78,
         "defense": 69
-      }
+      },
+      "snapshot": "2026/27 · 23.11.2026"
     },
     {
       "id": "fa-08",
@@ -17757,7 +17764,8 @@
         "puckControl": 80,
         "checking": 68,
         "defense": 62
-      }
+      },
+      "snapshot": "2026/27 · 23.11.2026"
     },
     {
       "id": "fa-09",
@@ -17777,7 +17785,8 @@
         "puckControl": 76,
         "checking": 78,
         "defense": 79
-      }
+      },
+      "snapshot": "2026/27 · 23.11.2026"
     },
     {
       "id": "fa-10",
@@ -17797,7 +17806,237 @@
         "puckControl": 75,
         "checking": 74,
         "defense": 66
-      }
+      },
+      "snapshot": "2026/27 · 23.11.2026"
+    },
+    {
+      "id": "fa-2026-02",
+      "name": "Мартин Гернат",
+      "position": "З",
+      "age": 33,
+      "height": 190,
+      "weight": 90,
+      "number": 0,
+      "country": "Словакия",
+      "overall": 82,
+      "potential": 82,
+      "skills": {
+        "skating": 82,
+        "shooting": 77,
+        "passing": 82,
+        "puckControl": 81,
+        "checking": 85,
+        "defense": 86
+      },
+      "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
+      "source": "https://sport24.ru/hockey/article-882204-olimpiyskiy-chempion-gusev-legionery-chempiony-poteryavshiy-rabotu-svechnikov-5-luchshikh-svobodnykh-agentov-kkhl",
+      "snapshot": "2026/27 · 23.11.2026"
+    },
+    {
+      "id": "fa-2026-03",
+      "name": "Байрон Фрейз",
+      "position": "Ц",
+      "age": 35,
+      "height": 183,
+      "weight": 91,
+      "number": 0,
+      "country": "Канада",
+      "overall": 76,
+      "potential": 76,
+      "skills": {
+        "skating": 78,
+        "shooting": 78,
+        "passing": 76,
+        "puckControl": 77,
+        "checking": 71,
+        "defense": 72
+      },
+      "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
+      "source": "https://sport24.ru/hockey/article-882204-olimpiyskiy-chempion-gusev-legionery-chempiony-poteryavshiy-rabotu-svechnikov-5-luchshikh-svobodnykh-agentov-kkhl",
+      "snapshot": "2026/27 · 23.11.2026"
+    },
+    {
+      "id": "fa-2026-06",
+      "name": "Артём Михеев",
+      "position": "Ц",
+      "age": 31,
+      "height": 184,
+      "weight": 85,
+      "number": 0,
+      "country": "Россия",
+      "overall": 74,
+      "potential": 75,
+      "skills": {
+        "skating": 76,
+        "shooting": 76,
+        "passing": 74,
+        "puckControl": 75,
+        "checking": 69,
+        "defense": 70
+      },
+      "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
+      "source": "https://sport24.ru/hockey/article-882204-olimpiyskiy-chempion-gusev-legionery-chempiony-poteryavshiy-rabotu-svechnikov-5-luchshikh-svobodnykh-agentov-kkhl",
+      "snapshot": "2026/27 · 23.11.2026"
+    },
+    {
+      "id": "fa-2026-08",
+      "name": "Энди Андреофф",
+      "position": "Ц",
+      "age": 34,
+      "height": 183,
+      "weight": 91,
+      "number": 0,
+      "country": "Канада",
+      "overall": 75,
+      "potential": 75,
+      "skills": {
+        "skating": 77,
+        "shooting": 77,
+        "passing": 75,
+        "puckControl": 76,
+        "checking": 70,
+        "defense": 71
+      },
+      "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
+      "source": "https://www.championat.com/hockey/article-6650058-kakie-legionery-khl-nahodyatsya-bez-kontrakta-kakie-inostrannye-igroki-khl-ostayutsya-svobodnymi-agentami.html",
+      "snapshot": "2026/27 · 23.11.2026"
+    },
+    {
+      "id": "fa-2026-09",
+      "name": "Тайлер Уозерспун",
+      "position": "З",
+      "age": 32,
+      "height": 183,
+      "weight": 86,
+      "number": 0,
+      "country": "Канада",
+      "overall": 75,
+      "potential": 75,
+      "skills": {
+        "skating": 75,
+        "shooting": 70,
+        "passing": 75,
+        "puckControl": 74,
+        "checking": 78,
+        "defense": 79
+      },
+      "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
+      "source": "https://www.championat.com/hockey/article-6650058-kakie-legionery-khl-nahodyatsya-bez-kontrakta-kakie-inostrannye-igroki-khl-ostayutsya-svobodnymi-agentami.html",
+      "snapshot": "2026/27 · 23.11.2026"
+    },
+    {
+      "id": "fa-2026-10",
+      "name": "Бен Харпур",
+      "position": "З",
+      "age": 31,
+      "height": 193,
+      "weight": 101,
+      "number": 0,
+      "country": "Канада",
+      "overall": 74,
+      "potential": 74,
+      "skills": {
+        "skating": 74,
+        "shooting": 69,
+        "passing": 74,
+        "puckControl": 73,
+        "checking": 77,
+        "defense": 78
+      },
+      "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
+      "source": "https://www.championat.com/hockey/article-6650058-kakie-legionery-khl-nahodyatsya-bez-kontrakta-kakie-inostrannye-igroki-khl-ostayutsya-svobodnymi-agentami.html",
+      "snapshot": "2026/27 · 23.11.2026"
+    },
+    {
+      "id": "fa-2026-11",
+      "name": "Маркус Филлипс",
+      "position": "З",
+      "age": 27,
+      "height": 188,
+      "weight": 88,
+      "number": 0,
+      "country": "Канада",
+      "overall": 74,
+      "potential": 76,
+      "skills": {
+        "skating": 74,
+        "shooting": 69,
+        "passing": 74,
+        "puckControl": 73,
+        "checking": 77,
+        "defense": 78
+      },
+      "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
+      "source": "https://www.championat.com/hockey/article-6650058-kakie-legionery-khl-nahodyatsya-bez-kontrakta-kakie-inostrannye-igroki-khl-ostayutsya-svobodnymi-agentami.html",
+      "snapshot": "2026/27 · 23.11.2026"
+    },
+    {
+      "id": "fa-2026-12",
+      "name": "Ник Эберт",
+      "position": "З",
+      "age": 32,
+      "height": 188,
+      "weight": 94,
+      "number": 0,
+      "country": "США",
+      "overall": 76,
+      "potential": 76,
+      "skills": {
+        "skating": 76,
+        "shooting": 71,
+        "passing": 76,
+        "puckControl": 75,
+        "checking": 79,
+        "defense": 80
+      },
+      "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
+      "source": "https://www.championat.com/hockey/article-6650058-kakie-legionery-khl-nahodyatsya-bez-kontrakta-kakie-inostrannye-igroki-khl-ostayutsya-svobodnymi-agentami.html",
+      "snapshot": "2026/27 · 23.11.2026"
+    },
+    {
+      "id": "fa-2026-13",
+      "name": "Пьеррик Дюбе",
+      "position": "ЛК",
+      "age": 25,
+      "height": 183,
+      "weight": 84,
+      "number": 0,
+      "country": "Канада",
+      "overall": 75,
+      "potential": 79,
+      "skills": {
+        "skating": 77,
+        "shooting": 77,
+        "passing": 75,
+        "puckControl": 76,
+        "checking": 70,
+        "defense": 71
+      },
+      "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
+      "source": "https://www.championat.com/hockey/article-6650058-kakie-legionery-khl-nahodyatsya-bez-kontrakta-kakie-inostrannye-igroki-khl-ostayutsya-svobodnymi-agentami.html",
+      "snapshot": "2026/27 · 23.11.2026"
+    },
+    {
+      "id": "fa-2026-14",
+      "name": "Хантер Шепард",
+      "position": "В",
+      "age": 30,
+      "height": 185,
+      "weight": 88,
+      "number": 0,
+      "country": "США",
+      "overall": 77,
+      "potential": 77,
+      "skills": {
+        "reflexes": 80,
+        "positioning": 78,
+        "reboundControl": 77,
+        "puckHandling": 69,
+        "endurance": 78
+      },
+      "availabilityNote": "Расторг контракт с «Барысом» 17.11.2026",
+      "source": "https://public-aws-stage.rotowire.com/hockey/news.php?view=free-agents",
+      "snapshot": "2026/27 · 23.11.2026"
     }
   ],
   "freeCoaches": [
@@ -18004,6 +18243,42 @@
       "source": "https://www.khl.ru/news/2017/09/26/360717.html",
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по подтверждённой тренерской карьере, результатам и стилю команд; не официальная статистика"
+    },
+    {
+      "id": "free-coach-tambiev",
+      "name": "Леонид Тамбиев",
+      "role": "head",
+      "profile": "defense",
+      "label": "Оборонительный",
+      "attack": 82,
+      "defense": 88,
+      "special": 84,
+      "development": 80,
+      "motivation": 86,
+      "salary": 24000000,
+      "fictional": false,
+      "source": "https://www.kommersant.ru/doc/9112512",
+      "snapshot": "2026/27 · 23.11.2026",
+      "ratingBasis": "Игровая оценка по тренерской карьере, результатам и стилю команд; не официальная статистика",
+      "availabilityNote": "Контракт с московским «Динамо» расторгнут 18.11.2026"
+    },
+    {
+      "id": "free-coach-pavel-zubov",
+      "name": "Павел Зубов",
+      "role": "head",
+      "profile": "defense",
+      "label": "Оборонительный",
+      "attack": 76,
+      "defense": 82,
+      "special": 79,
+      "development": 80,
+      "motivation": 78,
+      "salary": 15000000,
+      "fictional": false,
+      "source": "https://www.sport24.ru/hockey/article-larionov-ne-naydet-komandu-posle-provala-v-ska-a-rotenberg-zhdet-otstavki-v-dinamo-5-bezrabotnykh-trenerov-kkhl",
+      "snapshot": "2026/27 · 23.11.2026",
+      "ratingBasis": "Игровая оценка по тренерской карьере, результатам и стилю команд; не официальная статистика",
+      "availabilityNote": "Уволен из «Лады» в начале сезона 2026/27"
     }
   ]
 }
