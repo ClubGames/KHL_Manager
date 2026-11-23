@@ -24,7 +24,7 @@ export function normalizeCoach(raw: unknown, fallback: Coach): Coach {
   const r = raw as Partial<Coach>;
   const profile = typeof r.profile === 'string' && Object.prototype.hasOwnProperty.call(COACH_PROFILES, r.profile) ? r.profile : fallback.profile;
   const c: Coach = { ...fallback, ...COACH_PROFILES[profile], profile };
-  delete c.source; delete c.snapshot;
+  delete c.source; delete c.snapshot; delete c.acting;
   c.id = typeof r.id === 'string' && r.id.trim() ? r.id.trim().slice(0, 120) : fallback.id;
   c.name = typeof r.name === 'string' && r.name.trim() ? r.name.trim().slice(0, 100) : fallback.name;
   for (const k of ['attack', 'defense', 'special', 'development', 'motivation'] as const) c[k] = finite(r[k], c[k], 40, 95);
@@ -32,6 +32,7 @@ export function normalizeCoach(raw: unknown, fallback: Coach): Coach {
   c.fictional = typeof r.fictional === 'boolean' ? r.fictional : !r.source;
   if (typeof r.source === 'string' && /^https:\/\//.test(r.source)) c.source = r.source.slice(0, 800);
   if (typeof r.snapshot === 'string') c.snapshot = r.snapshot.slice(0, 40);
+  if (r.acting === true && c.role === 'head') c.acting = true;
   return c;
 }
 export function ensureTeamManagement(t: Team): TeamManagement {

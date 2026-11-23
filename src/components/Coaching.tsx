@@ -10,7 +10,7 @@ const signed = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}`;
 function CoachCard({ coach }: { coach: Coach }) {
   return <div className="rounded-md border border-line bg-panel2/60 p-3 space-y-2" data-coach={coach.id}>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div><div className="text-[11px] text-muted uppercase">{COACH_ROLE_LABEL[coach.role]}</div><div className="font-display text-lg">{coach.name}</div></div>
+      <div><div className="text-[11px] text-muted uppercase">{coach.acting ? 'И. о. главного тренера' : COACH_ROLE_LABEL[coach.role]}</div><div className="font-display text-lg">{coach.name}</div></div>
       <Tag color="#8FD8F0">{COACH_PROFILES[coach.profile].label}</Tag>
     </div>
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
@@ -27,7 +27,7 @@ export function StaffSummary({ team }: { team: Team }) {
   const ui = useUI(); const s = useGame()!;
   return <Panel title="Тренерский штаб" right={team.id === s.userTeamId ? <Button size="sm" onClick={() => ui.nav('club')}>Управление командой →</Button> : undefined}>
     <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm" data-staff-summary>
-      {(team.coaches ?? []).map((c) => <div key={c.role}><span className="text-muted text-xs">{COACH_ROLE_LABEL[c.role]}: </span><b>{c.name}</b> <span className="text-xs text-ice">{COACH_PROFILES[c.profile].label}</span></div>)}
+      {(team.coaches ?? []).map((c) => <div key={c.role}><span className="text-muted text-xs">{c.acting ? 'И. о. главного тренера' : COACH_ROLE_LABEL[c.role]}: </span><b>{c.name}</b> <span className="text-xs text-ice">{COACH_PROFILES[c.profile].label}</span></div>)}
     </div>
     <p className="text-[11px] text-muted mt-2">Имена — справочный срез {STAFF_SNAPSHOT}; специализации, рейтинги и зарплаты условные игровые. В «Клубе» можно заменить тренера и изменить подготовку.</p>
   </Panel>;
@@ -100,7 +100,7 @@ export function Coaching() {
 
     <Panel title="Тренерский штаб" right={<span className="text-xs text-muted">{formatMoney(staffPay)}/год вне потолка игроков</span>}>
       <div className="grid md:grid-cols-2 gap-3">{t.coaches?.map((coach) => <CoachCard key={coach.role} coach={coach} />)}</div>
-      <p className="text-xs text-muted mt-3">Имена — справочный срез {STAFF_SNAPSHOT}, не актуальный онлайн-список назначений. Представлены главный и один ассистент каждого клуба, не весь реальный штаб. Рейтинги, профили и зарплаты — условные игровые параметры.</p>
+      <p className="text-xs text-muted mt-3">Имена — справочный срез {STAFF_SNAPSHOT}, зафиксирован на указанную дату, без онлайн-обновления. Представлены главный и один ассистент каждого клуба, не весь реальный штаб. Рейтинги, профили и зарплаты — условные игровые параметры.</p>
     </Panel>
 
     <Panel title="Рынок тренеров" right={<span className="text-xs text-muted">Бюджет: {formatMoney(t.budget)}</span>}>

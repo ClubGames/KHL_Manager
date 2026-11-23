@@ -32,10 +32,24 @@ test('22 real starting staffs and editable roster entries; fictional market is s
   const raw = JSON.parse(rosterText);
   for (const id of s.teamOrder) {
     assert.equal(s.teams[id].coaches?.length, 2);
-    assert.equal(raw.teams.find((t: { id: string }) => t.id === id).coaches.length, 2);
-    assert.ok(s.teams[id].coaches!.every((c) => c.source && !c.fictional && c.snapshot === '2025/26'));
+    const entries = raw.teams.find((t: { id: string }) => t.id === id).coaches;
+    assert.deepEqual(entries, defaultStaff(id).map((c, i) => ({ ...entries[i], ...c })));
+    assert.deepEqual(s.teams[id].coaches!.map((c) => c.name), REAL_STAFF[id].slice(0, 2));
+    assert.ok(s.teams[id].coaches!.every((c) => c.source && !c.fictional && c.snapshot === '2026/27 · 23.11.2026'));
   }
   assert.equal(s.coachMarket?.length, 10); assert.ok(s.coachMarket!.every((c) => c.fictional && !c.source));
+});
+test('autumn appointments, interim status and existing historical saves', () => {
+  const s = fresh();
+  assert.equal(s.teams.ska.coaches![0].name, 'Андрей Разин');
+  assert.equal(s.teams['metallurg-mg'].coaches![0].name, 'Константин Шафранов');
+  assert.equal(s.teams.lada.coaches![0].name, 'Игорь Горбенко');
+  assert.equal(s.teams['dinamo-msk'].coaches![0].acting, true);
+  assert.ok(!s.teams['dinamo-msk'].coaches![1].acting);
+  Object.assign(user(s).coaches![0], { name: 'Игорь Ларионов', snapshot: '2025/26' });
+  const before = copy(user(s).coaches);
+  G.migrateState(s); G.migrateState(s);
+  assert.deepEqual(user(s).coaches, before);
 });
 test('custom staff overrides and defensive normalisation', () => {
   const r = JSON.parse(rosterText);
@@ -49,7 +63,7 @@ test('custom staff overrides and defensive normalisation', () => {
 });
 test('legacy migration is idempotent and preserves hired staff, market and decisions', () => {
   const s = fresh(); for (const t of Object.values(s.teams)) { delete t.coaches; delete t.management; } delete s.coachMarket;
-  assert.ok(G.migrateState(s)); assert.equal(user(s).coaches?.[0].name, 'Игорь Ларионов');
+  assert.ok(G.migrateState(s)); assert.equal(user(s).coaches?.[0].name, 'Андрей Разин');
   const candidate = s.coachMarket!.find((c) => c.role === 'assistant')!;
   assert.equal(hireCoach(s, candidate.id), null); changeTeamFocus(s, 'recovery'); interveneTeam(s, 'bonding');
   const saved = JSON.stringify({ staff: user(s).coaches, m: user(s).management, market: s.coachMarket });
@@ -154,9 +168,10 @@ test('SSR staff, market, focus controls and dashboard navigation render for old 
   const s = fresh(); G.store.set(s);
   const context = { openPlayer() {}, openGame() {}, confirm() {}, nav() {}, tradeWith() {}, negotiate() {} };
   const render = (component: React.ReactNode) => renderToStaticMarkup(<UIContext.Provider value={context}>{component}</UIContext.Provider>);
-  const html = render(<Coaching />); assert.ok(html.includes('Игорь Ларионов')); assert.ok(html.includes('Командная подготовка')); assert.ok(html.includes('Рынок тренеров'));
-  assert.ok(html.includes('Вымышленный специалист')); assert.ok(html.includes('2025/26')); assert.ok(html.includes('aria-pressed="true"'));
+  const html = render(<Coaching />); assert.ok(html.includes('Андрей Разин')); assert.ok(html.includes('Командная подготовка')); assert.ok(html.includes('Рынок тренеров'));
+  assert.ok(html.includes('Вымышленный специалист')); assert.ok(html.includes('2026/27 · 23.11.2026')); assert.ok(html.includes('aria-pressed="true"'));
   assert.ok(render(<StaffSummary team={s.teams.avangard} />).includes('Ги Буше'));
+  assert.ok(render(<StaffSummary team={s.teams['dinamo-msk']} />).includes('И. о. главного тренера'));
   assert.ok(render(<Dashboard onPlay={() => {}} />).includes('Управление командой'));
 });
 

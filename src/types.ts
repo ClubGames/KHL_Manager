@@ -23,6 +23,7 @@ export interface Coach {
   fictional: boolean;
   source?: string;
   snapshot?: string;
+  acting?: boolean; // Reference appointment was interim at the snapshot date.
 }
 export type TeamFocus = 'balanced' | 'attack' | 'defense' | 'special' | 'recovery';
 export type TeamIntervention = 'support' | 'demand' | 'bonding';
