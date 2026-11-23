@@ -1,3 +1,4 @@
+import { coachingEffects } from './coaching';
 import type { GameState, Lineup, Player, YouthTrainingPlan } from '../types';
 import { clamp, computeOverall, GOALIE_KEYS, isDefense, isGoalie, SKATER_KEYS, SKILL_LABELS } from './ratings';
 import { hasCaptainMentorOnLine } from './chemistry';
@@ -172,6 +173,7 @@ export function stepYouthTrainingWeek(
   const P = state.players;
   for (const tid of state.teamOrder) {
     const team = state.teams[tid];
+    const staffDevelopment = coachingEffects(team, P).development;
     for (const pid of team.players) {
       const p = P[pid];
       if (!p || !isYouthPlayer(p) || p.injury) continue;
@@ -188,7 +190,7 @@ export function stepYouthTrainingWeek(
       }
 
       const acadMult = academyXpMult(team.facilities?.academy ?? 1);
-      const gain = (4.2 + gap * 1.45) * roleMult * mentorMult * ageMult * moraleMult * plan.speedMult * acadMult;
+      const gain = (4.2 + gap * 1.45) * roleMult * mentorMult * ageMult * moraleMult * plan.speedMult * acadMult * staffDevelopment;
       p.trainingXp = (p.trainingXp ?? 0) + gain;
 
       if (p.trainingXp >= 100) {

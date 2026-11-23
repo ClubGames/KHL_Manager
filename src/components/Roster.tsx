@@ -1,3 +1,4 @@
+import { StaffSummary } from './Coaching';
 import { useEffect, useMemo, useState } from 'react';
 import type { Player } from '../types';
 import { formatMoney, isDefense, isForward, isGoalie, POS_NAME, salaryDemand, SKILL_LABELS, skillList } from '../game/ratings';
@@ -117,6 +118,7 @@ export function Roster({ teamId }: { teamId?: string }) {
   const counts = { F: all.filter(isForward).length, D: all.filter(isDefense).length, G: all.filter(isGoalie).length };
   return (
     <div className="space-y-4 fade-in">
+      <StaffSummary team={team} />
       {/* Legionnaire Limit & Cap Compliance Summary Strip */}
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-panel px-4 py-2.5 text-xs" data-roster-limits>
         <div className="flex flex-wrap items-center gap-2.5">

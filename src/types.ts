@@ -7,6 +7,38 @@ export type ForecheckStyle = 'aggressive' | 'balanced' | 'trap';
 export type AttackStyle = 'shoot' | 'balanced' | 'cycle';
 export type PullGoaliePolicy = 'early' | 'normal' | 'never';
 
+export type CoachRole = 'head' | 'assistant';
+export type CoachProfile = 'balanced' | 'attack' | 'defense' | 'development' | 'motivator';
+export interface Coach {
+  id: string;
+  name: string;
+  role: CoachRole;
+  profile: CoachProfile;
+  attack: number;
+  defense: number;
+  special: number;
+  development: number;
+  motivation: number;
+  salary: number;
+  fictional: boolean;
+  source?: string;
+  snapshot?: string;
+}
+export type TeamFocus = 'balanced' | 'attack' | 'defense' | 'special' | 'recovery';
+export type TeamIntervention = 'support' | 'demand' | 'bonding';
+export interface TeamManagement {
+  focus: TeamFocus;
+  focusDays: number;
+  load: number;
+  cohesion: number;
+  trust: number;
+  familiarity: number;
+  meetingCooldown: number;
+  staffCooldown: Record<CoachRole, number>;
+  disciplineDays: number;
+  lastAction?: string;
+}
+
 export interface TeamTactics {
   forecheck: ForecheckStyle;
   style: AttackStyle;
@@ -206,6 +238,9 @@ export interface Team {
   roadStreak?: number;
   /** club infrastructure & staff levels (1..5) */
   facilities?: ClubFacilities;
+  /** Persistent staff and team-wide preparation; optional for legacy saves. */
+  coaches?: Coach[];
+  management?: TeamManagement;
   /** cumulative live home-gate revenue earned during the current season */
   seasonGateRevenue?: number;
 }
@@ -515,6 +550,8 @@ export interface GameState {
   waivers?: WaiverItem[];
   /** incoming RFA offer sheets awaiting the user's decision */
   rfaOffers?: RfaOfferSheet[];
+  /** Free coaches persist across seasons, including dismissed real specialists. */
+  coachMarket?: Coach[];
   /** KHL All-Star Weekend result for the current season */
   allStar?: AllStarResult | null;
 }

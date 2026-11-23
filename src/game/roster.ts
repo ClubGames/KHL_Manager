@@ -1,3 +1,4 @@
+import { ensureTeamManagement } from './coaching';
 import type { Conference, Player, PosCode, Skills, Team } from '../types';
 import { computeOverall, isGoalie } from './ratings';
 import { autoLineup } from './ai';
@@ -266,6 +267,8 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
       tactics: defaultTactics(),
       facilities: defaultFacilities(Math.max(0, num(t?.budget, 1_500_000_000))),
     };
+    if (Array.isArray(t?.coaches)) team.coaches = t.coaches;
+    ensureTeamManagement(team);
     const hasExplicitNmc = ids.some((pid) => players[pid]?.nmc !== undefined);
     if (!hasExplicitNmc) {
       const vetStar = ids

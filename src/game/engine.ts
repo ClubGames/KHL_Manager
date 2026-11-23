@@ -1,3 +1,4 @@
+import type { CoachingEffects } from './coaching';
 import type { AttackStyle, ForecheckStyle, GameEvent, GameResult, Lineup, Player, PlayerGameLine, PullGoaliePolicy, ScoringPlay, ShotPoint, ShotZone, Strength, TeamGameStats, TeamTactics } from '../types';
 import { clamp, goalieSavePct, isGoalie, lineAttack, lineDefense, pairAttack, pairDefense, unitAttack, unitDefense } from './ratings';
 import { defaultTactics } from './defaults';
@@ -13,6 +14,7 @@ export interface SimTeam {
   chemGP?: Record<string, number>;
   leadershipBonus?: number;
   roadStreak?: number;
+  coaching?: CoachingEffects;
 }
 type TI = 0 | 1;
 type Mode = 'ev' | '4v4' | 'pp' | 'pk' | 'ot3' | 'ot5';
@@ -296,7 +298,7 @@ export class GameSim {
       const ids = this.onIce(i, li, mode, useU20);
       const skaters = skatersOf(ids, this.P);
       for (const id of skaters) this.teamOf[id] = i;
-      u = { ids, skaters, att: this.attackOf(i, li, mode, ids), def: this.defenseOf(i, li, mode, ids) };
+      u = { ids, skaters, att: this.attackOf(i, li, mode, ids) + (this.team(i).coaching?.attack ?? 0), def: this.defenseOf(i, li, mode, ids) + (this.team(i).coaching?.defense ?? 0) };
       this.units.set(key, u);
     }
     return u;
@@ -649,14 +651,14 @@ export class GameSim {
 
     const goalieId = emptyNet === o ? null : this.goalies[o];
     const g = goalieId ? this.P[goalieId] : null;
-    const gEffOvr = g ? effectiveGoalieOvr(g, this.team(o).roadStreak ?? 0) : 55;
+    const gEffOvr = g ? effectiveGoalieOvr(g, this.team(o).roadStreak ?? 0) + (this.team(o).coaching?.goalie ?? 0) : 55;
     let sv = goalieSavePct(gEffOvr) + ((g?.skills.endurance ?? 70) - 70) * 0.0003;
     const sa = goalieId ? this.line(goalieId).shotsAgainst : this.shots[i];
     if (sa > 22) sv -= Math.min(0.012, (sa - 22) * 0.0005);
     let q = 1 + ((sp.skills.shooting ?? 65) - 70) * 0.006;
     q *= fcI.xgMult * fcO.oppXgMult * stI.xgMult;
     if (this.focusUntil[i] > this.sec) q *= 1.05;
-    if (onPP) q *= PP_QUALITY;
+    if (onPP) q *= PP_QUALITY * (1 + (this.team(i).coaching?.special ?? 0)) / (1 + (this.team(o).coaching?.special ?? 0));
     if (onSH) q *= 0.75;
     if (mode === '4v4' || mode === 'ot3') q *= 1.1;
 
