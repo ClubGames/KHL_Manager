@@ -286,7 +286,7 @@ export const roundName = (r: number) => ['1/8 финала', '1/4 финала',
 
 export function createGameState(r: NormalizedRoster, userTeamId: string): GameState {
   const teamOrder = r.teams.map((t) => t.id);
-  const { days, nextId } = buildSchedule(teamOrder, r.gamesPerTeam, 1, r.season);
+  const { days, nextId } = buildSchedule(r.teams, r.gamesPerTeam, 1, r.season);
   const teams: Record<string, Team> = {};
   for (const t of r.teams) teams[t.id] = t;
   newsId = 1;

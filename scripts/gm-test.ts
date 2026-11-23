@@ -139,7 +139,7 @@ const cost = buyoutCost(s, victim), b1 = s.teams.ska.budget;
 const expect = Math.round((victim.contract.salary * (victim.contract.years - 1 + (1 - s.day / Math.max(1, s.schedule.length)))) / 3 / 1e5) * 1e5;
 const rel = G.releasePlayer(victim.id);
 check('termination costs a third of the money still owed', rel === null && cost === expect && cost > 0 && st().teams.ska.budget === b1 - cost && st().players[victim.id].teamId === null, `${(cost / 1e6).toFixed(1)} млн`);
-check('board sets a season objective', !!st().board.text && st().board.confidence === 60, `${st().board.text} (состав №${st().board.rank} по силе)`);
+check('board sets a season objective', !!st().board.text && st().board.confidence >= 45 && st().board.confidence <= 75, `${st().board.text} (состав №${st().board.rank} по силе, доверие ${st().board.confidence}; дерби двигают его на ±2–3)`);
 while (st().phase !== 'offseason') G.simulateDay(true);
 s = st();
 const sum = s.summaries[s.summaries.length - 1];

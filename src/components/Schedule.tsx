@@ -12,6 +12,7 @@ import {
 } from '../game/schedule';
 import { getTradeWindowsSchedule, novemberTradeFreeze, tradeDeadline } from '../game/ai';
 import { getDerby } from '../game/derbies';
+import { allStarTargetDay } from '../game/medical';
 import { roundName, useGame } from '../game/state';
 import { Button, Empty, Modal, Panel, TeamLogo, Tag, useUI } from './ui';
 import { ShotMap } from './ShotMap';
@@ -207,6 +208,8 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
   const regLen = regularSeasonLength(s.schedule);
   const deadlineDay = tradeDeadline(s);
   const freeze = novemberTradeFreeze(s);
+  const asgDay = allStarTargetDay(regLen);
+  const firstMatchDay = Math.max(0, s.schedule.findIndex((d) => d.length > 0));
   const windows = useMemo(() => getTradeWindowsSchedule(s), [s]);
 
   // Group all calendar dates into months (Sep .. Apr) for the Mon-Sun grid
@@ -266,6 +269,7 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
     .map((games, day) => ({ day, games }))
     .slice(from)
     .filter(({ games }) => {
+      if (!games.length) return false; // league pauses and days before the opener
       if (filter === 'mine') return games.some((g) => g.home === U || g.away === U);
       if (filter === 'po') return games.some((g) => g.kind === 'playoff');
       return true;
@@ -502,7 +506,9 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                         </div>
                       </>
                     ) : (
-                      <div className="hidden sm:block text-[10px] text-muted/60 mt-auto">{dayIdx !== null ? 'выходной клуба' : ''}</div>
+                      <div className="hidden sm:block text-[10px] text-muted/60 mt-auto">
+                        {dayIdx === null ? '' : dayIdx < regLen && games.length === 0 ? (dayIdx === asgDay ? 'Матч звёзд' : dayIdx < firstMatchDay ? 'до старта' : 'пауза КХЛ') : 'выходной клуба'}
+                      </div>
                     )}
                   </div>
                 );

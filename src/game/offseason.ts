@@ -282,7 +282,7 @@ export function beginNewSeason(state: GameState) {
     const opts = lineupConstraintsFor(state, t.id);
     t.lineup = t.id === user.id ? sanitizeLineup(t.lineup, t.players, P, opts) : autoLineup(t.players, P, opts);
   }
-  const { days, nextId } = buildSchedule(state.teamOrder, state.league.gamesPerTeam, 1, state.league.season);
+  const { days, nextId } = buildSchedule(state.teamOrder.map((id) => state.teams[id]), state.league.gamesPerTeam, 1, state.league.season);
   state.schedule = days;
   state.day = 0;
   state.nextGameId = nextId;
