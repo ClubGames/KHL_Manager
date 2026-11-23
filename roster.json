@@ -11538,8 +11538,8 @@
       "city": "Новосибирск",
       "conference": "Восток",
       "division": "Чернышёва",
-      "primaryColor": "#0B2D5C",
-      "secondaryColor": "#FFFFFF",
+      "primaryColor": "#FFFFFF",
+      "secondaryColor": "#0B2D5C",
       "budget": 1100000000,
       "players": [
         {
