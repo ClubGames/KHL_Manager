@@ -10,7 +10,7 @@ import { Button, Icon, Panel, PosBadge, shortName, TeamLogo } from './ui';
 import { cn } from '../utils/cn';
 import { GoalReplay } from './GoalReplay';
 import { ShotMap } from './ShotMap';
-import { advanceRinkClock, buildRinkTimeline, timelineFrame, timelineGoalClip, type RinkTimeline } from '../game/rinkPlayback';
+import { RinkAI, type PlayKind, type RinkPlay, type RinkTactics } from '../game/rinkAI';
 import { LiveRink } from './RinkView';
 import { LineupPreview } from './LineupPreview';
 import { previewPowerPlay } from '../game/lineupCompare';
@@ -18,6 +18,9 @@ import { ATTACK_STYLE_INFO, FORECHECK_INFO, freshnessTone, goalieFreshness, PULL
 import { formatMoney } from '../game/ratings';
 
 const RATE: Record<1 | 2 | 4, number> = { 1: 30, 2: 60, 4: 120 };
+/** Rink plays that also go to the match feed (the engine already reports shots, goals, penalties and hits). */
+const FEED_PLAYS = new Set<PlayKind>(['faceoff', 'takeaway', 'interception', 'block', 'icing']);
+const PLAY_ICON: Partial<Record<PlayKind, string>> = { faceoff: '◎', takeaway: '⇄', interception: '✂', block: '▣', icing: '⇥' };
 
 function cloneL(L: Lineup): Lineup {
   return {
@@ -70,6 +73,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const [showPostMap, setShowPostMap] = useState(true);
   const [showRink, setShowRink] = useState(true);
   const [mobileTab, setMobileTab] = useState<'live' | 'coach' | 'stats'>('live');
+  const land = useLandscapePhone();
   const [forecheck, setForecheckState] = useState<ForecheckStyle>(sim.tactics[userIdx].forecheck);
   const [attackStyle, setAttackStyleState] = useState<AttackStyle>(sim.tactics[userIdx].style);
   const [pullPolicy, setPullPolicyState] = useState<PullGoaliePolicy>(sim.tactics[userIdx].pullGoalie);
@@ -78,7 +82,13 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const [visibleGoalies, setVisibleGoalies] = useState<[string | null, string | null]>([sim.goalies[0], sim.goalies[1]]);
   const [, setCoachTick] = useState(0);
   const periodEvs = useRef<GameEvent[]>([]);
-  const rinkTimeline = useRef<RinkTimeline>([]);
+  // Agent-based rink simulation of the current period; `tau` is presentation time (keeps running at whistles).
+  const rinkAI = useRef<RinkAI | null>(null);
+  const tauRef = useRef(0);
+  const playIdx = useRef(0);
+  const iceSig = useRef('');
+  const doneTally = useRef<RinkTally>({ faceoff: [0, 0], block: [0, 0], takeaway: [0, 0], icing: [0, 0] });
+  const paceRef = useRef<number>(RinkAI.PACE.cold);
   const idx = useRef(0);
   const clockRef = useRef(0);
   const blockStart = useRef(0);
@@ -90,14 +100,30 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const startBlock = () => {
     const k = blockKind();
     setVisibleGoalies([sim.team(0).lineup.starterG, sim.team(1).lineup.starterG]);
+    if (rinkAI.current) {
+      const t = rinkAI.current.tally(Infinity);
+      (Object.keys(t) as (keyof RinkTally)[]).forEach(key => { doneTally.current[key][0] += t[key][0]; doneTally.current[key][1] += t[key][1]; });
+      rinkAI.current = null;
+    }
     const evs = k === 'so' ? sim.simShootout() : k === 'reg' ? sim.simPeriod() : sim.simOT();
     periodEvs.current = evs;
     idx.current = 0;
     blockStart.current = evs[0]?.sec ?? sim.sec;
     blockEnd.current = sim.sec;
-    rinkTimeline.current = k === 'so' ? [] : buildRinkTimeline(evs, H, A, P, blockStart.current, blockEnd.current);
+    rinkAI.current = k === 'so' ? null : new RinkAI(evs, H, A, P, blockStart.current, blockEnd.current, {
+      suddenDeath: k !== 'reg',
+      goalies: [sim.team(0).lineup.starterG || null, sim.team(1).lineup.starterG || null],
+      tactics: (): RinkTactics => [
+        { forecheck: sim.tactics[0].forecheck, style: sim.tactics[0].style },
+        { forecheck: sim.tactics[1].forecheck, style: sim.tactics[1].style },
+      ],
+    });
+    tauRef.current = 0;
+    playIdx.current = 0;
+    iceSig.current = '';
+    paceRef.current = RinkAI.PACE.cold;
     clockRef.current = blockStart.current;
-    ticker.set(blockStart.current);
+    ticker.set(blockStart.current, 0);
     setCurIce(null);
     setCurLines([0, 0]);
     setKind(k);
@@ -113,18 +139,36 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     const loop = (t: number) => {
       const dt = Math.min(0.1, (t - last) / 1000);
       last = t;
-      clockRef.current = rinkTimeline.current.length ? advanceRinkClock(rinkTimeline.current, clockRef.current, dt, speed) : clockRef.current + dt * RATE[speed];
+      const ai = rinkAI.current;
+      if (ai) {
+        // Highlights play near real time, routine skating is fast-forwarded; the change of pace is eased.
+        const want = ai.hot ? RinkAI.PACE.hot : RinkAI.PACE.cold;
+        paceRef.current += (want - paceRef.current) * Math.min(1, dt * 5);
+        tauRef.current = Math.min(tauRef.current + dt * speed * paceRef.current, ai.ended ? ai.lastTau : Infinity);
+        ai.ensure(tauRef.current);
+        // The game clock comes from the rink: it stands still from every whistle until the puck is dropped.
+        clockRef.current = Math.max(clockRef.current, ai.clockAt(tauRef.current));
+        if (ai.ended && tauRef.current >= ai.lastTau) clockRef.current = blockEnd.current;
+      } else clockRef.current += dt * RATE[speed];
       const evs = periodEvs.current;
       let c = Math.min(clockRef.current, blockEnd.current);
       let hitGoal = false;
       const newly: FeedItem[] = [];
+      if (ai) {
+        // Faceoffs, takeaways, blocks and icings happen on the rink and are reported as they are seen.
+        while (playIdx.current < ai.plays.length && ai.plays[playIdx.current].tau <= tauRef.current) {
+          const p = ai.plays[playIdx.current++];
+          if (!FEED_PLAYS.has(p.kind)) continue;
+          newly.push({ k: seq.current++, play: p, e: { type: 'info', sec: p.g, period: evs[0]?.period ?? 1, time: fmtClock(Math.max(0, blockEnd.current - p.g)), team: p.side === null ? null : p.side ? game.away : game.home, text: p.text } });
+        }
+      }
       while (idx.current < evs.length && evs[idx.current].sec <= c) {
         const e = evs[idx.current++];
         newly.push({ k: seq.current++, e });
         applyEvent(live.current, e, game.home);
         if (e.score) setScore(e.score);
-        if (e.lines) setCurLines(e.lines);
-        if (e.ice) setCurIce(e.ice);
+        if (!ai && e.lines) setCurLines(e.lines);
+        if (!ai && e.ice) setCurIce(e.ice);
         if (e.goalie !== undefined && e.team) {
           const defending = e.team === game.home ? 1 : 0;
           setVisibleGoalies(previous => { const next: [string | null, string | null] = [...previous]; next[defending] = e.goalie ?? null; return next; });
@@ -134,11 +178,28 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           window.setTimeout(() => setGoalFlash(null), 900);
           setReplayEvent(e);
           c = e.sec; clockRef.current = c; hitGoal = true;
+          if (rinkAI.current) tauRef.current = rinkAI.current.tauOf(e) ?? tauRef.current;
           break;
         }
       }
+      if (ai) {
+        // The on-ice panels follow the rink itself: line changes on the fly are visible the moment they happen.
+        const onIce = ai.frameAt(tauRef.current).skaters.filter(p => !p.goalie && !p.box);
+        const ice: [string[], string[]] = [onIce.filter(p => p.side === 0).map(p => p.id), onIce.filter(p => p.side === 1).map(p => p.id)];
+        const sig = ice.map(x => [...x].sort().join(',')).join('|');
+        if (sig !== iceSig.current) {
+          iceSig.current = sig;
+          setCurIce(ice);
+          setCurLines(([0, 1] as const).map(ti => {
+            const F = sim.team(ti).lineup.F;
+            let best = 0, hits = -1;
+            F.forEach((line, i) => { const n = line.filter(id => id && ice[ti].includes(id)).length; if (n > hits) { hits = n; best = i; } });
+            return best;
+          }) as [number, number]);
+        }
+      }
       if (newly.length) setFeed((f) => [...newly.reverse(), ...f]);
-      ticker.set(c);
+      ticker.set(c, tauRef.current);
       const mpNow = String(manpower(live.current, c).state);
       if (mpNow !== mpRef.current) {
         mpRef.current = mpNow;
@@ -215,9 +276,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       const revealed = periodEvs.current.slice(0, idx.current);
       const updated = sim.replanLivePeriod(revealed, clockRef.current, s.userTeamId, mutate);
       if (updated) {
-        const anchor = timelineFrame(rinkTimeline.current, clockRef.current) ?? undefined;
-        const playedMotion = rinkTimeline.current.filter(segment => segment.end <= clockRef.current);
-        rinkTimeline.current = [...playedMotion, ...buildRinkTimeline(updated.filter(e => e.sec > clockRef.current), H, A, P, clockRef.current, sim.sec, anchor)];
+        // The players keep skating from where they are; only the future of the period changes.
+        rinkAI.current?.setEvents(updated, sim.sec);
         periodEvs.current = updated;
         blockEnd.current = sim.sec;
         // Immediately reveal the coaching info event on the feed if present
@@ -392,159 +452,20 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const userTeam = s.teams[s.userTeamId];
   const userWon = res ? (res.homeScore > res.awayScore ? game.home : game.away) === userTeam.id : false;
 
-  return (
-    <div className="min-h-screen rink-lines flex flex-col fade-in">
-      <header className="sticky top-0 z-30 bg-panel/95 backdrop-blur border-b border-line">
-        {sim.derby && (
-          <div className="bg-gradient-to-r from-accent/25 via-gold/20 to-accent/25 border-b border-gold/30 px-3 py-1 text-center text-[11px] sm:text-xs truncate" data-derby-banner>
-            <span className="font-display uppercase tracking-wider font-bold text-gold">🔥 {sim.derby.title}</span>
-            <span className="hidden sm:inline text-text/85 ml-2">{sim.derby.subtitle}</span>
-            {game.home === s.userTeamId && (
-              <span className="text-ok ml-2 font-semibold">· +{formatMoney(sim.derby.gateBonus)}</span>
-            )}
-          </div>
-        )}
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3 grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-            <TeamLogo team={H} size={32} className="sm:w-10 sm:h-10" />
-            <div className="min-w-0">
-              <div className="font-display text-sm sm:text-xl uppercase leading-none truncate">
-                <span className="sm:hidden">{H.short}</span>
-                <span className="hidden sm:inline">{H.name}</span>
-              </div>
-              <div className="text-[10px] sm:text-[11px] text-muted truncate">дома · {H.record.points} очк.</div>
-            </div>
-            <span className="font-display text-3xl sm:text-5xl tabular leading-none ml-auto score-tick" key={`h${score[0]}`}>
-              {score[0]}
-            </span>
-          </div>
-          <div className="text-center px-1.5 sm:px-4 min-w-[82px] sm:min-w-[120px]">
-            <ClockFace ticker={ticker} end={blockEnd} shootout={kind === 'so'} />
-            <div className={cn('text-[10px] sm:text-[11px] uppercase tracking-widest mt-0.5 sm:mt-1', paused ? 'text-amber' : 'text-muted')}>{paused ? 'Пауза' : periodLabel || 'Старт'}</div>
-            <div className="min-h-[18px] mt-0.5 flex items-center justify-center">
-              {mp.state !== null && (
-                <span data-manpower className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide px-1.5 sm:px-2 py-0.5 rounded-sm bg-amber/15 text-amber tabular whitespace-nowrap">
-                  {mp.state === 'even' ? '4×4' : `ЧБ ${mp.state === 0 ? H.short : A.short}`} · <PenaltyTimer ticker={ticker} live={live} />
-                </span>
-              )}
-            </div>
-          </div>
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-row-reverse">
-            <TeamLogo team={A} size={32} className="sm:w-10 sm:h-10" />
-            <div className="min-w-0 text-right">
-              <div className="font-display text-sm sm:text-xl uppercase leading-none truncate">
-                <span className="sm:hidden">{A.short}</span>
-                <span className="hidden sm:inline">{A.name}</span>
-              </div>
-              <div className="text-[10px] sm:text-[11px] text-muted truncate">гости · {A.record.points} очк.</div>
-            </div>
-            <span className="font-display text-3xl sm:text-5xl tabular leading-none mr-auto score-tick" key={`a${score[1]}`}>
-              {score[1]}
-            </span>
-          </div>
-        </div>
-
-        {/* Sticky Mobile Live Control Strip + Section Tabs */}
-        <div className="lg:hidden border-t border-line/70 px-3 py-1.5 bg-bg/85 space-y-1.5">
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              disabled={status !== 'playing'}
-              onClick={() => setPaused((p) => !p)}
-              className={cn(
-                'px-2.5 py-1.5 rounded-sm text-xs font-semibold inline-flex items-center gap-1 border disabled:opacity-45',
-                paused ? 'bg-ice text-bg border-ice' : 'bg-panel2 text-text border-line'
-              )}
-            >
-              <Icon name={paused ? 'play' : 'pause'} className="w-3.5 h-3.5" />
-              {paused ? 'Возобновить' : 'Пауза'}
-            </button>
-            <div className="inline-flex rounded-sm border border-line bg-panel2 p-0.5">
-              {([1, 2, 4] as const).map((sp) => (
-                <button
-                  key={sp}
-                  type="button"
-                  onClick={() => setSpeed(sp)}
-                  className={cn('px-2 py-1 rounded-sm text-xs font-semibold tabular', speed === sp ? 'bg-ice text-bg' : 'text-muted')}
-                >
-                  ×{sp}
-                </button>
-              ))}
-            </div>
-            {!timeoutUsed && status !== 'done' && (
-              <button
-                type="button"
-                disabled={status === 'intro'}
-                onClick={callTimeoutNow}
-                className={cn(
-                  'px-2 py-1.5 rounded-sm text-xs font-semibold border disabled:opacity-45',
-                  sim.unansweredGoals[1 - userIdx] >= 2 ? 'bg-accent text-white border-accent' : 'bg-panel2 text-gold border-line'
-                )}
-              >
-                ⏱ Т-А
-              </button>
-            )}
-            {status !== 'done' && (
-              <button
-                type="button"
-                onClick={finishNow}
-                className="ml-auto px-2.5 py-1.5 rounded-sm text-xs font-semibold bg-panel2 border border-line text-muted hover:text-text"
-              >
-                В конец ⏭
-              </button>
-            )}
-          </div>
-
-          <div className="grid grid-cols-3 gap-1">
-            {([
-              ['live', 'Трансляция'],
-              ['coach', 'Мостик и звенья'],
-              ['stats', `Карта xG (${stats.shots[0]}:${stats.shots[1]})`],
-            ] as const).map(([id, lbl]) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => setMobileTab(id)}
-                className={cn(
-                  'py-1.5 px-1 rounded-sm text-[11px] font-semibold text-center truncate transition-colors',
-                  mobileTab === id ? 'bg-accent text-white' : 'bg-panel2/70 text-muted'
-                )}
-              >
-                {lbl}
-              </button>
-            ))}
-          </div>
-        </div>
-      </header>
-
-      <div className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-4 py-3 sm:py-4 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
-        <div className="space-y-3 min-w-0">
-          <div className={cn(mobileTab !== 'live' && 'hidden lg:block')}>
-            <button type="button" className="text-xs text-ice mb-2" aria-expanded={showRink} onClick={() => setShowRink(v => !v)}>{showRink ? 'Скрыть площадку 2D' : 'Показать площадку 2D'}</button>
-            {showRink && <LiveRink ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} timeline={rinkTimeline.current} running={status === 'playing' && !paused && !replayEvent} />}
-          </div>
-          <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-2', mobileTab !== 'live' && 'hidden lg:grid')}>
-            {renderOnIce(0)}
-            {renderOnIce(1)}
-          </div>
-          <div className={cn(mobileTab !== 'stats' && 'hidden lg:block')}>
-            <Panel title="Мини-карта опасных моментов (xG) и тепловая карта бросков">
+  // Rink-level hockey counted over the whole match (finished periods + what has been shown of the current one).
+  const shownTally = rinkAI.current?.tally(tauRef.current);
+  const rinkTally = status === 'intro' ? null : (() => {
+    const t = { faceoff: [...doneTally.current.faceoff], block: [...doneTally.current.block], takeaway: [...doneTally.current.takeaway], icing: [...doneTally.current.icing] } as RinkTally;
+    if (shownTally) (Object.keys(t) as (keyof RinkTally)[]).forEach(k => { t[k][0] += shownTally[k][0]; t[k][1] += shownTally[k][1]; });
+    return t;
+  })();
+  const shotMapPanel = (
+    <Panel title="Мини-карта опасных моментов (xG) и тепловая карта бросков">
               <ShotMap shots={stats.shotMap} home={H} away={A} players={P} compact />
             </Panel>
-          </div>
-          <div className={cn(mobileTab !== 'live' && 'hidden lg:block')}>
-            <Panel title="Хроника матча" noPad className="min-h-[260px]">
-              <div ref={feedRef} data-feed className="max-h-[46vh] sm:max-h-[42vh] overflow-y-auto divide-y divide-line/60">
-                {feed.length === 0 && status === 'playing' && <div className="p-4 text-muted text-sm">Игра началась…</div>}
-                <FeedRows feed={feed} onReplay={setReplayEvent} />
-              </div>
-            </Panel>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <div className={cn(mobileTab !== 'stats' && 'hidden lg:block')}>
-          <Panel title="Статистика" noPad>
+  );
+  const statsPanel = (
+    <Panel title="Статистика" noPad>
             <table className="w-full text-sm tabular" data-live-stats data-shots={`${stats.shots[0]}:${stats.shots[1]}`} data-periods={stats.periods.map((x) => x.join('-')).join(' ')}>
               <thead>
                 <tr className="text-[11px] uppercase tracking-wider text-muted">
@@ -574,6 +495,28 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
                   <td className="text-center text-xs text-muted">Большинство</td>
                   <td className="pr-4 py-1.5 text-right">{stats.ppGoals[1]}/{stats.ppChances[1]}</td>
                 </tr>
+                {rinkTally && (<>
+                  <tr className="border-t border-line/60" data-faceoffs={`${rinkTally.faceoff[0]}:${rinkTally.faceoff[1]}`}>
+                    <td className="pl-4 py-1.5">{rinkTally.faceoff[0]}</td>
+                    <td className="text-center text-xs text-muted">Выигр. вбрасывания</td>
+                    <td className="pr-4 py-1.5 text-right">{rinkTally.faceoff[1]}</td>
+                  </tr>
+                  <tr className="border-t border-line/60">
+                    <td className="pl-4 py-1.5">{rinkTally.block[0]}</td>
+                    <td className="text-center text-xs text-muted">Блок-шоты</td>
+                    <td className="pr-4 py-1.5 text-right">{rinkTally.block[1]}</td>
+                  </tr>
+                  <tr className="border-t border-line/60">
+                    <td className="pl-4 py-1.5">{rinkTally.takeaway[0]}</td>
+                    <td className="text-center text-xs text-muted">Отборы и перехваты</td>
+                    <td className="pr-4 py-1.5 text-right">{rinkTally.takeaway[1]}</td>
+                  </tr>
+                  <tr className="border-t border-line/60">
+                    <td className="pl-4 py-1.5">{rinkTally.icing[0]}</td>
+                    <td className="text-center text-xs text-muted">Проброс</td>
+                    <td className="pr-4 py-1.5 text-right">{rinkTally.icing[1]}</td>
+                  </tr>
+                </>)}
                 <tr className="border-t border-line/60">
                   <td className="pl-4 py-1.5">{stats.hits[0]}</td>
                   <td className="text-center text-xs text-muted">Силовые</td>
@@ -594,9 +537,9 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               </tbody>
             </table>
           </Panel>
-          </div>
-          <div className={cn('space-y-3', mobileTab !== 'coach' && 'hidden lg:block')}>
-          <Panel title="Тренерский мостик (на лету)" data-live-coaching>
+  );
+  const coachPanel = (
+    <Panel title="Тренерский мостик (на лету)" data-live-coaching>
             <div className="space-y-2.5 text-xs">
               <div>
                 <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Форчекинг и средняя зона</div>
@@ -692,6 +635,199 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               )}
             </div>
           </Panel>
+  );
+  const goaliesPanel = (
+    <Panel title="Вратари и свежесть">
+            <div className="text-xs space-y-1.5">
+              {([0, 1] as const).map((ti) => {
+                const gid = sim.goalies[ti];
+                const gp = gid ? P[gid] : null;
+                const fr = goalieFreshness(gp);
+                const ft = freshnessTone(fr);
+                const gl = goalieLine(ti);
+                return (
+                  <div key={ti} className="flex items-center justify-between gap-2">
+                    <span className="truncate">{goalieName(ti)}</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded tabular" style={{ background: ft.color + '22', color: ft.color }}>
+                      {fr}%
+                    </span>
+                    <span className="tabular text-muted">{gl ? `${gl.saves}/${gl.shotsAgainst}` : '—'}</span>
+                  </div>
+                );
+              })}
+            </div>
+          </Panel>
+  );
+  return (
+    <div className={cn('rink-lines flex flex-col', land ? 'h-[100dvh] overflow-hidden' : 'min-h-screen')} data-match-root>
+      <header className="sticky top-0 z-30 land:static land:shrink-0 bg-panel/95 backdrop-blur border-b border-line">
+        {sim.derby && (
+          <div className="bg-gradient-to-r from-accent/25 via-gold/20 to-accent/25 border-b border-gold/30 px-3 py-1 text-center text-[11px] sm:text-xs truncate land:hidden" data-derby-banner>
+            <span className="font-display uppercase tracking-wider font-bold text-gold">🔥 {sim.derby.title}</span>
+            <span className="hidden sm:inline text-text/85 ml-2">{sim.derby.subtitle}</span>
+            {game.home === s.userTeamId && (
+              <span className="text-ok ml-2 font-semibold">· +{formatMoney(sim.derby.gateBonus)}</span>
+            )}
+          </div>
+        )}
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3 land:py-1 land:px-[max(0.75rem,env(safe-area-inset-left))] grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <TeamLogo team={H} size={32} className="sm:w-10 sm:h-10" />
+            <div className="min-w-0">
+              <div className="font-display text-sm sm:text-xl uppercase leading-none truncate">
+                <span className="sm:hidden">{H.short}</span>
+                <span className="hidden sm:inline">{H.name}</span>
+              </div>
+              <div className="text-[10px] sm:text-[11px] text-muted truncate">дома · {H.record.points} очк.</div>
+            </div>
+            <span className="font-display text-3xl sm:text-5xl tabular leading-none ml-auto score-tick" key={`h${score[0]}`}>
+              {score[0]}
+            </span>
+          </div>
+          <div className="text-center px-1.5 sm:px-4 min-w-[82px] sm:min-w-[120px]">
+            <ClockFace ticker={ticker} end={blockEnd} shootout={kind === 'so'} />
+            <div className={cn('text-[10px] sm:text-[11px] uppercase tracking-widest mt-0.5 sm:mt-1', paused ? 'text-amber' : 'text-muted')}>{paused ? 'Пауза' : periodLabel || 'Старт'}</div>
+            <div className="min-h-[18px] land:min-h-0 mt-0.5 flex items-center justify-center">
+              {mp.state !== null && (
+                <span data-manpower className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide px-1.5 sm:px-2 py-0.5 rounded-sm bg-amber/15 text-amber tabular whitespace-nowrap">
+                  {mp.state === 'even' ? '4×4' : `ЧБ ${mp.state === 0 ? H.short : A.short}`} · <PenaltyTimer ticker={ticker} live={live} />
+                </span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-row-reverse">
+            <TeamLogo team={A} size={32} className="sm:w-10 sm:h-10" />
+            <div className="min-w-0 text-right">
+              <div className="font-display text-sm sm:text-xl uppercase leading-none truncate">
+                <span className="sm:hidden">{A.short}</span>
+                <span className="hidden sm:inline">{A.name}</span>
+              </div>
+              <div className="text-[10px] sm:text-[11px] text-muted truncate">гости · {A.record.points} очк.</div>
+            </div>
+            <span className="font-display text-3xl sm:text-5xl tabular leading-none mr-auto score-tick" key={`a${score[1]}`}>
+              {score[1]}
+            </span>
+          </div>
+        </div>
+
+        {/* Sticky Mobile Live Control Strip + Section Tabs */}
+        <div className="lg:hidden border-t border-line/70 px-3 py-1.5 bg-bg/85 space-y-1.5 land:flex land:items-center land:gap-3 land:space-y-0 land:py-1 land:px-[max(0.75rem,env(safe-area-inset-left))]">
+          <div className="flex items-center gap-1.5 land:order-2 land:shrink-0">
+            <button
+              type="button"
+              disabled={status !== 'playing'}
+              onClick={() => setPaused((p) => !p)}
+              className={cn(
+                'px-2.5 py-1.5 rounded-sm text-xs font-semibold inline-flex items-center gap-1 border disabled:opacity-45',
+                paused ? 'bg-ice text-bg border-ice' : 'bg-panel2 text-text border-line'
+              )}
+            >
+              <Icon name={paused ? 'play' : 'pause'} className="w-3.5 h-3.5" />
+              {paused ? 'Возобновить' : 'Пауза'}
+            </button>
+            <div className="inline-flex rounded-sm border border-line bg-panel2 p-0.5">
+              {([1, 2, 4] as const).map((sp) => (
+                <button
+                  key={sp}
+                  type="button"
+                  onClick={() => setSpeed(sp)}
+                  className={cn('px-2 py-1 rounded-sm text-xs font-semibold tabular', speed === sp ? 'bg-ice text-bg' : 'text-muted')}
+                >
+                  ×{sp}
+                </button>
+              ))}
+            </div>
+            {!timeoutUsed && status !== 'done' && (
+              <button
+                type="button"
+                disabled={status === 'intro'}
+                onClick={callTimeoutNow}
+                className={cn(
+                  'px-2 py-1.5 rounded-sm text-xs font-semibold border disabled:opacity-45',
+                  sim.unansweredGoals[1 - userIdx] >= 2 ? 'bg-accent text-white border-accent' : 'bg-panel2 text-gold border-line'
+                )}
+              >
+                ⏱ Т-А
+              </button>
+            )}
+            {status !== 'done' && (
+              <button
+                type="button"
+                onClick={finishNow}
+                className="ml-auto px-2.5 py-1.5 rounded-sm text-xs font-semibold bg-panel2 border border-line text-muted hover:text-text"
+              >
+                В конец ⏭
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-3 gap-1 land:flex-1 land:order-1">
+            {([
+              ['live', land ? 'Хроника' : 'Трансляция'],
+              ['coach', land ? 'Мостик' : 'Мостик и звенья'],
+              ['stats', land ? `Статистика ${stats.shots[0]}:${stats.shots[1]}` : `Карта xG (${stats.shots[0]}:${stats.shots[1]})`],
+            ] as const).map(([id, lbl]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setMobileTab(id)}
+                className={cn(
+                  'py-1.5 px-1 rounded-sm text-[11px] font-semibold text-center truncate transition-colors',
+                  mobileTab === id ? 'bg-accent text-white' : 'bg-panel2/70 text-muted'
+                )}
+              >
+                {lbl}
+              </button>
+            ))}
+          </div>
+        </div>
+      </header>
+
+      {land ? (
+        <div className="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)_minmax(270px,36%)] grid-rows-[minmax(0,1fr)] gap-2 py-1.5 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.375rem,env(safe-area-inset-bottom))]" data-match-land>
+          <div className="min-h-0 flex flex-col">
+            <LiveRink fill className="flex-1 min-h-0" ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} />
+          </div>
+          {/* Only this side list scrolls; the rink, score and controls stay put. */}
+          <div ref={mobileTab === 'live' ? feedRef : undefined} className="min-h-0 overflow-y-auto overscroll-contain rounded-md border border-line bg-panel" data-land-side data-feed={mobileTab === 'live' || undefined}>
+            {mobileTab === 'live' && <div className="divide-y divide-line/60">
+              {feed.length === 0 && status === 'playing' && <div className="p-3 text-muted text-sm">Игра началась…</div>}
+              <FeedRows feed={feed} onReplay={setReplayEvent} />
+            </div>}
+            {mobileTab === 'coach' && <div className="space-y-2 p-1.5">{coachPanel}{renderOnIce(0)}{renderOnIce(1)}{goaliesPanel}</div>}
+            {mobileTab === 'stats' && <div className="space-y-2 p-1.5">{statsPanel}{shotMapPanel}{goaliesPanel}</div>}
+          </div>
+        </div>
+      ) : (
+      <div className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-4 py-3 sm:py-4 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
+        <div className="space-y-3 min-w-0">
+          <div className={cn(mobileTab !== 'live' && 'hidden lg:block')}>
+            <button type="button" className="text-xs text-ice mb-2" aria-expanded={showRink} onClick={() => setShowRink(v => !v)}>{showRink ? 'Скрыть площадку 2D' : 'Показать площадку 2D'}</button>
+            {showRink && <LiveRink ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} />}
+          </div>
+          <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-2', mobileTab !== 'live' && 'hidden lg:grid')}>
+            {renderOnIce(0)}
+            {renderOnIce(1)}
+          </div>
+          <div className={cn(mobileTab !== 'stats' && 'hidden lg:block')}>
+            {shotMapPanel}
+          </div>
+          <div className={cn(mobileTab !== 'live' && 'hidden lg:block')}>
+            <Panel title="Хроника матча" noPad className="min-h-[260px]">
+              <div ref={feedRef} data-feed className="max-h-[46vh] sm:max-h-[42vh] overflow-y-auto divide-y divide-line/60">
+                {feed.length === 0 && status === 'playing' && <div className="p-4 text-muted text-sm">Игра началась…</div>}
+                <FeedRows feed={feed} onReplay={setReplayEvent} />
+              </div>
+            </Panel>
+          </div>
+        </div>
+
+        <div className="space-y-3">
+          <div className={cn(mobileTab !== 'stats' && 'hidden lg:block')}>
+          {statsPanel}
+          </div>
+          <div className={cn('space-y-3', mobileTab !== 'coach' && 'hidden lg:block')}>
+          {coachPanel}
 
           <Panel title="Управление">
             <div className="flex items-center gap-2 text-xs text-muted mb-2">Скорость</div>
@@ -714,32 +850,14 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           </Panel>
           </div>
           <div className={cn(mobileTab !== 'stats' && mobileTab !== 'coach' && 'hidden lg:block')}>
-          <Panel title="Вратари и свежесть">
-            <div className="text-xs space-y-1.5">
-              {([0, 1] as const).map((ti) => {
-                const gid = sim.goalies[ti];
-                const gp = gid ? P[gid] : null;
-                const fr = goalieFreshness(gp);
-                const ft = freshnessTone(fr);
-                const gl = goalieLine(ti);
-                return (
-                  <div key={ti} className="flex items-center justify-between gap-2">
-                    <span className="truncate">{goalieName(ti)}</span>
-                    <span className="text-[10px] px-1.5 py-0.5 rounded tabular" style={{ background: ft.color + '22', color: ft.color }}>
-                      {fr}%
-                    </span>
-                    <span className="tabular text-muted">{gl ? `${gl.saves}/${gl.shotsAgainst}` : '—'}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </Panel>
+          {goaliesPanel}
           </div>
         </div>
       </div>
+      )}
 
       {replayEvent && (
-        <GoalReplay motionClip={timelineGoalClip(rinkTimeline.current, replayEvent)} event={replayEvent} home={H} away={A} players={P} onClose={() => setReplayEvent(null)} />
+        <GoalReplay motionClip={rinkAI.current?.goalClip(replayEvent) ?? undefined} event={replayEvent} home={H} away={A} players={P} onClose={() => setReplayEvent(null)} />
       )}
       {status === 'intro' && (() => {
         const oppId = game.home === s.userTeamId ? game.away : game.home;
@@ -927,15 +1045,36 @@ function Overlay({ children, wide = false }: { children: React.ReactNode; wide?:
   );
 }
 
+type RinkTally = Record<'faceoff' | 'block' | 'takeaway' | 'icing', [number, number]>;
+
 interface FeedItem {
   /** stable number of the event within the match */
   k: number;
   e: GameEvent;
+  /** a rink play (faceoff, takeaway…) rather than an engine event */
+  play?: RinkPlay;
+}
+
+const LAND_QUERY = '(orientation: landscape) and (max-height: 560px)';
+/** Phones held sideways (the primary orientation): the match screen becomes a fixed, non-scrolling layout. */
+function useLandscapePhone() {
+  const get = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia(LAND_QUERY).matches;
+  const [value, setValue] = useState(get);
+  useEffect(() => {
+    if (typeof window.matchMedia !== 'function') return;
+    const m = window.matchMedia(LAND_QUERY), on = () => setValue(m.matches);
+    on();
+    m.addEventListener?.('change', on);
+    return () => m.removeEventListener?.('change', on);
+  }, []);
+  return value;
 }
 
 /** Game clock shared by the playback loop and the components that display time. */
 class Ticker {
   sec = 0;
+  /** presentation time of the rink animation */
+  tau = 0;
   private subs = new Set<() => void>();
   subscribe = (f: () => void) => {
     this.subs.add(f);
@@ -943,8 +1082,9 @@ class Ticker {
       this.subs.delete(f);
     };
   };
-  set(v: number) {
+  set(v: number, tau = this.tau) {
     this.sec = v;
+    this.tau = tau;
     for (const f of this.subs) f();
   }
 }
@@ -990,12 +1130,22 @@ const FeedRow = memo(function FeedRow({ e, onReplay }: { e: GameEvent; onReplay:
   );
 });
 
+const PlayRow = memo(function PlayRow({ e, play }: { e: GameEvent; play: RinkPlay }) {
+  return (
+    <div className="flex items-center gap-3 px-4 py-1 text-xs text-muted fade-in" data-feed-play={play.kind}>
+      <span className="w-14 shrink-0 text-[10px] tabular">{`${e.period <= 3 ? e.period : 'ОТ'} · ${e.time}`}</span>
+      <span className="w-4 shrink-0 text-center text-ice/80" aria-hidden>{PLAY_ICON[play.kind] ?? '·'}</span>
+      <span className="flex-1 min-w-0 truncate">{e.text}</span>
+    </div>
+  );
+});
+
 /** The feed re-renders only when an event is added, and then only the new row is created. */
 const FeedRows = memo(function FeedRows({ feed, onReplay }: { feed: FeedItem[]; onReplay: (event: GameEvent) => void }) {
   return (
     <>
       {feed.map((it) => (
-        <FeedRow key={it.k} e={it.e} onReplay={onReplay} />
+        it.play ? <PlayRow key={it.k} e={it.e} play={it.play} /> : <FeedRow key={it.k} e={it.e} onReplay={onReplay} />
       ))}
     </>
   );

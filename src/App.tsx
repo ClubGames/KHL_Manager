@@ -206,7 +206,23 @@ export default function App() {
       {matchGame ? (
         <Match key={matchGame.id} game={matchGame} onFinished={() => { setMatchGame(null); setView(s.phase === 'offseason' ? 'offseason' : 'dashboard'); }} />
       ) : (
-        <div className="min-h-screen flex">
+        <div className="min-h-screen flex land:h-[100dvh] land:min-h-0 land:overflow-hidden">
+          {/* Landscape phones: a slim scrollable rail instead of the bottom bar, so the content gets the full height. */}
+          <nav className="hidden land:flex flex-col w-[68px] shrink-0 border-r border-line bg-panel/90 overflow-y-auto no-scrollbar pl-[env(safe-area-inset-left)]" aria-label="Разделы" data-land-rail>
+            {nav.map((v) => {
+              const item = NAV.find((n) => n.id === v);
+              const label = v === 'offseason' ? 'Межсезонье' : v === 'format' ? 'Формат' : v === 'management' ? 'Управление' : v === 'club' ? 'Инфраструктура' : item?.label ?? v;
+              const icon = v === 'offseason' ? 'trophy' : v === 'format' ? 'code' : item?.icon ?? 'dashboard';
+              return (
+                <button key={v} type="button" onClick={() => switchView(v)} aria-current={view === v ? 'page' : undefined} className={cn('flex flex-col items-center gap-0.5 px-1 py-1.5 text-[9.5px] leading-tight border-l-2 shrink-0', view === v ? 'border-ice text-ice bg-ice/5' : 'border-transparent text-muted')}>
+                  <Icon name={icon} className="w-[18px] h-[18px]" />
+                  <span className="w-full truncate text-center">{label}</span>
+                </button>
+              );
+            })}
+            <button type="button" onClick={() => setSavesOpen(true)} className="flex flex-col items-center gap-0.5 px-1 py-1.5 text-[9.5px] text-muted shrink-0"><Icon name="save" className="w-[18px] h-[18px]" />Сохран.</button>
+            <button type="button" onClick={() => void exitToMenu()} className="flex flex-col items-center gap-0.5 px-1 py-1.5 text-[9.5px] text-muted shrink-0"><Icon name="logout" className="w-[18px] h-[18px]" />Меню</button>
+          </nav>
           <aside className="hidden lg:flex flex-col w-56 shrink-0 border-r border-line bg-panel/80 sticky top-0 h-screen">
             <div className="p-4 border-b border-line">
               <div className="font-display text-2xl uppercase leading-none">
@@ -252,12 +268,12 @@ export default function App() {
             </div>
           </aside>
 
-          <main className="flex-1 min-w-0 rink-lines pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0">
-            <header className="sticky top-0 z-30 bg-bg/90 backdrop-blur border-b border-line px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-3 flex-wrap">
+          <main className="flex-1 min-w-0 rink-lines pb-[calc(4.5rem+env(safe-area-inset-bottom))] lg:pb-0 land:pb-0 land:flex land:flex-col land:min-h-0">
+            <header className="sticky top-0 z-30 bg-bg/90 backdrop-blur border-b border-line px-3 sm:px-4 py-2 flex items-center gap-2 sm:gap-3 flex-wrap land:flex-nowrap land:py-1 land:shrink-0 land:pr-[max(0.75rem,env(safe-area-inset-right))]">
               <button
                 type="button"
                 onClick={() => switchView('dashboard')}
-                className="lg:hidden inline-flex items-center gap-1.5 pr-2 border-r border-line text-left"
+                className="lg:hidden inline-flex items-center gap-1.5 pr-2 border-r border-line text-left shrink-0"
                 title={U.name}
               >
                 <TeamLogo team={U} size={26} />
@@ -275,7 +291,7 @@ export default function App() {
                 </Button>
               )}
               <div className="ml-auto flex items-center gap-2 sm:gap-3">
-                <div className="hidden md:flex items-center gap-2 text-xs text-muted">
+                <div className="hidden md:flex land:hidden items-center gap-2 text-xs text-muted">
                   <span>День {Math.min(s.day + 1, s.schedule.length)} / {s.schedule.length}</span>
                   <span>·</span>
                   <span>Сезон {s.league.season}</span>
@@ -305,10 +321,10 @@ export default function App() {
                 </Button>
               </div>
             )}
-            <div className="p-2.5 sm:p-4 max-w-[1500px] mx-auto">{content}</div>
+            <div className="p-2.5 sm:p-4 max-w-[1500px] mx-auto land:w-full land:flex-1 land:min-h-0 land:overflow-y-auto land:overscroll-contain land:p-2 land:pr-[max(0.5rem,env(safe-area-inset-right))]" data-view-scroll>{content}</div>
           </main>
 
-          <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-panel/95 backdrop-blur border-t border-line flex justify-around px-1 pb-[env(safe-area-inset-bottom)]" aria-label="Разделы">
+          <nav className="lg:hidden land:hidden fixed bottom-0 inset-x-0 z-30 bg-panel/95 backdrop-blur border-t border-line flex justify-around px-1 pb-[env(safe-area-inset-bottom)]" aria-label="Разделы">
             {(s.phase === 'offseason' ? (['dashboard', 'offseason', 'contracts', 'market'] as View[]) : MOBILE_MAIN).map((id) => navItem(id, true))}
             <button
               onClick={() => setMoreOpen(true)}

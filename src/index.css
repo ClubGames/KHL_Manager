@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Phones held sideways — the primary orientation: everything must fit the short screen, only lists scroll. */
+@custom-variant land (@media (orientation: landscape) and (max-height: 560px));
+
 @theme {
   --color-bg: #0b1420;
   --color-panel: #121d2e;
