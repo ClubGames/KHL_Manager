@@ -36,6 +36,8 @@ try {
   await mount(page);
   await page.waitForTimeout(800);
   assert.equal(await page.locator('[data-replay-renderer]').getAttribute('data-replay-renderer'), 'webgl');
+  // Rigged club-kit player models (inlined GLB) replace the simple figures.
+  await page.locator('[data-replay-models="rigged"]').waitFor({ timeout: 15000 });
   await page.getByRole('button', { name: 'Пауза повтора', exact: true }).click();
   const slider = page.getByRole('slider', { name: 'Позиция повтора' });
   await slider.fill('660');
@@ -51,7 +53,7 @@ try {
   await page.getByRole('button', { name: '↻ Повторить', exact: true }).click();
   await page.waitForTimeout(300); assert.ok(Number(await slider.inputValue()) < 200);
   await page.keyboard.press('Escape'); assert.equal(await page.getByRole('dialog', { name: '3D-повтор гола' }).count(), 0);
-  console.log('ok real WebGL, 3 cameras, seek, pause, slow motion, restart, goal timing and Escape');
+  console.log('ok real WebGL, rigged club-kit models, 3 cameras, seek, pause, slow motion, restart, goal timing and Escape');
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const shotType of ['tip', 'rebound', 'slap', 'backhand']) {

@@ -3,6 +3,8 @@ import * as T from 'three';
 import type { Player, Team } from '../types';
 import { clamp, samplePath, type Point, type ReplayClip } from '../game/rinkPlayback';
 import { clipFrame, RinkSvg } from './RinkView';
+import { getClubLogoSources, getOfficialClubPalette, hexLuminance } from '../game/clubColors';
+import type { Kit, PlayerFigure } from './playerModel';
 
 export type ReplayCamera = 'broadcast' | 'ice' | 'net';
 type Props = { clip: ReplayClip; time: number; camera: ReplayCamera; home: Team; away: Team; players: Record<string, Player> };
@@ -17,11 +19,32 @@ export function broadcastFocus(clip: ReplayClip, time: number): { x: number; z: 
   return { x: clamp(x / n + dir * 2, -21, 21), z: clamp((z / n) * .55, -6, 6) };
 }
 
+const contrast = (a: string, b: string) => Math.abs(hexLuminance(a) - hexLuminance(b)) > 70;
+
+/** Club kit for the rigged models: home in club colours, visitors in white with club trim (as on the 2D rink). */
+export function kitFor(team: Team, side: 0 | 1, goalie: boolean, player?: Player, crest?: T.Material): Kit {
+  const primary = team.primaryColor, secondary = team.secondaryColor, accent = getOfficialClubPalette(team)?.accentColor ?? '#141414';
+  const dark = hexLuminance(primary) < 90 ? primary : hexLuminance(accent) < 90 ? accent : hexLuminance(secondary) < 90 ? secondary : '#161c26';
+  const name = player?.name ? player.name.trim().split(/\s+/).pop() : undefined;
+  const number = player ? String(player.number) : '';
+  if (side === 0) {
+    const trim2 = contrast(accent, primary) && accent.toLowerCase() !== secondary.toLowerCase() ? accent : contrast(primary, '#ffffff') ? '#ffffff' : '#141414';
+    const fill = hexLuminance(primary) > 170 ? dark : '#ffffff';
+    return { jersey: primary, trim: secondary, trim2, pants: dark, socks: primary, sockTrim: secondary, helmet: primary,
+      glove: dark === primary ? secondary : primary, number, name, numberFill: fill, numberStroke: contrast(secondary, fill) ? secondary : dark, goalie, pads: '#f4f6f8', crest };
+  }
+  const ink = hexLuminance(primary) < 200 ? primary : dark;
+  const trim2 = hexLuminance(secondary) < 200 && secondary.toLowerCase() !== ink.toLowerCase() ? secondary : accent;
+  return { jersey: '#f4f7fa', trim: ink, trim2, pants: dark, socks: '#f4f7fa', sockTrim: ink, helmet: '#f4f7fa', glove: ink,
+    number, name, numberFill: ink, numberStroke: '#ffffff', goalie, pads: '#f4f6f8', crest };
+}
+
 /** Real perspective geometry, lighting and depth testing, not CSS-transformed sprites. */
 export function ReplayScene(props: Props) {
   const host = useRef<HTMLDivElement>(null);
   const controller = useRef<((time: number, camera: ReplayCamera) => void) | null>(null);
   const [failed, setFailed] = useState(false);
+  const [rigged, setRigged] = useState(false);
   const { clip, home, away, players } = props;
   useEffect(() => {
     const element = host.current;
@@ -30,8 +53,9 @@ export function ReplayScene(props: Props) {
     const geometries = new Set<T.BufferGeometry>(), materials = new Set<T.Material>(), textures: T.Texture[] = [];
     let observer: ResizeObserver | undefined;
     let stopped = false;
+    let disposeFigures = () => {};
     const dispose = () => {
-      observer?.disconnect(); controller.current = null;
+      observer?.disconnect(); controller.current = null; disposeFigures();
       geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose());
       renderer?.dispose(); renderer?.forceContextLoss(); renderer?.domElement.remove();
     };
@@ -138,6 +162,40 @@ export function ReplayScene(props: Props) {
         }
         return { track, group, legs, stick, torso, glove };
       });
+      // Rigged club-kit models replace the simple figures as soon as the (inlined) model is decoded;
+      // the simple figures stay as the fallback if anything goes wrong.
+      let figures: PlayerFigure[] | null = null;
+      let last: [number, ReplayCamera] = [0, 'broadcast'];
+      const crestFor = (team: Team) => {
+        const m = new T.MeshBasicMaterial({ transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, alphaTest: .05 }); m.visible = false; materials.add(m);
+        const sources = getClubLogoSources(team), loader = new T.TextureLoader();
+        const next = (i: number) => {
+          if (i >= sources.length || stopped) return;
+          loader.load(sources[i], tex => {
+            if (stopped) { tex.dispose(); return; }
+            tex.colorSpace = T.SRGBColorSpace; textures.push(tex); m.map = tex; m.visible = true; m.needsUpdate = true; update(...last);
+          }, undefined, () => next(i + 1));
+        };
+        next(0);
+        return m;
+      };
+      // Loaded on demand (also keeps the GLB out of node-side imports of this component).
+      import('./playerModel').then(model => model.loadPlayerTemplate().then(template => {
+        if (stopped) return;
+        const crests = [crestFor(home), crestFor(away)];
+        const built: PlayerFigure[] = [];
+        try {
+          clip.tracks.forEach((track, i) => {
+            const figure = new model.PlayerFigure(template, kitFor(track.side === 0 ? home : away, track.side, !!track.goalie, players[track.id], crests[track.side]));
+            figure.root.rotation.y = Math.PI / 2; // model faces +z, replay bodies face +x
+            built.push(figure); actors[i].group.add(figure.root);
+          });
+        } catch { built.forEach(f => f.dispose()); return; }
+        disposeFigures = () => built.forEach(f => f.dispose());
+        figures = built; setRigged(true);
+        actors.forEach(a => a.group.children.forEach(c => { if (!built.some(f => f.root === c)) c.visible = false; }));
+        update(...last);
+      })).catch(() => { /* keep the simple figures */ });
       const puck = addMesh(scene, new T.CylinderGeometry(.16, .16, .075, 12), mat('#090f19'));
       const puckShadow = addMesh(scene, new T.CircleGeometry(.20, 16), mat('#203548', { transparent: true, opacity: .25 })); puckShadow.rotation.x = -Math.PI / 2; puckShadow.castShadow = false;
       const trailGeometry = new T.BufferGeometry().setFromPoints(Array.from({ length: 18 }, () => new T.Vector3())); geometries.add(trailGeometry);
@@ -147,10 +205,36 @@ export function ReplayScene(props: Props) {
       let activeCamera = '';
       const update = (time: number, view: ReplayCamera) => {
         if (stopped || !renderer) return;
+        last = [time, view];
         const p = samplePath(clip.puck, time); puck.position.copy(world(p)); puckShadow.position.set(puck.position.x, .023, puck.position.z);
         actors.forEach(({ track, group, legs, stick, torso, glove }, index) => {
           const pos = samplePath(track.keys, time), next = samplePath(track.keys, Math.min(1, time + .008));
           group.position.copy(world(pos)); group.position.y = 0;
+          const figure = figures?.[index];
+          if (figure) {
+            group.scale.set(1, 1, 1); group.rotation.set(0, 0, 0);
+            if (track.goalie) {
+              group.rotation.y = clip.attacking ? 0 : Math.PI;
+              group.updateMatrixWorld(true);
+              // Same timing as before: the goalie reads the release and drops into the butterfly.
+              figure.goalie(clamp((time - clip.release + .05) / .10, 0, 1), clamp((pos.y - 50) / 12, -1, 1));
+              return;
+            }
+            const dx = next.x - pos.x, dz = (next.y - pos.y) * .5;
+            if (Math.abs(dx) + Math.abs(dz) > .01) group.rotation.y = Math.atan2(-dz, dx);
+            if (!clip.bodies) group.position.sub(new T.Vector3(1.0, 0, .52).applyAxisAngle(new T.Vector3(0, 1, 0), group.rotation.y));
+            group.updateMatrixWorld(true);
+            // Stride effort follows the real speed along the clip (metres per second).
+            const metres = Math.hypot(dx * .6, (next.y - pos.y) * .3), speed = metres / Math.max(.001, .008 * clip.duration);
+            const amp = clamp(speed / 7, 0, 1) * (time > clip.goal + .08 ? .4 : 1);
+            const phase = time * clip.duration * Math.PI * 2 * 1.25 + index * 1.7;
+            const scorer = track.id === clip.scorer;
+            const shot = scorer && time > clip.release - .12 && time < clip.release + .3 ? (time - clip.release) / .1 : undefined;
+            const scoring = track.side === clip.attacking;
+            const cheer = time > clip.goal && scoring ? clamp((time - clip.goal) / .06, 0, 1) * (scorer ? 1 : .55) : 0;
+            figure.skate(phase, amp, shot, cheer);
+            return;
+          }
           if (track.goalie) {
             group.rotation.y = clip.attacking ? 0 : Math.PI;
             const drop = clamp((time - clip.release + .05) / .10, 0, 1);
@@ -199,10 +283,10 @@ export function ReplayScene(props: Props) {
     } catch {
       setFailed(true); dispose();
     }
-    return () => { stopped = true; dispose(); };
+    return () => { stopped = true; dispose(); setRigged(false); };
   }, [clip, home, away, players]);
   useEffect(() => { controller.current?.(props.time, props.camera); }, [props.time, props.camera]);
-  return <div className="absolute inset-0" data-replay-renderer={failed ? 'svg' : 'webgl'}>
+  return <div className="absolute inset-0" data-replay-renderer={failed ? 'svg' : 'webgl'} data-replay-models={rigged && !failed ? 'rigged' : 'simple'}>
     <div ref={host} className={failed ? 'hidden' : 'w-full h-full'} />
     {failed && <div className="w-full h-full p-3 bg-[#102335]"><RinkSvg frame={clipFrame(clip, props.time)} home={home} away={away} players={players} /><span className="absolute bottom-2 left-3 text-[10px] text-white/70">WebGL недоступен — показан тот же эпизод сверху.</span></div>}
   </div>;
