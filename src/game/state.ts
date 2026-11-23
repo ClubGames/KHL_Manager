@@ -1146,12 +1146,15 @@ export function simulateDays(n: number) {
   }
 }
 
-export function simulateToNextUserGame(): 'userGame' | 'offseason' {
-  let result: 'userGame' | 'offseason' = 'offseason';
+export function simulateToNextUserGame(): 'userGame' | 'offseason' | 'stalled' {
+  let result: 'userGame' | 'offseason' | 'stalled' = 'stalled';
   store.update((state) => {
     const U = state.userTeamId;
-    for (let i = 0; i < 600; i++) {
-      if (state.phase === 'offseason') return;
+    for (let i = 0; i < 1500; i++) {
+      if (state.phase === 'offseason') {
+        result = 'offseason';
+        return;
+      }
       const today = state.schedule[state.day] ?? [];
       const ug = today.find((g) => !g.played && (g.home === U || g.away === U));
       if (ug) {

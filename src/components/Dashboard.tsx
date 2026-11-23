@@ -266,6 +266,23 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
                   </Button>
                 </div>
               </div>
+            ) : s.phase === 'season' ? (
+              <div className="space-y-3" data-regular-finish>
+                <div className="text-sm text-text/90">
+                  Ваша команда провела все матчи регулярного чемпионата. Остальные клубы доигрывают календарь — после этого определятся участники плей-офф Кубка Гагарина.
+                </div>
+                <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
+                  <Button variant="primary" size="lg" onClick={simToNext}>
+                    <Icon name="fast" /> Досимулировать регулярку
+                  </Button>
+                  <Button size="lg" onClick={() => simulateDay(true)}>
+                    Симулировать день
+                  </Button>
+                  <Button size="lg" variant="ghost" onClick={() => ui.nav('standings')}>
+                    Таблица
+                  </Button>
+                </div>
+              </div>
             ) : (
               <div className="space-y-3" data-offseason-cta>
                 <div className="text-sm text-text/90">
