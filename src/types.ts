@@ -23,6 +23,8 @@ export interface Coach {
   fictional: boolean;
   source?: string;
   snapshot?: string;
+  /** Specialisation caption from roster.json (e.g. «Плей-офф»); defaults to the profile label. */
+  label?: string;
   acting?: boolean; // Interim head, including an assistant promoted in the career.
   actingFromAssistant?: boolean;
 }
@@ -556,6 +558,8 @@ export interface GameState {
   /** Free coaches persist across seasons, including dismissed real specialists. */
   coachMarket?: Coach[];
   coachMarketVersion?: number;
+  /** 'roster': free coaches came from roster.json `freeCoaches`; otherwise the built-in fallback list. */
+  coachMarketSource?: 'roster' | 'builtin';
   /** KHL All-Star Weekend result for the current season */
   allStar?: AllStarResult | null;
 }

@@ -11,7 +11,7 @@ function CoachCard({ coach, market = false }: { coach: Coach; market?: boolean }
   return <div className="rounded-md border border-line bg-panel2/60 p-3 space-y-2" data-coach={coach.id}>
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div><div className="text-[11px] text-muted uppercase">{market ? 'Свободный тренер' : coach.acting ? 'И. о. главного тренера' : COACH_ROLE_LABEL[coach.role]}</div><div className="font-display text-lg">{coach.name}</div></div>
-      <Tag color="#8FD8F0">{COACH_PROFILES[coach.profile].label}</Tag>
+      <Tag color="#8FD8F0">{coach.label ?? COACH_PROFILES[coach.profile].label}</Tag>
     </div>
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
       {([['attack', 'Атака'], ['defense', 'Оборона'], ['special', 'Спецбригады'], ['development', 'Развитие'], ['motivation', 'Мотивация']] as const).map(([key, label]) =>
@@ -27,7 +27,7 @@ export function StaffSummary({ team }: { team: Team }) {
   const ui = useUI(); const s = useGame()!;
   return <Panel title="Тренерский штаб" right={team.id === s.userTeamId ? <Button size="sm" onClick={() => ui.nav('management')}>Управление командой →</Button> : undefined}>
     <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm" data-staff-summary>
-      {(team.coaches ?? []).map((c) => <div key={c.role}><span className="text-muted text-xs">{c.acting ? 'И. о. главного тренера' : COACH_ROLE_LABEL[c.role]}: </span><b>{c.name}</b> <span className="text-xs text-ice">{COACH_PROFILES[c.profile].label}</span></div>)}
+      {(team.coaches ?? []).map((c) => <div key={c.role}><span className="text-muted text-xs">{c.acting ? 'И. о. главного тренера' : COACH_ROLE_LABEL[c.role]}: </span><b>{c.name}</b> <span className="text-xs text-ice">{c.label ?? COACH_PROFILES[c.profile].label}</span></div>)}
     </div>
   </Panel>;
 }

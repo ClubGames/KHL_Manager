@@ -324,8 +324,8 @@ check(
     S.allStar.westRoster.length === 12 &&
     S.allStar.eastRoster.length === 12 &&
     S.allStar.westScore !== S.allStar.eastScore &&
-    !!S.players[S.allStar.mvpId],
-  S.allStar ? `${S.allStar.westScore}:${S.allStar.eastScore}` : 'missing'
+    !!S.allStar.mvpId, // the MVP may have retired in the off-season since
+  S.allStar ? `${S.allStar.westScore}:${S.allStar.eastScore} W${S.allStar.westRoster.length} E${S.allStar.eastRoster.length} mvp ${S.allStar.mvpId} ${!!S.players[S.allStar.mvpId]}` : 'missing'
 );
 check(
   'Home matches credited live arena gate revenue during Season 1',

@@ -1,5 +1,6 @@
-import { ensureTeamManagement } from './coaching';
-import type { Conference, Player, PosCode, Skills, Team } from '../types';
+import { ensureTeamManagement, normalizeCoach } from './coaching';
+import { makeCoach } from './coachData';
+import type { Coach, CoachRole, Conference, Player, PosCode, Skills, Team } from '../types';
 import { computeOverall, isGoalie } from './ratings';
 import { autoLineup } from './ai';
 import { emptyLineup, emptyRecord, emptyStats, defaultTactics } from './defaults';
@@ -20,6 +21,8 @@ export interface NormalizedRoster {
   teams: Team[];
   players: Record<string, Player>;
   freeAgents: string[];
+  /** Free coaches from `freeCoaches` in the file; undefined when the file has no such list (built-in fallback). */
+  freeCoaches?: Coach[];
   warnings: string[];
   /** the parsed file as it was read */
   raw: unknown;
@@ -305,6 +308,7 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
     players[pid] = pl;
     fas.push(pid);
   });
+  const freeCoaches = parseFreeCoaches(root, teams, warnings);
   const noGoalies = teams.filter((t) => t.players.filter((id) => isGoalie(players[id])).length === 0);
   if (noGoalies.length) warnings.push(`Нет вратарей: ${noGoalies.map((t) => t.name).join(', ')} — в матчах будет играть «замена» (рейтинг 55)`);
   return {
@@ -316,10 +320,45 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
     teams,
     players,
     freeAgents: fas,
+    ...(freeCoaches ? { freeCoaches } : {}),
     warnings,
     raw: root,
     filled,
   };
+}
+
+const COACH_ROLE_ALIASES: Record<string, CoachRole> = {
+  head: 'head', 'head coach': 'head', hc: 'head', 'главный': 'head', 'главный тренер': 'head', 'гт': 'head',
+  assistant: 'assistant', 'assistant coach': 'assistant', ac: 'assistant', 'ассистент': 'assistant', 'помощник': 'assistant',
+};
+/** Root-level `freeCoaches` (alias `coachMarket`): coaches without a club, offered on the coach market. */
+function parseFreeCoaches(root: any, teams: Team[], warnings: string[]): Coach[] | undefined {
+  const raw: unknown = root?.freeCoaches ?? root?.coachMarket;
+  if (raw === undefined) return undefined;
+  if (!Array.isArray(raw)) {
+    warnings.push('freeCoaches должен быть массивом — используется встроенный список свободных тренеров');
+    return undefined;
+  }
+  const key = (n: string) => n.toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
+  const employed = new Map<string, string>();
+  for (const t of teams) for (const c of t.coaches ?? []) employed.set(key(c.name), t.name);
+  const ids = new Set<string>(), names = new Set<string>(), out: Coach[] = [];
+  raw.forEach((r: any, j: number) => {
+    const name = typeof r?.name === 'string' ? r.name.trim() : '';
+    if (!name) { warnings.push(`freeCoaches[${j}]: нет имени — запись пропущена`); return; }
+    const role = COACH_ROLE_ALIASES[String(r?.role ?? 'head').trim().toLowerCase()] ?? 'head';
+    const c = normalizeCoach({ ...r, role }, makeCoach(`free-coach-${j + 1}`, name, role, 'balanced'));
+    c.role = role;
+    if (names.has(key(c.name))) { warnings.push(`freeCoaches: ${c.name} указан дважды — оставлена первая запись`); return; }
+    const club = employed.get(key(c.name));
+    if (club) { warnings.push(`freeCoaches: ${c.name} уже в штабе клуба ${club} — на рынок не выставлен`); return; }
+    let id = c.id, k = 2;
+    while (ids.has(id)) id = `${c.id}-${k++}`;
+    c.id = id;
+    ids.add(id); names.add(key(c.name));
+    out.push(c);
+  });
+  return out;
 }
 
 export function parseRosterText(text: string): NormalizedRoster {
@@ -440,7 +479,8 @@ export const ROSTER_EXAMPLE = `{
     },
     { "id": "cska", "name": "ЦСКА", "city": "Москва", "conference": "Запад", "players": [ ... ] }
   ],
-  "freeAgents": [ { "id": "fa-01", "name": "...", "position": "З", "age": 31, "overall": 74, "skills": { ... } } ]
+  "freeAgents": [ { "id": "fa-01", "name": "...", "position": "З", "age": 31, "overall": 74, "skills": { ... } } ],
+  "freeCoaches": [ { "id": "free-coach-01", "name": "...", "role": "head", "profile": "attack", "attack": 85, "defense": 80, "salary": 20000000 } ]
 }`;
 
 export function downloadExampleRoster() {
@@ -460,6 +500,9 @@ export function downloadExampleRoster() {
     ],
     freeAgents: [
       { id: 'fa-01', name: 'Свободный Агентов', position: 'ПК', age: 31, height: 184, weight: 90, number: 15, country: 'Россия', overall: 74, potential: 74, skills: { skating: 74, shooting: 78, passing: 70, puckControl: 72, checking: 68, defense: 64 } },
+    ],
+    freeCoaches: [
+      { id: 'free-coach-01', name: 'Тренер Свободнов', role: 'head', profile: 'defense', label: 'Оборонительный', attack: 74, defense: 86, special: 80, development: 72, motivation: 78, salary: 18000000 },
     ],
   };
   const blob = new Blob([JSON.stringify(example, null, 2)], { type: 'application/json' });

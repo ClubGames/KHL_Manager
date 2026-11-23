@@ -1,4 +1,4 @@
-import { changeTeamFocus, coachingEffects, ensureCoachingState, fireCoach, hireCoach, interveneTeam, recordCoachingResult, stepTeamManagement } from './coaching';
+import { adoptRosterCoachMarket, changeTeamFocus, coachingEffects, ensureCoachingState, fireCoach, hireCoach, interveneTeam, recordCoachingResult, stepTeamManagement } from './coaching';
 import type { TeamFocus, TeamIntervention } from '../types';
 import { useSyncExternalStore } from 'react';
 import type { Award, FacilityKey, Game, GameResult, GameState, Lineup, NewsItem, NewsType, Series, Team, TeamTactics, YouthTrainingPlan } from '../types';
@@ -10,7 +10,7 @@ import { evaluateBoard, setBoardGoal } from './board';
 import { beginNewSeason, letGoUser, qualifyUserRfa, startOffseason, toFreeAgency } from './offseason';
 import { clamp, formatMoney, isDefense, isGoalie, isSkater, payroll, points } from './ratings';
 import { emptyLineup, emptyRecord } from './defaults';
-import type { NormalizedRoster } from './roster';
+import { fetchRoster, type NormalizedRoster } from './roster';
 import { clearLegacy, deleteSave, getBackend, listMetas, readLegacy, readSave, storageError, writeSave } from './storage';
 import type { SaveMeta } from './storage';
 import { buyoutDeadCap, CAP_GAMES_PER_POINT_DEDUCTION, CAP_GRACE_DAYS, capExcess, dailyCapFine, effectivePayroll, getCapSummary, recomputePoints } from './cap';
@@ -286,7 +286,7 @@ export const roundName = (r: number) => ['1/8 финала', '1/4 финала',
 
 export function createGameState(r: NormalizedRoster, userTeamId: string): GameState {
   const teamOrder = r.teams.map((t) => t.id);
-  const { days, nextId } = buildSchedule(teamOrder, r.gamesPerTeam, 1, r.season);
+  const { days, nextId } = buildSchedule(r.teams, r.gamesPerTeam, 1, r.season);
   const teams: Record<string, Team> = {};
   for (const t of r.teams) teams[t.id] = t;
   newsId = 1;
@@ -303,6 +303,8 @@ export function createGameState(r: NormalizedRoster, userTeamId: string): GameSt
     teamOrder,
     players: r.players,
     freeAgents: r.freeAgents,
+    // free coaches come from roster.json; the built-in list is only a fallback for files without `freeCoaches`
+    ...(r.freeCoaches ? { coachMarket: r.freeCoaches.map((c) => ({ ...c })), coachMarketVersion: 2, coachMarketSource: 'roster' } : { coachMarketSource: 'builtin' }),
     schedule: days,
     day: 0,
     nextGameId: nextId,
@@ -348,6 +350,21 @@ export function createGameState(r: NormalizedRoster, userTeamId: string): GameSt
 }
 
 /* ---------------- careers & save slots ---------------- */
+/** Replace the built-in free-coach list of an older career with roster.json `freeCoaches` (no-op if the file has none). */
+export async function syncCoachMarketFromRoster(saveId: string, url = './roster.json') {
+  const cur = store.get();
+  if (!cur || cur.saveId !== saveId || cur.coachMarketSource === 'roster') return;
+  try {
+    const r = await fetchRoster(url);
+    if (!r.freeCoaches) return;
+    store.update((s) => {
+      if (s.saveId === saveId) adoptRosterCoachMarket(s, r.freeCoaches!);
+    });
+  } catch {
+    /* roster.json unavailable (offline / opened from file): keep the saved market */
+  }
+}
+
 export async function startNewGame(r: NormalizedRoster, userTeamId: string) {
   await store.flush();
   store.set(createGameState(r, userTeamId));
