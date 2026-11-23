@@ -15,6 +15,10 @@ import type { Game, NewsItem, Team } from '../types';
 import { Bar, Button, Icon, money, Panel, ResultPill, Stat, Tag, TeamLogo, useUI } from './ui';
 import { LineupPreview } from './LineupPreview';
 import { boardOnTrack } from '../game/board';
+import { blockingTasks, buildInbox } from '../game/inbox';
+import { InboxList } from './Inbox';
+import { PressConferencePanel } from './PressConference';
+import { PreseasonPanel } from './Preseason';
 
 function TeamBlock({ team, place, right }: { team: Team; place: number | null; right?: boolean }) {
   const r = team.record;
@@ -73,12 +77,34 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
   const upcomingOppId = upcoming ? (upcoming.home === U.id ? upcoming.away : upcoming.home) : undefined;
   const ppQuick = upcomingOppId ? previewPowerPlay(s, U.id, upcomingOppId)[0] : null;
 
-  const simToNext = () => {
-    const res = simulateToNextUserGame();
-    if (res === 'offseason') ui.nav('offseason');
+  const [simNote, setSimNote] = useState<string | null>(null);
+  const inbox = buildInbox(s);
+  /** Before fast simulation: make sure nothing important is left unanswered. */
+  const guarded = (label: string, run: () => void) => {
+    const open = blockingTasks(s);
+    if (!open.length) return run();
+    ui.confirm({
+      title: 'Есть нерешённые задачи',
+      text: `Во входящих: ${open.slice(0, 3).map((t) => t.title).join('; ')}${open.length > 3 ? '…' : ''}. ${label}?`,
+      confirmLabel: 'Всё равно продолжить',
+      onYes: run,
+    });
   };
-  const simGame = () => ui.confirm({ title: 'Симулировать матч?', text: 'Результат будет рассчитан по текущим звеньям без просмотра матча.', confirmLabel: 'Симулировать', onYes: () => simulateDay(true) });
-  const simWeek = () => ui.confirm({ title: 'Симулировать 5 дней?', text: 'Все матчи, включая матчи вашей команды, будут рассчитаны автоматически.', confirmLabel: 'Симулировать', onYes: () => simulateDays(5) });
+  const simToNext = () =>
+    guarded('Симулировать до следующего матча', () => {
+      const res = simulateToNextUserGame(true);
+      if (res === 'offseason') ui.nav('offseason');
+      setSimNote(res === 'inbox' ? 'Симуляция остановлена: во входящих новая задача.' : null);
+    });
+  const simGame = () =>
+    blockingTasks(s).length
+      ? guarded('Симулировать матч по текущим звеньям', () => simulateDay(true))
+      : ui.confirm({ title: 'Симулировать матч?', text: 'Результат будет рассчитан по текущим звеньям без просмотра матча.', confirmLabel: 'Симулировать', onYes: () => simulateDay(true) });
+  const simWeek = () =>
+    guarded('Симулировать 5 дней', () => {
+      const res = simulateDays(5);
+      setSimNote(res.stop === 'inbox' ? `Симуляция остановлена через ${res.days} дн.: во входящих новая задача.` : null);
+    });
 
   return (
     <div className="space-y-4 fade-in">
@@ -90,6 +116,15 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
         <Stat label="Форма" value={<span className="flex gap-1 text-base">{r.last.slice(-5).map((c, i) => <ResultPill key={i} code={c} />)}</span>} sub={r.streakType ? (r.streakType === 'W' ? `Победная серия: ${r.streak}` : `Серия поражений: ${r.streak}`) : '—'} />
         <Stat label="Бюджет" value={money(U.budget)} sub={`ФОТ ${money(fol)}`} color="#3FCF8E" />
       </div>
+
+      {s.press && <PressConferencePanel />}
+      <PreseasonPanel />
+      {(simNote || inbox.length > 0) && (
+        <Panel title={<span className="flex items-center gap-2"><Icon name="bell" /> Входящие ({inbox.length})</span>} right={<Button size="sm" variant="ghost" onClick={() => ui.nav('inbox')}>Все →</Button>} data-dashboard-inbox>
+          {simNote && <div className="mb-2 text-xs text-amber" data-sim-note>{simNote}</div>}
+          <InboxList limit={4} compact />
+        </Panel>
+      )}
 
       <div className={`rounded-md border p-3 flex flex-wrap items-center justify-between gap-3 text-xs ${teamForm.crisis ? 'border-accent/60 bg-accent/10' : 'border-line bg-panel'}`} data-team-management-link>
         <div><b>{teamForm.crisis ? `Кризис: ${teamForm.losses} поражений в ${teamForm.played} матчах.` : 'Управляйте не только звеньями.'}</b><span className="text-muted ml-2">Штаб, тренировки, восстановление и работа с раздевалкой — в разделе «Клуб».</span></div>
@@ -408,6 +443,12 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
               <Bar value={s.board.confidence} color={s.board.confidence >= 60 ? '#3FCF8E' : s.board.confidence >= 30 ? '#F2B544' : '#E5323E'} className="flex-1" />
               <span className="tabular w-7 text-right">{s.board.confidence}</span>
             </div>
+            <div className="flex items-center gap-3 mt-2 text-xs" data-fans>
+              <span className="text-muted whitespace-nowrap">Болельщики</span>
+              <Bar value={s.fans ?? 60} color={(s.fans ?? 60) >= 60 ? '#8FD8F0' : (s.fans ?? 60) >= 35 ? '#F2B544' : '#E5323E'} className="flex-1" />
+              <span className="tabular w-7 text-right">{Math.round(s.fans ?? 60)}</span>
+            </div>
+            <div className="text-[11px] text-muted mt-1">Поддержка трибун влияет на кассу домашних матчей; её двигают результаты, пресс-конференции и предсезонные трофеи.</div>
           </Panel>
 
           <Panel title="Регламент и финансы">

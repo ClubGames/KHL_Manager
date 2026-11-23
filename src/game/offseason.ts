@@ -10,6 +10,8 @@ import { setBoardGoal } from './board';
 import { countRosterLegionnaires, isLegionnaire, teamForeignLimit } from './legionnaires';
 import { getPlayerPlan, isYouthPlayer, progressPlayerWithTraining, recommendYouthPlan } from './training';
 import { ensureCaptains } from './chemistry';
+import { ageScoutingReports } from './scouting';
+import { createPreseason } from './preseason';
 import { autoCompleteDraft, createJuniorDraft, processVeteranRetirements } from './dynasty';
 import { activeKhlCount, isRfaEligibleAge, maybeGenerateAiRfaOffer } from './khlRules';
 
@@ -294,6 +296,9 @@ export function beginNewSeason(state: GameState) {
   state.announcedWindows = [];
   clearTradeCache();
   setBoardGoal(state);
+  ageScoutingReports(state);
+  state.press = null;
+  state.preseason = createPreseason(state);
   const fs = user.players.filter((id) => groupOf(P[id]) === 'F').length;
   const ds = user.players.filter((id) => isDefense(P[id])).length;
   const gs = user.players.filter((id) => isGoalie(P[id])).length;

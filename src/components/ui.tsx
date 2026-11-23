@@ -5,7 +5,7 @@ import type { PosCode, Team } from '../types';
 import { overallColor, POS_RU } from '../game/ratings';
 import { getClubLogoSources, getOfficialClubPalette, hexLuminance } from '../game/clubColors';
 
-export type View = 'dashboard' | 'roster' | 'lines' | 'schedule' | 'standings' | 'stats' | 'trades' | 'market' | 'contracts' | 'club' | 'management' | 'format' | 'offseason';
+export type View = 'inbox' | 'dashboard' | 'roster' | 'lines' | 'schedule' | 'standings' | 'stats' | 'trades' | 'market' | 'contracts' | 'club' | 'management' | 'format' | 'offseason';
 
 export interface UIApi {
   openPlayer: (id: string) => void;
@@ -297,6 +297,9 @@ const ICONS: Record<string, ReactNode> = {
   check: <><path d="M5 12l5 5L20 7" /></>,
   close: <><path d="M6 6l12 12M18 6L6 18" /></>,
   swap: <><path d="M7 4v16M7 4L4 7M7 4l3 3M17 20V4M17 20l-3-3M17 20l3-3" /></>,
+  bell: <><path d="M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15z" /><path d="M10 20a2 2 0 0 0 4 0" /></>,
+  scout: <><circle cx="11" cy="11" r="6" /><path d="M20 20l-4.5-4.5" /></>,
+  mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
   alert: <><path d="M12 3l10 18H2z" /><path d="M12 10v5M12 18h.01" /></>,
 };
 export function Icon({ name, className }: { name: keyof typeof ICONS | string; className?: string }) {

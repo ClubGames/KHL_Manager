@@ -7,7 +7,8 @@ import { currentDraftTeamId } from '../game/dynasty';
 import { isRfaEligibleAge, qualifyingOfferSalary } from '../game/khlRules';
 import { finishJuniorDraftAuto, letGo, pickJuniorProspect, respondRfaOfferSheet, simulateToNextUserGame, startNewSeason, tenderQualifyingOffer, useGame } from '../game/state';
 import { nextUserGame } from '../game/schedule';
-import { Button, Empty, OverallChip, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
+import { Button, Empty, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
+import { ScoutOvr } from './Scout';
 import { cn } from '../utils/cn';
 
 function nextLabel(s: string): string {
@@ -275,7 +276,7 @@ export function Offseason() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2 shrink-0">
-                          <OverallChip value={jp.overall} size="sm" />
+                          <ScoutOvr p={jp} />
                           {isUserPick && (
                             <Button
                               size="sm"
@@ -408,7 +409,7 @@ export function Offseason() {
                       {isRfa ? 'ОСА' : 'НСА'}
                     </span>
                     <span className="text-xs text-muted">{p.age} л.</span>
-                    <OverallChip value={p.overall} size="sm" />
+                    <ScoutOvr p={p} />
                     <span className="text-xs text-muted tabular whitespace-nowrap">запрос {formatMoney(askingSalary(s, p, 1, U.id))}</span>
                     {isRfa && (
                       <Button

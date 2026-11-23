@@ -16,6 +16,8 @@ import { Leaders } from './components/Leaders';
 import { Contracts, NegotiationModal } from './components/Contracts';
 import { Coaching } from './components/Coaching';
 import { Club } from './components/Club';
+import { Inbox } from './components/Inbox';
+import { buildInbox } from './game/inbox';
 import { SaveIndicator, SavesList } from './components/Saves';
 import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, syncCoachMarketFromRoster, useGame, useSaveStatus } from './game/state';
 import { regularSeasonLength, seasonDate } from './game/schedule';
@@ -25,6 +27,7 @@ import { cn } from './utils/cn';
 
 const NAV: { id: View; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Обзор', icon: 'dashboard' },
+  { id: 'inbox', label: 'Входящие', icon: 'bell' },
   { id: 'roster', label: 'Состав', icon: 'roster' },
   { id: 'lines', label: 'Звенья', icon: 'lines' },
   { id: 'schedule', label: 'Календарь', icon: 'calendar' },
@@ -130,6 +133,8 @@ export default function App() {
   const phaseShort = s.phase === 'playoffs' ? roundName(s.playoffs?.round ?? 0) : s.phase === 'offseason' ? 'Межсезонье' : 'Регулярка';
   const ltirReadyCount = U.players.filter((id) => s.players[id]?.inLtir && !s.players[id]?.injury).length;
   const rfaOffersCount = (s.rfaOffers ?? []).length;
+  const inboxTasks = buildInbox(s);
+  const inboxUrgent = inboxTasks.filter((t) => t.severity !== 'info').length;
   const moreBadgeCount = s.offers.length + rfaOffersCount + ltirReadyCount;
   const curFol = effectivePayroll(U, s.players, s.phase);
   const fl = teamForeignLimit(U, s.league.foreignLimit);
@@ -147,7 +152,7 @@ export default function App() {
     const label = v === 'offseason' ? 'Межсезонье' : v === 'format' ? 'Формат JSON' : item?.label ?? v;
     const icon = v === 'offseason' ? 'trophy' : v === 'format' ? 'code' : item?.icon ?? 'dashboard';
     const active = view === v;
-    const badge = v === 'trades' && s.offers.length > 0 ? s.offers.length : v === 'contracts' && rfaOffersCount > 0 ? rfaOffersCount : v === 'club' && ltirReadyCount > 0 ? ltirReadyCount : 0;
+    const badge = v === 'inbox' ? inboxTasks.length : v === 'trades' && s.offers.length > 0 ? s.offers.length : v === 'contracts' && rfaOffersCount > 0 ? rfaOffersCount : v === 'club' && ltirReadyCount > 0 ? ltirReadyCount : 0;
     const isOffTab = v === 'offseason';
     const cls = cn(
       'flex items-center gap-3 transition-colors',
@@ -202,6 +207,8 @@ export default function App() {
         return <Offseason />;
       case 'format':
         return <FormatDoc />;
+      case 'inbox':
+        return <Inbox />;
       default:
         return <Dashboard onPlay={(g) => setMatchGame(g)} />;
     }
@@ -221,7 +228,10 @@ export default function App() {
               const icon = v === 'offseason' ? 'trophy' : v === 'format' ? 'code' : item?.icon ?? 'dashboard';
               return (
                 <button key={v} type="button" onClick={() => switchView(v)} aria-current={view === v ? 'page' : undefined} className={cn('flex flex-col items-center gap-0.5 px-1 py-1.5 text-[9.5px] leading-tight border-l-2 shrink-0', view === v ? 'border-ice text-ice bg-ice/5' : 'border-transparent text-muted')}>
-                  <Icon name={icon} className="w-[18px] h-[18px]" />
+                  <span className="relative">
+                    <Icon name={icon} className="w-[18px] h-[18px]" />
+                    {v === 'inbox' && inboxTasks.length > 0 && <span className="absolute -top-1.5 -right-2.5 bg-amber text-bg text-[8.5px] font-bold px-0.5 rounded-sm leading-3">{inboxTasks.length}</span>}
+                  </span>
                   <span className="w-full truncate text-center">{label}</span>
                 </button>
               );
@@ -308,6 +318,16 @@ export default function App() {
                   <span>·</span>
                   <span>{U.conference}</span>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => switchView('inbox')}
+                  className={cn('relative inline-flex items-center gap-1 px-2 py-1 rounded-sm border text-xs', view === 'inbox' ? 'border-ice text-ice' : inboxUrgent ? 'border-amber/60 text-amber' : 'border-line text-muted')}
+                  title="Входящие задачи"
+                  data-inbox-bell
+                >
+                  <Icon name="bell" />
+                  <span className="tabular">{inboxTasks.length}</span>
+                </button>
                 <SaveIndicator onClick={() => setSavesOpen(true)} />
               </div>
             </header>

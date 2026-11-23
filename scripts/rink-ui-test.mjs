@@ -86,7 +86,8 @@ try {
   await match.getByRole('button', { name: /^СКА/ }).click();
   await match.getByRole('button', { name: 'Начать карьеру', exact: true }).click();
   const toMatch = match.getByRole('button', { name: 'Симулировать до матча', exact: true });
-  if (await toMatch.count()) await toMatch.click();
+  // Fast sim pauses when a new inbox task appears; press again until match day.
+  for (let k = 0; k < 8 && await toMatch.count(); k++) { await toMatch.click(); await match.waitForTimeout(150); const go = match.getByRole('button', { name: 'Всё равно продолжить', exact: true }); if (await go.count()) { await go.click(); await match.waitForTimeout(150); } }
   await match.getByRole('button', { name: 'Играть матч', exact: true }).click();
   await match.getByRole('button', { name: 'Начать матч', exact: true }).click();
   await match.locator('[data-live-rink]').waitFor();
@@ -121,7 +122,8 @@ try {
   await land.getByRole('button', { name: /^СКА/ }).click();
   await land.getByRole('button', { name: 'Начать карьеру', exact: true }).click();
   const toMatch2 = land.getByRole('button', { name: 'Симулировать до матча', exact: true });
-  if (await toMatch2.count()) await toMatch2.click();
+  // Fast sim pauses when a new inbox task appears; press again until match day.
+  for (let k = 0; k < 8 && await toMatch2.count(); k++) { await toMatch2.click(); await land.waitForTimeout(150); const go = land.getByRole('button', { name: 'Всё равно продолжить', exact: true }); if (await go.count()) { await go.click(); await land.waitForTimeout(150); } }
   await land.getByRole('button', { name: 'Играть матч', exact: true }).click();
   await land.getByRole('button', { name: 'Начать матч', exact: true }).click();
   await land.locator('[data-match-land]').waitFor();

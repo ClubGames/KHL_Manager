@@ -1,4 +1,4 @@
-import type { GameState, Lineup, NewsItem, Phase, Player, PosCode, Team, TradeOffer } from '../types';
+import type { GameState, Lineup, NewsItem, Phase, Player, PosCode, Team, TradeBlock, TradeBlockWants, TradeOffer } from '../types';
 import { attackRating, clamp, defenseRating, fairSalary, isDefense, isForward, isGoalie, isSkater, payroll, POS_RU } from './ratings';
 import { emptyLineup } from './defaults';
 import { countRosterLegionnaires, isLegionnaire, teamForeignLimit } from './legionnaires';
@@ -684,17 +684,133 @@ const deadlineHeat = (state: GameState) => {
   return w.windowId === 'winter' ? 1.15 : 0.9;
 };
 
+/* ---------------- trade block ---------------- */
+
+const POS_LONG: Record<PosCode, string> = { C: 'центральный', LW: 'левый нападающий', RW: 'правый нападающий', D: 'защитник', G: 'вратарь' };
+
+export const defaultTradeBlock = (): TradeBlock => ({ wants: { positions: [], minOvr: 0, maxAge: 40, maxSalary: 0 } });
+
+export function ensureTradeBlock(state: GameState): TradeBlock {
+  state.tradeBlock ??= defaultTradeBlock();
+  const w = state.tradeBlock.wants;
+  w.positions ??= [];
+  w.minOvr ??= 0;
+  w.maxAge ??= 40;
+  w.maxSalary ??= 0;
+  return state.tradeBlock;
+}
+
+/** The manager has said what he is looking for. */
+export const hasWants = (w: TradeBlockWants | undefined) => !!w && (w.positions.length > 0 || w.minOvr > 0 || w.maxAge < 40 || w.maxSalary > 0);
+
+/** Does a player fit what the manager is looking for? Ratings are judged by the AI club's honest view. */
+export function matchesWants(w: TradeBlockWants, p: Player): boolean {
+  if (w.positions.length && !w.positions.includes(p.position)) return false;
+  if (w.minOvr && p.overall < w.minOvr) return false;
+  if (w.maxAge < 40 && p.age > w.maxAge) return false;
+  if (w.maxSalary && p.contract.salary > w.maxSalary) return false;
+  return true;
+}
+
+/** Players the manager has put on the block. */
+export const userBlockPlayers = (state: GameState): Player[] =>
+  state.teams[state.userTeamId].players.map((id) => state.players[id]).filter((p) => p && p.tradeFlag === 'block');
+
+/**
+ * An offer aimed at the manager's trade block: the club takes one of the players he wants to move
+ * (or, with an empty block, a player it needs) and pays with players that match his wish list.
+ */
+export function generateBlockProposal(state: GameState, fromId: string): Proposal | null {
+  const P = state.players;
+  const F = state.teams[fromId];
+  const U = state.teams[state.userTeamId];
+  const cf = teamContext(state, fromId);
+  const cu = teamContext(state, U.id);
+  const wants = ensureTradeBlock(state).wants;
+  const available = (p: Player) => !p.injury && !(p.nmc && p.morale >= 52) && p.contract.years > 0;
+
+  // 1. What do they take from us?
+  const block = userBlockPlayers(state).filter(available);
+  let targets: Player[];
+  if (block.length) targets = block.filter((p) => cf.need[groupOf(p)] > -2.5 || p.overall >= cf.worst[groupOf(p)] + 2);
+  else {
+    if (!hasWants(wants)) return null;
+    targets = U.players
+      .map((id) => P[id])
+      .filter((p) => p && available(p) && p.tradeFlag !== 'keep' && !cu.franchise.has(p.id) && cf.need[groupOf(p)] > 0.3 && p.overall >= cf.worst[groupOf(p)] + 2);
+  }
+  const X = weightedPick(targets, (p) => valueFor(cf, p) * (1 + Math.max(0, cf.need[groupOf(p)]) / 3));
+  if (!X) return null;
+  const vx = valueFor(cf, X);
+
+  // 2. What can they pay with that we actually want?
+  const spare = F.players
+    .map((id) => P[id])
+    .filter((p) => p && available(p) && !cf.franchise.has(p.id) && cf.counts[groupOf(p)] - (groupOf(p) === groupOf(X) ? 0 : 1) >= MIN_ROSTER[groupOf(p)]);
+  const fit = hasWants(wants) ? spare.filter((p) => matchesWants(wants, p)) : spare.filter((p) => groupOf(p) !== groupOf(X) || cu.need[groupOf(p)] > 0);
+  if (!fit.length) return null;
+  type Opt = { ids: Player[]; score: number };
+  const opts: Opt[] = [];
+  const sorted = [...fit].sort((a, b) => b.overall - a.overall).slice(0, 12);
+  for (const p of sorted) {
+    const r = valueFor(cf, p) / vx;
+    if (r >= 0.8 && r <= 1.05) opts.push({ ids: [p], score: Math.abs(r - 0.97) - p.overall / 400 });
+  }
+  // add a depth player from anywhere on their roster to balance the value
+  const filler = spare.filter((p) => p.overall >= 62).sort((a, b) => tradeValue(a) - tradeValue(b)).slice(0, 8);
+  for (const p of sorted)
+    for (const q of filler) {
+      if (q.id === p.id) continue;
+      const r = (valueFor(cf, p) + valueFor(cf, q)) / vx;
+      if (r >= 0.85 && r <= 1.05) opts.push({ ids: [p, q], score: Math.abs(r - 0.97) + 0.05 - p.overall / 400 });
+    }
+  opts.sort((a, b) => a.score - b.score);
+  for (const o of opts.slice(0, 10)) {
+    const give = o.ids.map((p) => p.id);
+    if (!clubAccepts(state, fromId, give, [X.id], 0.95).ok) continue;
+    if (userSideProblem(state, [X.id], give)) continue;
+    const main = o.ids[0];
+    const why = block.length ? `${F.name} откликается на ваш блок обменов: интересен ${X.name}` : `${F.name} видит ваш запрос и ищет ${GROUP_ONE[groupOf(X)]}`;
+    return { give, get: [X.id], reason: `${why}; взамен — ${POS_LONG[main.position]} ${main.name} (${main.age} л.)${hasWants(wants) ? ', как вы и просили' : ''}` };
+  }
+  return null;
+}
+
+/** "Ask around the league": every club looks at the trade block once; up to three offers come back. */
+export function shopTradeBlock(state: GameState): { offers: TradeOffer[]; error: string | null } {
+  const w = tradeWindow(state);
+  if (!w.open) return { offers: [], error: 'Окно обменов закрыто' };
+  const tb = ensureTradeBlock(state);
+  if (!userBlockPlayers(state).length && !hasWants(tb.wants)) return { offers: [], error: 'Выставьте игроков на обмен или укажите, кого вы ищете' };
+  if (tb.lastShopDay != null && state.day - tb.lastShopDay < 7 && state.phase !== 'offseason') return { offers: [], error: `Клубы уже изучили ваш блок. Повторный запрос — через ${7 - (state.day - tb.lastShopDay)} дн.` };
+  tb.lastShopDay = state.day;
+  const freeze = novemberTradeFreeze(state);
+  const maxDay = state.phase !== 'season' ? state.day + 5 : freeze && state.day < freeze[0] ? freeze[0] - 1 : tradeDeadline(state) - 1;
+  const out: TradeOffer[] = [];
+  for (const id of shuffled(state.teamOrder.filter((x) => x !== state.userTeamId))) {
+    if (out.length >= 3 || state.offers.length + out.length >= 6) break;
+    const p = generateBlockProposal(state, id);
+    if (!p) continue;
+    const clash = [...state.offers, ...out].some((o) => o.get.some((x) => p.get.includes(x)) || o.give.some((x) => p.give.includes(x)));
+    if (clash) continue;
+    out.push({ id: Date.now() + Math.floor(Math.random() * 100000), from: id, give: p.give, get: p.get, expires: Math.max(state.day, Math.min(state.day + 5, maxDay)), day: state.day, reason: p.reason });
+  }
+  return { offers: out, error: out.length ? null : 'Ни один клуб пока не готов к сделке на ваших условиях. Ослабьте требования или добавьте игроков в блок.' };
+}
+
 export function maybeIncomingOffer(state: GameState): TradeOffer | null {
   const w = tradeWindow(state);
   if (state.phase !== 'season' || !w.open || state.offers.length >= 3) return null;
   const user = state.teams[state.userTeamId];
   const onBlock = user.players.some((id) => state.players[id].tradeFlag === 'block');
-  if (Math.random() > 0.09 * deadlineHeat(state) * (onBlock ? 1.6 : 1)) return null;
+  const wants = hasWants(state.tradeBlock?.wants);
+  if (Math.random() > 0.09 * deadlineHeat(state) * (onBlock ? 1.6 : 1) * (wants ? 1.25 : 1)) return null;
   const freeze = novemberTradeFreeze(state);
   const maxDay = freeze && state.day < freeze[0] ? freeze[0] - 1 : tradeDeadline(state) - 1;
   if (maxDay < state.day) return null;
   for (const id of shuffled(state.teamOrder.filter((x) => x !== user.id)).slice(0, 6)) {
-    const p = generateProposal(state, id, user.id);
+    // Clubs that know what we want try to build the offer around our trade block first.
+    const p = (onBlock || wants) && Math.random() < 0.65 ? generateBlockProposal(state, id) ?? generateProposal(state, id, user.id) : generateProposal(state, id, user.id);
     if (!p) continue;
     if (state.offers.some((o) => o.get.some((x) => p.get.includes(x)) || o.give.some((x) => p.give.includes(x)))) continue;
     return { id: Date.now() + Math.floor(Math.random() * 1000), from: id, give: p.give, get: p.get, expires: Math.min(state.day + 5, maxDay), day: state.day, reason: p.reason };

@@ -11,7 +11,7 @@ const html = fs
   .replace('<script type="module" crossorigin>', '<script>window.__app=function(){')
   .replace('</script>', '};document.addEventListener("DOMContentLoaded",window.__app);</script>')
   .replace(/import\.meta/g, '({url:"http://localhost/",env:{}})');
-const roster = fs.readFileSync('public/roster.json', 'utf8');
+const roster = fs.readFileSync('public/rostfdfer.json', 'utf8');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const errors = [];
 let failed = 0;
@@ -71,9 +71,14 @@ function boot(seed, rosterText) {
   await sleep(600);
   check('career started → dashboard', a.has('Лента новостей') && a.has('Следующий матч'));
   check('BOARD: the season objective is shown on the dashboard', !!a.document.querySelector('[data-board-goal]') && a.has('Задача руководства'), a.document.querySelector('[data-board-goal]')?.textContent);
-  if (a.find('Симулировать до матча')) {
+  // Fast sim pauses when a new inbox task appears; keep pressing until match day.
+  for (let k = 0; k < 8 && a.find('Симулировать до матча'); k++) {
     a.click(a.find('Симулировать до матча'));
-    await sleep(500);
+    await sleep(400);
+    if (a.find('Всё равно продолжить')) {
+      a.click(a.find('Всё равно продолжить'));
+      await sleep(400);
+    }
   }
   a.click(a.find('Играть матч'));
   await sleep(300);

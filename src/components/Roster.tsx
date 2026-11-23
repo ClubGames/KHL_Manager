@@ -12,6 +12,8 @@ import {
   sendToVhlOrWaivers,
   setTeamRole,
   setTradeFlag,
+  assignUserScout,
+  cancelUserScout,
   setTrainingPlan,
   toggleHallOfFameJersey,
   togglePlayThroughInjury,
@@ -26,6 +28,8 @@ import { isU20Limiter } from '../game/dynasty';
 import { activeKhlCount, hasTwoWayContract, isWaiverExempt, MAX_VHL_PLAYERS, playerStatusTag, teamVhlCapRelief, vhlPlayerCapRelief } from '../game/khlRules';
 import { canPlaceInLtir, canPlayThroughInjury, formatInjuryDays, injuryReturnDate, isPlayingHurt, LTIR_MIN_DAYS } from '../game/medical';
 import { regularSeasonLength } from '../game/schedule';
+import { knowledgeOf, scoutedOvr, scoutedSkill } from '../game/scouting';
+import { ScoutOvr } from './Scout';
 import { Bar, Button, Empty, Modal, OverallChip, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { cn } from '../utils/cn';
 
@@ -310,7 +314,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                           {p.name}
                         </button>
                         <span className="text-muted">{p.age} л.</span>
-                        <OverallChip value={p.overall} size="sm" />
+                        <ScoutOvr p={p} />
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="text-ok tabular">
@@ -397,7 +401,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                               <button onClick={() => ui.openPlayer(wp.id)} className="font-semibold text-sm hover:text-ice truncate">
                                 {wp.name}
                               </button>
-                              <OverallChip value={wp.overall} size="sm" />
+                              <ScoutOvr p={wp} />
                             </div>
                             <div className="text-[11px] text-muted">
                               Из {fromT?.short ?? 'КХЛ'} · {wp.age} л. · {formatMoney(wp.contract.salary)} ({wp.contract.years} г.) · до дня {w.expiresDay + 1}
@@ -522,7 +526,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                             {p.name}
                           </button>
                           <span className="text-xs text-muted">{p.age} л.</span>
-                          <OverallChip value={p.overall} size="sm" />
+                          <ScoutOvr p={p} />
                           <span className="text-xs text-ice font-display">→ ПОТ {p.potential}</span>
                           <Tag tone={role === 'top' ? 'good' : role === 'depth' ? 'accent' : 'warn'}>
                             {role === 'top' ? 'Топ-звенья ×1.45' : role === 'depth' ? 'Основа ×1.15' : 'Вне основы ×0.65'}
@@ -641,7 +645,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                         {p.age <= 25 && p.potential > p.overall && (
                           <span className="text-[10px] font-display text-ice tabular">→{p.potential}</span>
                         )}
-                        <OverallChip value={p.overall} size="sm" />
+                        <ScoutOvr p={p} />
                       </div>
                     </div>
 
@@ -781,7 +785,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                     )}
                     <td className="px-2 py-1.5 text-muted">{p.age}</td>
                     <td className="px-2 py-1.5">
-                      <OverallChip value={p.overall} size="sm" />
+                      <ScoutOvr p={p} />
                     </td>
                     <td className={cn('px-2 py-1.5', p.potential > p.overall ? 'text-ice' : 'text-muted')}>{p.age <= 25 ? p.potential : '—'}</td>
                     <td className="px-2 py-1.5 whitespace-nowrap">{formatMoney(p.contract.salary)}</td>
@@ -855,6 +859,9 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
   const arch = getArchetype(p);
   const faTag = playerStatusTag(p);
   const capRole = team ? playerCaptainRole(team, p.id) : null;
+  const scoutView = scoutedOvr(s, p);
+  const exactInfo = isUser || scoutView.exact;
+  const scouting = s.scouting?.assignments.find((a) => a.kind === 'player' && a.target === p.id);
   return (
     <Modal open onClose={onClose} width="max-w-3xl">
       <div className="flex items-start gap-4 flex-wrap">
@@ -890,12 +897,16 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
         </div>
         <div className="flex gap-2">
           <div className="text-center">
-            <OverallChip value={p.overall} size="lg" />
-            <div className="text-[10px] uppercase tracking-wider text-muted mt-1">Рейтинг</div>
+            {exactInfo ? <OverallChip value={p.overall} size="lg" /> : <ScoutOvr p={p} size="lg" />}
+            <div className="text-[10px] uppercase tracking-wider text-muted mt-1">{exactInfo ? 'Рейтинг' : 'Оценка'}</div>
           </div>
           {p.age <= 25 && (
             <div className="text-center">
-              <div className="font-display text-2xl tabular w-14 h-10 leading-10 rounded-sm border border-ice/40 text-ice bg-ice/10">{p.potential}</div>
+              {exactInfo ? (
+                <div className="font-display text-2xl tabular w-14 h-10 leading-10 rounded-sm border border-ice/40 text-ice bg-ice/10">{p.potential}</div>
+              ) : (
+                <ScoutOvr p={p} size="lg" potential />
+              )}
               <div className="text-[10px] uppercase tracking-wider text-muted mt-1">Потенциал</div>
             </div>
           )}
@@ -906,14 +917,29 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
         <div>
           <div className="text-[11px] uppercase tracking-wider text-muted mb-2">Навыки</div>
           <div className="space-y-1.5">
-            {skillList(p).map((sk) => (
-              <div key={sk.key} className="flex items-center gap-3 text-xs">
-                <span className="w-36 text-text/85 truncate">{sk.label}</span>
-                <Bar value={sk.value} className="flex-1" height={7} />
-                <span className="w-6 text-right tabular text-muted">{sk.value}</span>
-              </div>
-            ))}
+            {skillList(p).map((sk) => {
+              const v = exactInfo ? { value: sk.value, exact: true } : scoutedSkill(s, p, sk.key, sk.value);
+              return (
+                <div key={sk.key} className="flex items-center gap-3 text-xs">
+                  <span className="w-36 text-text/85 truncate">{sk.label}</span>
+                  <Bar value={v.value} className={cn('flex-1', !v.exact && 'opacity-60')} height={7} />
+                  <span className="w-6 text-right tabular text-muted">{v.exact ? v.value : `~${v.value}`}</span>
+                </div>
+              );
+            })}
           </div>
+          {!exactInfo && (
+            <div className="mt-2 rounded-sm border border-dashed border-line px-2 py-1.5 text-[11px] text-muted flex items-center gap-2 flex-wrap" data-scout-box>
+              <span className="flex-1 min-w-[160px]">Данные скаутов: изученность {Math.round(knowledgeOf(s, p))}%, погрешность ±{scoutView.err}.</span>
+              {scouting ? (
+                <Button size="sm" variant="ghost" onClick={() => cancelUserScout('player', p.id)}>Скаут работает — отозвать</Button>
+              ) : (
+                <Button size="sm" variant="secondary" onClick={() => setModalNotice(assignUserScout('player', p.id) ?? `Скаут отправлен наблюдать за игроком ${p.name} (≈ неделя).`)} data-scout-player>
+                  Отправить скаута
+                </Button>
+              )}
+            </div>
+          )}
           <div className="text-[11px] uppercase tracking-wider text-muted mt-4 mb-1">Мораль</div>
           <div className="flex items-center gap-3 text-xs">
             <Bar value={p.morale} color={p.morale >= 70 ? '#3FCF8E' : p.morale >= 50 ? '#F2B544' : '#E5323E'} className="flex-1" />
