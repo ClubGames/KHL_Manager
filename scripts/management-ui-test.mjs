@@ -13,7 +13,7 @@ try {
   const hub = page.locator('[data-coaching-hub]');
   await hub.waitFor();
   assert.equal(await hub.getByText('Имена — справочный срез', { exact: false }).count(), 0);
-  assert.equal(await hub.locator('[data-coach^="market-"]').count(), 6);
+  assert.equal(await hub.locator('[data-coach^="free-coach-"]').count(), 12);
   const read = () => page.evaluate(async () => { const {store} = await import(performance.getEntriesByType('resource').find(e => /\/src\/game\/state\.ts(?:\?|$)/.test(e.name)).name); const s=store.get(); return { coaches: s.teams[s.userTeamId].coaches, market:s.coachMarket, management:s.teams[s.userTeamId].management }; });
   const original = await read();
   const outgoing = original.coaches.find(c=>c.role==='head'), assistant = original.coaches.find(c=>c.role==='assistant');
@@ -22,22 +22,22 @@ try {
   assert.ok((await read()).coaches.some(c=>c.id===assistant.id && c.acting));
   assert.ok(await hub.getByText('Ассистент · вакансия', {exact:true}).isVisible());
   await hub.getByRole('button',{name:'Ассистент',exact:true}).click();
-  const offer = hub.locator('[data-coach="market-vorobyov"]').locator('..');
+  const offer = hub.locator('[data-coach="free-coach-vorobyov"]').locator('..');
   await offer.getByRole('button',{name:/Нанять: Ассистент/}).click();
   await page.locator('.fixed.inset-0.z-50').getByRole('button',{name:'Назначить',exact:true}).click();
-  assert.equal((await read()).coaches.find(c=>c.id==='market-vorobyov').role,'assistant');
+  assert.equal((await read()).coaches.find(c=>c.id==='free-coach-vorobyov').role,'assistant');
   await hub.getByRole('button',{name:'Главный тренер',exact:true}).click();
-  await hub.locator('[data-coach="market-tambiev"]').locator('..').getByRole('button',{name:/Нанять:/}).click();
+  await hub.locator('[data-coach="free-coach-krikunov"]').locator('..').getByRole('button',{name:/Нанять:/}).click();
   await page.locator('.fixed.inset-0.z-50').getByRole('button',{name:'Назначить',exact:true}).click();
   let state = await read();
-  assert.ok(state.coaches.some(c=>c.id==='market-tambiev' && c.role==='head' && !c.acting));
-  assert.ok(state.coaches.some(c=>c.id==='market-vorobyov' && c.role==='assistant'));
+  assert.ok(state.coaches.some(c=>c.id==='free-coach-krikunov' && c.role==='head' && !c.acting));
+  assert.ok(state.coaches.some(c=>c.id==='free-coach-vorobyov' && c.role==='assistant'));
   assert.ok(state.market.some(c=>c.id===assistant.id));
   await page.evaluate(async()=>{ const {saveNow} = await import(performance.getEntriesByType('resource').find(e => /\/src\/game\/state\.ts(?:\?|$)/.test(e.name)).name); await saveNow(); });
   await page.reload();
   await page.getByRole('button',{name:'Продолжить',exact:true}).click();
   await page.getByRole('button',{name:'Управление командой →',exact:true}).click();
-  state = await read(); assert.equal(state.coaches.find(c=>c.role==='head').id,'market-tambiev');
+  state = await read(); assert.equal(state.coaches.find(c=>c.role==='head').id,'free-coach-krikunov');
   console.log('ok real market, dismissal/interim, both appointment roles and reload');
   for (const width of [1440, 1280, 1024, 768, 390]) {
     await page.setViewportSize({width,height:900});
