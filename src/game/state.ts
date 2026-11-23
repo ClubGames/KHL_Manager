@@ -181,6 +181,7 @@ export function buildMeta(s: GameState): SaveMeta {
     city: U.city,
     primaryColor: U.primaryColor,
     secondaryColor: U.secondaryColor,
+    ...(U.logo ? { logo: U.logo } : {}),
     league: s.league.name,
     season: s.league.season,
     seasonNumber: s.seasonNumber,

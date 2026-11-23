@@ -11,6 +11,7 @@ export interface SaveMeta {
   city: string;
   primaryColor: string;
   secondaryColor: string;
+  logo?: string;
   league: string;
   season: string;
   seasonNumber: number;

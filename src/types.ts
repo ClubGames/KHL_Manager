@@ -179,6 +179,8 @@ export interface Team {
   division: string;
   primaryColor: string;
   secondaryColor: string;
+  /** Optional custom logo URL or relative path (KHL clubs use built-in logos automatically). */
+  logo?: string;
   budget: number;
   players: string[];
   lineup: Lineup;
