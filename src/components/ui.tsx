@@ -3,6 +3,7 @@ import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import { cn } from '../utils/cn';
 import type { PosCode, Team } from '../types';
 import { overallColor, POS_RU } from '../game/ratings';
+import { getOfficialClubPalette, hexLuminance } from '../game/clubColors';
 
 export type View = 'dashboard' | 'roster' | 'lines' | 'schedule' | 'standings' | 'stats' | 'trades' | 'market' | 'contracts' | 'club' | 'format' | 'offseason';
 
@@ -91,13 +92,40 @@ export function PosBadge({ pos }: { pos: PosCode }) {
   );
 }
 
-export function TeamLogo({ team, size = 32, className }: { team: Pick<Team, 'short' | 'primaryColor' | 'secondaryColor'>; size?: number; className?: string }) {
-  const letters = team.short.slice(0, 3);
+export function TeamLogo({
+  team,
+  size = 32,
+  className,
+}: {
+  team: Pick<Team, 'short' | 'primaryColor' | 'secondaryColor'> & Partial<Pick<Team, 'id' | 'name'>>;
+  size?: number;
+  className?: string;
+}) {
+  const letters = team.short.length <= 4 ? team.short : team.short.slice(0, 3);
+  const official = getOfficialClubPalette(team);
+  const accent = official?.accentColor;
+  const stripeH = Math.max(3, Math.round(size * 0.13));
+  const secLum = hexLuminance(team.secondaryColor);
+  const borderColor = secLum < 45 ? `${accent && hexLuminance(accent) >= 60 ? accent : '#FFFFFF'}66` : `${team.secondaryColor}66`;
+  const fontSize = Math.max(9, Math.round(size * (letters.length >= 4 ? 0.27 : 0.34)));
+  const boxShadow = accent
+    ? `inset 0 -${stripeH}px 0 ${accent}`
+    : `inset 0 -${stripeH}px 0 rgba(0,0,0,.28)`;
   return (
     <span
-      className={cn('inline-flex items-center justify-center font-display font-bold uppercase shrink-0 rounded-sm slash', className)}
-      style={{ width: size, height: size, background: team.primaryColor, color: team.secondaryColor, fontSize: Math.max(10, Math.round(size * 0.34)), border: `2px solid ${team.secondaryColor}55`, boxShadow: 'inset 0 -4px 0 rgba(0,0,0,.25)' }}
-      title={team.short}
+      className={cn('inline-flex items-center justify-center font-display font-bold uppercase shrink-0 rounded-sm slash select-none', className)}
+      style={{
+        width: size,
+        height: size,
+        background: team.primaryColor,
+        color: team.secondaryColor,
+        fontSize,
+        lineHeight: 1,
+        paddingBottom: Math.max(1, Math.round(stripeH * 0.45)),
+        border: `1.5px solid ${borderColor}`,
+        boxShadow,
+      }}
+      title={team.name ?? team.short}
     >
       {letters}
     </span>

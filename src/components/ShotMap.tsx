@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { Player, ShotPoint, ShotZone, Team } from '../types';
+import { visibleClubColor } from '../game/clubColors';
 import { cn } from '../utils/cn';
 
 const ZONE_RU: Record<ShotZone, string> = {
@@ -18,17 +19,6 @@ const SHOT_RU: Record<string, string> = {
   tip: 'подправление',
   rebound: 'добивание',
 };
-
-function safeTeamColor(hex: string, fallback: string): string {
-  const c = (hex || '').replace('#', '');
-  if (c.length !== 6) return fallback;
-  const r = parseInt(c.slice(0, 2), 16);
-  const g = parseInt(c.slice(2, 4), 16);
-  const b = parseInt(c.slice(4, 6), 16);
-  const lum = 0.299 * r + 0.587 * g + 0.114 * b;
-  if (lum < 48) return fallback;
-  return `#${c}`;
-}
 
 export function ShotMap({
   shots,
@@ -49,8 +39,8 @@ export function ShotMap({
   const [onlyDanger, setOnlyDanger] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
 
-  const homeColor = safeTeamColor(home.primaryColor, '#38BDF8');
-  const awayColor = safeTeamColor(away.primaryColor, '#F87171');
+  const homeColor = visibleClubColor(home, '#38BDF8');
+  const awayColor = visibleClubColor(away, '#F87171');
   const effAwayColor = awayColor.toLowerCase() === homeColor.toLowerCase() ? '#F59E0B' : awayColor;
 
   const maxPeriod = useMemo(() => Math.max(3, ...shots.map((s) => s.period)), [shots]);

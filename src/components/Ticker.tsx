@@ -1,4 +1,5 @@
 import { useGame } from '../game/state';
+import { visibleClubColor } from '../game/clubColors';
 import type { Game } from '../types';
 import { Icon, useUI } from './ui';
 import { cn } from '../utils/cn';
@@ -33,14 +34,14 @@ export function Ticker() {
               className={cn('flex items-center gap-2 px-3 py-1.5 text-xs whitespace-nowrap hover:bg-panel2 transition-colors', mine && 'bg-ice/5')}
               title={r ? 'Открыть протокол' : undefined}
             >
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.teams[g.away].primaryColor }} />
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: visibleClubColor(s.teams[g.away]) }} />
               <span className="text-muted">{s.teams[g.away].short}</span>
               <span className="font-display text-sm tabular text-text">
                 {r ? `${r.awayScore}:${r.homeScore}` : '—:—'}
                 {r?.so ? <span className="text-amber ml-0.5">Б</span> : r?.ot ? <span className="text-amber ml-0.5">ОТ</span> : null}
               </span>
               <span className="text-muted">{s.teams[g.home].short}</span>
-              <span className="w-1.5 h-1.5 rounded-full" style={{ background: s.teams[g.home].primaryColor }} />
+              <span className="w-1.5 h-1.5 rounded-full" style={{ background: visibleClubColor(s.teams[g.home]) }} />
               {mine && <span className="text-ice/80">· ваш матч</span>}
             </button>
           );

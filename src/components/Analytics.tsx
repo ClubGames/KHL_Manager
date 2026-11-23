@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Chart, registerables, type ChartConfiguration } from 'chart.js';
 import { useGame } from '../game/state';
+import { visibleClubColor } from '../game/clubColors';
 import { Panel, Stat, TeamLogo, Tag } from './ui';
 import { cn } from '../utils/cn';
 
@@ -160,20 +161,21 @@ export function Analytics() {
     };
   }, [s, U, P]);
 
+  const userChartColor = visibleClubColor(U, '#8FD8F0');
   const race = useMemo<ChartConfiguration>(
     () => ({
       type: 'line',
       data: {
         labels: data.race.map((r) => r.gp),
         datasets: [
-          { label: U.name, data: data.race.map((r) => r.user), borderColor: U.primaryColor === '#0b1420' ? '#8FD8F0' : U.primaryColor, backgroundColor: `${U.primaryColor}33`, fill: true, tension: 0.25, pointRadius: 0, borderWidth: 3 },
+          { label: U.name, data: data.race.map((r) => r.user), borderColor: userChartColor, backgroundColor: `${userChartColor}33`, fill: true, tension: 0.25, pointRadius: 0, borderWidth: 3 },
           { label: `8-е место (${data.race[data.race.length - 1]?.leaderName ?? ''})`, data: data.race.map((r) => r.eighth), borderColor: '#3FCF8E', borderDash: [5, 4], pointRadius: 0, borderWidth: 2, fill: false, tension: 0.25 },
           { label: 'Лидер конференции', data: data.race.map((r) => r.leader), borderColor: '#F2B544', pointRadius: 0, borderWidth: 2, fill: false, tension: 0.25 },
         ],
       },
       options: { ...baseOptions(' очк.'), scales: { ...baseOptions(' очк.')?.scales, x: { ...baseOptions(' очк.')?.scales?.x, title: { display: true, text: 'Матчей сыграно', color: MUTED } } } } as ChartConfiguration['options'],
     }),
-    [data, U]
+    [data, U, userChartColor]
   );
 
   const periods = useMemo<ChartConfiguration>(
@@ -212,13 +214,13 @@ export function Analytics() {
       data: {
         labels: ['Большинство, %', 'Меньшинство, %'],
         datasets: [
-          { label: U.short, data: [+data.ppPct.toFixed(1), +data.pkPct.toFixed(1)], backgroundColor: U.primaryColor === '#0b1420' ? '#8FD8F0' : U.primaryColor, borderRadius: 3, barPercentage: 0.55 },
+          { label: U.short, data: [+data.ppPct.toFixed(1), +data.pkPct.toFixed(1)], backgroundColor: userChartColor, borderRadius: 3, barPercentage: 0.55 },
           { label: 'Среднее по лиге', data: [+data.leaguePP.toFixed(1), +(100 - data.leaguePP).toFixed(1)], backgroundColor: '#5C7292', borderRadius: 3, barPercentage: 0.55 },
         ],
       },
       options: { ...baseOptions('%'), indexAxis: 'y', scales: { x: { ticks: { color: MUTED }, grid: { color: GRID }, suggestedMax: 100, beginAtZero: true }, y: { ticks: { color: TEXT }, grid: { display: false } } } } as ChartConfiguration['options'],
     }),
-    [data, U]
+    [data, U, userChartColor]
   );
 
   const ppDiff = data.ppPct - data.leaguePP;
