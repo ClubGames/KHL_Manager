@@ -12743,7 +12743,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/33887/200.jpg"
         },
         {
           "id": "sib-d04",
@@ -12793,11 +12793,11 @@
             "salary": 25000000,
             "years": 1
           },
-          "face": null
+          "face": "https://img.khl.ru/players/17459/200.jpg"
         },
         {
           "id": "sib-d06",
-          "name": "Никита Ваклюев",
+          "name": "Никита Баклашев",
           "position": "З",
           "age": 21,
           "height": 188,
@@ -12819,7 +12819,7 @@
             "years": 2,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/41136/200.jpg"
         },
         {
           "id": "sib-d07",
@@ -13196,7 +13196,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/41382/200.jpg"
         },
         {
           "id": "sib-lw06",
@@ -13271,7 +13271,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/33545/200.jpg"
         },
         {
           "id": "sib-rw06",
@@ -13346,7 +13346,7 @@
             "salary": 5000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/30941/200.jpg"
         },
         {
           "id": "sib-rw09",
