@@ -1,10 +1,15 @@
-import { adoptRosterCoachMarket, changeTeamFocus, coachingEffects, ensureCoachingState, fireCoach, hireCoach, interveneTeam, recordCoachingResult, stepTeamManagement } from './coaching';
+import { adoptRosterCoachMarket, changeTeamFocus, ensureCoachingState, fireCoach, hireCoach, interveneTeam, recordCoachingResult, stepTeamManagement } from './coaching';
 import type { TeamFocus, TeamIntervention } from '../types';
 import { useSyncExternalStore } from 'react';
 import type { Award, FacilityKey, Game, GameResult, GameState, Lineup, NewsItem, NewsType, Series, Team, TeamTactics, YouthTrainingPlan } from '../types';
 import { buildSchedule, isWeekendDay, regularSeasonLength, seasonDateObj } from './schedule';
 import { GameSim } from './engine';
-import { autoLineup, clubSideProblem, evaluateTrade, executeTrade, groupOf, lineupConstraintsFor, MAX_ROSTER, maybeAiTrade, maybeIncomingOffer, prepareLineup, sanitizeLineup, tradeWindow, userSideProblem } from './ai';
+import { buildSimTeam } from './simTeam';
+import { assignScout, cancelScout, ensureScouting, scoutGame, stepScouting } from './scouting';
+import { answerPressConference, createPressConference, fanGateMult } from './press';
+import { autoFinishPreseason, createPreseason, playPreseasonRound, preseasonTable } from './preseason';
+import { blockingTasks, dismissInboxTask } from './inbox';
+import { autoLineup, clubSideProblem, ensureTradeBlock, evaluateTrade, shopTradeBlock, executeTrade, groupOf, lineupConstraintsFor, MAX_ROSTER, maybeAiTrade, maybeIncomingOffer, prepareLineup, sanitizeLineup, tradeWindow, userSideProblem } from './ai';
 import { buyoutCost, commitments, negotiate, talksLeft } from './contracts';
 import { evaluateBoard, setBoardGoal } from './board';
 import { beginNewSeason, letGoUser, qualifyUserRfa, startOffseason, toFreeAgency } from './offseason';
@@ -16,7 +21,7 @@ import type { SaveMeta } from './storage';
 import { buyoutDeadCap, CAP_GAMES_PER_POINT_DEDUCTION, CAP_GRACE_DAYS, capExcess, dailyCapFine, effectivePayroll, getCapSummary, recomputePoints } from './cap';
 import { countRosterLegionnaires, DEFAULT_FOREIGN_LIMIT, isLegionnaire, teamForeignLimit } from './legionnaires';
 import { isYouthPlayer, recommendYouthPlan, stepYouthTrainingWeek } from './training';
-import { ensureCaptains, getTeamTactics, goalieFreshness, recordLineupChemistryGP, teamLeadershipBonus } from './chemistry';
+import { ensureCaptains, getTeamTactics, goalieFreshness, recordLineupChemistryGP } from './chemistry';
 import { advanceAiDraftToUser, autoCompleteDraft, currentDraftTeamId, executeSingleDraftPick } from './dynasty';
 import { activeKhlCount, aiShouldMatchOfferSheet, canHaveNmc, canSignTwoWay, isOnWaivers, isRfaEligibleAge, isWaiverExempt, MAX_VHL_PLAYERS, offerSheetCompensation, processDailyWaivers, vhlPlayerCapRelief, WAIVER_DAYS } from './khlRules';
 import { getDerby, isFarEastClub } from './derbies';
@@ -223,6 +228,12 @@ export function migrateState(raw: unknown): GameState | null {
   s.waivers ??= [];
   s.rfaOffers ??= [];
   s.allStar ??= null;
+  s.fans ??= 60;
+  s.press ??= null;
+  s.preseason ??= null;
+  s.inboxDismissed ??= {};
+  ensureScouting(s);
+  ensureTradeBlock(s);
   ensureCoachingState(s);
   s.league.foreignLimit ??= DEFAULT_FOREIGN_LIMIT;
   if (s.playoffs && !s.playoffs.awards) s.playoffs.awards = [];
@@ -322,13 +333,19 @@ export function createGameState(r: NormalizedRoster, userTeamId: string): GameSt
     waivers: [],
     rfaOffers: [],
     allStar: null,
+    fans: 60,
+    press: null,
+    inboxDismissed: {},
   } as unknown as GameState;
   for (const t of Object.values(teams)) {
     ensureFacilities(t);
     t.seasonGateRevenue = 0;
   }
   ensureCoachingState(state);
+  ensureScouting(state);
+  ensureTradeBlock(state);
   setBoardGoal(state);
+  state.preseason = createPreseason(state);
   news[0].text += ` Задача руководства на сезон: ${state.board.text.toLowerCase()}.`;
   const startPay = effectivePayroll(user, r.players, 'season');
   if (startPay > r.salaryCap) {
@@ -620,20 +637,6 @@ export function autoAssignYouthPlans() {
 }
 
 /* ---------------- simulation ---------------- */
-function buildSimTeam(state: GameState, tid: string, lineup: Lineup) {
-  const T = state.teams[tid];
-  return {
-    id: tid,
-    lineup,
-    name: T.name,
-    tactics: getTeamTactics(T),
-    chemGP: T.chemGP,
-    leadershipBonus: teamLeadershipBonus(T, state.players),
-    coaching: coachingEffects(T, state.players),
-    roadStreak: T.roadStreak ?? 0,
-  };
-}
-
 function runGame(state: GameState, g: Game): GameResult {
   const home = prepareLineup(state, g.home);
   const away = prepareLineup(state, g.away);
@@ -650,6 +653,7 @@ export function makeUserSim(state: GameState, g: Game): { sim: GameSim; home: Li
   const away = prepareLineup(state, g.away);
   const derby = getDerby(state.teams[g.home], state.teams[g.away]);
   const sim = new GameSim(buildSimTeam(state, g.home, home), buildSimTeam(state, g.away, away), state.players, g.kind === 'playoff', derby);
+  sim.userSide = g.home === state.userTeamId ? 0 : g.away === state.userTeamId ? 1 : null;
   return { sim, home, away };
 }
 
@@ -707,13 +711,14 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
   recordLineupChemistryGP(A, A.lineup);
   H.roadStreak = 0;
   A.roadStreak = (A.roadStreak ?? 0) + (isFarEastClub(H) ? 2 : 1);
-  const homeGate =
+  let homeGate =
     computeHomeGateRevenue(
       H.facilities?.arena ?? 1,
       g.kind === 'playoff',
       isWeekendDay(g.day, regLen, state.league.season),
       A.record.points
     ) + (derby ? derby.gateBonus : 0);
+  if (H.id === U) homeGate = Math.round((homeGate * fanGateMult(state.fans)) / 100_000) * 100_000;
   H.budget += homeGate;
   H.seasonGateRevenue = (H.seasonGateRevenue ?? 0) + homeGate;
 
@@ -852,6 +857,13 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
       U,
       g.id
     );
+    const oppDressed = g.home === U ? res.awayDressed : res.homeDressed;
+    scoutGame(state, oppDressed);
+    // Fans: wins (especially derbies and playoff games) lift support, losses erode it slowly.
+    const userWon = (g.home === U) === hw;
+    const swing = (userWon ? 1 : beyond ? -0.5 : -1) * (g.kind === 'playoff' ? 2 : 1) * (derby ? 1.5 : 1);
+    state.fans = Math.max(0, Math.min(100, Math.round(((state.fans ?? 60) + swing) * 10) / 10));
+    state.press = createPressConference(state, g, res);
   }
 }
 
@@ -914,6 +926,14 @@ function postDay(state: GameState) {
       : 1;
 
   stepTeamManagement(state, calStep);
+
+  // August is over: whatever is left of the preseason tournament is played with the regular line-up.
+  if (state.preseason && !state.preseason.done && state.phase === 'season') {
+    autoFinishPreseason(state);
+    announcePreseason(state);
+  }
+  for (const text of stepScouting(state, calStep)) addNews(state, 'info', text, state.userTeamId);
+  if (state.press && state.press.day < state.day - 2) state.press = null;
 
   // Daily goalie recovery for goalies whose club did not play on the day that just finished
   const playedToday = new Set<string>();
@@ -1156,17 +1176,36 @@ export function simulateDay(includeUser: boolean): boolean {
   return userSimmed;
 }
 
-export function simulateDays(n: number) {
+/** Ids of the inbox tasks that must stop fast simulation. */
+const blockingIds = (state: GameState) => new Set(blockingTasks(state).map((t) => t.id));
+const newBlocking = (state: GameState, before: Set<string>) => blockingTasks(state).filter((t) => !before.has(t.id));
+
+export type SimStop = 'done' | 'inbox';
+
+/** Simulate up to `n` days; stops early when something new lands in the inbox that needs a decision. */
+export function simulateDays(n: number, stopOnInbox = true): { days: number; stop: SimStop } {
+  let days = 0;
+  let stop: SimStop = 'done';
   for (let i = 0; i < n; i++) {
-    if (!store.get()) return;
+    const cur = store.get();
+    if (!cur || cur.phase === 'offseason') break;
+    const before = blockingIds(cur);
     simulateDay(true);
+    days++;
+    const after = store.get();
+    if (stopOnInbox && after && i < n - 1 && newBlocking(after, before).length) {
+      stop = 'inbox';
+      break;
+    }
   }
+  return { days, stop };
 }
 
-export function simulateToNextUserGame(): 'userGame' | 'offseason' | 'stalled' {
-  let result: 'userGame' | 'offseason' | 'stalled' = 'stalled';
+export function simulateToNextUserGame(stopOnInbox = false): 'userGame' | 'offseason' | 'stalled' | 'inbox' {
+  let result: 'userGame' | 'offseason' | 'stalled' | 'inbox' = 'stalled';
   store.update((state) => {
     const U = state.userTeamId;
+    let before = stopOnInbox ? blockingIds(state) : null;
     for (let i = 0; i < 1500; i++) {
       if (state.phase === 'offseason') {
         result = 'offseason';
@@ -1184,6 +1223,13 @@ export function simulateToNextUserGame(): 'userGame' | 'offseason' | 'stalled' {
       }
       state.day += 1;
       postDay(state);
+      if (before) {
+        if (newBlocking(state, before).length) {
+          result = 'inbox';
+          return;
+        }
+        before = blockingIds(state);
+      }
     }
   });
   return result;
@@ -1423,6 +1469,89 @@ export function respondOffer(offerId: number, accept: boolean): string | null {
 }
 
 /** Manager's note for the trade market: 'block' invites offers for the player, 'keep' forbids them. */
+/* ---------------- trade block, scouting, press, preseason, inbox ---------------- */
+export function setTradeBlockWants(patch: Partial<import('../types').TradeBlockWants>) {
+  store.update((state) => {
+    const tb = ensureTradeBlock(state);
+    tb.wants = { ...tb.wants, ...patch };
+  });
+}
+
+/** Ask every club about the trade block now; returns a message for the UI. */
+export function shopTradeBlockNow(): { ok: boolean; text: string } {
+  let out = { ok: false, text: '' };
+  store.update((state) => {
+    const r = shopTradeBlock(state);
+    if (r.error && !r.offers.length) {
+      out = { ok: false, text: r.error };
+      return;
+    }
+    const P = state.players;
+    for (const o of r.offers) {
+      state.offers.push(o);
+      addNews(state, 'offer', `${state.teams[o.from].name} отвечает на блок обменов: ${o.give.map((id) => P[id].name).join(', ')} за ${o.get.map((id) => P[id].name).join(', ')}.`, state.userTeamId);
+    }
+    out = { ok: true, text: `Получено предложений: ${r.offers.length}. Они появились в списке входящих предложений.` };
+  });
+  return out;
+}
+
+export function assignUserScout(kind: 'player' | 'team', target: string): string | null {
+  let err: string | null = null;
+  store.update((state) => {
+    err = assignScout(state, kind, target);
+  });
+  return err;
+}
+
+export function cancelUserScout(kind: 'player' | 'team', target: string) {
+  store.update((state) => cancelScout(state, kind, target));
+}
+
+export function answerPress(optionId: string | null) {
+  store.update((state) => {
+    const text = answerPressConference(state, optionId);
+    if (text) addNews(state, 'info', text, state.userTeamId);
+  });
+}
+
+function announcePreseason(state: GameState) {
+  const ps = state.preseason;
+  if (!ps || !ps.done || ps.champion === undefined) return;
+  const key = `preseason-${ps.season}`;
+  state.announcedWindows ??= [];
+  if (state.announcedWindows.includes(key)) return;
+  state.announcedWindows.push(key);
+  const table = preseasonTable(ps);
+  const place = table.findIndex((r) => r.id === state.userTeamId) + 1;
+  const champ = state.teams[ps.champion!];
+  addNews(
+    state,
+    place === 1 ? 'milestone' : 'info',
+    place === 1
+      ? `🏆 «${state.teams[state.userTeamId].name}» выигрывает предсезонный турнир «${ps.name}»! Болельщики и руководство довольны.`
+      : `Предсезонный турнир «${ps.name}» (${ps.city}): победитель — «${champ.name}», у нас ${place}-е место.`,
+    state.userTeamId
+  );
+}
+
+/** Play the next round of the August tournament. */
+export function playPreseason(mode: 'main' | 'youth'): string | null {
+  let text: string | null = null;
+  store.update((state) => {
+    if (state.phase !== 'season' || state.day !== 0) return;
+    const r = playPreseasonRound(state, mode);
+    if (!r) return;
+    text = r.text;
+    if (r.finished) announcePreseason(state);
+  });
+  return text;
+}
+
+export function dismissInbox(id: string) {
+  store.update((state) => dismissInboxTask(state, id));
+}
+
 export function setTradeFlag(id: string, flag: 'block' | 'keep' | null) {
   store.update((state) => {
     const p = state.players[id];

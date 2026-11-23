@@ -3,7 +3,7 @@ const { JSDOM, VirtualConsole } = require('jsdom');
 const fs = require('fs');
 const raw = fs.readFileSync('dist/index.html', 'utf8');
 const html = raw.replace('<script type="module" crossorigin>', '<script>window.__app=function(){').replace('</script>', '};document.addEventListener("DOMContentLoaded",window.__app);</script>').replace(/import\.meta/g, '({url:"http://localhost/",env:{}})');
-const roster = fs.readFileSync('public/roster.json', 'utf8');
+const roster = fs.readFileSync('public/rostfdfer.json', 'utf8');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 (async () => {
   const kb = (n) => (n / 1024).toFixed(0) + ' KB';

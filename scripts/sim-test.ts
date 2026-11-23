@@ -4,7 +4,7 @@ import { createGameState, store, simulateDay, startNewSeason, simulateToNextUser
 import { GameSim } from '../src/game/engine';
 import { payroll } from '../src/game/ratings';
 
-const r = parseRosterText(readFileSync('public/roster.json', 'utf8'));
+const r = parseRosterText(readFileSync('public/rostfdfer.json', 'utf8'));
 console.log('teams', r.teams.length, 'warnings', r.warnings.slice(0, 5));
 for (const t of r.teams.slice(0, 3)) {
   const L = t.lineup;

@@ -6,7 +6,8 @@ import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit }
 import { activeKhlCount, isRfaEligibleAge, offerSheetCompensation, vhlCount } from '../game/khlRules';
 import { formatMoney } from '../game/ratings';
 import { claimFromWaivers, useGame } from '../game/state';
-import { Button, OverallChip, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
+import { Button, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
+import { ScoutOvr } from './Scout';
 import { cn } from '../utils/cn';
 
 export function Market() {
@@ -63,7 +64,7 @@ export function Market() {
                         <button onClick={() => ui.openPlayer(wp.id)} className="font-semibold text-sm hover:text-ice truncate">
                           {wp.name}
                         </button>
-                        <OverallChip value={wp.overall} size="sm" />
+                        <ScoutOvr p={wp} />
                       </div>
                       <div className="text-[11px] text-muted">
                         Из {fromT?.short ?? 'КХЛ'} · {wp.age} л. · оклад {formatMoney(wp.contract.salary)} × {wp.contract.years} г.
@@ -218,9 +219,9 @@ export function Market() {
                     </td>
                     <td className="py-2 text-muted">{p.age}</td>
                     <td className="py-2">
-                      <OverallChip value={p.overall} size="sm" />
+                      <ScoutOvr p={p} />
                     </td>
-                    <td className={cn('py-2', p.potential > p.overall ? 'text-ice' : 'text-muted')}>{p.age <= 25 ? p.potential : '—'}</td>
+                    <td className="py-2 text-muted">{p.age <= 25 ? <ScoutOvr p={p} potential /> : '—'}</td>
                     <td className={cn('py-2 text-right whitespace-nowrap', noRoom && 'text-muted')} title={noRoom ? 'Не помещается под потолок зарплат' : undefined}>
                       {formatMoney(ask)}
                     </td>
@@ -255,9 +256,9 @@ export function Market() {
                       <button type="button" className="font-semibold text-sm truncate hover:text-ice text-left" onClick={() => ui.openPlayer(p.id)}>
                         {p.name}
                       </button>
-                      <OverallChip value={p.overall} size="sm" />
+                      <ScoutOvr p={p} />
                       {p.age <= 25 && p.potential > p.overall && (
-                        <span className="text-[10px] font-display text-ice tabular shrink-0">→{p.potential}</span>
+                        <span className="text-[10px] font-display text-ice tabular shrink-0">→<ScoutOvr p={p} potential /></span>
                       )}
                     </div>
                     <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-muted tabular">

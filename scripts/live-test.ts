@@ -9,7 +9,7 @@ let failed = 0;
 const check = (name: string, ok: boolean, extra = '') => { if (!ok) failed++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`); };
 const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
-const r = parseRosterText(readFileSync('public/roster.json', 'utf8'));
+const r = parseRosterText(readFileSync('public/rostfdfer.json', 'utf8'));
 const N = 600;
 let mismFinal = 0, mismBlock = 0, prefill = 0, nonMono = 0, ppWrong = 0, evWrong = 0, ppGoals = 0, evGoals = 0, ot = 0, so = 0, swaps = 0, goalieMism = 0;
 let totGoals = 0, totPPG = 0, totPPC = 0, slugLeak = 0, earlyEnd = 0;

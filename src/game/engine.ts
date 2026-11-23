@@ -31,6 +31,13 @@ interface SimSnap {
   penMinor: [boolean, boolean];
   unitIdx: [number, number];
   unansweredGoals: [number, number];
+  timeoutUsed: [boolean, boolean];
+  focusUntil: [number, number];
+  tactics: [TeamTactics, TeamTactics];
+  shortBench: [boolean, boolean];
+  shortSince: [number, number];
+  aiDone: string[];
+  enShown: [boolean, boolean];
 }
 
 interface ActiveBlockMeta {
@@ -194,6 +201,15 @@ export class GameSim {
   focusUntil: [number, number] = [0, 0];
   unansweredGoals: [number, number] = [0, 0];
   forceEmptyNet: [boolean, boolean] = [false, false];
+  /** side controlled by the manager (its bench decisions come from the UI); null = both benches are AI */
+  userSide: TI | null = null;
+  /** playing three forward lines only: leaders get more ice time and tire later in the game */
+  shortBench: [boolean, boolean] = [false, false];
+  private shortSince: [number, number] = [0, 0];
+  /** AI bench decisions already taken this game (so each happens once) */
+  private aiDone = new Set<string>();
+  /** an automatic empty net has been announced in the play-by-play */
+  private enShown: [boolean, boolean] = [false, false];
   /** absolute game second until which each team is short-handed */
   penEnd: [number, number] = [0, 0];
   /** true while the running penalty is a single minor: it ends early if the opponent scores on the power play */
@@ -246,6 +262,12 @@ export class GameSim {
   setForceEmptyNet(i: TI, active: boolean) {
     this.forceEmptyNet[i] = active;
   }
+  /** Shorten the bench to three forward lines (true) or roll all four again. */
+  setShortBench(i: TI, on: boolean) {
+    if (this.shortBench[i] === on) return;
+    this.shortBench[i] = on;
+    this.shortSince[i] = this.sec;
+  }
   useTeamTimeout(i: TI, atSec: number): boolean {
     if (this.timeoutUsed[i]) return false;
     this.timeoutUsed[i] = true;
@@ -272,6 +294,13 @@ export class GameSim {
       penMinor: [this.penMinor[0], this.penMinor[1]],
       unitIdx: [this.unitIdx[0], this.unitIdx[1]],
       unansweredGoals: [this.unansweredGoals[0], this.unansweredGoals[1]],
+      timeoutUsed: [this.timeoutUsed[0], this.timeoutUsed[1]],
+      focusUntil: [this.focusUntil[0], this.focusUntil[1]],
+      tactics: [{ ...this.tactics[0] }, { ...this.tactics[1] }],
+      shortBench: [this.shortBench[0], this.shortBench[1]],
+      shortSince: [this.shortSince[0], this.shortSince[1]],
+      aiDone: [...this.aiDone],
+      enShown: [this.enShown[0], this.enShown[1]],
     };
   }
 
@@ -286,6 +315,14 @@ export class GameSim {
     this.penMinor = [s.penMinor[0], s.penMinor[1]];
     this.unitIdx = [s.unitIdx[0], s.unitIdx[1]];
     this.unansweredGoals = [s.unansweredGoals[0], s.unansweredGoals[1]];
+    this.timeoutUsed = [s.timeoutUsed[0], s.timeoutUsed[1]];
+    this.focusUntil = [s.focusUntil[0], s.focusUntil[1]];
+    // The manager's own tactical settings are always current (some are changed without a replan).
+    this.tactics = [this.userSide === 0 ? this.tactics[0] : { ...s.tactics[0] }, this.userSide === 1 ? this.tactics[1] : { ...s.tactics[1] }];
+    this.shortBench = [s.shortBench[0], s.shortBench[1]];
+    this.shortSince = [s.shortSince[0], s.shortSince[1]];
+    this.aiDone = new Set(s.aiDone);
+    this.enShown = [s.enShown[0], s.enShown[1]];
   }
 
   /** The five (four, three) on the ice for a line and manpower situation, with its ratings. */
@@ -411,7 +448,59 @@ export class GameSim {
       if (diff < 0 && diff >= -2) { w[0] *= 1.5; w[1] *= 1.2; w[3] *= 0.5; }
       else if (diff > 0) { w[0] *= 0.85; w[2] *= 1.1; w[3] *= 1.15; }
     }
+    if (this.shortBench[i]) {
+      w[3] = 0;
+      w[0] *= 1.12;
+      w[1] *= 1.06;
+    }
     return pickWeighted([0, 1, 2, 3], (x) => w[x]) ?? 0;
+  }
+
+  private benchTired(i: TI): boolean {
+    return this.shortBench[i] && this.sec - this.shortSince[i] > 600;
+  }
+
+  /**
+   * Bench decisions of the AI coach(es): a timeout to stop the opponent's run or to set up the
+   * six-on-five, and the late-game switch to pressing (trailing) or to a protective shell (leading).
+   */
+  private aiBench(dur: number, t: number) {
+    const left = dur - t;
+    for (const i of [0, 1] as TI[]) {
+      if (this.userSide === i) continue;
+      const o = (1 - i) as TI;
+      const diff = this.score[i] - this.score[o];
+      const tag = (k: string) => `${i}:${k}`;
+      const note = (text: string) => this.push({ type: 'info', team: this.team(i).id, penUntil: this.penUntil(), score: [this.score[0], this.score[1]], text });
+      // 1. Timeout to break the opponent's momentum.
+      const run = tag(`run${this.score[o]}`);
+      if (!this.timeoutUsed[i] && this.unansweredGoals[o] >= 2 && (diff <= -2 || (this.period >= 2 && diff <= -1)) && !this.aiDone.has(run)) {
+        this.aiDone.add(run);
+        if (Math.random() < 0.5 && this.useTeamTimeout(i, this.sec)) {
+          note(`⏱ Тайм-аут «${this.label(i)}»: тренер останавливает игру, чтобы сбить натиск соперника.`);
+          continue;
+        }
+      }
+      if (this.period !== 3) continue;
+      // 2. Timeout before pulling the goalie in a close game.
+      const pullSec = PULL_GOALIE_INFO[this.tactics[i].pullGoalie].secondsLeft;
+      if (!this.timeoutUsed[i] && diff < 0 && diff >= -2 && pullSec > 0 && left <= pullSec + 40 && left > pullSec - 40) {
+        this.useTeamTimeout(i, this.sec);
+        note(`⏱ Тайм-аут «${this.label(i)}» перед концовкой — тренер готовит игру в большинстве с шестым полевым.`);
+        continue;
+      }
+      // 3. Late game shape.
+      if (left <= 420 && diff < 0 && diff >= -2 && !this.aiDone.has(tag('press'))) {
+        this.aiDone.add(tag('press'));
+        this.tactics[i] = { ...this.tactics[i], forecheck: 'aggressive', style: 'shoot' };
+        note(`«${this.label(i)}» бросается в атаку: агрессивный форчек и броски с любых позиций.`);
+      } else if (left <= 360 && diff === 1 && !this.aiDone.has(tag('protect'))) {
+        this.aiDone.add(tag('protect'));
+        this.tactics[i] = { ...this.tactics[i], forecheck: 'trap' };
+        this.setShortBench(i, true);
+        note(`«${this.label(i)}» закрывается: ловушка в средней зоне и три звена на концовку.`);
+      }
+    }
   }
 
   simPeriod(): GameEvent[] {
@@ -522,6 +611,7 @@ export class GameSim {
     for (let t = startT; t < dur && !ended; t += SHIFT) {
       const sec = this.blockStart + t;
       this.sec = sec;
+      if (kind === 'reg') this.aiBench(dur, t);
       const li: [number, number] = [this.pickLine(0, kind), this.pickLine(1, kind)];
       const u20Shift: [boolean, boolean] = [
         kind === 'reg' && li[0] === 3 && Math.random() < 0.25,
@@ -551,6 +641,16 @@ export class GameSim {
           const trailing: TI = this.score[0] < this.score[1] ? 0 : 1;
           const pullSec = PULL_GOALIE_INFO[this.tactics[trailing].pullGoalie].secondsLeft;
           if (pullSec > 0 && dur - t <= pullSec) emptyNet = trailing;
+        }
+      }
+      for (const side of [0, 1] as TI[]) {
+        const auto = emptyNet === side && !this.forceEmptyNet[side];
+        if (auto && !this.enShown[side]) {
+          this.enShown[side] = true;
+          this.push({ type: 'info', team: this.team(side).id, penUntil: this.penUntil(), score: [this.score[0], this.score[1]], text: `⚡ «${this.label(side)}» снимает вратаря — шестой полевой игрок!` });
+        } else if (!auto && this.enShown[side] && !this.forceEmptyNet[side]) {
+          this.enShown[side] = false;
+          if (this.status !== 'done') this.push({ type: 'info', team: this.team(side).id, penUntil: this.penUntil(), score: [this.score[0], this.score[1]], text: `Вратарь «${this.label(side)}» возвращается в ворота.` });
         }
       }
 
@@ -635,6 +735,9 @@ export class GameSim {
     if (mode === 'ot3') pShot *= 1.3;
     if (emptyNet === i) pShot *= 1.18;
     if (emptyNet === o) pShot *= 1.1;
+    // Three lines for a long time: the legs go.
+    if (this.benchTired(i)) pShot *= 0.96;
+    if (this.benchTired(o)) pShot *= 1.04;
     pShot = clamp(pShot, 0.1, 0.64);
     if (Math.random() > pShot) return 'none';
 

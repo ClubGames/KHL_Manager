@@ -8,7 +8,7 @@ import { payroll } from '../src/game/ratings';
 
 let failed = 0;
 const check = (name: string, ok: boolean, extra = '') => { if (!ok) failed++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`); };
-const text = readFileSync('public/roster.json', 'utf8');
+const text = readFileSync('public/rostfdfer.json', 'utf8');
 const st = () => G.store.get()!;
 
 /* ---------- contracts in the roster ---------- */

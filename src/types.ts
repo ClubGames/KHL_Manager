@@ -562,4 +562,86 @@ export interface GameState {
   coachMarketSource?: 'roster' | 'builtin';
   /** KHL All-Star Weekend result for the current season */
   allStar?: AllStarResult | null;
+  /** fan support 0..100: gate revenue, press reactions */
+  fans?: number;
+  /** what the user's scouts know about players of other clubs */
+  scouting?: ScoutingState;
+  /** user's trade block: what we look for and (via tradeFlag) whom we offer */
+  tradeBlock?: TradeBlock;
+  /** pending post-match press conference */
+  press?: PressConference | null;
+  /** August preseason tournament of the current season */
+  preseason?: PreseasonState | null;
+  /** inbox tasks dismissed by the user: task id -> day */
+  inboxDismissed?: Record<string, number>;
+}
+
+export interface ScoutAssignment {
+  kind: 'player' | 'team';
+  /** player id or team id */
+  target: string;
+  since: number;
+}
+
+export interface ScoutingState {
+  /** player id -> 0..100 accumulated scouting knowledge */
+  knowledge: Record<string, number>;
+  assignments: ScoutAssignment[];
+}
+
+export interface TradeBlockWants {
+  positions: PosCode[];
+  minOvr: number;
+  maxAge: number;
+  /** max salary per season in rubles, 0 = any */
+  maxSalary: number;
+}
+
+export interface TradeBlock {
+  wants: TradeBlockWants;
+  /** day of the last "ask the league" round */
+  lastShopDay?: number;
+}
+
+export interface PressEffect {
+  morale: number;
+  board: number;
+  fans: number;
+  playerId?: string;
+  playerMorale?: number;
+}
+
+export interface PressOption {
+  id: string;
+  text: string;
+  effects: PressEffect;
+}
+
+export interface PressConference {
+  id: number;
+  day: number;
+  gameId: number;
+  topic: string;
+  question: string;
+  options: PressOption[];
+}
+
+export interface PreseasonGame {
+  home: string;
+  away: string;
+  date: string;
+  result?: { home: number; away: number; ot?: boolean; so?: boolean; scorers: string[] };
+}
+
+export interface PreseasonState {
+  season: string;
+  name: string;
+  host: string;
+  city: string;
+  teams: string[];
+  games: PreseasonGame[];
+  done: boolean;
+  champion?: string;
+  /** players tried out in the user's games */
+  tested: string[];
 }

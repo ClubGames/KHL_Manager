@@ -16,6 +16,7 @@ import { LineupPreview } from './LineupPreview';
 import { previewPowerPlay } from '../game/lineupCompare';
 import { ATTACK_STYLE_INFO, FORECHECK_INFO, freshnessTone, goalieFreshness, PULL_GOALIE_INFO } from '../game/chemistry';
 import { formatMoney } from '../game/ratings';
+import { intermissionHints, promoteToPP1, swapInLineup, type CoachHint } from '../game/assistant';
 
 const RATE: Record<1 | 2 | 4, number> = { 1: 30, 2: 60, 4: 120 };
 /** Rink plays that also go to the match feed (the engine already reports shots, goals, penalties and hits). */
@@ -81,6 +82,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const [pulledNow, setPulledNow] = useState(false);
   const [visibleGoalies, setVisibleGoalies] = useState<[string | null, string | null]>([sim.goalies[0], sim.goalies[1]]);
   const [, setCoachTick] = useState(0);
+  const [shortBenchOn, setShortBenchOn] = useState(false);
+  const [doneHints, setDoneHints] = useState<string[]>([]);
   const periodEvs = useRef<GameEvent[]>([]);
   // Agent-based rink simulation of the current period; `tau` is presentation time (keeps running at whistles).
   const rinkAI = useRef<RinkAI | null>(null);
@@ -338,6 +341,57 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     });
   };
 
+  const toggleShortBench = (on = !shortBenchOn) => {
+    if (on === shortBenchOn) return;
+    setShortBenchOn(on);
+    applyLiveCoaching(() => {
+      sim.setShortBench(userIdx, on);
+      return on
+        ? `Тренерский мостик «${s.teams[s.userTeamId].short}»: игра в три звена — четвёртое садится на скамейку.`
+        : `Тренерский мостик «${s.teams[s.userTeamId].short}»: снова в четыре звена.`;
+    });
+  };
+  /** Quick decisions: chase the game or protect the lead with one tap. */
+  const goPress = () => {
+    setForecheckState('aggressive');
+    setAttackStyleState('shoot');
+    applyLiveCoaching(() => {
+      sim.setForecheck(userIdx, 'aggressive');
+      sim.setAttackStyle(userIdx, 'shoot');
+      return `Тренерский мостик «${s.teams[s.userTeamId].short}»: ВСЕ ВПЕРЁД! Агрессивный прессинг и броски с любых позиций.`;
+    });
+  };
+  const goProtect = () => {
+    setForecheckState('trap');
+    setAttackStyleState('cycle');
+    if (!shortBenchOn) setShortBenchOn(true);
+    applyLiveCoaching(() => {
+      sim.setForecheck(userIdx, 'trap');
+      sim.setAttackStyle(userIdx, 'cycle');
+      sim.setShortBench(userIdx, true);
+      return `Тренерский мостик «${s.teams[s.userTeamId].short}»: закрываемся — ловушка в средней зоне, держим шайбу, три звена.`;
+    });
+  };
+  const applyLineup = (c: Lineup, note: string) => {
+    setUserL(c);
+    applyLiveCoaching(() => {
+      sim.setLineup(userIdx, c);
+      return note;
+    });
+  };
+  const applyHint = (h: CoachHint) => {
+    const a = h.action;
+    if (!a) return;
+    const nm = (id: string) => P[id]?.name.split(' ').slice(-1)[0] ?? '—';
+    if (a.kind === 'swap') applyLineup(swapInLineup(userL, a.a, a.b), `Перестановка в звеньях: ${nm(a.a)} ⇄ ${nm(a.b)}.`);
+    else if (a.kind === 'pp') applyLineup(promoteToPP1(userL, a.a, a.b), `Первая бригада большинства: ${nm(a.a)} вместо ${nm(a.b)}.`);
+    else if (a.kind === 'forecheck') changeForecheck(a.value);
+    else if (a.kind === 'style') changeAttackStyle(a.value);
+    else if (a.kind === 'goalie') switchGoalie();
+    else if (a.kind === 'shortBench') toggleShortBench(a.value);
+    setDoneHints((d) => [...d, h.id]);
+  };
+
   const swapLine = (i: number, j: number) => {
     const c = cloneL(userL);
     const f = c.F[i];
@@ -459,6 +513,20 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     if (shownTally) (Object.keys(t) as (keyof RinkTally)[]).forEach(k => { t[k][0] += shownTally[k][0]; t[k][1] += shownTally[k][1]; });
     return t;
   })();
+  const hints: CoachHint[] =
+    status === 'break' && rinkTally
+      ? intermissionHints({
+          live: stats,
+          userIdx,
+          faceoffs: [rinkTally.faceoff[0], rinkTally.faceoff[1]],
+          lineup: userL,
+          P,
+          tactics: sim.tactics[userIdx],
+          period,
+          goalieId: sim.goalies[userIdx],
+          shortBench: shortBenchOn,
+        })
+      : [];
   const shotMapPanel = (
     <Panel title="Мини-карта опасных моментов (xG) и тепловая карта бросков">
               <ShotMap shots={stats.shotMap} home={H} away={A} players={P} compact />
@@ -606,6 +674,39 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
                   ))}
                 </div>
               </div>
+
+              {status !== 'done' && kind !== 'so' && (
+                <div data-quick-decisions>
+                  <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Быстрые решения</div>
+                  <div className="grid grid-cols-3 gap-1">
+                    <button
+                      type="button"
+                      onClick={() => toggleShortBench()}
+                      title="Четвёртое звено садится, лидеры получают больше времени (быстрее устают)"
+                      className={cn('px-1.5 py-1.5 rounded-sm font-semibold text-[11px] border transition', shortBenchOn ? 'bg-amber/25 border-amber text-amber' : 'bg-panel2 border-line text-muted hover:text-text')}
+                      data-short-bench={shortBenchOn ? 'on' : 'off'}
+                    >
+                      {shortBenchOn ? '✓ 3 звена' : '3 звена'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goPress}
+                      title="Агрессивный форчек + броски: когда нужно отыгрываться"
+                      className={cn('px-1.5 py-1.5 rounded-sm font-semibold text-[11px] border transition', score[userIdx] < score[1 - userIdx] ? 'bg-accent/20 border-accent text-text' : 'bg-panel2 border-line text-muted hover:text-text')}
+                    >
+                      Прессинг
+                    </button>
+                    <button
+                      type="button"
+                      onClick={goProtect}
+                      title="Ловушка в средней зоне, контроль шайбы и три звена: удержать счёт"
+                      className={cn('px-1.5 py-1.5 rounded-sm font-semibold text-[11px] border transition', score[userIdx] > score[1 - userIdx] ? 'bg-ok/20 border-ok text-text' : 'bg-panel2 border-line text-muted hover:text-text')}
+                    >
+                      Закрыться
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {status !== 'done' && (
                 <div className="grid grid-cols-1 gap-1.5 pt-1 border-t border-line/60">
@@ -943,6 +1044,28 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           <div className="text-xs text-muted mb-3">
             {H.short} {sim.periodScores.map((p) => p[0]).join(' ')} · {A.short} {sim.periodScores.map((p) => p[1]).join(' ')}
           </div>
+          {sim.status !== 'so' && hints.length > 0 && (
+            <div className="text-left w-full max-w-md mb-3 rounded-md border border-ice/30 bg-ice/5 p-2" data-intermission-hints>
+              <div className="text-[11px] uppercase tracking-wider text-ice mb-1.5">Помощник тренера</div>
+              <div className="space-y-1.5">
+                {hints.map((h) => (
+                  <div key={h.id} className="flex items-start gap-2 text-xs">
+                    <span className={cn('mt-1 w-1.5 h-1.5 rounded-full shrink-0', h.tone === 'good' ? 'bg-ok' : h.tone === 'warn' ? 'bg-amber' : 'bg-accent')} />
+                    <span className="flex-1">{h.text}</span>
+                    {h.action && (
+                      doneHints.includes(h.id) ? (
+                        <span className="text-ok shrink-0">✓ сделано</span>
+                      ) : (
+                        <Button size="sm" variant="secondary" className="shrink-0" onClick={() => { setCountdown((c) => Math.max(c, 8)); applyHint(h); }} data-hint-action={h.action.kind}>
+                          {h.actionLabel ?? 'Применить'}
+                        </Button>
+                      )
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {sim.status !== 'so' && sim.status !== 'ot' && (
             <div className="text-left w-full max-w-md">
               <div className="text-[11px] uppercase tracking-wider text-muted mb-1.5">Звенья {userTeam.name} — нажмите на два звена, чтобы поменять их местами</div>

@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { parseRosterText } from '../src/game/roster';
 import { createGameState, store, simulateDay, rankAll } from '../src/game/state';
-const r = parseRosterText(readFileSync('public/roster.json', 'utf8'));
+const r = parseRosterText(readFileSync('public/rostfdfer.json', 'utf8'));
 store.set(createGameState(r, 'ska'));
 const t0 = Date.now();
 while (store.get()!.phase === 'season') simulateDay(true);

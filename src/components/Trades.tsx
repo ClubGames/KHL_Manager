@@ -1,14 +1,17 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getTradeWindowsSchedule, groupOf, tradeValue, tradeWindow } from '../game/ai';
+import { getTradeWindowsSchedule, groupOf, hasWants, matchesWants, tradeValue, tradeWindow } from '../game/ai';
+import { asScouted, scoutSlots } from '../game/scouting';
+import { ScoutOvr } from './Scout';
+import type { PosCode } from '../types';
 import { countRosterLegionnaires, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
 import { isRfaEligibleAge, offerSheetCompensation } from '../game/khlRules';
 import { regularSeasonLength, seasonDateOnly } from '../game/schedule';
 import { formatMoney, payroll } from '../game/ratings';
-import { acquireRfaRights, proposeTrade, respondOffer, useGame } from '../game/state';
-import { Button, Empty, OverallChip, Panel, PosBadge, Tag, TeamLogo, money, useUI } from './ui';
+import { acquireRfaRights, assignUserScout, cancelUserScout, proposeTrade, respondOffer, setTradeBlockWants, setTradeFlag, shopTradeBlockNow, useGame } from '../game/state';
+import { Button, Empty, Icon, OverallChip, Panel, PosBadge, Tag, TeamLogo, money, useUI } from './ui';
 import { cn } from '../utils/cn';
 
-function PlayerList({ ids, selected, onToggle, title, empty, footer }: { ids: string[]; selected: string[]; onToggle: (id: string) => void; title: React.ReactNode; empty: string; footer?: React.ReactNode }) {
+function PlayerList({ ids, selected, onToggle, title, empty, footer, own = false }: { ids: string[]; selected: string[]; onToggle: (id: string) => void; title: React.ReactNode; empty: string; footer?: React.ReactNode; own?: boolean }) {
   const s = useGame()!;
   const ui = useUI();
   const P = s.players;
@@ -54,7 +57,8 @@ function PlayerList({ ids, selected, onToggle, title, empty, footer }: { ids: st
                         {nmc && <span className="text-[9px] font-bold px-1 rounded bg-gold/25 text-gold shrink-0" title="Запрет на обмен (NMC)">ЗНО</span>}
                         {isLegionnaire(p) && <span className="text-[9px] font-bold px-1 rounded bg-gold/20 text-gold shrink-0" title={p.country}>ЛЕГ</span>}
                         <span className="hidden sm:inline text-xs text-muted w-6 tabular">{p.age}</span>
-                        <OverallChip value={p.overall} size="sm" />
+                        {own && p.tradeFlag === 'block' && <span className="text-[9px] font-bold px-1 rounded bg-amber/20 text-amber shrink-0" title="Выставлен на обмен">БЛОК</span>}
+                        {own ? <OverallChip value={p.overall} size="sm" /> : <ScoutOvr p={p} />}
                         <span className="text-xs text-muted w-16 sm:w-20 text-right tabular shrink-0">{money(p.contract.salary)}</span>
                         <span className="hidden sm:inline text-xs text-muted w-8 text-right tabular">{p.contract.years} г.</span>
                         <button
@@ -111,7 +115,8 @@ export function Trades({ preselect }: { preselect: string | null }) {
   }, [preselect]);
   const partner = s.teams[partnerId];
   const gv = give.reduce((a, id) => a + tradeValue(P[id]), 0);
-  const rv = get.reduce((a, id) => a + tradeValue(P[id]), 0);
+  // Players of other clubs are valued from the scouts' reports, not from hidden true ratings.
+  const rv = get.reduce((a, id) => a + tradeValue(asScouted(s, P[id])), 0);
   const afterIds = U.players.filter((id) => !give.includes(id)).concat(get);
   const dead = s.phase === 'offseason' ? 0 : (U.deadCap ?? 0);
   const beforePayroll = payroll(U.players, P) + dead;
@@ -191,8 +196,8 @@ export function Trades({ preselect }: { preselect: string | null }) {
                     <div className="text-muted">
                       взамен предлагает:{' '}
                       {o.give.map((id) => (
-                        <button key={id} className="text-amber hover:underline" onClick={() => ui.openPlayer(id)}>
-                          {P[id].name}
+                        <button key={id} className="text-amber hover:underline inline-flex items-center gap-1 mr-1.5" onClick={() => ui.openPlayer(id)}>
+                          {P[id].name} <span className="text-muted">({P[id].position}, {P[id].age} л.)</span> <ScoutOvr p={P[id]} />
                         </button>
                       ))}
                     </div>
@@ -213,6 +218,9 @@ export function Trades({ preselect }: { preselect: string | null }) {
           </div>
         </Panel>
       )}
+
+      <TradeBlockPanel onPick={(id) => { const pl = P[id]; if (!pl?.teamId) return; setPartnerId(pl.teamId); setGet([id]); setGive([]); setMobileSide('get'); setMsg(null); }} />
+      <ScoutingPanel partnerId={partnerId} selected={get} />
 
       {/* Mobile 2-Club Switcher (prevents scrolling past 30 players on phones) */}
       <div className="xl:hidden grid grid-cols-2 gap-1 rounded-md border border-line bg-panel p-1 sticky top-[49px] z-20">
@@ -240,9 +248,9 @@ export function Trades({ preselect }: { preselect: string | null }) {
         </button>
       </div>
 
-      <div className="grid grid-cols-1 xl:grid-cols-[1fr_1fr_320px] gap-4">
+      <div className="grid grid-cols-1 xl:grid-cols-2 2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_320px] gap-4">
         <div className={cn(mobileSide !== 'give' && 'hidden xl:block')}>
-          <PlayerList ids={U.players} selected={give} onToggle={(id) => toggle(id, give, setGive, get)} title={<span className="flex items-center gap-2"><TeamLogo team={U} size={20} /> Отдаём: {U.short}</span>} empty="Нет игроков" footer="Нажмите игрока — добавить/убрать из обмена (до 3 с каждой стороны)." />
+          <PlayerList own ids={U.players} selected={give} onToggle={(id) => toggle(id, give, setGive, get)} title={<span className="flex items-center gap-2"><TeamLogo team={U} size={20} /> Отдаём: {U.short}</span>} empty="Нет игроков" footer="Нажмите игрока — добавить/убрать из обмена (до 3 с каждой стороны)." />
         </div>
         <div className={cn(mobileSide !== 'get' && 'hidden xl:block')}>
           <PlayerList
@@ -266,7 +274,7 @@ export function Trades({ preselect }: { preselect: string | null }) {
           />
         </div>
 
-        <div className="space-y-4">
+        <div className="space-y-4 xl:col-span-2 2xl:col-span-1">
           <Panel title="Условия обмена">
             <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Вы отдаёте</div>
             <div className="flex flex-wrap gap-1 mb-3 min-h-[26px]">
@@ -381,7 +389,7 @@ export function Trades({ preselect }: { preselect: string | null }) {
 
       {/* Floating Sticky Mobile Trade Summary Bar when players are selected */}
       {(give.length > 0 || get.length > 0) && (
-        <div className="xl:hidden sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] z-20 rounded-md border border-ice/50 bg-panel/95 backdrop-blur p-3 shadow-2xl space-y-2 text-xs">
+        <div className="2xl:hidden sticky bottom-[calc(4rem+env(safe-area-inset-bottom))] xl:bottom-3 z-20 rounded-md border border-ice/50 bg-panel/95 backdrop-blur p-3 shadow-2xl space-y-2 text-xs">
           <div className="flex items-center justify-between gap-2 tabular">
             <span>
               Отдаём ({give.length}): <b className="text-accent">{gv.toFixed(1)}</b>
@@ -425,5 +433,170 @@ export function Trades({ preselect }: { preselect: string | null }) {
         </div>
       )}
     </div>
+  );
+}
+
+const POSITIONS: [PosCode, string][] = [['C', 'Ц'], ['LW', 'ЛН'], ['RW', 'ПН'], ['D', 'З'], ['G', 'В']];
+const SALARY_STEPS = [0, 20_000_000, 40_000_000, 60_000_000, 90_000_000, 130_000_000];
+
+/** "Блок обменов": what we look for and whom we are ready to move; AI clubs build offers around it. */
+function TradeBlockPanel({ onPick }: { onPick: (id: string) => void }) {
+  const s = useGame()!;
+  const ui = useUI();
+  const P = s.players;
+  const U = s.teams[s.userTeamId];
+  const w = s.tradeBlock?.wants ?? { positions: [], minOvr: 0, maxAge: 40, maxSalary: 0 };
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const [showOwn, setShowOwn] = useState(false);
+  const block = U.players.filter((id) => P[id]?.tradeFlag === 'block');
+  const win = tradeWindow(s);
+  const active = hasWants(w);
+  // League players matching the wish list, judged by our scouts' reports.
+  const matches = active
+    ? s.teamOrder
+        .filter((id) => id !== U.id)
+        .flatMap((id) => s.teams[id].players)
+        .map((id) => P[id])
+        .filter((p) => p && matchesWants(w, asScouted(s, p)))
+        .sort((a, b) => asScouted(s, b).overall - asScouted(s, a).overall)
+        .slice(0, 8)
+    : [];
+  const togglePos = (pos: PosCode) => setTradeBlockWants({ positions: w.positions.includes(pos) ? w.positions.filter((x) => x !== pos) : [...w.positions, pos] });
+  const cooldown = s.tradeBlock?.lastShopDay != null && s.phase !== 'offseason' ? Math.max(0, 7 - (s.day - s.tradeBlock.lastShopDay)) : 0;
+  return (
+    <Panel title="Блок обменов" right={<span className="text-xs text-muted">{block.length} на обмен · {active ? 'запрос задан' : 'запрос не задан'}</span>} data-trade-block>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
+        <div className="space-y-2.5" data-trade-wants>
+          <div className="text-[11px] uppercase tracking-wider text-muted">Кого мы ищем</div>
+          <div className="flex items-center gap-1 flex-wrap">
+            <span className="text-muted w-20">Позиции</span>
+            {POSITIONS.map(([pos, lbl]) => (
+              <button key={pos} type="button" data-want-pos={pos} onClick={() => togglePos(pos)} className={cn('px-2 py-1 rounded-sm border font-semibold', w.positions.includes(pos) ? 'bg-ice text-bg border-ice' : 'bg-panel2 border-line text-muted')}>
+                {lbl}
+              </button>
+            ))}
+            {w.positions.length === 0 && <span className="text-muted">любые</span>}
+          </div>
+          <label className="flex items-center gap-2">
+            <span className="text-muted w-20">Рейтинг от</span>
+            <input type="range" min={0} max={85} step={1} value={w.minOvr} onChange={(e) => setTradeBlockWants({ minOvr: Number(e.target.value) })} className="flex-1 accent-[#8FD8F0]" data-want-ovr />
+            <span className="tabular w-10 text-right">{w.minOvr || 'любой'}</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="text-muted w-20">Возраст до</span>
+            <input type="range" min={20} max={40} step={1} value={w.maxAge} onChange={(e) => setTradeBlockWants({ maxAge: Number(e.target.value) })} className="flex-1 accent-[#8FD8F0]" data-want-age />
+            <span className="tabular w-10 text-right">{w.maxAge >= 40 ? 'любой' : w.maxAge}</span>
+          </label>
+          <label className="flex items-center gap-2">
+            <span className="text-muted w-20">Зарплата до</span>
+            <select value={w.maxSalary} onChange={(e) => setTradeBlockWants({ maxSalary: Number(e.target.value) })} className="flex-1 bg-panel2 border border-line rounded-sm px-2 py-1 text-text">
+              {SALARY_STEPS.map((v) => (
+                <option key={v} value={v}>{v ? formatMoney(v) : 'любая'}</option>
+              ))}
+            </select>
+          </label>
+          {active && (
+            <div>
+              <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Подходят по отчётам скаутов</div>
+              <div className="space-y-1 max-h-40 overflow-y-auto pr-1">
+                {matches.length === 0 && <div className="text-muted">Никто в лиге не подходит — ослабьте требования.</div>}
+                {matches.map((p) => (
+                  <div key={p.id} className="flex items-center gap-2">
+                    <PosBadge pos={p.position} />
+                    <button type="button" className="flex-1 truncate text-left hover:text-ice" onClick={() => ui.openPlayer(p.id)}>{p.name}</button>
+                    <span className="text-muted">{s.teams[p.teamId!]?.short} · {p.age} л.</span>
+                    <ScoutOvr p={p} />
+                    <button type="button" className="px-1.5 py-0.5 rounded border border-line text-muted hover:text-ice" onClick={() => onPick(p.id)} title="Открыть обмен с этим клубом">⇄</button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="space-y-2" data-trade-offered>
+          <div className="flex items-center justify-between">
+            <span className="text-[11px] uppercase tracking-wider text-muted">Кого мы готовы отдать</span>
+            <button type="button" className="text-ice hover:underline" onClick={() => setShowOwn((v) => !v)}>{showOwn ? 'Готово' : '+ Добавить игроков'}</button>
+          </div>
+          {!showOwn && block.length === 0 && <div className="text-muted">Пока никого. Добавьте игроков — клубы будут строить предложения вокруг них.</div>}
+          <div className="space-y-1 max-h-48 overflow-y-auto pr-1">
+            {(showOwn ? [...U.players].sort((a, b) => P[b].overall - P[a].overall) : block).map((id) => {
+              const p = P[id];
+              const on = p.tradeFlag === 'block';
+              return (
+                <div key={id} className={cn('flex items-center gap-2 rounded-sm px-1.5 py-1', on && 'bg-amber/10')}>
+                  <PosBadge pos={p.position} />
+                  <button type="button" className="flex-1 truncate text-left hover:text-ice" onClick={() => ui.openPlayer(id)}>{p.name}</button>
+                  <span className="text-muted">{p.age} л. · {money(p.contract.salary)}</span>
+                  <OverallChip value={p.overall} size="sm" />
+                  <button
+                    type="button"
+                    data-block-toggle={id}
+                    disabled={p.tradeFlag === 'keep' || !!p.nmc}
+                    onClick={() => setTradeFlag(id, on ? null : 'block')}
+                    className={cn('px-1.5 py-0.5 rounded border font-semibold disabled:opacity-40', on ? 'border-amber text-amber' : 'border-line text-muted hover:text-text')}
+                    title={p.nmc ? 'Запрет на обмен (ЗНО)' : p.tradeFlag === 'keep' ? 'Неприкосновенный' : undefined}
+                  >
+                    {on ? 'убрать' : 'в блок'}
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+          <div className="pt-2 border-t border-line/60 flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant="primary"
+              disabled={!win.open || cooldown > 0 || (!block.length && !active)}
+              onClick={() => setNote(shopTradeBlockNow())}
+              data-shop-block
+            >
+              Опросить клубы лиги
+            </Button>
+            <span className="text-muted">{!win.open ? 'окно обменов закрыто' : cooldown > 0 ? `повторно через ${cooldown} дн.` : 'до 3 предложений, раз в неделю'}</span>
+          </div>
+          {note && <div className={cn('rounded-sm border px-2 py-1.5', note.ok ? 'border-ok/50 text-ok bg-ok/10' : 'border-accent/50 text-accent bg-accent/10')}>{note.text}</div>}
+          <div className="text-[11px] text-muted">Клубы, которым нужны игроки из вашего блока, чаще присылают предложения и платят игроками из вашего запроса.</div>
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+/** Scouting assignments: who is being watched, and quick buttons for the current trade partner. */
+function ScoutingPanel({ partnerId, selected }: { partnerId: string; selected: string[] }) {
+  const s = useGame()!;
+  const ui = useUI();
+  const [err, setErr] = useState<string | null>(null);
+  const sc = s.scouting ?? { knowledge: {}, assignments: [] };
+  const slots = scoutSlots(s);
+  const partner = s.teams[partnerId];
+  const run = (kind: 'player' | 'team', target: string) => setErr(assignUserScout(kind, target));
+  return (
+    <Panel title="Скауты" right={<span className="text-xs text-muted">{sc.assignments.length} / {slots} заданий</span>} data-scouting>
+      <div className="flex flex-wrap items-center gap-2 text-xs">
+        {sc.assignments.length === 0 && <span className="text-muted">Скауты свободны.</span>}
+        {sc.assignments.map((a) => {
+          const label = a.kind === 'team' ? `Клуб «${s.teams[a.target]?.short ?? a.target}»` : s.players[a.target]?.name ?? a.target;
+          return (
+            <span key={a.kind + a.target} className="inline-flex items-center gap-1 rounded-sm border border-ice/40 bg-ice/10 px-2 py-0.5">
+              <Icon name="scout" className="w-3 h-3" />
+              <button type="button" className="hover:underline" onClick={() => (a.kind === 'player' ? ui.openPlayer(a.target) : undefined)}>{label}</button>
+              <span className="text-muted">с дня {a.since + 1}</span>
+              <button type="button" className="text-muted hover:text-text" onClick={() => cancelUserScout(a.kind, a.target)} title="Отозвать">×</button>
+            </span>
+          );
+        })}
+        <span className="flex-1" />
+        <Button size="sm" variant="secondary" onClick={() => run('team', partnerId)}>Изучить «{partner.short}»</Button>
+        {selected.length > 0 && (
+          <Button size="sm" variant="secondary" onClick={() => selected.forEach((id) => run('player', id))}>
+            Скаута на выбранных ({selected.length})
+          </Button>
+        )}
+      </div>
+      {err && <div className="text-[11px] text-accent mt-1.5">{err}</div>}
+      <div className="text-[11px] text-muted mt-1.5">Рейтинги чужих игроков — оценка скаутов («78 ±6»). Точность растёт от заданий, матчей против клуба и уровня скаутского бюро (Инфраструктура).</div>
+    </Panel>
   );
 }
