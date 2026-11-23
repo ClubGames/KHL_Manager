@@ -29,8 +29,8 @@
           "motivation": 72,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://www.rbc.ru/sport/27/04/2025/680df60a9a794756226fad3a",
-          "snapshot": "2025/26"
+          "source": "https://www.hawk.ru/news/55558/",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "avangard-assistant",
@@ -45,8 +45,8 @@
           "motivation": 67,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://www.rbc.ru/sport/27/04/2025/680df60a9a794756226fad3a",
-          "snapshot": "2025/26"
+          "source": "https://www.hawk.ru/news/55558/",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -760,7 +760,7 @@
       "coaches": [
         {
           "id": "avtomobilist-head",
-          "name": "Николай Заварухин",
+          "name": "Алексей Кудашов",
           "role": "head",
           "profile": "attack",
           "label": "Атакующий",
@@ -771,12 +771,12 @@
           "motivation": 67,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://www.khl.ru/news/2025/06/17/548147.html",
-          "snapshot": "2025/26"
+          "source": "https://sport24.ru/hockey/news-866089-obyavlen-trenerskiy-shtab-kudashova-v-avtomobiliste",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "avtomobilist-assistant",
-          "name": "Алексей Заварухин",
+          "name": "Андрей Скопинцев",
           "role": "assistant",
           "profile": "development",
           "label": "Наставник",
@@ -787,8 +787,8 @@
           "motivation": 78,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://www.khl.ru/news/2025/06/17/548147.html",
-          "snapshot": "2025/26"
+          "source": "https://sport24.ru/hockey/news-866089-obyavlen-trenerskiy-shtab-kudashova-v-avtomobiliste",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -1627,7 +1627,7 @@
       "coaches": [
         {
           "id": "admiral-head",
-          "name": "Леонид Тамбиев",
+          "name": "Олег Браташ",
           "role": "head",
           "profile": "defense",
           "label": "Оборонительный",
@@ -1638,12 +1638,12 @@
           "motivation": 67,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://belarushockey.com/khl/news/2025/09/07/belorusskij-specialist-oficialno-popolnil-trenerskij-shtab-admirala/",
-          "snapshot": "2025/26"
+          "source": "https://www.championat.com/hockey/news-6502256-admiral-predstavil-trenerskij-shtab-na-sezon-2026-2027.html",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "admiral-assistant",
-          "name": "Виктор Костючёнок",
+          "name": "Дмитрий Кокорев",
           "role": "assistant",
           "profile": "motivator",
           "label": "Мотиватор",
@@ -1654,8 +1654,8 @@
           "motivation": 92,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://belarushockey.com/khl/news/2025/09/07/belorusskij-specialist-oficialno-popolnil-trenerskij-shtab-admirala/",
-          "snapshot": "2025/26"
+          "source": "https://www.championat.com/hockey/news-6502256-admiral-predstavil-trenerskij-shtab-na-sezon-2026-2027.html",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -2427,8 +2427,8 @@
           "motivation": 78,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://www.ak-bars.ru/uploads/843/programs/pdf/e91777cfa05836052ec4fb14f4648693.pdf",
-          "snapshot": "2025/26"
+          "source": "https://www.ak-bars.ru/uploads/843/programs/pdf/19be8d85d0d301b7b7326dfeb5e33386.pdf",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "akbars-assistant",
@@ -2443,8 +2443,8 @@
           "motivation": 72,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://www.ak-bars.ru/uploads/843/programs/pdf/e91777cfa05836052ec4fb14f4648693.pdf",
-          "snapshot": "2025/26"
+          "source": "https://www.ak-bars.ru/uploads/843/programs/pdf/19be8d85d0d301b7b7326dfeb5e33386.pdf",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -3181,7 +3181,7 @@
       "coaches": [
         {
           "id": "amur-head",
-          "name": "Александр Гальченюк",
+          "name": "Александр Андриевский",
           "role": "head",
           "profile": "motivator",
           "label": "Мотиватор",
@@ -3192,12 +3192,12 @@
           "motivation": 92,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://allhockey.ru/news/show/560315-Amur_predstavil_obnovlennyj_trenerskij_sostav_na_sezon_2025_26",
-          "snapshot": "2025/26"
+          "source": "https://hcamur.ru/coaches/amur/",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "amur-assistant",
-          "name": "Юрий Кузьменков",
+          "name": "Павел Десятков",
           "role": "assistant",
           "profile": "attack",
           "label": "Атакующий",
@@ -3208,8 +3208,8 @@
           "motivation": 67,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://allhockey.ru/news/show/560315-Amur_predstavil_obnovlennyj_trenerskij_sostav_na_sezon_2025_26",
-          "snapshot": "2025/26"
+          "source": "https://hcamur.ru/coaches/amur/",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -4033,8 +4033,8 @@
           "motivation": 72,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://www.khl.ru/news/2025/08/04/548966.html",
-          "snapshot": "2025/26"
+          "source": "https://ru.hcbarys.kz/team/trainers/",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "barys-assistant",
@@ -4049,8 +4049,8 @@
           "motivation": 67,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://www.khl.ru/news/2025/08/04/548966.html",
-          "snapshot": "2025/26"
+          "source": "https://ru.hcbarys.kz/team/trainers/",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -4812,7 +4812,7 @@
       "coaches": [
         {
           "id": "dinamo-mn-head",
-          "name": "Дмитрий Квартальнов",
+          "name": "Сергей Брылин",
           "role": "head",
           "profile": "attack",
           "label": "Атакующий",
@@ -4823,8 +4823,8 @@
           "motivation": 67,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://hcdinamo.by/news/sobytiya/predstavlyaem-trenerskiy-shtab-minskogo-dinamo-na-sezon-2025-26/",
-          "snapshot": "2025/26"
+          "source": "https://hcdinamo.by/team/staff/",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "dinamo-mn-assistant",
@@ -4839,8 +4839,8 @@
           "motivation": 78,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://hcdinamo.by/news/sobytiya/predstavlyaem-trenerskiy-shtab-minskogo-dinamo-na-sezon-2025-26/",
-          "snapshot": "2025/26"
+          "source": "https://hcdinamo.by/team/staff/",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -5783,7 +5783,7 @@
       "coaches": [
         {
           "id": "dinamo-msk-head",
-          "name": "Алексей Кудашов",
+          "name": "Олег Ореховский",
           "role": "head",
           "profile": "defense",
           "label": "Оборонительный",
@@ -5794,12 +5794,13 @@
           "motivation": 67,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://dynamo.ru/news/231259-sformirovan_trenerskiy_shtab_moskovskogo___dinamo___na_sezon_2025_2026_",
-          "snapshot": "2025/26"
+          "source": "https://dynamo.ru/coach",
+          "snapshot": "2026/27 · 23.11.2026",
+          "acting": true
         },
         {
           "id": "dinamo-msk-assistant",
-          "name": "Андрей Скопинцев",
+          "name": "Геннадий Столяров",
           "role": "assistant",
           "profile": "motivator",
           "label": "Мотиватор",
@@ -5810,8 +5811,8 @@
           "motivation": 92,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://dynamo.ru/news/231259-sformirovan_trenerskiy_shtab_moskovskogo___dinamo___na_sezon_2025_2026_",
-          "snapshot": "2025/26"
+          "source": "https://dynamo.ru/coach",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -6650,7 +6651,7 @@
       "coaches": [
         {
           "id": "lada-head",
-          "name": "Борис Миронов",
+          "name": "Игорь Горбенко",
           "role": "head",
           "profile": "development",
           "label": "Наставник",
@@ -6661,12 +6662,12 @@
           "motivation": 78,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://www.livesport.ru/hockey/2025/06/16/lada_coach/",
-          "snapshot": "2025/26"
+          "source": "https://www.sport-interfax.ru/1126573",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "lada-assistant",
-          "name": "Павел Зубов",
+          "name": "Владимир Чебатуркин",
           "role": "assistant",
           "profile": "balanced",
           "label": "Системный",
@@ -6677,8 +6678,8 @@
           "motivation": 72,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://www.livesport.ru/hockey/2025/06/16/lada_coach/",
-          "snapshot": "2025/26"
+          "source": "https://belarushockey.com/khl/news/2026/06/08/dva-byvshih-trenera-minskogo-dinamo-voshli-v-trenerskij-shtab-lady/",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -7517,7 +7518,7 @@
       "coaches": [
         {
           "id": "lokomotiv-head",
-          "name": "Боб Хартли",
+          "name": "Дмитрий Квартальнов",
           "role": "head",
           "profile": "motivator",
           "label": "Мотиватор",
@@ -7528,12 +7529,12 @@
           "motivation": 92,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://www.championat.com/hockey/news-6106020-lokomotiv-predstavil-trenerskij-shtab-na-sezon-2025-2026.html",
-          "snapshot": "2025/26"
+          "source": "https://metaratings.ru/news/lokomotiv-predstavil-trenerskij-shtab-na-sezon-2026-27-vo-glave-s-kvartalnovym-640908/",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "lokomotiv-assistant",
-          "name": "Дмитрий Рябыкин",
+          "name": "Юрий Бабенко",
           "role": "assistant",
           "profile": "attack",
           "label": "Атакующий",
@@ -7544,8 +7545,8 @@
           "motivation": 67,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://www.championat.com/hockey/news-6106020-lokomotiv-predstavil-trenerskij-shtab-na-sezon-2025-2026.html",
-          "snapshot": "2025/26"
+          "source": "https://metaratings.ru/news/lokomotiv-predstavil-trenerskij-shtab-na-sezon-2026-27-vo-glave-s-kvartalnovym-640908/",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -8162,7 +8163,7 @@
       "coaches": [
         {
           "id": "metallurg-mg-head",
-          "name": "Андрей Разин",
+          "name": "Константин Шафранов",
           "role": "head",
           "profile": "balanced",
           "label": "Системный",
@@ -8173,12 +8174,12 @@
           "motivation": 72,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://magmetall.ru/news/sports/metallurg-usilivaet-shtab/",
-          "snapshot": "2025/26"
+          "source": "https://metaratings.ru/news/zavyalov-voshel-v-trenerskiy-shtab-metallurga-665460/",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "metallurg-mg-assistant",
-          "name": "Владимир Воробьёв",
+          "name": "Александр Завьялов",
           "role": "assistant",
           "profile": "defense",
           "label": "Оборонительный",
@@ -8189,8 +8190,8 @@
           "motivation": 67,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://magmetall.ru/news/sports/metallurg-usilivaet-shtab/",
-          "snapshot": "2025/26"
+          "source": "https://metaratings.ru/news/zavyalov-voshel-v-trenerskiy-shtab-metallurga-665460/",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -8867,8 +8868,8 @@
           "motivation": 67,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://realnoevremya.ru/news/337290-neftehimik-oficialno-predstavil-grishina-novym-glavnym-trenerom",
-          "snapshot": "2025/26"
+          "source": "https://metaratings.ru/news/stal-izvesten-trenerskii-shtab-neftekhimika-na-sezon-kkhl-2026-2027-636003/",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "neftekhimik-assistant",
@@ -8883,8 +8884,8 @@
           "motivation": 78,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://realnoevremya.ru/news/337290-neftehimik-oficialno-predstavil-grishina-novym-glavnym-trenerom",
-          "snapshot": "2025/26"
+          "source": "https://metaratings.ru/news/stal-izvesten-trenerskii-shtab-neftekhimika-na-sezon-kkhl-2026-2027-636003/",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -9586,8 +9587,8 @@
           "motivation": 67,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://hcsalavat.ru/news/sformirovan-trenerskiy-shtab-salavata-yulaeva-na-sezon-2025-26/",
-          "snapshot": "2025/26"
+          "source": "https://www.tatar-inform.ru/news/salavat-yulaev-obyavil-trenerskii-stab-na-sezon20262027-6035783",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "salavat-assistant",
@@ -9602,8 +9603,8 @@
           "motivation": 92,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://hcsalavat.ru/news/sformirovan-trenerskiy-shtab-salavata-yulaeva-na-sezon-2025-26/",
-          "snapshot": "2025/26"
+          "source": "https://www.tatar-inform.ru/news/salavat-yulaev-obyavil-trenerskii-stab-na-sezon20262027-6035783",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -10367,7 +10368,7 @@
       "coaches": [
         {
           "id": "ska-head",
-          "name": "Игорь Ларионов",
+          "name": "Андрей Разин",
           "role": "head",
           "profile": "development",
           "label": "Наставник",
@@ -10378,12 +10379,12 @@
           "motivation": 78,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://sportrbc.ru/news/687f5c659a79478f25a93325",
-          "snapshot": "2025/26"
+          "source": "https://saint-petersburg.ru/news/2026/11/21/53269",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "ska-assistant",
-          "name": "Евгений Кетов",
+          "name": "Владимир Воробьёв",
           "role": "assistant",
           "profile": "balanced",
           "label": "Системный",
@@ -10394,8 +10395,8 @@
           "motivation": 72,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://sportrbc.ru/news/687f5c659a79478f25a93325",
-          "snapshot": "2025/26"
+          "source": "https://saint-petersburg.ru/news/2026/11/21/53269",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -11094,8 +11095,8 @@
           "motivation": 92,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://sport24.ru/hockey/news-743540-severstal-obyavila-o-sokhranenii-trenerskogo-shtaba-kozyreva-na-sleduyushchiy-sezon",
-          "snapshot": "2025/26"
+          "source": "https://severstalclub.ru/coaches-staff/",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "severstal-assistant",
@@ -11110,8 +11111,8 @@
           "motivation": 67,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://sport24.ru/hockey/news-743540-severstal-obyavila-o-sokhranenii-trenerskogo-shtaba-kozyreva-na-sleduyushchiy-sezon",
-          "snapshot": "2025/26"
+          "source": "https://severstalclub.ru/coaches-staff/",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -12054,7 +12055,7 @@
       "coaches": [
         {
           "id": "sibir-head",
-          "name": "Вадим Епанчинцев",
+          "name": "Ярослав Люзенков",
           "role": "head",
           "profile": "balanced",
           "label": "Системный",
@@ -12065,12 +12066,12 @@
           "motivation": 72,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://vn.ru/news-khk-sibir-obyavil-sostav-trenerskogo-shtaba-na-sezon-2025-2026/",
-          "snapshot": "2025/26"
+          "source": "https://www.championat.com/hockey/news-6500794-sibir-predstavila-trenerskij-shtab-na-sezon-2026-2027.html",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "sibir-assistant",
-          "name": "Ярослав Люзенков",
+          "name": "Алексей Кривченков",
           "role": "assistant",
           "profile": "defense",
           "label": "Оборонительный",
@@ -12081,8 +12082,8 @@
           "motivation": 67,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://vn.ru/news-khk-sibir-obyavil-sostav-trenerskogo-shtaba-na-sezon-2025-2026/",
-          "snapshot": "2025/26"
+          "source": "https://www.championat.com/hockey/news-6500794-sibir-predstavila-trenerskij-shtab-na-sezon-2026-2027.html",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -12899,7 +12900,7 @@
       "coaches": [
         {
           "id": "sochi-head",
-          "name": "Владимир Крикунов",
+          "name": "Андрей Миронов",
           "role": "head",
           "profile": "attack",
           "label": "Атакующий",
@@ -12910,12 +12911,12 @@
           "motivation": 67,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://www.hcsochi.ru/media/news/utverzhdyen-trenerskiy-shtab-sochi-na-sezon-2025-2026/",
-          "snapshot": "2025/26"
+          "source": "https://metaratings.ru/news/sformirovan-novyi-trenerskii-shtab-kluba-kkhl-sochi-na-sezon-2026-2027-639578/",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "sochi-assistant",
-          "name": "Дмитрий Михайлов",
+          "name": "Алексей Ковалёв",
           "role": "assistant",
           "profile": "development",
           "label": "Наставник",
@@ -12926,8 +12927,8 @@
           "motivation": 78,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://www.hcsochi.ru/media/news/utverzhdyen-trenerskiy-shtab-sochi-na-sezon-2025-2026/",
-          "snapshot": "2025/26"
+          "source": "https://metaratings.ru/news/sformirovan-novyi-trenerskii-shtab-kluba-kkhl-sochi-na-sezon-2026-2027-639578/",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -13779,12 +13780,12 @@
           "motivation": 67,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://bookmaker-ratings.ru/news/spartak-ofitsial-no-ob-yavil-trenerskij-shtab-na-sezon-2025-2026-v-khl/",
-          "snapshot": "2025/26"
+          "source": "https://www.championat.com/hockey/news-6500148-hk-spartak-predstavil-trenerskij-shtab-na-sezon-2026-2027-khl.html",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "spartak-assistant",
-          "name": "Алексей Ковалёв",
+          "name": "Евгений Корешков",
           "role": "assistant",
           "profile": "motivator",
           "label": "Мотиватор",
@@ -13795,8 +13796,8 @@
           "motivation": 92,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://bookmaker-ratings.ru/news/spartak-ofitsial-no-ob-yavil-trenerskij-shtab-na-sezon-2025-2026-v-khl/",
-          "snapshot": "2025/26"
+          "source": "https://www.championat.com/hockey/news-6500148-hk-spartak-predstavil-trenerskij-shtab-na-sezon-2026-2027-khl.html",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -14648,8 +14649,8 @@
           "motivation": 78,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://www.championat.com/hockey/news-6033944-torpedo-obyavilo-pomoschnikov-glavnogo-trenera-na-sleduyuschij-sezon-khl.html",
-          "snapshot": "2025/26"
+          "source": "https://hctorpedo.ru/coaches/",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "torpedo-assistant",
@@ -14664,8 +14665,8 @@
           "motivation": 72,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://www.championat.com/hockey/news-6033944-torpedo-obyavilo-pomoschnikov-glavnogo-trenera-na-sleduyuschij-sezon-khl.html",
-          "snapshot": "2025/26"
+          "source": "https://hctorpedo.ru/coaches/",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -15482,7 +15483,7 @@
       "coaches": [
         {
           "id": "traktor-head",
-          "name": "Бенуа Гру",
+          "name": "Скотт Гордон",
           "role": "head",
           "profile": "motivator",
           "label": "Мотиватор",
@@ -15493,12 +15494,12 @@
           "motivation": 92,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://www.championat.com/hockey/news-6114700-traktor-predstavil-trenerskij-shtab-na-sezon-2025-2026-khl.html",
-          "snapshot": "2025/26"
+          "source": "https://hctraktor.org/media/news/90983-trenerskiy-shtab-traktora-2026-2027/",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "traktor-assistant",
-          "name": "Марио Рише",
+          "name": "Брэндон Деннис",
           "role": "assistant",
           "profile": "attack",
           "label": "Атакующий",
@@ -15509,8 +15510,8 @@
           "motivation": 67,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://www.championat.com/hockey/news-6114700-traktor-predstavil-trenerskij-shtab-na-sezon-2025-2026-khl.html",
-          "snapshot": "2025/26"
+          "source": "https://hctraktor.org/media/news/90983-trenerskiy-shtab-traktora-2026-2027/",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -16165,8 +16166,8 @@
           "motivation": 72,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://www.kommersant.ru/doc/7800264",
-          "snapshot": "2025/26"
+          "source": "https://cska-hockey.ru/news/general/predstavlyaem_trenerskiy_shtab/",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "cska-assistant",
@@ -16181,8 +16182,8 @@
           "motivation": 67,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://www.kommersant.ru/doc/7800264",
-          "snapshot": "2025/26"
+          "source": "https://cska-hockey.ru/news/general/predstavlyaem_trenerskiy_shtab/",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [
@@ -16920,7 +16921,7 @@
       "coaches": [
         {
           "id": "shanghai-dragons-head",
-          "name": "Жерар Галлан",
+          "name": "Митч Лав",
           "role": "head",
           "profile": "attack",
           "label": "Атакующий",
@@ -16931,12 +16932,12 @@
           "motivation": 67,
           "salary": 18000000,
           "fictional": false,
-          "source": "https://www.championat.com/hockey/news-6125088-shanhaj-dregons-predstavil-trenerskij-shtab-komandy-na-sezon-2025-2026.html",
-          "snapshot": "2025/26"
+          "source": "https://www.championat.com/hockey/news-6562158-shanhajskie-drakony-predstavili-trenerskij-shtab-na-sezon-2026-2027.html",
+          "snapshot": "2026/27 · 23.11.2026"
         },
         {
           "id": "shanghai-dragons-assistant",
-          "name": "Майк Келли",
+          "name": "Вячеслав Козлов",
           "role": "assistant",
           "profile": "development",
           "label": "Наставник",
@@ -16947,8 +16948,8 @@
           "motivation": 78,
           "salary": 8000000,
           "fictional": false,
-          "source": "https://www.championat.com/hockey/news-6125088-shanhaj-dregons-predstavil-trenerskij-shtab-komandy-na-sezon-2025-2026.html",
-          "snapshot": "2025/26"
+          "source": "https://www.championat.com/hockey/news-6562158-shanhajskie-drakony-predstavili-trenerskij-shtab-na-sezon-2026-2027.html",
+          "snapshot": "2026/27 · 23.11.2026"
         }
       ],
       "players": [

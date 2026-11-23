@@ -32,7 +32,7 @@ function boot(seed = {}) {
   app.click(app.find('СКА')); await pause(); app.click(app.find('Начать карьеру')); await pause(500);
   app.click(app.find('Управление командой →')); await pause();
   assert.ok(app.d.querySelector('[data-coaching-hub]'));
-  assert.ok(app.text().includes('Игорь Ларионов'));
+  assert.ok(app.text().includes('Андрей Разин'));
   let focus = [...app.d.querySelectorAll('[aria-pressed]')].find((b) => b.textContent.startsWith('Оборона'));
   app.click(focus); await pause(); assert.equal(focus.getAttribute('aria-pressed'), 'true');
   console.log('ok navigation and team-focus control');
