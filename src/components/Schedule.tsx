@@ -27,6 +27,7 @@ function scoreTag(g: Game) {
 
 export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => void }) {
   const s = useGame()!;
+  const ui = useUI();
   let game: Game | null = null;
   for (const d of s.schedule) {
     const g = d.find((x) => x.id === gameId);
@@ -47,7 +48,7 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
   return (
     <Modal open onClose={onClose} width="max-w-3xl">
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
-        <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3 min-w-0 text-center sm:text-left">
+        <div onClick={() => ui.openTeam(A.id)} title={`О клубе «${A.name}»`} className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3 min-w-0 text-center sm:text-left cursor-pointer hover:text-ice">
           <TeamLogo team={A} size={38} className="sm:w-11 sm:h-11" />
           <div className="min-w-0 max-w-full">
             <div className="font-display text-sm sm:text-lg uppercase leading-tight truncate">{A.name}</div>
@@ -61,7 +62,7 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
             {game.kind === 'playoff' && ser ? ` · м.${ser.games.indexOf(game.id) + 1} (${ser.wins[0]}:${ser.wins[1]})` : ''}
           </div>
         </div>
-        <div className="flex flex-col-reverse sm:flex-row items-center gap-1.5 sm:gap-3 justify-end text-center sm:text-right min-w-0">
+        <div onClick={() => ui.openTeam(H.id)} title={`О клубе «${H.name}»`} className="flex flex-col-reverse sm:flex-row items-center gap-1.5 sm:gap-3 justify-end text-center sm:text-right min-w-0 cursor-pointer hover:text-ice">
           <div className="min-w-0 max-w-full">
             <div className="font-display text-sm sm:text-lg uppercase leading-tight truncate">{H.name}</div>
             <div className="text-[10px] sm:text-[11px] text-muted">хозяева</div>
@@ -538,11 +539,11 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                       <span className="hidden sm:inline w-16 text-[11px] text-muted shrink-0">
                         {seasonWeekdayCap(g.day, regLen, s.league.season)} · {g.kind === 'playoff' ? 'ПО' : `#${g.id}`}
                       </span>
-                      <span className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:w-[28%] sm:flex-none min-w-0 justify-end">
+                      <button type="button" onClick={() => ui.openTeam(g.away)} title="О клубе" data-team-link={g.away} className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:w-[28%] sm:flex-none min-w-0 justify-end hover:text-ice text-left">
                         <span className="truncate sm:hidden font-semibold">{s.teams[g.away].short}</span>
                         <span className="truncate hidden sm:inline">{s.teams[g.away].name}</span>
                         <TeamLogo team={s.teams[g.away]} size={22} />
-                      </span>
+                      </button>
                       {r ? (
                         <button onClick={() => ui.openGame(g.id)} className="font-display text-base sm:text-lg tabular w-16 sm:w-24 text-center hover:text-ice cursor-pointer shrink-0">
                           {r.awayScore}:{r.homeScore}
@@ -551,11 +552,11 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                       ) : (
                         <span className="w-12 sm:w-24 text-center text-muted text-xs shrink-0">VS</span>
                       )}
-                      <span className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:w-[28%] sm:flex-none min-w-0">
+                      <button type="button" onClick={() => ui.openTeam(g.home)} title="О клубе" data-team-link={g.home} className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:w-[28%] sm:flex-none min-w-0 hover:text-ice text-left">
                         <TeamLogo team={s.teams[g.home]} size={22} />
                         <span className="truncate sm:hidden font-semibold">{s.teams[g.home].short}</span>
                         <span className="truncate hidden sm:inline">{s.teams[g.home].name}</span>
-                      </span>
+                      </button>
                       <span className="w-full sm:w-auto sm:ml-auto flex items-center justify-end gap-2">
                         {getDerby(s.teams[g.home], s.teams[g.away]) && <Tag tone="warn" className="hidden md:inline-flex">🔥 {getDerby(s.teams[g.home], s.teams[g.away])!.title}</Tag>}
                         {mine && !r && inspectedDay === s.day && (
@@ -615,11 +616,11 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                       return (
                         <li key={g.id} className={cn('flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 px-3 sm:px-4 py-2.5 sm:py-2 text-sm', mine && 'bg-ice/5')}>
                           <span className="hidden sm:inline w-16 text-[11px] text-muted shrink-0">{g.kind === 'playoff' ? 'ПО' : `#${g.id}`}</span>
-                          <span className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:w-[30%] sm:flex-none min-w-0 justify-end">
+                          <button type="button" onClick={() => ui.openTeam(g.away)} title="О клубе" data-team-link={g.away} className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:w-[30%] sm:flex-none min-w-0 justify-end hover:text-ice text-left">
                             <span className="truncate sm:hidden font-semibold">{s.teams[g.away].short}</span>
                             <span className="truncate hidden sm:inline">{s.teams[g.away].name}</span>
                             <TeamLogo team={s.teams[g.away]} size={22} />
-                          </span>
+                          </button>
                           {r ? (
                             <button onClick={() => ui.openGame(g.id)} className="font-display text-base sm:text-lg tabular w-16 sm:w-20 text-center hover:text-ice cursor-pointer shrink-0">
                               {r.awayScore}:{r.homeScore}
@@ -628,11 +629,11 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                           ) : (
                             <span className="w-12 sm:w-20 text-center text-muted text-xs shrink-0">VS</span>
                           )}
-                          <span className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:w-[30%] sm:flex-none min-w-0">
+                          <button type="button" onClick={() => ui.openTeam(g.home)} title="О клубе" data-team-link={g.home} className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:w-[30%] sm:flex-none min-w-0 hover:text-ice text-left">
                             <TeamLogo team={s.teams[g.home]} size={22} />
                             <span className="truncate sm:hidden font-semibold">{s.teams[g.home].short}</span>
                             <span className="truncate hidden sm:inline">{s.teams[g.home].name}</span>
-                          </span>
+                          </button>
                           <span className="w-full sm:w-auto sm:ml-auto flex items-center justify-end gap-2">
                             {getDerby(s.teams[g.home], s.teams[g.away]) && <Tag tone="warn" className="hidden md:inline-flex">🔥 {getDerby(s.teams[g.home], s.teams[g.away])!.title}</Tag>}
                             {mine && !r && isToday && (

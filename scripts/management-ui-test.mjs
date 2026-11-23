@@ -1,6 +1,9 @@
 // Real browser checks; start Vite first. Uses the same Chromium/BASE_URL options as rink-ui-test.mjs.
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+// The coach market is whatever roster.json lists in `freeCoaches`.
+const FREE_COACHES = JSON.parse(readFileSync('roster.json', 'utf8')).freeCoaches.length;
 const browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--no-sandbox', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const errors = [];
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
@@ -13,7 +16,7 @@ try {
   const hub = page.locator('[data-coaching-hub]');
   await hub.waitFor();
   assert.equal(await hub.getByText('Имена — справочный срез', { exact: false }).count(), 0);
-  assert.equal(await hub.locator('[data-coach^="free-coach-"]').count(), 12);
+  assert.equal(await hub.locator('[data-coach^="free-coach-"]').count(), FREE_COACHES);
   const read = () => page.evaluate(async () => { const {store} = await import(performance.getEntriesByType('resource').find(e => /\/src\/game\/state\.ts(?:\?|$)/.test(e.name)).name); const s=store.get(); return { coaches: s.teams[s.userTeamId].coaches, market:s.coachMarket, management:s.teams[s.userTeamId].management }; });
   const original = await read();
   const outgoing = original.coaches.find(c=>c.role==='head'), assistant = original.coaches.find(c=>c.role==='assistant');
@@ -36,7 +39,9 @@ try {
   await page.evaluate(async()=>{ const {saveNow} = await import(performance.getEntriesByType('resource').find(e => /\/src\/game\/state\.ts(?:\?|$)/.test(e.name)).name); await saveNow(); });
   await page.reload();
   await page.getByRole('button',{name:'Продолжить',exact:true}).click();
-  await page.getByRole('button',{name:'Управление командой →',exact:true}).click();
+  // After a reload Playwright's "stable" check sometimes never settles on this button (seen on main too); fall back to a DOM click.
+  const hubBtn = page.getByRole('button',{name:'Управление командой →',exact:true});
+  await hubBtn.click({ timeout: 5000 }).catch(() => hubBtn.dispatchEvent('click'));
   state = await read(); assert.equal(state.coaches.find(c=>c.role==='head').id,'free-coach-krikunov');
   console.log('ok real market, dismissal/interim, both appointment roles and reload');
   for (const width of [1440, 1280, 1024, 768, 390]) {

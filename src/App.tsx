@@ -5,6 +5,7 @@ import { Button, Icon, Modal, Tag, TeamLogo, UIContext, money, type UIApi, type 
 import { FormatDoc, Startup } from './components/Startup';
 import { Dashboard } from './components/Dashboard';
 import { PlayerModal, Roster } from './components/Roster';
+import { TeamModal } from './components/TeamInfo';
 import { Lines } from './components/Lines';
 import { Standings } from './components/Standings';
 import { GameBox, Schedule } from './components/Schedule';
@@ -19,7 +20,7 @@ import { Club } from './components/Club';
 import { Inbox } from './components/Inbox';
 import { buildInbox } from './game/inbox';
 import { SaveIndicator, SavesList } from './components/Saves';
-import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, syncCoachMarketFromRoster, useGame, useSaveStatus } from './game/state';
+import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, syncCoachMarketFromRoster, syncFacesFromRoster, useGame, useSaveStatus } from './game/state';
 import { regularSeasonLength, seasonDate } from './game/schedule';
 import { effectivePayroll } from './game/cap';
 import { countRosterLegionnaires, teamForeignLimit } from './game/legionnaires';
@@ -50,6 +51,7 @@ export default function App() {
   const [view, setView] = useState<View>('dashboard');
   const [matchGame, setMatchGame] = useState<Game | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
+  const [teamCardId, setTeamCardId] = useState<string | null>(null);
   const [boxId, setBoxId] = useState<number | null>(null);
   const [confirmState, setConfirmState] = useState<ConfirmState>(null);
   const [preselect, setPreselect] = useState<string | null>(null);
@@ -63,12 +65,15 @@ export default function App() {
   useEffect(() => {
     setMatchGame(null);
     setPlayerId(null);
+    setTeamCardId(null);
     setBoxId(null);
     setPreselect(null);
     setSavesOpen(false);
     setMoreOpen(false);
     setNegId(null);
     setView(phase === 'offseason' ? 'offseason' : 'dashboard');
+    // the club selection screen may have been scrolled down to the club overview
+    window.scrollTo?.({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saveId]);
 
@@ -81,10 +86,20 @@ export default function App() {
   useEffect(() => {
     if (saveId && coachSource !== 'roster') void syncCoachMarketFromRoster(saveId);
   }, [saveId, coachSource]);
+  // Careers saved before roster.json had `face`: copy the photos once.
+  const facesSynced = s?.facesSynced;
+  useEffect(() => {
+    if (saveId && !facesSynced) void syncFacesFromRoster(saveId);
+  }, [saveId, facesSynced]);
 
   const api = useMemo<UIApi>(
     () => ({
       openPlayer: (id) => setPlayerId(id),
+      openTeam: (id) => {
+        setPlayerId(null);
+        setBoxId(null);
+        setTeamCardId(id);
+      },
       openGame: (id) => setBoxId(id),
       confirm: (opts) => setConfirmState(opts),
       nav: (v) => {
@@ -372,6 +387,7 @@ export default function App() {
         </div>
       )}
 
+      {teamCardId && <TeamModal key={teamCardId} id={teamCardId} onClose={() => setTeamCardId(null)} />}
       {playerId && <PlayerModal id={playerId} onClose={() => setPlayerId(null)} />}
       {boxId != null && <GameBox gameId={boxId} onClose={() => setBoxId(null)} />}
       {negId && <NegotiationModal key={negId} id={negId} onClose={() => setNegId(null)} />}

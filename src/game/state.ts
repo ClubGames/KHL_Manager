@@ -1,5 +1,5 @@
 import { adoptRosterCoachMarket, changeTeamFocus, ensureCoachingState, fireCoach, hireCoach, interveneTeam, recordCoachingResult, stepTeamManagement } from './coaching';
-import type { TeamFocus, TeamIntervention } from '../types';
+import type { Coach, TeamFocus, TeamIntervention } from '../types';
 import { useSyncExternalStore } from 'react';
 import type { Award, FacilityKey, Game, GameResult, GameState, Lineup, NewsItem, NewsType, Series, Team, TeamTactics, YouthTrainingPlan } from '../types';
 import { buildSchedule, isWeekendDay, regularSeasonLength, seasonDateObj } from './schedule';
@@ -316,6 +316,7 @@ export function createGameState(r: NormalizedRoster, userTeamId: string): GameSt
     freeAgents: r.freeAgents,
     // free coaches come from roster.json; the built-in list is only a fallback for files without `freeCoaches`
     ...(r.freeCoaches ? { coachMarket: r.freeCoaches.map((c) => ({ ...c })), coachMarketVersion: 2, coachMarketSource: 'roster' } : { coachMarketSource: 'builtin' }),
+    facesSynced: true,
     schedule: days,
     day: 0,
     nextGameId: nextId,
@@ -379,6 +380,50 @@ export async function syncCoachMarketFromRoster(saveId: string, url = './roster.
     });
   } catch {
     /* roster.json unavailable (offline / opened from file): keep the saved market */
+  }
+}
+
+/** Copy player/coach photos from roster.json into a career saved before the `face` field existed (once per save). */
+export function adoptRosterFaces(s: GameState, r: Pick<NormalizedRoster, 'players' | 'teams' | 'freeCoaches'>): number {
+  const byName = new Map<string, string | null>();
+  for (const p of Object.values(r.players)) {
+    if (!p.face) continue;
+    const k = p.name.toLowerCase();
+    byName.set(k, byName.has(k) ? null : p.face); // ambiguous names are skipped
+  }
+  let n = 0;
+  for (const p of Object.values(s.players)) {
+    if (p.face) continue;
+    const src = r.players[p.id];
+    const face = src && src.name === p.name ? src.face : byName.get(p.name.toLowerCase()) ?? undefined;
+    if (face) {
+      p.face = face;
+      n++;
+    }
+  }
+  const coachFaces = new Map<string, string>();
+  for (const t of r.teams) for (const c of t.coaches ?? []) if (c.face) coachFaces.set(c.name.toLowerCase(), c.face);
+  for (const c of r.freeCoaches ?? []) if (c.face) coachFaces.set(c.name.toLowerCase(), c.face);
+  const fill = (c: Coach) => {
+    const f = !c.face && coachFaces.get(c.name.toLowerCase());
+    if (f) c.face = f;
+  };
+  for (const t of Object.values(s.teams)) (t.coaches ?? []).forEach(fill);
+  (s.coachMarket ?? []).forEach(fill);
+  s.facesSynced = true;
+  return n;
+}
+
+export async function syncFacesFromRoster(saveId: string, url = './roster.json') {
+  const cur = store.get();
+  if (!cur || cur.saveId !== saveId || cur.facesSynced) return;
+  try {
+    const r = await fetchRoster(url);
+    store.update((s) => {
+      if (s.saveId === saveId && !s.facesSynced) adoptRosterFaces(s, r);
+    });
+  } catch {
+    /* roster.json unavailable: try again next time the career is opened */
   }
 }
 

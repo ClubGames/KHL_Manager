@@ -9,6 +9,8 @@ export type View = 'inbox' | 'dashboard' | 'roster' | 'lines' | 'schedule' | 'st
 
 export interface UIApi {
   openPlayer: (id: string) => void;
+  /** club card: standings, staff, leaders, finances */
+  openTeam: (id: string) => void;
   openGame: (id: number) => void;
   confirm: (opts: { title: string; text?: string; confirmLabel?: string; danger?: boolean; onYes: () => void }) => void;
   nav: (v: View) => void;
@@ -18,6 +20,7 @@ export interface UIApi {
 }
 export const UIContext = createContext<UIApi>({
   openPlayer: () => {},
+  openTeam: () => {},
   openGame: () => {},
   confirm: () => {},
   nav: () => {},
@@ -88,6 +91,66 @@ export function PosBadge({ pos }: { pos: PosCode }) {
   return (
     <span className="inline-flex items-center justify-center text-[11px] font-bold w-6 h-5 rounded-sm" style={{ color: c, background: `${c}22` }}>
       {POS_RU[pos]}
+    </span>
+  );
+}
+
+/**
+ * Player (or coach) photo from roster.json `face`. Without a photo — or if it fails to load — shows the
+ * initials (or the sweater number) on the club colours, so lists keep their rhythm.
+ */
+export function PlayerFace({
+  face,
+  name,
+  number,
+  team,
+  size = 32,
+  className,
+  rounded = 'full',
+}: {
+  face?: string | null;
+  name: string;
+  number?: number;
+  team?: Pick<Team, 'primaryColor' | 'secondaryColor'> | null;
+  size?: number;
+  className?: string;
+  rounded?: 'full' | 'md';
+}) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const bg = team?.primaryColor ?? '#22324A';
+  const fg = team ? (hexLuminance(bg) > 0.55 ? '#0B1220' : team.secondaryColor && hexLuminance(team.secondaryColor) > 0.35 ? team.secondaryColor : '#FFFFFF') : '#C9D6E8';
+  const initials = name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((w) => w[0] ?? '')
+    .join('')
+    .toUpperCase();
+  const shape = rounded === 'full' ? 'rounded-full' : 'rounded-md';
+  const showImg = !!face && failed !== face;
+  return (
+    <span
+      className={cn('relative inline-flex items-center justify-center shrink-0 overflow-hidden select-none border border-line/80', shape, className)}
+      style={{ width: size, height: size, background: showImg ? '#0F1A2A' : bg }}
+      data-face={showImg ? 'photo' : 'initials'}
+      title={name}
+    >
+      {showImg ? (
+        <img
+          src={face!}
+          alt={name}
+          loading="lazy"
+          decoding="async"
+          referrerPolicy="no-referrer"
+          draggable={false}
+          onError={() => setFailed(face!)}
+          className="w-full h-full object-cover object-top"
+        />
+      ) : (
+        <span className="font-display font-bold leading-none tabular" style={{ color: fg, fontSize: Math.max(9, Math.round(size * 0.38)) }}>
+          {initials || (number != null ? number : '?')}
+        </span>
+      )}
     </span>
   );
 }
@@ -177,16 +240,26 @@ export function Stat({ label, value, sub, color }: { label: string; value: React
   );
 }
 
+/** Open modals, newest last: Escape closes only the top one (a player card opened from a club card). */
+const modalStack: object[] = [];
+
 export function Modal({ open, onClose, title, children, width = 'max-w-2xl' }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode; width?: string }) {
   useEffect(() => {
     if (!open) return;
+    const token = {};
+    modalStack.push(token);
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const h = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape' && modalStack[modalStack.length - 1] === token) {
+        e.stopImmediatePropagation();
+        onClose();
+      }
     };
     window.addEventListener('keydown', h);
     return () => {
+      const i = modalStack.indexOf(token);
+      if (i >= 0) modalStack.splice(i, 1);
       document.body.style.overflow = prevOverflow;
       window.removeEventListener('keydown', h);
     };

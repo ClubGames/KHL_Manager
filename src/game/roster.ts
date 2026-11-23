@@ -88,6 +88,16 @@ function deriveSkills(pos: PosCode, ovr: number, seed: number): Skills {
   };
 }
 
+/** A usable picture reference from the roster file: http(s) URL, site-relative path or data:image URI. */
+export function normalizeFaceUrl(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const s = raw.trim();
+  if (!s || s.length > 2000) return undefined;
+  if (/^https?:\/\//i.test(s) || /^data:image\//i.test(s) || /^\.{0,2}\/[^\s]/.test(s)) return s;
+  if (/^[\w\-./]+\.(jpe?g|png|webp|gif|avif|svg)$/i.test(s)) return s;
+  return undefined;
+}
+
 export function normalizePlayer(raw: any, teamId: string | null, idx: number, prefix: string, warnings: string[], onGenerated?: (c: ContractTerms) => void): Player {
   const name = String(raw?.name ?? '').trim() || `Игрок ${idx + 1}`;
   const posKey = String(raw?.position ?? raw?.pos ?? 'C').trim().toUpperCase();
@@ -147,6 +157,7 @@ export function normalizePlayer(raw: any, teamId: string | null, idx: number, pr
       : age <= 22 || (inVhl && (parsedSalary === 0 || parsedSalary <= 25_000_000))
         ? true
         : undefined;
+  const face = normalizeFaceUrl(raw?.face ?? raw?.photo ?? raw?.image ?? raw?.avatar);
   const player: Player = {
     id,
     name,
@@ -157,6 +168,7 @@ export function normalizePlayer(raw: any, teamId: string | null, idx: number, pr
     number: Math.round(num(raw?.number, idx + 1)),
     country: String(raw?.country ?? raw?.nationality ?? '—'),
     hand: String(raw?.hand ?? raw?.catch ?? 'L').toUpperCase().startsWith('R') ? 'R' : 'L',
+    ...(face ? { face } : {}),
     overall: 0,
     potential: Math.round(clampNum(raw?.potential, 0, 1, 99)),
     skills,

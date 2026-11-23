@@ -30,7 +30,7 @@ import { canPlaceInLtir, canPlayThroughInjury, formatInjuryDays, injuryReturnDat
 import { regularSeasonLength } from '../game/schedule';
 import { knowledgeOf, scoutedOvr, scoutedSkill } from '../game/scouting';
 import { ScoutOvr } from './Scout';
-import { Bar, Button, Empty, Modal, OverallChip, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
+import { Bar, Button, Empty, Modal, OverallChip, Panel, PlayerFace, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { cn } from '../utils/cn';
 
 type SortKey = 'number' | 'name' | 'age' | 'overall' | 'potential' | 'salary' | 'years' | 'gp' | 'goals' | 'assists' | 'points' | 'plusMinus' | 'pim' | 'wins' | 'shutouts' | 'sv' | 'gaa';
@@ -521,6 +521,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                     <div key={p.id} className="rounded-lg border border-line/80 bg-bg/40 p-3 space-y-2">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="flex items-center gap-2.5 min-w-0">
+                          <PlayerFace face={p.face} name={p.name} number={p.number} team={team} size={30} />
                           <PosBadge pos={p.position} />
                           <button type="button" onClick={() => ui.openPlayer(p.id)} className="font-semibold text-sm hover:text-accent cursor-pointer truncate">
                             {p.name}
@@ -632,6 +633,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 min-w-0">
+                        <PlayerFace face={p.face} name={p.name} number={p.number} team={team} size={28} />
                         <span className="font-display text-xs text-muted w-5 tabular shrink-0">#{p.number}</span>
                         <PosBadge pos={p.position} />
                         <span className="font-semibold text-sm truncate">{p.name}</span>
@@ -748,6 +750,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                   <tr key={p.id} onClick={() => ui.openPlayer(p.id)} className={cn('border-t border-line/70 hover:bg-panel2 cursor-pointer transition-colors', susp && 'bg-red/5', p.inVhl && 'opacity-70')}>
                     <td className="pl-4 px-2 py-1.5 text-muted">{p.number}</td>
                     <td className="px-2 py-1.5 font-medium whitespace-nowrap">
+                      <PlayerFace face={p.face} name={p.name} number={p.number} team={team} size={24} className="mr-2 align-middle" />
                       {p.name}
                       {capRole && (
                         <span className={cn('ml-1 text-[9px] font-bold px-1 rounded', capRole === 'C' ? 'bg-gold/25 text-gold' : 'bg-ice/20 text-ice')}>
@@ -865,7 +868,14 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
   return (
     <Modal open onClose={onClose} width="max-w-3xl">
       <div className="flex items-start gap-4 flex-wrap">
-        {team && <TeamLogo team={team} size={56} />}
+        <div className="relative shrink-0" data-player-face>
+          <PlayerFace face={p.face} name={p.name} number={p.number} team={team} size={76} rounded="md" />
+          {team && (
+            <button type="button" onClick={() => ui.openTeam(team.id)} className="absolute -bottom-1.5 -right-1.5 rounded-full bg-panel border border-line p-0.5" title={`О клубе «${team.name}»`}>
+              <TeamLogo team={team} size={24} />
+            </button>
+          )}
+        </div>
         <div className="flex-1 min-w-[200px]">
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="font-display text-2xl uppercase leading-none m-0">{p.name}</h2>
@@ -878,7 +888,11 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
           </div>
           <div className="text-xs text-muted mt-1">{POS_NAME[p.position]} · {p.age} лет ({faTag === 'ОСА' ? 'ОСА <28' : 'НСА 28+'}) · {p.height} см · {p.weight} кг · {p.country || '—'} · хват {p.hand === 'L' ? 'левый' : 'правый'}</div>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
-            {team && <span className="text-sm">{team.name}</span>}
+            {team && (
+              <button type="button" className="text-sm hover:text-ice hover:underline underline-offset-2" onClick={() => ui.openTeam(team.id)} data-team-link={team.id}>
+                {team.name}
+              </button>
+            )}
             {p.inVhl && <Tag tone="accent">Фарм-клуб ВХЛ</Tag>}
             {hasTwoWayContract(p) ? <Tag tone="good">Двусторонний КХЛ/ВХЛ</Tag> : p.teamId ? <Tag>Односторонний КХЛ</Tag> : null}
             {p.inLtir && <Tag tone="accent">ДСБТ КХЛ (вне потолка)</Tag>}

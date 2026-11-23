@@ -9,7 +9,7 @@ import { nextUserGame } from '../game/schedule';
 import { ATTACK_STYLE_INFO, calcDefenseChemistry, calcForwardChemistry, FORECHECK_INFO, freshnessTone, getArchetype, getTeamTactics, goalieFreshness, playerCaptainRole, PULL_GOALIE_INFO } from '../game/chemistry';
 import { isU20DefenseLimiter, isU20ForwardLimiter, isU20Limiter } from '../game/dynasty';
 import { formatInjuryDays, isPlayingHurt, isUnavailable } from '../game/medical';
-import { Bar, Button, Empty, Modal, Panel, OverallChip, PosBadge, shortName, Tag, useUI } from './ui';
+import { Bar, Button, Empty, Modal, Panel, OverallChip, PlayerFace, PosBadge, shortName, Tag, useUI } from './ui';
 import { LineupPreview } from './LineupPreview';
 import { cn } from '../utils/cn';
 
@@ -229,6 +229,7 @@ export function Lines() {
           <span className="text-[10px] uppercase text-muted w-5 shrink-0 font-semibold">{label ?? POS_RU[pref]}</span>
           {p ? (
             <>
+              <PlayerFace face={p.face} name={p.name} number={p.number} size={22} className="hidden md:inline-flex" />
               <span className="font-medium truncate flex-1 sm:hidden">{p.name}</span>
               <span className="font-medium truncate flex-1 hidden sm:inline xl:hidden">{shortName(p.name)}</span>
               <span className="font-medium truncate flex-1 hidden xl:inline">{p.name}</span>
@@ -688,6 +689,7 @@ export function Lines() {
                       )}
                       title="Нажмите для выбора в состав · ⓘ — карточка игрока"
                     >
+                      <PlayerFace face={p.face} name={p.name} number={p.number} size={22} />
                       <PosBadge pos={p.position} />
                       <span className="flex-1 truncate text-left">{p.name}</span>
                       {isU20Limiter(p) && <span className="text-[9px] font-bold px-1 rounded bg-ice/20 text-ice">U20</span>}

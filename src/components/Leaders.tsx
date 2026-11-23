@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import type { Player } from '../types';
 import { isDefense, isForward, isGoalie } from '../game/ratings';
 import { useGame } from '../game/state';
-import { Empty, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
+import { Empty, Panel, PlayerFace, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { cn } from '../utils/cn';
 
 type Scope = 'all' | 'Запад' | 'Восток' | 'mine';
@@ -140,7 +140,10 @@ export function Leaders() {
             {c.p ? (
               <>
                 <div className="flex items-center gap-2 mt-1.5">
-                  <TeamLogo team={s.teams[c.p.teamId!]} size={26} />
+                  <span className="relative shrink-0">
+                    <PlayerFace face={c.p.face} name={c.p.name} number={c.p.number} team={s.teams[c.p.teamId!]} size={36} />
+                    <TeamLogo team={s.teams[c.p.teamId!]} size={16} className="absolute -bottom-1 -right-1" />
+                  </span>
                   <div className="min-w-0">
                     <div className="text-sm font-semibold truncate">{c.p.name}</div>
                     <div className="text-[11px] text-muted truncate">{s.teams[c.p.teamId!].name}</div>
@@ -201,6 +204,7 @@ export function Leaders() {
                   <tr key={p.id} onClick={() => ui.openPlayer(p.id)} className={cn('border-t border-line/60 cursor-pointer transition-colors hover:bg-panel2', p.teamId === U && 'bg-ice/10')}>
                     <td className="pl-4 pr-2 py-1.5 text-right text-muted">{i + 1}</td>
                     <td className="px-2 py-1.5 font-medium whitespace-nowrap">
+                      <PlayerFace face={p.face} name={p.name} number={p.number} team={p.teamId ? s.teams[p.teamId] : null} size={22} className="mr-2 align-middle" />
                       {p.name}
                       {p.teamId === U && <Tag color="#8FD8F0" className="ml-2">ваш</Tag>}
                     </td>
@@ -253,6 +257,7 @@ export function Leaders() {
                     <tr key={p.id} onClick={() => ui.openPlayer(p.id)} className={cn('border-t border-line/60 cursor-pointer transition-colors hover:bg-panel2', p.teamId === U && 'bg-ice/10', !q && (gk === 'sv' || gk === 'gaa') && 'opacity-55')}>
                       <td className="pl-4 pr-2 py-1.5 text-right text-muted">{i + 1}</td>
                       <td className="px-2 py-1.5 font-medium whitespace-nowrap">
+                        <PlayerFace face={p.face} name={p.name} number={p.number} team={p.teamId ? s.teams[p.teamId] : null} size={22} className="mr-2 align-middle" />
                         {p.name}
                         {p.teamId === U && <Tag color="#8FD8F0" className="ml-2">ваш</Tag>}
                       </td>

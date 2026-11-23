@@ -42,6 +42,9 @@ export function normalizeCoach(raw: unknown, fallback: Coach): Coach {
   if (typeof r.source === 'string' && /^https:\/\//.test(r.source)) c.source = r.source.slice(0, 800);
   if (typeof r.snapshot === 'string') c.snapshot = r.snapshot.slice(0, 40);
   if (typeof r.label === 'string' && r.label.trim()) c.label = r.label.trim().slice(0, 30);
+  delete c.face;
+  const face = (r as { face?: unknown }).face;
+  if (typeof face === 'string' && /^(https?:\/\/|data:image\/|\.{0,2}\/)/i.test(face.trim()) && face.length < 2000) c.face = face.trim();
   if (typeof r.acting === 'boolean') c.acting = r.acting && c.role === 'head';
   if (typeof r.actingFromAssistant === 'boolean') c.actingFromAssistant = r.actingFromAssistant && !!c.acting;
   return c;

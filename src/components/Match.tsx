@@ -6,7 +6,7 @@ import { fmtClock } from '../game/engine';
 import { commitUserResult, makeUserSim, useGame } from '../game/state';
 import { applyEvent, emptyLive, foldEvents, manpower } from '../game/live';
 import type { LiveStats } from '../game/live';
-import { Button, Icon, Panel, PosBadge, shortName, TeamLogo } from './ui';
+import { Button, Icon, Panel, PlayerFace, PosBadge, shortName, TeamLogo } from './ui';
 import { cn } from '../utils/cn';
 import { GoalReplay } from './GoalReplay';
 import { ShotMap } from './ShotMap';
@@ -1109,8 +1109,10 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           </div>
           <div className="flex gap-2 mt-3 flex-wrap justify-center">
             {res.stars.map((id, i) => (
-              <span key={id} className="text-xs bg-panel2 border border-amber/40 rounded-sm px-2 py-1">
-                <span className="text-amber">★{i + 1}</span> {P[id]?.name} <span className="text-muted">({teamShort(id)})</span>
+              <span key={id} className="text-xs bg-panel2 border border-amber/40 rounded-sm px-2 py-1 inline-flex items-center gap-1.5">
+                <span className="text-amber">★{i + 1}</span>
+                {P[id] && <PlayerFace face={P[id].face} name={P[id].name} number={P[id].number} team={P[id].teamId ? s.teams[P[id].teamId!] : null} size={22} />}
+                {P[id]?.name} <span className="text-muted">({teamShort(id)})</span>
               </span>
             ))}
           </div>
