@@ -10,6 +10,7 @@ import { Button, Icon, Panel, PosBadge, shortName, TeamLogo } from './ui';
 import { cn } from '../utils/cn';
 import { GoalReplay } from './GoalReplay';
 import { ShotMap } from './ShotMap';
+import { LiveRink } from './RinkView';
 import { LineupPreview } from './LineupPreview';
 import { previewPowerPlay } from '../game/lineupCompare';
 import { ATTACK_STYLE_INFO, FORECHECK_INFO, freshnessTone, goalieFreshness, PULL_GOALIE_INFO } from '../game/chemistry';
@@ -66,12 +67,14 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const [swapSel, setSwapSel] = useState<number | null>(null);
   const [showPreLineup, setShowPreLineup] = useState(false);
   const [showPostMap, setShowPostMap] = useState(true);
+  const [showRink, setShowRink] = useState(true);
   const [mobileTab, setMobileTab] = useState<'live' | 'coach' | 'stats'>('live');
   const [forecheck, setForecheckState] = useState<ForecheckStyle>(sim.tactics[userIdx].forecheck);
   const [attackStyle, setAttackStyleState] = useState<AttackStyle>(sim.tactics[userIdx].style);
   const [pullPolicy, setPullPolicyState] = useState<PullGoaliePolicy>(sim.tactics[userIdx].pullGoalie);
   const [timeoutUsed, setTimeoutUsed] = useState(false);
   const [pulledNow, setPulledNow] = useState(false);
+  const [visibleGoalies, setVisibleGoalies] = useState<[string | null, string | null]>([sim.goalies[0], sim.goalies[1]]);
   const [, setCoachTick] = useState(0);
   const periodEvs = useRef<GameEvent[]>([]);
   const idx = useRef(0);
@@ -84,6 +87,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
 
   const startBlock = () => {
     const k = blockKind();
+    setVisibleGoalies([sim.team(0).lineup.starterG, sim.team(1).lineup.starterG]);
     const evs = k === 'so' ? sim.simShootout() : k === 'reg' ? sim.simPeriod() : sim.simOT();
     periodEvs.current = evs;
     idx.current = 0;
@@ -91,6 +95,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     blockEnd.current = sim.sec;
     clockRef.current = blockStart.current;
     ticker.set(blockStart.current);
+    setCurIce(null);
+    setCurLines([0, 0]);
     setKind(k);
     setPeriod(sim.period);
     setPaused(false);
@@ -106,7 +112,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       last = t;
       clockRef.current += dt * RATE[speed];
       const evs = periodEvs.current;
-      const c = Math.min(clockRef.current, blockEnd.current);
+      let c = Math.min(clockRef.current, blockEnd.current);
+      let hitGoal = false;
       const newly: FeedItem[] = [];
       while (idx.current < evs.length && evs[idx.current].sec <= c) {
         const e = evs[idx.current++];
@@ -115,10 +122,15 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         if (e.score) setScore(e.score);
         if (e.lines) setCurLines(e.lines);
         if (e.ice) setCurIce(e.ice);
+        if (e.goalie !== undefined && e.team) {
+          const defending = e.team === game.home ? 1 : 0;
+          setVisibleGoalies(previous => { const next: [string | null, string | null] = [...previous]; next[defending] = e.goalie ?? null; return next; });
+        }
         if (e.type === 'goal') {
           setGoalFlash(e.team);
           window.setTimeout(() => setGoalFlash(null), 900);
           setReplayEvent(e);
+          c = e.sec; clockRef.current = c; hitGoal = true;
           break;
         }
       }
@@ -129,6 +141,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         mpRef.current = mpNow;
         setMpKey(mpNow);
       }
+      if (hitGoal) return; // Freeze exactly on the revealed goal; no extra frame leaks past it.
       if (c >= blockEnd.current) {
         setStatus(sim.status === 'done' ? 'done' : 'break');
         return;
@@ -250,6 +263,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const toggleManualPullGoalie = () => {
     const next = !pulledNow;
     setPulledNow(next);
+    setVisibleGoalies(previous => { const updated: [string | null, string | null] = [...previous]; updated[userIdx] = next ? null : userL.starterG; return updated; });
     applyLiveCoaching(() => {
       sim.setForceEmptyNet(userIdx, next);
       return next
@@ -277,6 +291,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     c.starterG = c.backupG;
     c.backupG = g;
     setUserL(c);
+    setVisibleGoalies(previous => { const updated: [string | null, string | null] = [...previous]; updated[userIdx] = c.starterG; return updated; });
     applyLiveCoaching(() => {
       sim.setLineup(userIdx, c);
       sim.setGoalie(userIdx, c.starterG);
@@ -306,6 +321,19 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     if (mp.state !== null) return 'меньшинство';
     return `звено ${li + 1}`;
   };
+
+  const rinkIds = ([0, 1] as const).map(ti => {
+    const L = ti === 0 ? homeL : awayL;
+    const base = curIce?.[ti] ?? [...(L.F[curLines[ti]] ?? []), ...(L.D[curLines[ti] % 3] ?? [])];
+    const count = kind === 'so' ? 0 : kind === 'ot3' ? 3 : mpState === 'even' || (mpState !== null && mpState !== ti) ? 4 : 6;
+    return [...new Set(base)].filter((id): id is string => !!id && !!P[id] && P[id].position !== 'G').slice(0, count);
+  }) as [string[], string[]];
+  // The simulator has already computed the whole period. Only revealed events may drive this view.
+  const rinkGoalies = ([0, 1] as const).map(ti => {
+    if (ti === userIdx && pulledNow) return null;
+    return visibleGoalies[ti];
+  }) as [string | null, string | null];
+  const rinkEvent = feed.find(it => it.e.x !== undefined && it.e.period === period)?.e ?? null;
 
   const renderOnIce = (ti: 0 | 1) => {
     const L = ti === 0 ? homeL : awayL;
@@ -485,6 +513,10 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
 
       <div className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-4 py-3 sm:py-4 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="space-y-3 min-w-0">
+          <div className={cn(mobileTab !== 'live' && 'hidden lg:block')}>
+            <button type="button" className="text-xs text-ice mb-2" aria-expanded={showRink} onClick={() => setShowRink(v => !v)}>{showRink ? 'Скрыть площадку 2D' : 'Показать площадку 2D'}</button>
+            {showRink && <LiveRink ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} running={status === 'playing' && !paused && !replayEvent} />}
+          </div>
           <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-2', mobileTab !== 'live' && 'hidden lg:grid')}>
             {renderOnIce(0)}
             {renderOnIce(1)}
