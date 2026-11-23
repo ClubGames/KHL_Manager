@@ -32,6 +32,7 @@ function boot(seed, rosterText) {
     beforeParse(window) {
       window.fetch = (url) => (String(url).includes('roster.json') ? Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(rosterText || roster) }) : Promise.reject(new Error('no ' + url)));
       window.Element.prototype.scrollTo = window.Element.prototype.scrollTo || function () {};
+      window.scrollTo = function () {}; // jsdom has no viewport scrolling implementation.
       if (USE_IDB) window.indexedDB = global.indexedDB;
       for (const [k, v] of Object.entries(seed || {})) window.localStorage.setItem(k, v);
     },
@@ -85,9 +86,14 @@ function boot(seed, rosterText) {
     return { shots: h + w, periods: t.getAttribute('data-periods'), feedShots: (feed.match(/Бросок |ГОЛ!/g) || []).length, clock: a.document.querySelector('[data-clock]').textContent };
   };
   const s0 = live();
-  check('MATCH: stats are empty at the start of the period (no period totals in advance)', s0.shots <= 3 && s0.periods === '0-0' && s0.shots === s0.feedShots, JSON.stringify(s0));
+  check('MATCH: initial stats contain only revealed events (an early goal is allowed)', s0.shots <= 3 && s0.periods.split(' ').length === 1 && s0.shots === s0.feedShots, JSON.stringify(s0));
   a.click(a.find('×4'));
-  await sleep(2500);
+  // Replays deliberately stop the game clock. Dismiss them like a spectator would.
+  for (let elapsed = 0; elapsed < 2500; elapsed += 100) {
+    const close = a.document.querySelector('[aria-label="Закрыть повтор"]');
+    if (close) a.click(close);
+    await sleep(100);
+  }
   const s1 = live();
   check('MATCH: stats grow with the feed — shots on the panel = shots shown in the feed', s1.shots > s0.shots && s1.shots < 25 && s1.shots === s1.feedShots, JSON.stringify(s1));
   a.click(a.find('Пауза'));
@@ -97,6 +103,9 @@ function boot(seed, rosterText) {
   const p2 = live();
   check('MATCH: pause freezes clock, feed and stats', p1.clock === p2.clock && p1.shots === p2.shots && p1.feedShots === p2.feedShots && a.has('Возобновить'), `${p1.clock} / ${p2.clock}`);
   a.click(a.find('Возобновить'));
+  // A goal may have opened a replay before the pause; the clock correctly waits for its dismissal.
+  const replayClose = a.document.querySelector('[aria-label="Закрыть повтор"]');
+  if (replayClose) a.click(replayClose);
   await sleep(900);
   const p3 = live();
   check('MATCH: resume continues from the same moment', p3.clock !== p2.clock && p3.shots >= p2.shots && p3.shots === p3.feedShots, `${p2.clock} → ${p3.clock}`);

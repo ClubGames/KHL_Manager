@@ -1,3 +1,4 @@
+import { ensureTeamManagement } from './coaching';
 import type { GameState, OffseasonPlan, YouthTrainingPlan } from '../types';
 import { buildSchedule } from './schedule';
 import { formatMoney, isDefense, isGoalie, payroll, salaryDemand } from './ratings';
@@ -259,6 +260,15 @@ export function beginNewSeason(state: GameState) {
   state.allStar = null;
 
   for (const t of Object.values(state.teams)) {
+    const management = ensureTeamManagement(t);
+    // Summer rest, not a reset of staff appointments or the free-coach market.
+    management.load = 10;
+    management.familiarity = 100;
+    management.focusDays = 0;
+    management.meetingCooldown = 0;
+    management.staffCooldown = { head: 0, assistant: 0 };
+    management.disciplineDays = 0;
+    management.trust = Math.max(60, management.trust);
     t.record = emptyRecord();
     t.seed = null;
     t.deadCap = 0;

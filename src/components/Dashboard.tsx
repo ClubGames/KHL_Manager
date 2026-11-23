@@ -1,3 +1,4 @@
+import { recentTeamForm } from '../game/coaching';
 import { useState } from 'react';
 import { nextUserGame, regularSeasonLength, seasonDate } from '../game/schedule';
 import { rankConference, simulateDay, simulateDays, simulateToNextUserGame, useGame } from '../game/state';
@@ -66,6 +67,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
   const tw = tradeWindow(s);
   const topSal = [...U.players].sort((a, b) => P[b].contract.salary - P[a].contract.salary).slice(0, 4);
   const onTrack = boardOnTrack(s);
+  const teamForm = recentTeamForm(s, U.id);
   const dayLabel = (g: Game) => (g.day === s.day ? 'Сегодня' : g.day === s.day + 1 ? 'Завтра' : `Через ${g.day - s.day} дн.`);
   const series = upcoming?.seriesId != null ? s.playoffs?.series.find((x) => x.id === upcoming.seriesId) : null;
   const upcomingOppId = upcoming ? (upcoming.home === U.id ? upcoming.away : upcoming.home) : undefined;
@@ -87,6 +89,11 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
         <Stat label="Баланс" value={`${r.w + r.otw + r.sow}−${r.otl + r.sol + r.l}`} sub={`ВО ${r.otw} · ВБ ${r.sow} · ПО ${r.otl}`} />
         <Stat label="Форма" value={<span className="flex gap-1 text-base">{r.last.slice(-5).map((c, i) => <ResultPill key={i} code={c} />)}</span>} sub={r.streakType ? (r.streakType === 'W' ? `Победная серия: ${r.streak}` : `Серия поражений: ${r.streak}`) : '—'} />
         <Stat label="Бюджет" value={money(U.budget)} sub={`ФОТ ${money(fol)}`} color="#3FCF8E" />
+      </div>
+
+      <div className={`rounded-md border p-3 flex flex-wrap items-center justify-between gap-3 text-xs ${teamForm.crisis ? 'border-accent/60 bg-accent/10' : 'border-line bg-panel'}`} data-team-management-link>
+        <div><b>{teamForm.crisis ? `Кризис: ${teamForm.losses} поражений в ${teamForm.played} матчах.` : 'Управляйте не только звеньями.'}</b><span className="text-muted ml-2">Штаб, тренировки, восстановление и работа с раздевалкой — в разделе «Клуб».</span></div>
+        <Button size="sm" variant={teamForm.crisis ? 'primary' : 'secondary'} onClick={() => ui.nav('club')}>Управление командой →</Button>
       </div>
 
       {capInfo.over && (

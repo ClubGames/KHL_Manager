@@ -1,3 +1,4 @@
+import { Coaching } from './Coaching';
 import { useState } from 'react';
 import { getCapSummary } from '../game/cap';
 import {
@@ -47,6 +48,7 @@ export function Club() {
 
   return (
     <div className="space-y-4 fade-in" data-club-hub>
+      <Coaching />
       {/* Top KPI Summary */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat
@@ -88,7 +90,7 @@ export function Club() {
 
       {/* 4 Facility Upgrade Cards */}
       <Panel
-        title={`Инфраструктура и штаб · ${U.name}`}
+        title={`Инфраструктура клуба · ${U.name}`}
         right={<span className="text-xs text-muted">Вложения остаются с клубом во всех следующих сезонах Династии</span>}
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">

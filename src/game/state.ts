@@ -1,3 +1,5 @@
+import { changeTeamFocus, coachingEffects, ensureCoachingState, hireCoach, interveneTeam, recordCoachingResult, stepTeamManagement } from './coaching';
+import type { TeamFocus, TeamIntervention } from '../types';
 import { useSyncExternalStore } from 'react';
 import type { Award, FacilityKey, Game, GameResult, GameState, Lineup, NewsItem, NewsType, Series, Team, TeamTactics, YouthTrainingPlan } from '../types';
 import { buildSchedule, isWeekendDay, regularSeasonLength, seasonDateObj } from './schedule';
@@ -221,6 +223,7 @@ export function migrateState(raw: unknown): GameState | null {
   s.waivers ??= [];
   s.rfaOffers ??= [];
   s.allStar ??= null;
+  ensureCoachingState(s);
   s.league.foreignLimit ??= DEFAULT_FOREIGN_LIMIT;
   if (s.playoffs && !s.playoffs.awards) s.playoffs.awards = [];
   for (const p of Object.values(s.players)) {
@@ -322,6 +325,7 @@ export function createGameState(r: NormalizedRoster, userTeamId: string): GameSt
     ensureFacilities(t);
     t.seasonGateRevenue = 0;
   }
+  ensureCoachingState(state);
   setBoardGoal(state);
   news[0].text += ` Задача руководства на сезон: ${state.board.text.toLowerCase()}.`;
   const startPay = effectivePayroll(user, r.players, 'season');
@@ -564,6 +568,20 @@ export function setUserTactics(patch: Partial<TeamTactics>) {
   });
 }
 
+/** Team management actions return a user-facing error without charging on failure. */
+function coachingAction(action: (s: GameState) => string | null): string | null {
+  if (!store.get()) return 'Сначала загрузите карьеру.';
+  let error: string | null = null;
+  store.update((s) => {
+    error = action(s);
+    if (!error) addNews(s, 'info', s.teams[s.userTeamId].management?.lastAction ?? 'Решение штаба принято.', s.userTeamId);
+  });
+  return error;
+}
+export const hireUserCoach = (id: string) => coachingAction((s) => hireCoach(s, id));
+export const setUserTeamFocus = (focus: TeamFocus) => coachingAction((s) => changeTeamFocus(s, focus));
+export const holdTeamMeeting = (action: TeamIntervention) => coachingAction((s) => interveneTeam(s, action));
+
 /* ---------------- youth training ---------------- */
 export function setTrainingPlan(playerId: string, plan: YouthTrainingPlan) {
   store.update((s) => {
@@ -593,6 +611,7 @@ function buildSimTeam(state: GameState, tid: string, lineup: Lineup) {
     tactics: getTeamTactics(T),
     chemGP: T.chemGP,
     leadershipBonus: teamLeadershipBonus(T, state.players),
+    coaching: coachingEffects(T, state.players),
     roadStreak: T.roadStreak ?? 0,
   };
 }
@@ -701,6 +720,8 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
       }
     }
   }
+  recordCoachingResult(H, hw);
+  recordCoachingResult(A, !hw);
   const winnerId = hw ? g.home : g.away;
   const moraleMult = derby ? derby.moraleMult : 1;
   for (const id in res.lines) {
@@ -873,6 +894,8 @@ function postDay(state: GameState) {
           )
         )
       : 1;
+
+  stepTeamManagement(state, calStep);
 
   // Daily goalie recovery for goalies whose club did not play on the day that just finished
   const playedToday = new Set<string>();
