@@ -5,7 +5,7 @@ import type { PosCode, Team } from '../types';
 import { overallColor, POS_RU } from '../game/ratings';
 import { getClubLogoSources, getOfficialClubPalette, hexLuminance } from '../game/clubColors';
 
-export type View = 'dashboard' | 'roster' | 'lines' | 'schedule' | 'standings' | 'stats' | 'trades' | 'market' | 'contracts' | 'club' | 'format' | 'offseason';
+export type View = 'dashboard' | 'roster' | 'lines' | 'schedule' | 'standings' | 'stats' | 'trades' | 'market' | 'contracts' | 'club' | 'management' | 'format' | 'offseason';
 
 export interface UIApi {
   openPlayer: (id: string) => void;

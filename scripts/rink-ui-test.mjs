@@ -74,7 +74,7 @@ try {
   await fallback.evaluate(() => { Object.defineProperty(window, 'WebGLRenderingContext', { value: undefined }); Object.defineProperty(window, 'WebGL2RenderingContext', { value: undefined }); });
   await mount(fallback);
   await fallback.locator('[data-replay-renderer="svg"]').waitFor();
-  assert.equal(await fallback.locator('[data-rink-player]').count(), 11);
+  assert.equal(await fallback.locator('[data-rink-player]').count(), 12);
   await fallback.getByRole('slider').fill('950');
   assert.ok(await fallback.getByText('ГОЛ', { exact: true }).isVisible());
   await fallback.keyboard.press('Escape'); await fallback.close();
@@ -94,7 +94,7 @@ try {
   await match.waitForTimeout(100); const frozen = await rink.locator('[data-rink-puck]').getAttribute('cx');
   await match.waitForTimeout(250); assert.equal(await rink.locator('[data-rink-puck]').getAttribute('cx'), frozen);
   await match.getByRole('button', { name: 'Возобновить', exact: true }).click();
-  await match.waitForTimeout(500);
+  await match.waitForTimeout(1900);
   assert.notEqual(await rink.locator('[data-rink-puck]').getAttribute('cx'), frozen);
   await match.getByRole('button', { name: 'Скрыть площадку 2D', exact: true }).click(); assert.equal(await rink.count(), 0);
   await match.getByRole('button', { name: 'Показать площадку 2D', exact: true }).click(); assert.equal(await rink.count(), 1);

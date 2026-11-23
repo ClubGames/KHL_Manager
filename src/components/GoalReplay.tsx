@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { GameEvent, Player, Team } from '../types';
-import { buildReplayClip, clamp } from '../game/rinkPlayback';
+import { buildReplayClip, clamp, type ReplayClip } from '../game/rinkPlayback';
 import { ReplayScene, type ReplayCamera } from './ReplayScene';
 import { Button, TeamLogo } from './ui';
 
-export function GoalReplay({ event, home, away, players, onClose }: {
-  event: GameEvent; home: Team; away: Team; players: Record<string, Player>; onClose: () => void;
+export function GoalReplay({ event, home, away, players, onClose, motionClip }: {
+  event: GameEvent; home: Team; away: Team; players: Record<string, Player>; onClose: () => void; motionClip?: ReplayClip;
 }) {
-  const clip = useMemo(() => buildReplayClip(event, home, away, players), [event, home, away, players]);
+  const clip = useMemo(() => motionClip ?? buildReplayClip(event, home, away, players), [motionClip, event, home, away, players]);
   const reduced = useRef(typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches).current;
   const [time, setTime] = useState(reduced ? .8 : 0);
   const [playing, setPlaying] = useState(!reduced);

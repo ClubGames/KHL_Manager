@@ -52,8 +52,16 @@ export function defaultStaff(clubId: string): Coach[] {
   )).map((c) => clubId === 'dinamo-msk' && c.role === 'head' ? { ...c, acting: true } : c);
 }
 
+// Available for a coaching appointment; sources and verification notes in docs/coaching-sources-2026.md.
 export function defaultCoachMarket(): Coach[] {
-  const names = ['Артём Ветров', 'Михаил Северин', 'Олег Ледов', 'Денис Берегов', 'Павел Зорин', 'Роман Озеров', 'Никита Речной', 'Илья Морозов', 'Антон Лесной', 'Кирилл Горин'];
-  return (['head', 'assistant'] as const).flatMap((role, r) => (Object.keys(COACH_PROFILES) as CoachProfile[])
-    .map((profile, i) => makeCoach(`generated-${role}-${profile}`, names[r * 5 + i], role, profile)));
+  const ranking = 'https://www.sports.ru/hockey/blogs/3566337.html';
+  const candidates: [string, string, CoachProfile, string][] = [
+    ['vorobyov', 'Илья Воробьёв', 'balanced', ranking],
+    ['rotenberg', 'Роман Ротенберг', 'motivator', ranking],
+    ['zavarukhin', 'Николай Заварухин', 'defense', ranking],
+    ['skabelka', 'Андрей Скабелка', 'defense', ranking],
+    ['larionov', 'Игорь Ларионов', 'development', 'https://www.fontanka.ru/2026/10/18/76708930/'],
+    ['tambiev', 'Леонид Тамбиев', 'attack', 'https://sovsport.ru/hockey/news/kamenskij-ob-uvolnenii-tambieva-iz-dinamo-emu-dali-malo-vremeni'],
+  ];
+  return candidates.map(([id, name, profile, source]) => makeCoach(`market-${id}`, name, 'head', profile, source));
 }

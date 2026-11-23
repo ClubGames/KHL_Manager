@@ -1,41 +1,41 @@
 import { useState } from 'react';
 import type { Coach, CoachRole, Team, TeamFocus, TeamIntervention } from '../types';
-import { COACH_PROFILES, COACH_ROLE_LABEL, STAFF_SNAPSHOT } from '../game/coachData';
+import { COACH_PROFILES, COACH_ROLE_LABEL } from '../game/coachData';
 import { coachHireCost, coachingEffects, INTERVENTIONS, recentTeamForm, TEAM_FOCUS } from '../game/coaching';
 import { formatMoney, mean } from '../game/ratings';
-import { hireUserCoach, holdTeamMeeting, setUserTeamFocus, useGame } from '../game/state';
-import { Bar, Button, Panel, Stat, Tag, useUI } from './ui';
+import { fireUserCoach, hireUserCoach, holdTeamMeeting, setUserTeamFocus, useGame } from '../game/state';
+import { Button, Panel, Stat, Tag, useUI } from './ui';
 
 const signed = (n: number) => `${n >= 0 ? '+' : ''}${n.toFixed(1)}`;
-function CoachCard({ coach }: { coach: Coach }) {
+function CoachCard({ coach, market = false }: { coach: Coach; market?: boolean }) {
   return <div className="rounded-md border border-line bg-panel2/60 p-3 space-y-2" data-coach={coach.id}>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div><div className="text-[11px] text-muted uppercase">{coach.acting ? 'И. о. главного тренера' : COACH_ROLE_LABEL[coach.role]}</div><div className="font-display text-lg">{coach.name}</div></div>
+      <div><div className="text-[11px] text-muted uppercase">{market ? 'Свободный тренер' : coach.acting ? 'И. о. главного тренера' : COACH_ROLE_LABEL[coach.role]}</div><div className="font-display text-lg">{coach.name}</div></div>
       <Tag color="#8FD8F0">{COACH_PROFILES[coach.profile].label}</Tag>
     </div>
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs">
       {([['attack', 'Атака'], ['defense', 'Оборона'], ['special', 'Спецбригады'], ['development', 'Развитие'], ['motivation', 'Мотивация']] as const).map(([key, label]) =>
-        <div key={key}><span className="text-muted">{label} </span><b className="tabular">{coach[key]}</b><Bar value={coach[key]} color="#8FD8F0" className="mt-1" /></div>)}
+        <div key={key}><span className="text-muted">{label} </span><b className="tabular">{coach[key]}</b></div>)}
     </div>
-    <div className="text-xs text-muted">{formatMoney(coach.salary)}/год · {coach.fictional ? 'Вымышленный специалист' : `Справочный срез ${coach.snapshot ?? STAFF_SNAPSHOT}`}
-      {!coach.fictional && coach.source && <a href={coach.source} target="_blank" rel="noreferrer" className="text-ice underline ml-2">Источник</a>}
+    <div className="flex justify-between gap-2 text-xs text-muted"><span>{formatMoney(coach.salary)}/год</span>
+      {coach.source && <a href={coach.source} target="_blank" rel="noreferrer" className="text-ice hover:underline">Источник ↗</a>}
     </div>
   </div>;
 }
 
 export function StaffSummary({ team }: { team: Team }) {
   const ui = useUI(); const s = useGame()!;
-  return <Panel title="Тренерский штаб" right={team.id === s.userTeamId ? <Button size="sm" onClick={() => ui.nav('club')}>Управление командой →</Button> : undefined}>
+  return <Panel title="Тренерский штаб" right={team.id === s.userTeamId ? <Button size="sm" onClick={() => ui.nav('management')}>Управление командой →</Button> : undefined}>
     <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm" data-staff-summary>
       {(team.coaches ?? []).map((c) => <div key={c.role}><span className="text-muted text-xs">{c.acting ? 'И. о. главного тренера' : COACH_ROLE_LABEL[c.role]}: </span><b>{c.name}</b> <span className="text-xs text-ice">{COACH_PROFILES[c.profile].label}</span></div>)}
     </div>
-    <p className="text-[11px] text-muted mt-2">Имена — справочный срез {STAFF_SNAPSHOT}; специализации, рейтинги и зарплаты условные игровые. В «Клубе» можно заменить тренера и изменить подготовку.</p>
   </Panel>;
 }
 
 export function Coaching() {
   const s = useGame()!; const ui = useUI(); const t = s.teams[s.userTeamId];
   const m = t.management; const effects = coachingEffects(t, s.players); const form = recentTeamForm(s, t.id);
+  const [tab, setTab] = useState<'staff' | 'preparation'>('staff');
   const [role, setRole] = useState<CoachRole>('head');
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
   if (!m) return null;
@@ -50,7 +50,7 @@ export function Coaching() {
   const staffPay = (t.coaches ?? []).reduce((sum, c) => sum + c.salary, 0);
 
   return <div className="space-y-4" data-coaching-hub>
-    <Panel title="Управление командой · штаб и выход из кризиса" right={<Tag tone={form.crisis ? 'bad' : 'good'}>{form.played ? `${form.wins} побед / ${form.played} матчей` : 'Начало сезона'}</Tag>}>
+    <Panel title="Управление командой" right={<Tag tone={form.crisis ? 'bad' : 'good'}>{form.played ? `${form.wins} побед / ${form.played} матчей` : 'Начало сезона'}</Tag>}>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <Stat label="Мораль / доверие штабу" value={`${Math.round(morale)} / ${Math.round(m.trust)}`} sub="Влияют на атаку и оборону" />
         <Stat label="Нагрузка команды" value={`${Math.round(m.load)} / 100`} sub="Каждый матч +8; штраф выше 50" color={m.load > 60 ? '#E5323E' : '#3FCF8E'} />
@@ -60,7 +60,7 @@ export function Coaching() {
       <div className="mt-4 p-3 rounded border border-line bg-panel2/50 text-xs leading-relaxed">
         <b>{form.crisis ? 'Кризис результатов. ' : 'Последние восемь матчей. '}</b>
         {form.played ? `${form.wins} побед, ${form.losses} поражений; шайбы ${form.gf}:${form.ga}. ` : 'Для диагностики сначала сыграйте несколько матчей. '}
-        Результат не гарантирован: штаб помогает составу, но не заменяет мастерство игроков и тактику.
+
         {hints.length > 0 && <ul className="mt-2 space-y-1 list-disc pl-4">{hints.map((hint) => <li key={hint}>{hint}</li>)}</ul>}
       </div>
       <div className="flex flex-wrap gap-2 mt-3 text-xs" data-coaching-effects>
@@ -68,11 +68,16 @@ export function Coaching() {
         <Tag>Спецбригады {signed(effects.special * 100)}%</Tag><Tag>Развитие U23 ×{effects.development.toFixed(2)}</Tag>
         <Tag>Вратарь {signed(effects.goalie)}</Tag>
       </div>
-      <p className="text-[11px] text-muted mt-2">Суммарные модификаторы к игровым рейтингам: штаб (65% главный / 35% ассистент), мораль, доверие, сплочённость, нагрузка, адаптация и подготовка. Одинаково для просмотра и быстрой симуляции. Бонус спецбригад повышает качество бросков в большинстве и снижает его у соперника в вашем меньшинстве.</p>
+      <details className="text-[11px] text-muted mt-2"><summary className="cursor-pointer">Как работает штаб</summary><p>Суммарные модификаторы к игровым рейтингам: штаб (65% главный / 35% ассистент), мораль, доверие, сплочённость, нагрузка, адаптация и подготовка. Одинаково для просмотра и быстрой симуляции. Бонус спецбригад повышает качество бросков в большинстве и снижает его у соперника в вашем меньшинстве.</p></details>
     </Panel>
 
     {notice && <div role="status" className={`border rounded p-3 text-sm ${notice.ok ? 'border-ok/50 text-ok bg-ok/10' : 'border-accent/50 text-accent bg-accent/10'}`}>{notice.text}</div>}
 
+    <div className="flex flex-wrap gap-2" role="tablist" aria-label="Управление командой">
+      <Button role="tab" aria-selected={tab === 'staff'} variant={tab === 'staff' ? 'ice' : 'secondary'} onClick={() => setTab('staff')}>Штаб и рынок</Button>
+      <Button role="tab" aria-selected={tab === 'preparation'} variant={tab === 'preparation' ? 'ice' : 'secondary'} onClick={() => setTab('preparation')}>Подготовка и раздевалка</Button>
+    </div>
+    {tab === 'preparation' && <>
     <Panel title="Командная подготовка" right={<Tag>{TEAM_FOCUS[m.focus].label} · {Math.min(3, m.focusDays)}/3 дн.</Tag>}>
       <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-2">
         {(Object.entries(TEAM_FOCUS) as [TeamFocus, typeof TEAM_FOCUS[TeamFocus]][]).map(([key, def]) => <button type="button" key={key} aria-pressed={key === m.focus}
@@ -98,26 +103,36 @@ export function Coaching() {
       {m.lastAction && <p className="text-xs text-muted mt-3">Последнее решение: {m.lastAction}</p>}
     </Panel>
 
+    </>}
+    {tab === 'staff' && <>
     <Panel title="Тренерский штаб" right={<span className="text-xs text-muted">{formatMoney(staffPay)}/год вне потолка игроков</span>}>
-      <div className="grid md:grid-cols-2 gap-3">{t.coaches?.map((coach) => <CoachCard key={coach.role} coach={coach} />)}</div>
-      <p className="text-xs text-muted mt-3">Имена — справочный срез {STAFF_SNAPSHOT}, зафиксирован на указанную дату, без онлайн-обновления. Представлены главный и один ассистент каждого клуба, не весь реальный штаб. Рейтинги, профили и зарплаты — условные игровые параметры.</p>
+      <div className="grid md:grid-cols-2 gap-3">{(['head', 'assistant'] as const).map(r => {
+        const coach = t.coaches?.find(c => c.role === r);
+        return <div key={r} className="space-y-2">{coach ? <><CoachCard coach={coach} /><Button size="sm" variant="ghost" onClick={() => ui.confirm({
+          title: `Уволить ${coach.name}?`, danger: true, confirmLabel: 'Уволить',
+          text: `Компенсация: ${formatMoney(coach.salary * .5)}.${r === 'head' ? ' Ассистент станет и. о. главного до нового назначения.' : ''}`,
+          onYes: () => result(fireUserCoach(r), 'Тренер уволен.'),
+        })}>Уволить</Button></> : <div className="rounded-md border border-dashed border-line p-4 text-sm text-muted">{COACH_ROLE_LABEL[r]} · вакансия</div>}</div>;
+      })}</div>
     </Panel>
 
     <Panel title="Рынок тренеров" right={<span className="text-xs text-muted">Бюджет: {formatMoney(t.budget)}</span>}>
+      <div className="text-xs text-muted mb-2">Должность при подписании</div>
       <div className="flex flex-wrap gap-2 mb-3">{(['head', 'assistant'] as const).map((r) => <Button key={r} size="sm" variant={role === r ? 'ice' : 'secondary'} onClick={() => setRole(r)}>{COACH_ROLE_LABEL[r]}</Button>)}</div>
-      <p className="text-xs text-muted mb-3">Замена: 50% годовой зарплаты уходящему + 25% подписного бонуса новому. Зарплата списывается каждый календарный день (1/365). Замена главного сбросит освоение системы до 40%, ассистента — не выше 70%. Повторная замена на той же должности — через 30 дней. Мораль автоматически не повышается.</p>
-      {m.staffCooldown[role] > 0 && <p className="text-xs text-gold mb-3">Следующая замена на этой должности через {Math.ceil(m.staffCooldown[role])} дн.</p>}
+      <details className="text-xs text-muted mb-3"><summary className="cursor-pointer">Условия назначения</summary><p className="mt-2">Замена: 50% годовой зарплаты уходящему + 25% подписного бонуса новому. Зарплата списывается каждый календарный день (1/365). Замена главного сбросит освоение системы до 40%, ассистента — не выше 70%. Повторная замена на той же должности — через 30 дней. Мораль автоматически не повышается. Вакансию или пост и. о. можно заполнить сразу.</p></details>
+      {m.staffCooldown[role] > 0 && t.coaches?.some(c => c.role === role && !c.acting) && <p className="text-xs text-gold mb-3">Следующая замена на этой должности через {Math.ceil(m.staffCooldown[role])} дн.</p>}
       <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">
-        {(s.coachMarket ?? []).filter((c) => c.role === role).map((coach) => {
-          const cost = coachHireCost(t, coach);
-          return <div key={coach.id} className="space-y-2"><CoachCard coach={coach} />
-            <Button size="sm" className="w-full" disabled={m.staffCooldown[role] > 0 || t.budget < cost} onClick={() => ui.confirm({
-              title: `Назначить: ${coach.name}?`, text: `Будет списано ${formatMoney(cost)}. Зарплата ${formatMoney(coach.salary)}/год. Потребуется адаптация команды; победы не гарантированы.`, confirmLabel: 'Назначить',
-              onYes: () => result(hireUserCoach(coach.id), `${coach.name} назначен. Компенсация и подписной бонус списаны.`),
-            })}>Назначить · {formatMoney(cost)}</Button>
+        {(s.coachMarket ?? []).map((coach) => {
+          const cost = coachHireCost(t, coach, role);
+          return <div key={coach.id} className="space-y-2"><CoachCard coach={coach} market />
+            <Button size="sm" className="w-full" disabled={(m.staffCooldown[role] > 0 && !!t.coaches?.some(c => c.role === role && !c.acting)) || t.budget < cost} onClick={() => ui.confirm({
+              title: `Назначить: ${coach.name}?`, text: `Будет списано ${formatMoney(cost)}. Должность: ${COACH_ROLE_LABEL[role]}. Зарплата ${formatMoney(coach.salary)}/год.`, confirmLabel: 'Назначить',
+              onYes: () => result(hireUserCoach(coach.id, role), `${coach.name} назначен. Компенсация и подписной бонус списаны.`),
+            })}>Нанять: {COACH_ROLE_LABEL[role]} · {formatMoney(cost)}</Button>
           </div>;
         })}
       </div>
     </Panel>
+    </>}
   </div>;
 }
