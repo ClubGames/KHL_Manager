@@ -6,7 +6,7 @@ import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit }
 import { activeKhlCount, isRfaEligibleAge, offerSheetCompensation, vhlCount } from '../game/khlRules';
 import { formatMoney } from '../game/ratings';
 import { claimFromWaivers, useGame } from '../game/state';
-import { Button, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
+import { Button, Panel, PlayerFace, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { ScoutOvr } from './Scout';
 import { cn } from '../utils/cn';
 
@@ -192,7 +192,8 @@ export function Market() {
                 return (
                   <tr key={p.id} className="border-t border-line/60 hover:bg-panel2 transition-colors">
                     <td className="pl-4 py-2 font-medium whitespace-nowrap">
-                      <button className="hover:text-ice text-left" onClick={() => ui.openPlayer(p.id)}>
+                      <button className="hover:text-ice text-left inline-flex items-center gap-2" onClick={() => ui.openPlayer(p.id)}>
+                        <PlayerFace face={p.face} name={p.name} number={p.number} size={26} />
                         {p.name}
                       </button>
                       <span className="ml-1.5 text-[10px] text-muted">{countryCode(p.country)}</span>
@@ -252,6 +253,7 @@ export function Market() {
                 <div key={p.id} className="p-3 flex items-center justify-between gap-2.5">
                   <div className="min-w-0 flex-1 space-y-1">
                     <div className="flex items-center gap-1.5 min-w-0">
+                      <PlayerFace face={p.face} name={p.name} number={p.number} size={28} />
                       <PosBadge pos={p.position} />
                       <button type="button" className="font-semibold text-sm truncate hover:text-ice text-left" onClick={() => ui.openPlayer(p.id)}>
                         {p.name}

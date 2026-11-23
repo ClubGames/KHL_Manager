@@ -8,7 +8,7 @@ import { isRfaEligibleAge, offerSheetCompensation } from '../game/khlRules';
 import { regularSeasonLength, seasonDateOnly } from '../game/schedule';
 import { formatMoney, payroll } from '../game/ratings';
 import { acquireRfaRights, assignUserScout, cancelUserScout, proposeTrade, respondOffer, setTradeBlockWants, setTradeFlag, shopTradeBlockNow, useGame } from '../game/state';
-import { Button, Empty, Icon, OverallChip, Panel, PosBadge, Tag, TeamLogo, money, useUI } from './ui';
+import { Button, Empty, Icon, OverallChip, Panel, PlayerFace, PosBadge, Tag, TeamLogo, money, useUI } from './ui';
 import { cn } from '../utils/cn';
 
 function PlayerList({ ids, selected, onToggle, title, empty, footer, own = false }: { ids: string[]; selected: string[]; onToggle: (id: string) => void; title: React.ReactNode; empty: string; footer?: React.ReactNode; own?: boolean }) {
@@ -52,6 +52,7 @@ function PlayerList({ ids, selected, onToggle, title, empty, footer, own = false
                         <span className={cn('w-4 h-4 rounded-sm border text-[10px] inline-flex items-center justify-center shrink-0 font-bold', sel ? 'bg-accent border-accent text-white' : 'border-line text-muted')}>
                           {sel ? '✓' : '+'}
                         </span>
+                        <PlayerFace face={p.face} name={p.name} number={p.number} team={p.teamId ? s.teams[p.teamId] : null} size={22} className="hidden sm:inline-flex" />
                         <PosBadge pos={p.position} />
                         <span className="flex-1 truncate text-left min-w-0 font-medium">{p.name}</span>
                         {nmc && <span className="text-[9px] font-bold px-1 rounded bg-gold/25 text-gold shrink-0" title="Запрет на обмен (NMC)">ЗНО</span>}
@@ -98,6 +99,16 @@ export function Trades({ preselect }: { preselect: string | null }) {
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   useEffect(() => {
     if (!preselect) return;
+    if (preselect.startsWith('team:')) {
+      const tid = preselect.slice(5);
+      if (s.teams[tid] && tid !== s.userTeamId) {
+        setPartnerId(tid);
+        setGet([]);
+        setMsg(null);
+        setMobileSide('get');
+      }
+      return;
+    }
     const pl = s.players[preselect];
     if (!pl || !pl.teamId) return;
     setMsg(null);
@@ -183,7 +194,9 @@ export function Trades({ preselect }: { preselect: string | null }) {
               const from = s.teams[o.from];
               return (
                 <div key={o.id} className="flex items-center gap-3 flex-wrap rounded-sm border border-line bg-panel2/60 p-2.5">
-                  <TeamLogo team={from} size={30} />
+                  <button type="button" onClick={() => ui.openTeam(from.id)} title={`О клубе «${from.name}»`}>
+                    <TeamLogo team={from} size={30} />
+                  </button>
                   <div className="flex-1 min-w-[240px] text-sm">
                     <div>
                       <b>{from.name}</b> хочет:{' '}
@@ -267,6 +280,9 @@ export function Trades({ preselect }: { preselect: string | null }) {
                     </option>
                   ))}
                 </select>
+                <button type="button" onClick={() => ui.openTeam(partnerId)} className="text-xs text-ice hover:underline whitespace-nowrap" data-team-link={partnerId}>
+                  О клубе
+                </button>
               </span>
             }
             empty="Нет игроков"

@@ -12,18 +12,20 @@ import { FORECHECK_INFO, freshnessTone, getTeamTactics, goalieFreshness } from '
 import { getDerby } from '../game/derbies';
 import { ensureFacilities, formatInjuryDays, injuryReturnDate } from '../game/medical';
 import type { Game, NewsItem, Team } from '../types';
-import { Bar, Button, Icon, money, Panel, ResultPill, Stat, Tag, TeamLogo, useUI } from './ui';
+import { Bar, Button, Icon, money, Panel, PlayerFace, ResultPill, Stat, Tag, TeamLogo, useUI } from './ui';
 import { LineupPreview } from './LineupPreview';
 import { boardOnTrack } from '../game/board';
 import { blockingTasks, buildInbox } from '../game/inbox';
 import { InboxList } from './Inbox';
 import { PressConferencePanel } from './PressConference';
 import { PreseasonPanel } from './Preseason';
+import { TeamLink } from './TeamInfo';
 
 function TeamBlock({ team, place, right }: { team: Team; place: number | null; right?: boolean }) {
   const r = team.record;
+  const ui = useUI();
   return (
-    <div className={`flex flex-col sm:flex-row items-center sm:items-center gap-1.5 sm:gap-3 min-w-0 text-center ${right ? 'sm:flex-row-reverse sm:text-right' : 'sm:text-left'}`}>
+    <button type="button" onClick={() => ui.openTeam(team.id)} title={`О клубе «${team.name}»`} data-team-link={team.id} className={`flex flex-col sm:flex-row items-center sm:items-center gap-1.5 sm:gap-3 min-w-0 text-center rounded-md hover:bg-panel2/60 p-1 -m-1 transition-colors ${right ? 'sm:flex-row-reverse sm:text-right' : 'sm:text-left'}`}>
       <TeamLogo team={team} size={46} className="sm:w-14 sm:h-14" />
       <div className="min-w-0 max-w-full">
         <div className="font-display text-base sm:text-xl uppercase leading-tight truncate">{team.name}</div>
@@ -32,7 +34,7 @@ function TeamBlock({ team, place, right }: { team: Team; place: number | null; r
           {r.gp} и · {r.points} очк.{place ? ` · #${place}` : ''}
         </div>
       </div>
-    </div>
+    </button>
   );
 }
 
@@ -347,17 +349,11 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
                   const res = g.result;
                   const mine = g.home === U.id || g.away === U.id;
                   return (
-                    <button key={g.id} onClick={() => res && ui.openGame(g.id)} className={`flex items-center justify-between gap-2 px-3 py-2 rounded-sm border text-sm transition-colors ${mine ? 'border-ice/50 bg-ice/5' : 'border-line bg-panel2/40'} ${res ? 'hover:bg-panel2' : ''}`}>
-                      <span className="flex items-center gap-2 min-w-0">
-                        <TeamLogo team={s.teams[g.away]} size={22} />
-                        <span className="truncate">{s.teams[g.away].short}</span>
-                      </span>
+                    <div key={g.id} onClick={() => res && ui.openGame(g.id)} className={`flex items-center justify-between gap-2 px-3 py-2 rounded-sm border text-sm transition-colors ${mine ? 'border-ice/50 bg-ice/5' : 'border-line bg-panel2/40'} ${res ? 'hover:bg-panel2 cursor-pointer' : ''}`}>
+                      <TeamLink team={s.teams[g.away]} size={22} className="gap-2" />
                       <span className="font-display text-base tabular text-text px-1">{res ? `${res.awayScore}:${res.homeScore}` : '—'}{res?.so ? ' Б' : res?.ot ? ' ОТ' : ''}</span>
-                      <span className="flex items-center gap-2 min-w-0 flex-row-reverse">
-                        <TeamLogo team={s.teams[g.home]} size={22} />
-                        <span className="truncate">{s.teams[g.home].short}</span>
-                      </span>
-                    </button>
+                      <TeamLink team={s.teams[g.home]} size={22} className="gap-2 flex-row-reverse" />
+                    </div>
                   );
                 })}
               </div>
@@ -385,7 +381,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
           <Panel title={`${U.conference} · топ-8`} right={<Button size="sm" variant="ghost" onClick={() => ui.nav('standings')}>Все →</Button>}>
             <ol className="space-y-1 text-sm">
               {conf.slice(0, 8).map((t, i) => (
-                <li key={t.id} className={`flex items-center gap-2 px-2 py-1 rounded-sm ${t.id === U.id ? 'bg-ice/10 text-ice' : ''}`}>
+                <li key={t.id} onClick={() => ui.openTeam(t.id)} title={`О клубе «${t.name}»`} className={`flex items-center gap-2 px-2 py-1 rounded-sm cursor-pointer hover:bg-panel2 ${t.id === U.id ? 'bg-ice/10 text-ice' : ''}`}>
                   <span className="w-4 text-xs text-muted tabular">{i + 1}</span>
                   <TeamLogo team={t} size={20} />
                   <span className="flex-1 truncate">{t.short}</span>
@@ -410,7 +406,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
               {topPts.map((p) => (
                 <li key={p.id}>
                   <button onClick={() => ui.openPlayer(p.id)} className="w-full flex items-center gap-2 hover:text-ice">
-                    <span className="font-display text-xs text-muted w-4">{p.number}</span>
+                    <PlayerFace face={p.face} name={p.name} number={p.number} team={U} size={24} />
                     <span className="flex-1 truncate text-left">{p.name}</span>
                     <span className="text-xs text-muted tabular">{p.stats.goals}+{p.stats.assists}</span>
                     <span className="font-display tabular w-6 text-right">{points(p)}</span>
@@ -423,6 +419,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
               {goalies.map((p) => (
                 <li key={p.id}>
                   <button onClick={() => ui.openPlayer(p.id)} className="w-full flex items-center gap-2 hover:text-ice">
+                    <PlayerFace face={p.face} name={p.name} number={p.number} team={U} size={24} />
                     <span className="flex-1 truncate text-left">{p.name}</span>
                     <span className="text-[10px] tabular" style={{ color: freshnessTone(goalieFreshness(p)).color }}>
                       свеж. {goalieFreshness(p)}%

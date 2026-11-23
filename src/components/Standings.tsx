@@ -6,6 +6,7 @@ import { cn } from '../utils/cn';
 
 function Table({ teams, U, fullCols }: { teams: Team[]; U: string; fullCols: boolean }) {
   const optCell = cn('text-right px-1.5', !fullCols && 'hidden md:table-cell');
+  const ui = useUI();
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-xs sm:text-sm tabular">
@@ -30,7 +31,7 @@ function Table({ teams, U, fullCols }: { teams: Team[]; U: string; fullCols: boo
           {teams.map((t, i) => {
             const r = t.record;
             return (
-              <tr key={t.id} className={cn('border-t border-line/60', t.id === U && 'bg-ice/10', i < 8 ? 'border-l-2 border-l-ok' : 'border-l-2 border-l-transparent')}>
+              <tr key={t.id} onClick={() => ui.openTeam(t.id)} data-team-row={t.id} title={`О клубе «${t.name}»`} className={cn('border-t border-line/60 cursor-pointer hover:bg-panel2/70', t.id === U && 'bg-ice/10', i < 8 ? 'border-l-2 border-l-ok' : 'border-l-2 border-l-transparent')}>
                 <td className="text-right pr-1.5 sm:pr-2 pl-2.5 sm:pl-4 py-2 sm:py-1.5 text-muted">{i + 1}</td>
                 <td className="py-2 sm:py-1.5 sm:min-w-[180px] max-w-[145px] sm:max-w-none">
                   <span className="flex items-center gap-1.5 sm:gap-2 min-w-0">
@@ -64,11 +65,12 @@ function Table({ teams, U, fullCols }: { teams: Team[]; U: string; fullCols: boo
 function SeriesCard({ ser }: { ser: Series }) {
   const s = useGame()!;
   const U = s.userTeamId;
+  const ui = useUI();
   const row = (id: string, w: number, high: boolean) => {
     const t = s.teams[id];
     const winner = ser.done && ser.winner === id;
     return (
-      <div className={cn('flex items-center gap-2 px-2 py-1.5', winner && 'bg-ok/10', t.id === U && 'bg-ice/10', high && 'border-b border-line/60')}>
+      <div onClick={() => ui.openTeam(id)} className={cn('flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-panel2', winner && 'bg-ok/10', t.id === U && 'bg-ice/10', high && 'border-b border-line/60')}>
         <TeamLogo team={t} size={22} />
         <span className={cn('flex-1 truncate text-sm', ser.done && !winner && 'text-muted line-through')}>{t.name}</span>
         <span className="font-display text-lg tabular">{w}</span>

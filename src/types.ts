@@ -25,6 +25,8 @@ export interface Coach {
   snapshot?: string;
   /** Specialisation caption from roster.json (e.g. «Плей-офф»); defaults to the profile label. */
   label?: string;
+  /** photo URL from roster.json `face` */
+  face?: string;
   acting?: boolean; // Interim head, including an assistant promoted in the career.
   actingFromAssistant?: boolean;
 }
@@ -114,6 +116,8 @@ export interface Player {
   number: number;
   country: string;
   hand: 'L' | 'R';
+  /** photo URL from roster.json `face` (optional; an initials badge is shown without it) */
+  face?: string;
   overall: number;
   potential: number;
   skills: Skills;
@@ -560,6 +564,8 @@ export interface GameState {
   coachMarketVersion?: number;
   /** 'roster': free coaches came from roster.json `freeCoaches`; otherwise the built-in fallback list. */
   coachMarketSource?: 'roster' | 'builtin';
+  /** photos (`face`) were copied from roster.json into this career (older saves predate the field) */
+  facesSynced?: boolean;
   /** KHL All-Star Weekend result for the current season */
   allStar?: AllStarResult | null;
   /** fan support 0..100: gate revenue, press reactions */

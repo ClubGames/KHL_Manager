@@ -6,7 +6,9 @@ import type { NormalizedRoster } from '../game/roster';
 import { effectivePayroll } from '../game/cap';
 import { formatMoney, isGoalie, isSkater } from '../game/ratings';
 import { cn } from '../utils/cn';
-import { Button, Panel, Spinner, TeamLogo } from './ui';
+import { Button, OverallChip, Panel, Spinner, TeamLogo } from './ui';
+import { ClubOverview } from './TeamInfo';
+import type { Team } from '../types';
 import { SavesList } from './Saves';
 
 export function FormatDoc({ compact }: { compact?: boolean }) {
@@ -28,6 +30,7 @@ export function FormatDoc({ compact }: { compact?: boolean }) {
     ['players[].age', 'number', 'Возраст (18–45)'],
     ['players[].height / weight / number', 'number', 'Рост (см), вес (кг), игровой номер'],
     ['players[].country / hand', 'string', 'Гражданство; хват клюшки L / R'],
+    ['players[].face', 'string', 'Необязательно: ссылка на фото игрока (http/https или путь рядом с index.html). Без фото показываются инициалы в цветах клуба. То же поле понимается у тренеров'],
     ['players[].overall', 'number', 'Общий рейтинг 1–99. Необязателен: считается из skills'],
     ['players[].potential', 'number', 'Потолок развития 1–99 (для игроков до 25 лет)'],
     ['players[].skills', 'object', 'Полевые: skating, shooting, passing, puckControl, checking, defense. Вратари: reflexes, positioning, reboundControl, puckHandling, endurance (1–99)'],
@@ -84,6 +87,30 @@ function strength(r: NormalizedRoster, teamId: string): number {
   const g = ids.map((id) => r.players[id]).filter(isGoalie).sort((a, b) => b.overall - a.overall)[0];
   const all = g ? [...sk, g] : sk;
   return all.length ? Math.round(all.reduce((s, p) => s + p.overall, 0) / all.length) : 0;
+}
+
+/** Shown under the club list once a club is picked: staff, units, stars with photos. */
+function ClubPreview({ roster, team }: { roster: NormalizedRoster; team: Team }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    ref.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
+  }, [team.id]);
+  return (
+    <div ref={ref}>
+      <Panel
+        title={
+          <span className="flex items-center gap-2 min-w-0">
+            <TeamLogo team={team} size={22} />
+            <span className="truncate">{team.name}</span>
+          </span>
+        }
+        right={<span className="text-xs text-muted">{team.city} · {team.conference}{team.division ? ` · ${team.division}` : ''}</span>}
+        data-club-preview={team.id}
+      >
+        <ClubOverview team={team} P={roster.players} teams={roster.teams} chip={(p) => <OverallChip value={p.overall} size="sm" />} salaryCap={roster.salaryCap} />
+      </Panel>
+    </div>
+  );
 }
 
 function TeamSelect({ roster, onStart }: { roster: NormalizedRoster; onStart: (teamId: string) => void }) {
@@ -145,6 +172,7 @@ function TeamSelect({ roster, onStart }: { roster: NormalizedRoster; onStart: (t
           </Panel>
         ))}
       </div>
+      {team && <ClubPreview roster={roster} team={team} />}
       {roster.warnings.length > 0 && (
         <Panel title={`Предупреждения ростера (${roster.warnings.length})`}>
           <ul className="text-xs text-amber/90 space-y-1 max-h-32 overflow-y-auto">
