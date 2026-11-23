@@ -5,7 +5,8 @@ import type { GameEvent, Player, Team } from '../types';
 export type Point = { x: number; y: number; h: number };
 export type Key = Point & { t: number };
 export type Track = { id: string; side: 0 | 1; goalie?: boolean; keys: Key[] };
-export type ReplayClip = { label: string; duration: number; release: number; goal: number; tracks: Track[]; puck: Key[]; scorer: string; attacking: 0 | 1 };
+/** `bodies`: track positions are skater bodies (agent simulation), not stick blades (legacy reconstruction). */
+export type ReplayClip = { label: string; duration: number; release: number; goal: number; tracks: Track[]; puck: Key[]; scorer: string; attacking: 0 | 1; bodies?: boolean };
 export const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 const key = (t: number, x: number, y: number, h = 0): Key => ({ t, x, y, h });
 export function samplePath(path: Key[], time: number, smooth = false): Point {
@@ -97,7 +98,7 @@ export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: R
   return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[shot], duration: 8, release, goal, tracks: tracks.map(tr => ({ ...tr, keys: tr.keys.map(mirror) })), puck: puck.map(mirror), scorer: e.player, attacking: side };
 }
 
-export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: Point; goalie?: boolean }[]; faceoff?: boolean };
+export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: Point; goalie?: boolean; box?: boolean }[]; faceoff?: boolean; stopped?: boolean; carrier?: string | null; caption?: string; official?: Point };
 export function clipFrame(clip: ReplayClip, time: number): LiveFrame {
   return { puck: samplePath(clip.puck, time), skaters: clip.tracks.map(tr => ({ id: tr.id, side: tr.side, goalie: tr.goalie, pos: samplePath(tr.keys, time) })) };
 }

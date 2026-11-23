@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { GameEvent, Player, Team } from '../types';
 import { buildReplayClip, clamp, type ReplayClip } from '../game/rinkPlayback';
 import { ReplayScene, type ReplayCamera } from './ReplayScene';
@@ -47,29 +48,32 @@ export function GoalReplay({ event, home, away, players, onClose, motionClip }: 
   }, [playing, clip, speed]);
   useEffect(() => { if (time >= 1) setPlaying(false); }, [time]);
   const attack = event.team === home.id ? home : away;
-  return <div className="fixed inset-0 z-[70] bg-[#040a14]/95 backdrop-blur flex items-center justify-center p-2 sm:p-5" role="dialog" aria-modal="true" aria-label="3D-повтор гола" ref={dialog}>
-    <div className="w-full max-w-5xl max-h-[96dvh] overflow-y-auto rounded-xl border border-white/15 bg-[#0c1929] shadow-2xl">
-      <div className="flex items-center gap-3 px-4 py-3 border-b border-white/10">
+  // Portalled to <body>: a transformed/animated ancestor would otherwise become the containing block of this
+  // `position: fixed` layer and push the replay down the page instead of centring it in the viewport.
+  const overlay = <div className="fixed inset-0 z-[70] bg-[#040a14]/95 backdrop-blur flex items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-label="3D-повтор гола" ref={dialog} data-goal-replay>
+    <div className="w-full max-w-5xl max-h-[100dvh] flex flex-col overflow-hidden sm:rounded-xl border-white/15 sm:border bg-[#0c1929] shadow-2xl">
+      <div className="flex items-center gap-3 px-3 py-1.5 sm:py-2.5 border-b border-white/10 shrink-0">
         <TeamLogo team={attack} size={28} /><div className="min-w-0"><div className="text-[10px] uppercase tracking-[.2em] text-ice">Голевой эпизод · 3D</div><div className="font-semibold text-sm truncate">{event.player ? players[event.player]?.name ?? 'Автор гола' : 'Автор гола'} <span className="text-muted ml-2">{event.score?.join(' : ')}</span></div></div>
-        <button onClick={onClose} className="ml-auto p-2 text-2xl text-white/70 hover:text-white" aria-label="Закрыть повтор">×</button>
+        <button onClick={onClose} className="ml-auto px-2 text-2xl leading-none text-white/70 hover:text-white" aria-label="Закрыть повтор">×</button>
       </div>
       {clip ? <>
-        <div className="relative bg-[#081421] overflow-hidden" style={{ height: 'clamp(240px, 49vw, 510px)', maxHeight: '55dvh' }}>
+        <div className="relative bg-[#081421] overflow-hidden shrink-0" data-replay-stage style={{ height: 'max(150px, min(56.25vw, calc(100dvh - 142px), 560px))' }}>
           <ReplayScene clip={clip} time={time} camera={camera} home={home} away={away} players={players} />
           <div className="absolute top-3 left-3 right-3 pointer-events-none flex justify-between gap-3 text-[11px] text-white"><span className="rounded px-2 py-1 bg-black/60">{clip.label}</span><span className="rounded px-2 py-1 bg-black/60">{event.period <= 3 ? `${event.period}-й период` : 'Овертайм'} · {event.time} · {event.strength ?? 'EV'}</span></div>
           {time >= clip.goal && <div className="absolute bottom-4 inset-x-0 text-center pointer-events-none"><span className="inline-block px-5 py-1 bg-[#d8314b]/90 text-white font-display text-3xl tracking-widest rounded">ГОЛ</span></div>}
         </div>
-        <div className="px-3 sm:px-4 py-3 space-y-3">
-          <div className="flex items-center gap-3 text-xs"><span className="tabular text-muted w-16">{(time * clip.duration).toFixed(1)} / {clip.duration} c</span><input className="flex-1 min-w-0 accent-sky-300" type="range" min="0" max="1000" step="1" value={Math.round(time * 1000)} aria-label="Позиция повтора" onChange={e => { setPlaying(false); setTime(clamp(Number(e.target.value) / 1000, 0, 1)); }} /></div>
-          <div className="flex flex-wrap items-center gap-2">
+        <div className="px-3 py-1.5 sm:py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 shrink-0">
+          <div className="flex items-center gap-2 text-xs flex-1 min-w-[180px]"><span className="tabular text-muted w-[4.5rem] shrink-0 whitespace-nowrap">{(time * clip.duration).toFixed(1)} / {clip.duration.toFixed(1)} c</span><input className="flex-1 min-w-0 accent-sky-300" type="range" min="0" max="1000" step="1" value={Math.round(time * 1000)} aria-label="Позиция повтора" onChange={e => { setPlaying(false); setTime(clamp(Number(e.target.value) / 1000, 0, 1)); }} /></div>
+          <div className="flex flex-wrap items-center gap-1.5">
             <Button size="sm" onClick={() => { if (time >= 1) setTime(0); setPlaying(p => !p); }}>{playing ? 'Пауза повтора' : 'Воспроизвести'}</Button>
             <Button size="sm" onClick={() => { setTime(0); setPlaying(true); }}>↻ Повторить</Button>
             <label className="text-xs text-muted">Скорость <select aria-label="Скорость повтора" value={speed} onChange={e => setSpeed(Number(e.target.value))} className="bg-[#15283d] rounded p-1 text-white">{[.25, .5, .75, 1].map(v => <option key={v} value={v}>×{v}</option>)}</select></label>
-            <div className="flex gap-1 ml-auto">{([['broadcast', 'ТВ'], ['ice', 'Со льда'], ['net', 'У ворот']] as const).map(([id, text]) => <button key={id} aria-pressed={camera === id} className={`px-2 py-1 text-xs rounded border ${camera === id ? 'bg-ice text-bg border-ice' : 'border-line text-muted'}`} onClick={() => setCamera(id)}>{text}</button>)}</div>
+            <div className="flex gap-1">{([['broadcast', 'ТВ'], ['ice', 'Со льда'], ['net', 'У ворот']] as const).map(([id, text]) => <button key={id} aria-pressed={camera === id} className={`px-2 py-1 text-xs rounded border ${camera === id ? 'bg-ice text-bg border-ice' : 'border-line text-muted'}`} onClick={() => setCamera(id)}>{text}</button>)}</div>
           </div>
         </div>
       </> : <div className="p-6 text-muted">Недостаточно данных для реконструкции эпизода.</div>}
-      <div className="flex flex-wrap gap-3 justify-between items-center px-4 py-3 border-t border-white/10"><div className="text-xs min-w-0 flex-1"><p>{event.text}</p><p className="mt-1 text-[10px] text-muted">Визуальная реконструкция по типу и точке броска, автору и передачам. Не запись точных перемещений.</p></div><Button size="sm" variant="primary" onClick={onClose}>Продолжить матч</Button></div>
+      <div className="flex gap-3 justify-between items-center px-3 py-1.5 border-t border-white/10 shrink-0"><p className="text-[11px] min-w-0 flex-1 truncate" title={event.text}>{event.text}</p><Button size="sm" variant="primary" onClick={onClose}>Продолжить матч</Button></div>
     </div>
   </div>;
+  return typeof document === 'undefined' ? overlay : createPortal(overlay, document.body);
 }

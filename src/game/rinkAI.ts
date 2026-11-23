@@ -1,0 +1,1125 @@
+import type { AttackStyle, ForecheckStyle, GameEvent, Player, Team } from '../types';
+import type { Key, LiveFrame, ReplayClip, Track } from './rinkPlayback';
+
+/*
+ * Agent-based hockey for the 2D rink and the 3D replay.
+ *
+ * Every skater and goalie is an agent with position, velocity, top speed and acceleration taken from skills.
+ * Puck carriers decide (carry, pass, dump in, chip out, shoot wide, get stripped); off-puck players take
+ * role-based attacking/defending positions, forecheck according to tactics, and change lines on the fly.
+ * Nobody moves faster than physics allows, there are no teleports, attackers never enter the zone ahead
+ * of the puck (no offside), and the game clock stops at every whistle until the puck is dropped.
+ *
+ * The statistical engine remains authoritative: shots, saves, goals, scorers, assists, penalties and hits
+ * happen exactly at their game second. A director steers the free play so that the right team owns the
+ * puck, the right players pass and the right player shoots from the recorded location.
+ * Time units: `g` is the game clock (stops at whistles), `tau` is presentation time (never stops).
+ */
+
+type Side = 0 | 1;
+type Role = 'C' | 'LW' | 'RW' | 'LD' | 'RD' | 'X';
+type V2 = { x: number; y: number };
+export type PlayKind = 'faceoff' | 'loose' | 'entry' | 'dump' | 'icing' | 'takeaway' | 'interception' | 'block' | 'wide' | 'hit' | 'penalty' | 'freeze' | 'save' | 'goal' | 'change' | 'clear';
+export type RinkPlay = { tau: number; g: number; kind: PlayKind; side: Side | null; player?: string; text: string };
+export type RinkTactics = [{ forecheck: ForecheckStyle; style: AttackStyle }, { forecheck: ForecheckStyle; style: AttackStyle }];
+export interface RinkAIOptions { suddenDeath?: boolean; tactics?: () => RinkTactics; goalies?: [string | null, string | null]; seed?: number }
+
+const DT = 0.1;
+const L = 60, W = 30, MID = 15;
+export const RINK_M = { length: L, width: W, goalLine: 4.2, blueLine: 16.8, post: 0.915 } as const;
+const GOAL = 4.2, BLUE = 16.8, RED = 30, OPP_BLUE = 43.2, OPP_GOAL = 55.8;
+const BENCH: [V2, V2] = [{ x: 24, y: 0.8 }, { x: 36, y: 0.8 }];
+const BOX: [V2, V2] = [{ x: 27, y: 29.2 }, { x: 33, y: 29.2 }];
+const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
+const dist = (a: V2, b: V2) => Math.hypot(a.x - b.x, a.y - b.y);
+/** Each team's local frame: attacking toward +x, own net at x = 4.2. It is a 180° rotation, its own inverse. */
+const loc = (s: Side, p: V2): V2 => (s ? { x: L - p.x, y: W - p.y } : { x: p.x, y: p.y });
+const sk = (p: Player | undefined, k: keyof Player['skills'], d = 62) => p?.skills?.[k] ?? d;
+function rng(seed: number) {
+  let a = seed | 0;
+  return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+/** Rounded-rectangle boards (corner radius 6 m). */
+function inside(p: V2, m = 0.5): V2 {
+  const r = 6;
+  let x = clamp(p.x, m, L - m), y = clamp(p.y, m, W - m);
+  const cx = clamp(x, r + m, L - r - m), cy = clamp(y, r + m, W - r - m);
+  if (cx !== x && cy !== y) { const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy); if (d > r) { x = cx + (dx / d) * r; y = cy + (dy / d) * r; } }
+  return { x, y };
+}
+
+interface Agent {
+  id: string; side: Side; goalie: boolean; role: Role; name: string;
+  x: number; y: number; vx: number; vy: number; fx: number; fy: number;
+  on: 'ice' | 'bench' | 'box'; leave: null | 'bench' | 'box'; boxUntil: number; pim: number; stun: number;
+  max: number; acc: number; pass: number; shoot: number; hands: number; check: number;
+  tx: number; ty: number; urg: number; arrive: number; scripted: boolean;
+}
+type LegKind = 'pass' | 'giveaway' | 'shot' | 'dump' | 'chip' | 'wide' | 'block' | 'clear' | 'deflect';
+interface Leg { via?: Agent; tv?: number; kind: LegKind; t0: number; t1: number; from: V2; to: V2 | Agent; h0: number; h1: number; arc: number; by: Agent | null; protect: boolean; exitSpeed: number; event?: GameEvent; icing?: Side | null }
+interface Puck { x: number; y: number; h: number; vx: number; vy: number; carrier: Agent | null; leg: Leg | null; next: Leg | null; last: Side | null; noTouch: Agent | null; noTouchUntil: number; icing: Side | null; reserved: Agent | null; dead: boolean }
+interface ShotPlan { ev: GameEvent; T: Side; chain: Agent[]; spots: V2[]; rel: number[]; arr: number[]; tr: number; target: V2 | Agent; th: number; step: number; acquired: boolean; acqStarted: boolean; shot: boolean }
+interface DuelPlan { ev: GameEvent; kind: 'hit' | 'penalty'; actor: Agent; victim: Agent | null }
+interface Stop { reason: 'start' | 'goal' | 'freeze' | 'icing' | 'penalty'; dot: V2; t0: number; phase: 'whistle' | 'celebrate' | 'gather' | 'set' | 'drop'; phaseAt: number; scorer?: Agent; winner?: Side }
+interface Frame { tau: number; g: number; px: number; py: number; ph: number; ids: string[]; pos: Float32Array; flags: Uint8Array; carrier: number; stop: 0 | 1 | 2; ox: number; oy: number }
+
+const isAgent = (v: V2 | Agent): v is Agent => typeof (v as Agent).id === 'string';
+const SHOT_SPEED: Record<string, number> = { slap: 36, snap: 30, wrist: 26, backhand: 21, tip: 24, rebound: 18 };
+const CATCH: Record<string, number> = { slap: 0.3, snap: 0.25, wrist: 0.65, backhand: 0.8, tip: 0.05, rebound: 0.15 };
+const FACEOFF_DOTS = { center: { x: 30, y: 15 } };
+/** End-zone dot of side s's defensive zone, on the half where the puck is. */
+const zoneDot = (s: Side, y: number): V2 => loc(s, { x: 11.4, y: loc(s, { x: 0, y }).y < MID ? 7.2 : 22.8 });
+
+export class RinkAI {
+  readonly frames: Frame[] = [];
+  readonly plays: RinkPlay[] = [];
+  readonly faceoffWins: [number, number] = [0, 0];
+  readonly blocks: [number, number] = [0, 0];
+  readonly icings: [number, number] = [0, 0];
+  g: number;
+  tau = 0;
+  mode: 'play' | 'stop' | 'end' = 'stop';
+  private readonly eventTau = new Map<GameEvent, number>();
+  private all: GameEvent[] = [];
+  private staged: GameEvent[] = [];
+  private si = 0;
+  private ri = 0;
+  private agents = new Map<string, Agent>();
+  private rand: () => number;
+  private puck: Puck = { x: 30, y: 15, h: 0, vx: 0, vy: 0, carrier: null, leg: null, next: null, last: null, noTouch: null, noTouchUntil: 0, icing: null, reserved: null, dead: true };
+  private plan: ShotPlan | null = null;
+  private duel: DuelPlan | null = null;
+  private stop: Stop | null = null;
+  private poss: { side: Side; until: number } = { side: 0, until: 0 };
+  private decideAt = new Map<string, number>();
+  private carryTarget = new Map<string, V2>();
+  private lastIds: string[] = [];
+  private lastGoalie: [string | null, string | null];
+  private zoneEntry: Side | null = null;
+  /** Puck is in side s's attacking zone; it leaves only after fully crossing the 30 cm blue line. */
+  private zoneIn: [boolean, boolean] = [false, false];
+  private readonly teams: [Team, Team];
+
+  constructor(events: GameEvent[], home: Team, away: Team, private readonly players: Record<string, Player>, readonly start: number, public end: number, private readonly opts: RinkAIOptions = {}) {
+    this.teams = [home, away];
+    this.g = start;
+    this.lastGoalie = opts.goalies ?? [home.lineup.starterG, away.lineup.starterG];
+    let seed = opts.seed ?? (Math.round(start * 13) ^ 0x9e3779b9);
+    for (const e of events) seed = Math.imul(seed ^ Math.round(e.sec * 7 + (e.x ?? 3)), 16777619);
+    this.rand = rng(seed);
+    this.setEvents(events);
+    this.poss = { side: this.rand() < 0.5 ? 0 : 1, until: start + 6 };
+    // Opening faceoff: both lines in formation at centre ice; the clock waits for the drop.
+    const goalies = this.desiredGoalies();
+    for (const s of [0, 1] as Side[]) {
+      const ids = this.wantedSkaters(s, goalies[s]);
+      ids.forEach(id => this.spawn(id, s, null));
+      if (goalies[s]) this.spawn(goalies[s]!, s, null, true);
+      this.assignRoles(s);
+    }
+    this.startStop('start', FACEOFF_DOTS.center);
+    for (const a of this.onIce()) { const slot = this.slot(a); a.x = slot.x; a.y = slot.y; }
+    this.puck.x = 30; this.puck.y = 15; this.puck.h = 1.1;
+    this.stop!.phase = 'set'; this.stop!.phaseAt = 0;
+    this.record();
+  }
+
+  /* ---------------- public API ---------------- */
+
+  /** Replace future events after a live coaching change. Motion already generated is kept. */
+  setEvents(events: GameEvent[], end = this.end) {
+    this.end = Math.max(this.g, end);
+    this.all = [...events].sort((a, b) => a.sec - b.sec);
+    this.staged = this.all.filter(e => (['goal', 'shot', 'miss', 'penalty', 'hit'] as GameEvent['type'][]).includes(e.type) && e.sec > this.start - 1e-9 && (e.type === 'penalty' || e.type === 'hit' || (!!e.player && !!this.players[e.player])));
+    this.si = this.staged.findIndex(e => e.sec > this.g + 1e-9 || (e.sec >= this.g - 1e-9 && !this.eventTau.has(e)));
+    if (this.si < 0) this.si = this.staged.length;
+    this.ri = 0;
+    while (this.ri < this.all.length && this.eventTau.has(this.all[this.ri])) this.ri++;
+    if (this.plan && !this.staged.includes(this.plan.ev)) this.cancelPlan();
+    if (this.duel && !this.staged.includes(this.duel.ev)) this.duel = null;
+  }
+  get ended() { return this.mode === 'end'; }
+  /** Rink-level hockey stats of the plays already shown (up to presentation time `tau`). */
+  tally(tau: number) {
+    const t = { faceoff: [0, 0], block: [0, 0], takeaway: [0, 0], icing: [0, 0] } as Record<'faceoff' | 'block' | 'takeaway' | 'icing', [number, number]>;
+    for (const p of this.plays) {
+      if (p.tau > tau) break;
+      if (p.side === null) continue;
+      if (p.kind === 'faceoff' || p.kind === 'block' || p.kind === 'icing') t[p.kind][p.side]++;
+      else if (p.kind === 'takeaway' || p.kind === 'interception') t.takeaway[p.side]++;
+    }
+    return t;
+  }
+  /** Something worth watching at normal pace: a shot sequence, a whistle, a faceoff drop or a body check. */
+  get hot(): boolean {
+    if (this.mode === 'end') return false;
+    if (this.mode === 'stop') return !!this.stop && this.stop.phase !== 'gather' && this.stop.phase !== 'celebrate';
+    if (this.puck.leg?.kind === 'shot') return true;
+    if (this.plan && this.plan.ev.sec - this.g < 3.2) return true;
+    const n = this.next();
+    return !!n && (n.type === 'hit' || n.type === 'penalty') && n.sec - this.g < 1.6;
+  }
+  /** Presentation seconds per real second: highlights near real time, routine skating fast-forwarded,
+   *  so a period lasts about as long as before (≈4–5 min at ×1, ≈2.3 at ×2, ≈1.2 at ×4). */
+  static readonly PACE = { hot: 1.5, cold: 6.5 } as const;
+  get lastTau() { return this.frames.at(-1)?.tau ?? 0; }
+  /** Simulate until presentation time `tau` (lazy; keeps the live match cheap). */
+  ensure(tau: number) {
+    let guard = 0;
+    while (this.mode !== 'end' && this.tau < tau && guard++ < 200000) this.step();
+  }
+  runToEnd() { this.ensure(Infinity); return this; }
+  tauOf(e: GameEvent): number | undefined {
+    const t = this.eventTau.get(e);
+    if (t !== undefined) return t;
+    if (e.sec > this.g + 1e-9) return undefined;
+    // Events that arrived after a replan in the already-simulated look-ahead: first frame at that clock.
+    const f = this.frames.find(fr => fr.g >= e.sec - 1e-9);
+    return f?.tau ?? this.tau;
+  }
+  clockAt(tau: number): number {
+    const [a, b, u] = this.bracket(tau);
+    return a.g + (b.g - a.g) * u;
+  }
+  frameAt(tau: number): LiveFrame {
+    const [a, b, u] = this.bracket(tau);
+    const skaters: LiveFrame['skaters'] = [];
+    const index = new Map(b.ids.map((id, i) => [id, i] as const));
+    a.ids.forEach((id, i) => {
+      const j = a.ids === b.ids ? i : index.get(id);
+      const ax = a.pos[i * 2], ay = a.pos[i * 2 + 1];
+      const box = (a.flags[i] & 2) > 0;
+      let x = ax, y = ay;
+      if (j !== undefined && !box && (b.flags[j] & 2) === 0) { x = ax + (b.pos[j * 2] - ax) * u; y = ay + (b.pos[j * 2 + 1] - ay) * u; }
+      skaters.push({ id, side: this.sideOf(id), goalie: (a.flags[i] & 1) > 0, box: box || undefined, pos: { x: x / 0.6, y: y / 0.3, h: 0 } });
+    });
+    const caption = [...this.plays].reverse().find(p => p.tau <= tau && tau - p.tau < 2.6);
+    return {
+      puck: { x: (a.px + (b.px - a.px) * u) / 0.6, y: (a.py + (b.py - a.py) * u) / 0.3, h: a.ph + (b.ph - a.ph) * u },
+      skaters, faceoff: a.stop === 1 || undefined, stopped: a.stop > 0 || undefined,
+      carrier: a.carrier >= 0 ? a.ids[a.carrier] : null, caption: caption?.text,
+      official: a.stop === 1 ? { x: a.ox / 0.6, y: a.oy / 0.3, h: 0 } : undefined,
+    };
+  }
+  /** The goal sequence as the 3D viewer consumes it — exactly the frames shown on the 2D rink. */
+  goalClip(e: GameEvent): ReplayClip | null {
+    const te = this.tauOf(e);
+    if (te === undefined || !e.player) return null;
+    this.ensure(te + 2.4);
+    const startAt = Math.max(this.frames[0].tau, te - 7), endAt = Math.min(this.lastTau, te + 2.2);
+    const frames = this.frames.filter(f => f.tau >= startAt - 1e-9 && f.tau <= endAt + 1e-9);
+    const at = frames.find(f => f.tau >= te - 1e-9) ?? frames.at(-1)!;
+    const duration = Math.max(0.5, endAt - startAt), norm = (t: number) => clamp((t - startAt) / duration, 0, 1);
+    const tracks: Track[] = at.ids.map((id, i) => {
+      if (at.flags[i] & 2) return null;
+      const keys: Key[] = [];
+      let last: Key | null = null;
+      for (const f of frames) {
+        const j = f.ids === at.ids ? i : f.ids.indexOf(id);
+        if (j < 0 || f.flags[j] & 2) continue;
+        last = { t: norm(f.tau), x: f.pos[j * 2] / 0.6, y: f.pos[j * 2 + 1] / 0.3, h: 0 };
+        keys.push(last);
+      }
+      if (!keys.length) return null;
+      if (keys[0].t > 0) keys.unshift({ ...keys[0], t: 0 });
+      if (last && last.t < 1) keys.push({ ...last, t: 1 });
+      return { id, side: this.sideOf(id), goalie: (at.flags[i] & 1) > 0 || undefined, keys } as Track;
+    }).filter((t): t is Track => !!t);
+    const puck: Key[] = frames.map(f => ({ t: norm(f.tau), x: f.px / 0.6, y: f.py / 0.3, h: f.ph }));
+    const release = this.releaseTau.get(e) ?? te - 0.4;
+    const side: Side = e.team === this.teams[1].id ? 1 : 0;
+    const labels = { wrist: 'Кистевой бросок', snap: 'Бросок с ходу', slap: 'Щелчок', tip: 'Подставление на пятаке', rebound: 'Добивание', backhand: 'Бросок с неудобной' };
+    return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[e.shotType ?? 'wrist'], duration, release: norm(release), goal: norm(te), tracks, puck, scorer: e.player, attacking: side, bodies: true };
+  }
+
+  /* ---------------- internals ---------------- */
+
+  private releaseTau = new Map<GameEvent, number>();
+  private bracket(tau: number): [Frame, Frame, number] {
+    const f = this.frames;
+    if (tau <= f[0].tau) return [f[0], f[0], 0];
+    if (tau >= f[f.length - 1].tau) return [f[f.length - 1], f[f.length - 1], 0];
+    let lo = 0, hi = f.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (f[m].tau <= tau) lo = m; else hi = m; }
+    return [f[lo], f[hi], (tau - f[lo].tau) / (f[hi].tau - f[lo].tau || 1)];
+  }
+  private sideOf(id: string): Side {
+    const a = this.agents.get(id);
+    if (a) return a.side;
+    return this.teams[1].players.includes(id) ? 1 : 0;
+  }
+  private agent(id: string, side: Side, goalie = false): Agent {
+    let a = this.agents.get(id);
+    if (!a) {
+      const p = this.players[id];
+      const skate = sk(p, 'skating');
+      a = {
+        id, side, goalie, role: 'X', name: p?.name ?? id, x: BENCH[side].x, y: BENCH[side].y, vx: 0, vy: 0, fx: side ? -1 : 1, fy: 0,
+        on: 'bench', leave: null, boxUntil: 0, pim: 0, stun: 0,
+        max: goalie ? 3.4 : 6.9 + (skate - 50) * 0.045, acc: goalie ? 9 : 4.4 + (skate - 50) * 0.035,
+        pass: sk(p, 'passing'), shoot: sk(p, 'shooting'), hands: sk(p, 'puckControl', sk(p, 'puckHandling')), check: sk(p, 'checking'),
+        tx: 0, ty: 0, urg: 0.7, arrive: NaN, scripted: false,
+      };
+      this.agents.set(id, a);
+    }
+    a.goalie = goalie || a.goalie;
+    return a;
+  }
+  private spawn(id: string, side: Side, at: V2 | null, goalie = false) {
+    const a = this.agent(id, side, goalie || this.players[id]?.position === 'G');
+    a.on = 'ice'; a.leave = null; a.stun = 0; a.vx = 0; a.vy = 0;
+    const p = at ?? BENCH[side];
+    a.x = p.x; a.y = p.y;
+    return a;
+  }
+  private onIce(side?: Side) { return [...this.agents.values()].filter(a => a.on === 'ice' && (side === undefined || a.side === side)); }
+  private skaters(side: Side, includeLeaving = false) { return this.onIce(side).filter(a => !a.goalie && (includeLeaving || !a.leave)); }
+  private goalieOf(side: Side) { return this.onIce(side).find(a => a.goalie && !a.leave) ?? null; }
+  private play(kind: PlayKind, side: Side | null, text: string, player?: Agent) {
+    const lastSame = this.plays.at(-1);
+    if (lastSame && lastSame.kind === kind && lastSame.text === text && this.tau - lastSame.tau < 1.5) return;
+    this.plays.push({ tau: this.tau, g: this.g, kind, side, player: player?.id, text });
+  }
+  private teamShort(s: Side) { return this.teams[s].short ?? this.teams[s].name; }
+  private next() { return this.staged[this.si]; }
+
+  /* --- who should be on the ice --- */
+  private nextIceEvent(): GameEvent | undefined {
+    for (let i = this.si; i < this.staged.length; i++) { const e = this.staged[i]; if (e.ice && e.sec >= this.g - 1e-9) return e; }
+    return undefined;
+  }
+  private valid(id: string | null | undefined): id is string { return !!id && !!this.players[id] && this.players[id].position !== 'G' && !this.players[id].inVhl; }
+  private desiredGoalies(): [string | null, string | null] {
+    const out: [string | null, string | null] = [...this.lastGoalie];
+    for (const s of [0, 1] as Side[]) {
+      for (let i = this.si; i < this.staged.length; i++) {
+        const e = this.staged[i];
+        if (e.sec - this.g > 25) break;
+        if (e.goalie !== undefined && (e.type === 'goal' || e.type === 'shot' || e.type === 'miss') && e.team === this.teams[1 - s].id) { out[s] = e.goalie; break; }
+      }
+    }
+    return out;
+  }
+  private wantedSkaters(s: Side, goalie: string | null): string[] {
+    const e = this.nextIceEvent();
+    let ids = (e?.ice?.[s] ?? []).filter(id => this.valid(id));
+    if (!ids.length) {
+      const current = this.skaters(s).map(a => a.id);
+      ids = current.length ? current : [...(this.teams[s].lineup.F[0] ?? []), ...(this.teams[s].lineup.D[0] ?? [])].filter(id => this.valid(id)).slice(0, 5);
+    }
+    // Participants of an imminent hit/penalty must be on the ice for it.
+    const n = this.next();
+    if (n && (n.type === 'hit' || n.type === 'penalty') && n.sec - this.g < 9) {
+      for (const id of [n.player, ...(n.players ?? [])]) {
+        if (!this.valid(id) || ids.includes(id) || this.sideOf(id) !== s) continue;
+        ids = [...ids.slice(0, -1), id];
+      }
+    }
+    ids = [...new Set(ids)].filter(id => this.agents.get(id)?.on !== 'box');
+    if (!goalie) {
+      const extra = [...(this.teams[s].lineup.F.flat()), ...this.teams[s].players].find(id => this.valid(id) && !ids.includes(id) && this.agents.get(id)?.on !== 'box');
+      if (extra) ids.push(extra);
+    }
+    return ids;
+  }
+  private updateRoster() {
+    const stopped = this.mode === 'stop';
+    const goalies = this.desiredGoalies();
+    const n = this.nextIceEvent();
+    const allowChange = stopped || !n || n.sec - this.g < 14;
+    for (const s of [0, 1] as Side[]) {
+      // Penalised players return when their time is served.
+      for (const a of this.agents.values()) if (a.side === s && a.on === 'box' && this.g >= a.boxUntil - 1e-9) { a.on = 'ice'; a.x = BOX[s].x; a.y = BOX[s].y - 0.6; a.vx = 0; a.vy = 0; a.leave = null; this.play('change', s, `${a.name} возвращается после удаления`, a); }
+      const gWant = goalies[s];
+      const gNow = this.onIce(s).find(a => a.goalie);
+      if (gNow && gNow.id !== gWant && !gNow.leave) gNow.leave = 'bench';
+      if (gWant && !this.onIce(s).some(a => a.goalie && a.id === gWant)) {
+        const old = this.onIce(s).find(a => a.goalie && a.leave);
+        if (!old || dist(old, BENCH[s]) < 7) this.spawn(gWant, s, BENCH[s], true);
+      }
+      if (gWant !== this.lastGoalie[s] && (gWant === null || this.onIce(s).some(a => a.id === gWant))) this.lastGoalie[s] = gWant;
+      if (!allowChange) continue;
+      const want = this.wantedSkaters(s, gWant);
+      let changed = false;
+      for (const a of this.skaters(s)) if (!want.includes(a.id)) { a.leave = 'bench'; changed = true; }
+      const active = this.onIce(s).filter(a => !a.goalie && !(a.leave && dist(a, a.leave === 'box' ? BOX[s] : BENCH[s]) < 7));
+      let count = active.length;
+      for (const id of want) {
+        if (count >= want.length) break;
+        const a = this.agents.get(id);
+        if (a?.on === 'ice' && !a.leave) continue;
+        if (a?.on === 'box') continue;
+        if (a?.on === 'ice' && a.leave) { a.leave = null; count++; continue; }
+        this.spawn(id, s, BENCH[s]); count++; changed = true;
+      }
+      if (changed) { this.assignRoles(s); if (!stopped) this.play('change', s, `Смена на ходу: ${this.teamShort(s)}`); }
+    }
+    for (const a of this.onIce()) {
+      if (!a.leave) continue;
+      const gate = a.leave === 'box' ? BOX[a.side] : BENCH[a.side];
+      if (dist(a, gate) < 1.8) {
+        if (a.leave === 'box') { a.on = 'box'; const seat = this.boxSeat(a); a.x = seat.x; a.y = seat.y; }
+        else a.on = 'bench';
+        a.leave = null; a.vx = 0; a.vy = 0;
+        if (this.puck.carrier === a) this.loosePuck(a.vx, a.vy);
+        if (a.goalie) this.assignRoles(a.side);
+      }
+    }
+  }
+  private boxSeat(a: Agent): V2 {
+    const others = [...this.agents.values()].filter(b => b.side === a.side && b.on === 'box' && b !== a).length;
+    return { x: BOX[a.side].x + (a.side ? 1 : -1) * (1 + others * 1.1), y: 31.4 };
+  }
+  private assignRoles(s: Side) {
+    const list = this.skaters(s);
+    const pos = (a: Agent) => this.players[a.id]?.position ?? 'C';
+    const roles: Role[] = ['C', 'LW', 'RW', 'LD', 'RD'];
+    const taken = new Set<Role>();
+    const pick = (a: Agent, prefs: Role[]) => { const r = prefs.find(x => !taken.has(x)) ?? 'X'; taken.add(r); a.role = r; };
+    const forwards = list.filter(a => pos(a) !== 'D'), defense = list.filter(a => pos(a) === 'D');
+    for (const a of defense.slice(0, 2)) pick(a, ['LD', 'RD']);
+    for (const a of forwards) pick(a, pos(a) === 'LW' ? ['LW', 'C', 'RW'] : pos(a) === 'RW' ? ['RW', 'C', 'LW'] : ['C', 'LW', 'RW', 'LD', 'RD']);
+    for (const a of defense.slice(2)) pick(a, roles);
+    // 4-on-4 / 3-on-3: a lone defenceman plays the middle.
+    if (list.filter(a => a.role === 'LD' || a.role === 'RD').length === 1) { const d = list.find(a => a.role === 'LD' || a.role === 'RD')!; d.role = 'LD'; }
+  }
+
+  /* --- whistles and faceoffs --- */
+  private startStop(reason: Stop['reason'], dot: V2, scorer?: Agent) {
+    this.mode = 'stop';
+    const p = this.puck;
+    p.carrier = null; p.leg = null; p.next = null; p.reserved = null; p.icing = null; p.dead = true; p.vx = 0; p.vy = 0;
+    this.stop = { reason, dot: inside(dot, 2), t0: this.tau, phase: reason === 'goal' ? 'celebrate' : 'whistle', phaseAt: this.tau, scorer };
+    this.zoneEntry = null;
+    if (this.plan && reason !== 'goal') this.plan.acquired = false, this.plan.acqStarted = false;
+  }
+  private slot(a: Agent): V2 {
+    const d = this.stop?.dot ?? FACEOFF_DOTS.center;
+    if (a.goalie) return loc(a.side, { x: GOAL + 0.9, y: MID });
+    const l = loc(a.side, d);
+    const off: Record<Role, V2> = { C: { x: -0.9, y: 0 }, LW: { x: -1.3, y: -4.4 }, RW: { x: -1.3, y: 4.4 }, LD: { x: -7.2, y: -3.8 }, RD: { x: -7.2, y: 3.8 }, X: { x: -4.5, y: 1.5 } };
+    const o = off[a.role];
+    const list = this.skaters(a.side), same = list.filter(b => b.role === a.role), k = same.indexOf(a);
+    return inside(loc(a.side, { x: Math.max(GOAL + 1.5, l.x + o.x - k * 1.5), y: l.y + o.y + k * 1.5 }), 1);
+  }
+  private stepStop() {
+    const st = this.stop!;
+    const since = this.tau - st.phaseAt;
+    const p = this.puck;
+    if (st.phase === 'whistle' && since > 0.9) { st.phase = 'gather'; st.phaseAt = this.tau; }
+    if (st.phase === 'celebrate' && since > 3.6) {
+      st.phase = 'gather'; st.phaseAt = this.tau;
+      if (this.opts.suddenDeath) { this.finish(); return; }
+    }
+    if (st.phase !== 'whistle' && st.phase !== 'celebrate') this.updateRoster();
+    for (const a of this.onIce()) {
+      a.scripted = false; a.arrive = NaN;
+      if (a.leave) { const gate = a.leave === 'box' ? BOX[a.side] : BENCH[a.side]; this.setT(a, gate, 0.75); continue; }
+      if (st.phase === 'whistle' || (st.phase === 'celebrate' && (!st.scorer || a.side !== st.scorer.side || a.goalie))) {
+        if (a.goalie) this.setT(a, loc(a.side, { x: GOAL + 0.9, y: MID }), 0.5);
+        else this.setT(a, { x: a.x + a.vx * 0.5, y: a.y + a.vy * 0.5 }, 0.3);
+        continue;
+      }
+      if (st.phase === 'celebrate') {
+        const k = this.skaters(a.side).indexOf(a);
+        if (a === st.scorer) this.setT(a, { x: a.x + a.vx * 0.4, y: clamp(a.y + (a.y < MID ? -2 : 2), 1, 29) }, 0.4);
+        else this.setT(a, { x: st.scorer!.x + (k % 2 ? 0.9 : -0.9), y: st.scorer!.y + (k - 2) * 0.8 }, 0.75);
+        continue;
+      }
+      this.setT(a, this.slot(a), 0.6);
+    }
+    if (st.phase === 'gather' || st.phase === 'set' || st.phase === 'drop') {
+      const d = dist(p, st.dot);
+      if (d > 0.02) { const step = Math.min(d, 7 * DT); p.x += ((st.dot.x - p.x) / d) * step; p.y += ((st.dot.y - p.y) / d) * step; }
+      p.h = st.phase === 'drop' ? Math.max(0, 1.1 * (1 - (this.tau - st.phaseAt) / 0.45)) : 1.1;
+    }
+    if (st.phase === 'gather') {
+      const ready = this.onIce().every(a => !a.leave && dist(a, this.slot(a)) < 0.9) && dist(p, st.dot) < 0.05;
+      if ((ready && since > 1.2) || since > 14) { st.phase = 'set'; st.phaseAt = this.tau; }
+    } else if (st.phase === 'set' && since > 0.8) { st.phase = 'drop'; st.phaseAt = this.tau; }
+    else if (st.phase === 'drop' && since >= 0.45) this.dropPuck();
+  }
+  private dropPuck() {
+    const st = this.stop!, p = this.puck;
+    p.dead = false; p.h = 0; p.x = st.dot.x; p.y = st.dot.y;
+    this.zoneIn = [false, false]; this.updateZones();
+    const w = this.faceoffWinner();
+    this.faceoffWins[w]++;
+    const c = this.skaters(w).find(a => a.role === 'C') ?? this.nearest(this.skaters(w), p);
+    const d = loc(w, st.dot);
+    this.mode = 'play'; this.stop = null;
+    this.startLeg('chip', inside(loc(w, { x: Math.max(GOAL + 2, d.x - 6), y: d.y + (this.rand() - 0.5) * 6 }), 1.5), this.g + 0.55, { by: c ?? null, exitSpeed: 2 });
+    p.last = w;
+    this.poss = { side: w, until: this.g + 5 + this.rand() * 8 };
+    if (c) this.play('faceoff', w, `Вбрасывание выиграл ${c.name}`, c);
+  }
+  private faceoffWinner(): Side {
+    if (this.plan) return this.plan.T;
+    const n = this.next();
+    if (n && (n.type === 'goal' || n.type === 'shot' || n.type === 'miss') && n.sec - this.g < 16) return n.team === this.teams[1].id ? 1 : 0;
+    const c0 = this.skaters(0).find(a => a.role === 'C'), c1 = this.skaters(1).find(a => a.role === 'C');
+    return this.rand() < 0.5 + ((c0?.hands ?? 62) - (c1?.hands ?? 62)) / 200 ? 0 : 1;
+  }
+  private finish() {
+    this.mode = 'end'; this.stop = null;
+    for (const e of this.all) if (!this.eventTau.has(e)) this.eventTau.set(e, this.tau);
+    this.si = this.staged.length; this.ri = this.all.length;
+  }
+
+  /* --- main step --- */
+  private step() {
+    if (this.mode === 'play') {
+      const n = this.next();
+      const target = Math.min(n ? n.sec : Infinity, this.end);
+      const dt = clamp(target - this.g, 1e-3, DT);
+      this.tau += dt; this.g += dt;
+      if (Math.abs(this.g - target) < 2e-3) this.g = target;
+      this.updateRoster();
+      this.direct();
+      this.targets();
+      for (const a of this.onIce()) this.move(a, dt);
+      this.movePuck(dt);
+      this.updateZones();
+      if (this.mode === 'play') this.interact();
+      this.fireDue();
+      if (this.mode === 'play' && this.g >= this.end - 1e-9) this.finish();
+    } else if (this.mode === 'stop') {
+      this.tau += DT;
+      this.fireDue();
+      this.stepStop();
+      if (this.mode === 'stop') for (const a of this.onIce()) this.move(a, DT);
+    }
+    while (this.ri < this.all.length && this.all[this.ri].sec <= this.g + 1e-9) {
+      const e = this.all[this.ri];
+      if (this.staged.includes(e) && !this.eventTau.has(e)) break;
+      if (!this.eventTau.has(e)) this.eventTau.set(e, this.tau);
+      this.ri++;
+    }
+    this.record();
+  }
+  private fireDue() {
+    while (this.si < this.staged.length && this.staged[this.si].sec <= this.g + 1e-9) {
+      const e = this.staged[this.si++];
+      this.eventTau.set(e, this.tau);
+      if (e.type === 'penalty') this.doPenalty(e);
+      else if (e.type === 'hit') this.doHit(e);
+      else if (!this.delivered.has(e)) this.forceOutcome(e);
+      if (this.plan?.ev === e) this.plan = null;
+      if (this.duel?.ev === e) this.duel = null;
+    }
+  }
+  private delivered = new Set<GameEvent>();
+  /** Safety net: a shot whose sequence could not be staged (e.g. replanned 0.1 s before) still resolves. */
+  private forceOutcome(e: GameEvent) {
+    this.delivered.add(e);
+    const T: Side = e.team === this.teams[1].id ? 1 : 0;
+    if (e.type === 'goal') { this.play('goal', T, `ГОЛ! ${this.players[e.player!]?.name ?? ''}`); this.startStop('goal', FACEOFF_DOTS.center, this.agents.get(e.player!)); }
+    else if (e.type === 'shot' && this.mode === 'play') { this.play('save', (1 - T) as Side, 'Сейв'); }
+  }
+  private doPenalty(e: GameEvent) {
+    const id = e.player;
+    if (!id || !this.players[id]) return;
+    const s = this.sideOf(id);
+    const a = this.agent(id, s);
+    const pim = e.pim ?? 2;
+    a.pim = pim;
+    a.boxUntil = pim >= 10 ? e.sec + pim * 60 : Math.max(e.sec + 1, e.penUntil?.[s] ?? e.sec + pim * 60);
+    if (a.on === 'ice') { a.leave = 'box'; if (this.puck.carrier === a) this.loosePuck(0, 0); }
+    else { a.on = 'box'; const seat = this.boxSeat(a); a.x = seat.x; a.y = seat.y; }
+    this.play('penalty', s, `Удаление: ${a.name}, ${pim} мин`, a);
+    if (this.mode === 'play') this.startStop('penalty', zoneDot(s, this.puck.y));
+  }
+  private doHit(e: GameEvent) {
+    const h = e.player ? this.agents.get(e.player) : undefined, v = e.players?.[0] ? this.agents.get(e.players[0]) : undefined;
+    if (!h || !v || h.on !== 'ice' || v.on !== 'ice') return;
+    const d = Math.max(0.3, dist(h, v)), nx = (v.x - h.x) / d, ny = (v.y - h.y) / d;
+    if (d < 4.5) { v.vx += nx * 3.2; v.vy += ny * 3.2; h.vx *= 0.4; h.vy *= 0.4; }
+    v.stun = d < 4.5 ? 1.1 : 0.5;
+    if (this.puck.carrier === v) this.loosePuck(v.vx * 0.8 + ny * 2, v.vy * 0.8 - nx * 2);
+    this.play('hit', h.side, `Силовой приём: ${h.name} — ${v.name}`, h);
+  }
+
+  /* --- director: stages the engine's events --- */
+  private direct() {
+    const n = this.next();
+    if (!n || this.mode !== 'play') return;
+    if ((n.type === 'hit' || n.type === 'penalty') && (!this.duel || this.duel.ev !== n) && n.sec - this.g <= (n.type === 'hit' ? 3.5 : 2.5)) this.makeDuel(n);
+    if (n.type === 'goal' || n.type === 'shot' || n.type === 'miss') {
+      if (!this.plan || this.plan.ev !== n) {
+        const k = n.type === 'goal' ? (n.players?.length ?? 0) + 1 : 2;
+        const spot = { x: (n.x ?? 81) * 0.6, y: (n.y ?? 50) * 0.3 };
+        const lead = clamp(3.5 + (k - 1) * 1.8 + dist(this.puck, spot) / 7.5, 5, 15);
+        if (n.sec - this.g <= lead) this.makePlan(n);
+      }
+      if (this.plan) this.runPlan();
+    }
+  }
+  private makePlan(n: GameEvent) {
+    const T: Side = n.team === this.teams[1].id ? 1 : 0;
+    const ensure = (id: string) => { let a = this.agents.get(id); if (!a || a.on !== 'ice' || a.side !== T) a = this.spawn(id, T, BENCH[T]); a.leave = null; return a; };
+    const S = ensure(n.player!);
+    let helpers: Agent[] = [];
+    if (n.type === 'goal') helpers = (n.players ?? []).filter(id => this.valid(id) && this.sideOf(id) === T).slice(0, 2).map(ensure);
+    else { const mates = this.skaters(T).filter(a => a !== S); if (mates.length && this.rand() < 0.7) helpers = [mates[Math.floor(this.rand() * mates.length)]]; }
+    const chain = [...helpers].reverse().concat(S);
+    const type = n.shotType ?? 'wrist';
+    const sl = loc(T, { x: (n.x ?? (T ? 19 : 81)) * 0.6, y: (n.y ?? 50) * 0.3 });
+    sl.x = clamp(sl.x, 44.6, 54.2); sl.y = clamp(sl.y, 2, 28);
+    if (Math.abs(sl.y - MID) < 1.4 && sl.x > 53) sl.x = 53;
+    const sideSign = sl.y < MID ? -1 : 1;
+    const a1: V2 = type === 'tip' ? { x: 44.4, y: MID + sideSign * 6 } : type === 'rebound' ? { x: 47.5, y: MID - sideSign * 6 }
+      : type === 'slap' ? (sl.x < 47 ? { x: 50.5, y: sl.y < MID ? 3.5 : 26.5 } : { x: clamp(sl.x - 1, 44, 52), y: W - sl.y })
+      : type === 'snap' ? { x: 54.5, y: MID - sideSign * 4.5 } : { x: 50, y: sideSign < 0 ? 4 : 26 };
+    const spots = chain.map((_, i) => loc(T, inside(i === chain.length - 1 ? sl : i === chain.length - 2 ? a1 : { x: 44.6, y: sideSign < 0 ? 22 : 8 }, 1)));
+    const gk = this.goalieOf((1 - T) as Side);
+    let target: V2 | Agent, th: number;
+    if (n.type === 'goal') {
+      const gl = gk ? loc(T, gk) : { x: OPP_GOAL - 1, y: MID };
+      target = loc(T, { x: OPP_GOAL + 0.05, y: MID + (gl.y >= MID ? -1 : 1) * (0.5 + this.rand() * 0.3) });
+      th = type === 'rebound' || type === 'tip' ? 0.1 + this.rand() * 0.2 : 0.15 + this.rand() * 0.8;
+    } else if (n.type === 'shot' && gk) { target = gk; th = 0.15 + this.rand() * 0.6; }
+    else { target = loc(T, { x: OPP_GOAL + 0.3, y: MID + (this.rand() < 0.5 ? -1 : 1) * (2 + this.rand() * 1.5) }); th = 0.1; }
+    const flight = clamp(dist(spots[spots.length - 1], target) / (SHOT_SPEED[type] ?? 26), 0.15, 1.2);
+    const tr = n.sec - flight;
+    const rel: number[] = [], arr: number[] = [];
+    let t = tr - (CATCH[type] ?? 0.5);
+    for (let i = chain.length - 2; i >= 0; i--) {
+      arr[i] = t;
+      rel[i] = t - clamp(dist(spots[i], spots[i + 1]) / (type === 'tip' && i === chain.length - 2 ? 28 : 17), 0.25, 1.5);
+      t = rel[i] - 1.0;
+    }
+    const first = chain.length > 1 ? rel[0] : tr, earliest = this.g + 1.4;
+    if (first < earliest && chain.length > 1) {
+      const k = Math.max(0.05, Math.min(1, (tr - earliest) / Math.max(0.01, tr - first)));
+      for (let i = 0; i < rel.length; i++) { rel[i] = tr - (tr - rel[i]) * k; arr[i] = tr - (tr - arr[i]) * k; }
+    }
+    this.plan = { ev: n, T, chain, spots, rel, arr, tr, target, th, step: 0, acquired: false, acqStarted: false, shot: false };
+  }
+  private cancelPlan() {
+    const leg = this.puck.leg;
+    if (leg && leg.kind === 'shot' && leg.event === this.plan?.ev) {
+      const s = leg.by?.side ?? 0;
+      leg.kind = 'wide'; leg.event = undefined; leg.exitSpeed = 14;
+      leg.to = loc(s, { x: OPP_GOAL + 0.3, y: MID + (loc(s, this.puck).y < MID ? -2.5 : 2.5) });
+    }
+    this.plan = null;
+  }
+  private runPlan() {
+    const pl = this.plan!, p = this.puck, S = pl.chain[pl.chain.length - 1];
+    if (pl.shot) return;
+    // a later link already has the puck (e.g. the shooter itself): skip ahead in the chain
+    const ahead = p.carrier ? pl.chain.indexOf(p.carrier) : -1;
+    if (ahead > pl.step) { pl.step = ahead; pl.acquired = true; pl.acqStarted = true; }
+    const holder = pl.chain[pl.step];
+    if (p.carrier === holder) pl.acquired = true;
+    if (!pl.acquired && (!pl.acqStarted || (!p.leg && !p.carrier && p.reserved !== holder))) {
+      pl.acqStarted = true;
+      const due = clamp(Math.min(pl.chain.length > 1 && pl.step < pl.chain.length - 1 ? pl.rel[pl.step] : pl.tr, this.g + 1.6) - 0.3, this.g + 0.35, this.g + 1.6);
+      if (p.carrier && p.carrier.side !== pl.T && dist(p.carrier, holder) < 2.2) { this.take(holder, 'takeaway'); pl.acquired = true; }
+      else if (p.carrier) {
+        const own = p.carrier.side === pl.T;
+        if (!own) this.play('interception', pl.T, `Потеря: ${p.carrier.name}, шайбу подбирает ${holder.name}`, holder);
+        this.startLeg(own ? 'pass' : 'giveaway', holder, due, { protect: true, exitSpeed: 3 });
+      } else if (p.leg) { if (p.leg.kind !== 'shot') p.reserved = holder; else pl.acqStarted = false; }
+      else { p.reserved = holder; if (dist(p, holder) > 5) this.startLeg('giveaway', holder, due, { protect: true, by: null, exitSpeed: 2 }); }
+    }
+    if (pl.acquired && p.carrier === holder && pl.step < pl.chain.length - 1 && this.g >= pl.rel[pl.step] - 1e-9 && this.onsideOk(holder, pl.chain[pl.step + 1])) {
+      this.startLeg('pass', pl.chain[pl.step + 1], Math.max(this.g + 0.2, pl.arr[pl.step]), { protect: true, exitSpeed: 4 });
+      pl.step++; pl.acquired = false; pl.acqStarted = true;
+    }
+    // release no later than the moment a realistic shot speed still reaches the net exactly at the event second
+    const vmax = (SHOT_SPEED[pl.ev.shotType ?? 'wrist'] ?? 26) * 1.25, tgt = isAgent(pl.target) ? pl.target : pl.target;
+    const fly = dist(this.blade(S), tgt) / vmax;
+    if (p.carrier === S && pl.step === pl.chain.length - 1 && this.g >= Math.min(pl.tr, pl.ev.sec - fly) - 1e-9) this.releaseShot(false);
+    else if (!pl.shot && p.carrier !== S) {
+      const from = p.carrier ? this.blade(p.carrier) : p;
+      const need = dist(from, this.blade(S)) / 30 + fly + 0.1;
+      if (this.g >= pl.ev.sec - Math.max(0.3, need)) this.releaseShot(true);
+    }
+  }
+  private releaseShot(emergency: boolean) {
+    const pl = this.plan!, S = pl.chain[pl.chain.length - 1];
+    const via = emergency && this.puck.carrier !== S ? S : undefined;
+    let tv: number | undefined;
+    if (via) {
+      // a one-timer: split the remaining time by leg length so both legs travel at a similar speed
+      const p = this.puck, from = p.carrier ? this.blade(p.carrier) : { x: p.x, y: p.y }, b = this.blade(S);
+      const d1 = dist(from, b), d2 = dist(b, isAgent(pl.target) ? pl.target : pl.target), left = Math.max(0.05, pl.ev.sec - this.g);
+      tv = this.g + left * clamp(d1 / Math.max(0.1, d1 + d2 * 0.75), 0.25, 0.8);
+    }
+    this.startLeg('shot', pl.target, pl.ev.sec, { by: S, h1: pl.th, arc: pl.ev.shotType === 'slap' ? 0.12 : 0.06, protect: true, event: pl.ev, via, tv });
+    pl.shot = true;
+    this.releaseTau.set(pl.ev, via ? this.tau + (tv! - this.g) : this.tau);
+  }
+  private makeDuel(n: GameEvent) {
+    const actor = n.player ? this.agents.get(n.player) : undefined;
+    if (!actor || actor.on !== 'ice') return;
+    let victim = n.players?.[0] ? this.agents.get(n.players[0]) ?? null : null;
+    if (!victim || victim.on !== 'ice') {
+      const c = this.puck.carrier;
+      victim = c && c.side !== actor.side ? c : this.nearest(this.skaters((1 - actor.side) as Side), actor);
+    }
+    this.duel = { ev: n, kind: n.type === 'hit' ? 'hit' : 'penalty', actor, victim };
+  }
+  private desiredSide(): Side {
+    if (this.plan) return this.plan.T;
+    const n = this.next();
+    if (n && (n.type === 'goal' || n.type === 'shot' || n.type === 'miss') && n.sec - this.g < 18) return n.team === this.teams[1].id ? 1 : 0;
+    if (this.g >= this.poss.until) {
+      let side: Side = this.rand() < 0.65 ? ((1 - this.poss.side) as Side) : this.poss.side;
+      const n0 = this.skaters(0).length, n1 = this.skaters(1).length;
+      if (n0 !== n1 && this.rand() < 0.4) side = n0 > n1 ? 0 : 1;
+      this.poss = { side, until: this.g + 5 + this.rand() * 9 };
+    }
+    return this.poss.side;
+  }
+
+  /* --- positioning --- */
+  private setT(a: Agent, p: V2, urg: number, by = NaN) {
+    const c = a.goalie ? p : inside(p, 0.9);
+    a.tx = c.x; a.ty = c.y; a.urg = urg; a.arrive = by;
+  }
+  /** Attackers never precede the puck over the offensive blue line. */
+  private puckLocal(s: Side): V2 { return loc(s, this.puck); }
+  private onsideClamp(a: Agent, p: V2, carrier = false): V2 {
+    const l = loc(a.side, p);
+    if (!this.zoneIn[a.side]) {
+      if (carrier && this.puck.carrier === a) {
+        if (this.skaters(a.side).some(m => m !== a && loc(a.side, m).x > OPP_BLUE - 0.3)) l.x = Math.min(l.x, OPP_BLUE - 0.9);
+      } else l.x = Math.min(l.x, OPP_BLUE - 0.7);
+    }
+    return loc(a.side, l);
+  }
+  /** Hard offside rule: nobody crosses the attacking blue line ahead of the puck; the carrier waits for teammates to tag up. */
+  private updateZones() {
+    for (const s of [0, 1] as Side[]) {
+      const x = this.puckLocal(s).x;
+      if (x > OPP_BLUE) this.zoneIn[s] = true;
+      else if (x < OPP_BLUE - 0.3) this.zoneIn[s] = false;
+    }
+  }
+  private keepOnside(a: Agent, prevX: number) {
+    const l = loc(a.side, a);
+    if (this.zoneIn[a.side]) return;
+    let lim = Infinity;
+    // never pulled backwards (no teleport): at worst a skater is held where he already was
+    if (this.puck.carrier === a) {
+      if (this.skaters(a.side).some(m => m !== a && loc(a.side, m).x > OPP_BLUE)) lim = Math.max(OPP_BLUE - 1.3, prevX);
+    } else if (prevX <= OPP_BLUE) lim = Math.max(OPP_BLUE - 0.05, prevX);
+    if (l.x > lim) {
+      l.x = lim; const g = loc(a.side, l); a.x = g.x; a.y = g.y;
+      if (a.side === 0 ? a.vx > 0 : a.vx < 0) a.vx = 0;
+    }
+  }
+  private onsideOk(passer: Agent, receiver: Agent) {
+    return this.zoneIn[passer.side] || loc(passer.side, receiver).x < OPP_BLUE - 0.3;
+  }
+  private attackSpot(a: Agent): { p: V2; urg: number } {
+    const P = this.puckLocal(a.side), s = a.side;
+    let t: V2;
+    if (P.x >= OPP_BLUE) {
+      const style = this.opts.tactics?.()[s].style ?? 'balanced';
+      const low = style === 'cycle' ? 2 : style === 'shoot' ? -1.5 : 0;
+      t = ({
+        LD: { x: 44.4, y: P.y < MID ? 4.5 : 8.5 }, RD: { x: 44.4, y: P.y > MID ? 25.5 : 21.5 },
+        C: { x: 47.5 + low, y: MID + (P.y - MID) * 0.3 },
+        LW: P.y < MID ? { x: clamp(P.x - 3 + low, 45, 54), y: clamp(P.y + 4, 3, 13) } : { x: 52.6, y: 13.4 },
+        RW: P.y >= MID ? { x: clamp(P.x - 3 + low, 45, 54), y: clamp(P.y - 4, 17, 27) } : { x: 52.6, y: 16.6 },
+        X: { x: 51.5, y: MID },
+      } as Record<Role, V2>)[a.role];
+    } else if (P.x >= BLUE) {
+      const ahead = Math.min(P.x + 8, OPP_BLUE - 0.7);
+      t = ({ LW: { x: ahead, y: 4.5 }, RW: { x: ahead, y: 25.5 }, C: { x: Math.min(P.x + 4, OPP_BLUE - 0.7), y: MID - (P.y - MID) * 0.4 }, LD: { x: P.x - 8, y: 10 }, RD: { x: P.x - 8, y: 20 }, X: { x: ahead, y: MID } } as Record<Role, V2>)[a.role];
+    } else {
+      t = ({ LW: { x: 22, y: 3.2 }, RW: { x: 22, y: 26.8 }, C: { x: P.x + 5, y: P.y < MID ? 19 : 11 }, LD: { x: Math.max(GOAL + 1.5, P.x - 2.5), y: P.y < MID ? P.y + 2 : 8 }, RD: { x: Math.max(GOAL + 1.5, P.x - 2.5), y: P.y > MID ? P.y - 2 : 22 }, X: { x: 26, y: MID } } as Record<Role, V2>)[a.role];
+    }
+    return { p: this.onsideClamp(a, loc(s, t)), urg: 0.7 };
+  }
+  private defendSpot(a: Agent): { p: V2; urg: number } {
+    const P = this.puckLocal(a.side), s = a.side;
+    const style = this.opts.tactics?.()[s].forecheck ?? 'balanced';
+    let t: V2;
+    if (P.x <= BLUE) {
+      const puckSideD = (a.role === 'LD' && P.y < MID) || (a.role === 'RD' && P.y >= MID);
+      t = ({
+        LD: puckSideD ? { x: Math.max(GOAL + 1, P.x - 1.2), y: P.y + (MID - P.y) * 0.15 } : { x: GOAL + 2.5, y: MID - 1.5 },
+        RD: puckSideD ? { x: Math.max(GOAL + 1, P.x - 1.2), y: P.y + (MID - P.y) * 0.15 } : { x: GOAL + 2.5, y: MID + 1.5 },
+        C: { x: 9, y: MID + (P.y - MID) * 0.35 }, LW: { x: 15.5, y: 6.5 }, RW: { x: 15.5, y: 23.5 }, X: { x: 8, y: MID },
+      } as Record<Role, V2>)[a.role];
+    } else if (P.x <= OPP_BLUE) {
+      t = ({ LD: { x: Math.min(P.x - 9, 18), y: 10.5 }, RD: { x: Math.min(P.x - 9, 18), y: 19.5 }, C: { x: P.x - 2.5, y: P.y }, LW: { x: P.x - 4, y: 6 }, RW: { x: P.x - 4, y: 24 }, X: { x: P.x - 5, y: MID } } as Record<Role, V2>)[a.role];
+    } else if (style === 'aggressive') {
+      t = ({ C: { x: P.x - 1, y: P.y }, LW: { x: P.x - 3.5, y: clamp(P.y - 6, 2, 28) }, RW: { x: P.x - 3.5, y: clamp(P.y + 6, 2, 28) }, LD: { x: 42, y: 9 }, RD: { x: 42, y: 21 }, X: { x: 40, y: MID } } as Record<Role, V2>)[a.role];
+    } else if (style === 'balanced') {
+      t = ({ C: { x: P.x - 1.5, y: P.y }, LW: { x: 38, y: 8 }, RW: { x: 38, y: 22 }, LD: { x: 32, y: 10 }, RD: { x: 32, y: 20 }, X: { x: 34, y: MID } } as Record<Role, V2>)[a.role];
+    } else {
+      t = ({ C: { x: 36, y: MID }, LW: { x: 32, y: 7 }, RW: { x: 32, y: 23 }, LD: { x: 24, y: 10 }, RD: { x: 24, y: 20 }, X: { x: 28, y: MID } } as Record<Role, V2>)[a.role];
+    }
+    return { p: loc(s, t), urg: 0.75 };
+  }
+  private goalieTarget(a: Agent) {
+    const p = this.puck, s = a.side, P = loc(s, p);
+    let t: V2;
+    const leg = p.leg;
+    if (leg && leg.kind === 'shot' && leg.by && leg.by.side !== s) {
+      const end = loc(s, this.legTarget(leg));
+      if (leg.event?.type === 'goal') t = { x: GOAL + 0.7, y: loc(s, a).y + (end.y - loc(s, a).y) * 0.35 };
+      else t = loc(s, a);
+    } else if (P.x < GOAL) t = { x: GOAL + 0.35, y: MID + (P.y < MID ? -0.75 : 0.75) };
+    else {
+      const dx = P.x - GOAL, dy = P.y - MID, d = Math.hypot(dx, dy) || 1, depth = d < 5 ? 0.6 : 1.25;
+      t = { x: GOAL + (dx / d) * depth, y: clamp(MID + (dy / d) * depth, MID - 1.4, MID + 1.4) };
+    }
+    this.setT(a, loc(s, t), 1);
+  }
+  private targets() {
+    const p = this.puck, pl = this.plan, du = this.duel;
+    for (const a of this.onIce()) { a.scripted = false; a.arrive = NaN; }
+    for (const a of this.onIce()) {
+      if (a.leave) { this.setT(a, a.leave === 'box' ? BOX[a.side] : BENCH[a.side], 0.8); a.scripted = true; }
+      else if (a.goalie) { this.goalieTarget(a); a.scripted = true; }
+    }
+    if (pl) pl.chain.forEach((a, i) => {
+      if (a.on !== 'ice' || a.leave || i < pl.step) return;
+      if (i === pl.step && !pl.acquired && p.carrier !== a) this.setT(a, p.leg ? this.legTarget(p.leg) : p, 1);
+      else if (i === pl.step) this.setT(a, this.onsideClamp(a, pl.spots[i], true), 0.95, i === pl.chain.length - 1 ? pl.tr : pl.rel[i]);
+      else this.setT(a, this.onsideClamp(a, pl.spots[i]), 1, pl.arr[i - 1]);
+      a.scripted = true;
+    });
+    if (du && du.actor.on === 'ice' && !du.actor.leave && du.victim?.on === 'ice') {
+      const left = Math.max(0.1, du.ev.sec - this.g), v = du.victim;
+      this.setT(du.actor, { x: v.x + v.vx * left, y: v.y + v.vy * left }, 1, du.ev.sec);
+      du.actor.scripted = true;
+    }
+    const carrier = p.carrier;
+    if (carrier && !carrier.scripted) this.carrierAct(carrier);
+    const chasers = new Set<Agent>();
+    if (!carrier && !p.dead) {
+      const spot = p.leg ? this.legTarget(p.leg) : { x: p.x + p.vx * 0.4, y: p.y + p.vy * 0.4 };
+      for (const s of [0, 1] as Side[]) {
+        const free = this.skaters(s).filter(a => !a.scripted);
+        const c = p.reserved && p.reserved.side === s ? p.reserved : this.nearest(free, spot);
+        if (c && (!p.leg || p.leg.kind !== 'pass' || p.leg.to !== c)) { this.setT(c, spot, 1); chasers.add(c); c.scripted = true; }
+      }
+    }
+    const ps: Side | null = carrier?.side ?? (p.leg?.by?.side ?? p.last);
+    // the defender nearest the carrier pressures goal-side; the rest hold structure
+    const presser = carrier ? this.nearest(this.skaters((1 - carrier.side) as Side).filter(a => !a.scripted), carrier) : null;
+    for (const a of this.onIce()) {
+      if (a.scripted || a === carrier) continue;
+      if (a === presser && carrier) {
+        const own = loc(a.side, { x: GOAL, y: MID }), dx = own.x - carrier.x, dy = own.y - carrier.y, d = Math.hypot(dx, dy) || 1;
+        const style = this.opts.tactics?.()[a.side].forecheck ?? 'balanced';
+        if (!(style === 'trap' && loc(a.side, carrier).x > RED + 4)) { this.setT(a, { x: carrier.x + (dx / d) * 0.9, y: carrier.y + (dy / d) * 0.9 }, 0.95); continue; }
+      }
+      const spot = ps === a.side ? this.attackSpot(a) : this.defendSpot(a);
+      this.setT(a, spot.p, spot.urg);
+    }
+  }
+
+  /* --- puck carrier decisions --- */
+  private carrierAct(a: Agent) {
+    const s = a.side, me = loc(s, a), keep = this.desiredSide() === s;
+    const opps = this.skaters((1 - s) as Side), mates = this.skaters(s).filter(m => m !== a);
+    const pressure = Math.min(99, ...opps.map(o => dist(o, a)));
+    const sh = this.skaters(s).length < opps.length;
+    if (this.g >= (this.decideAt.get(a.id) ?? 0)) {
+      this.decideAt.set(a.id, this.g + 0.45 + this.rand() * 0.45);
+      const r = this.rand();
+      const allOnside = mates.every(m => loc(s, m).x <= OPP_BLUE);
+      if (me.x < BLUE) {
+        if (!keep && r < 0.5) {
+          const long = sh || r < 0.12;
+          this.startLeg(long ? 'clear' : 'chip', loc(s, long ? { x: 57, y: me.y < MID ? 4 : 26 } : { x: 32, y: me.y < MID ? 1.5 : 28.5 }), this.g + (long ? 2.2 : 1.1), { exitSpeed: long ? 9 : 5, icing: long && !sh ? s : null });
+          this.play(long ? 'clear' : 'dump', s, long ? `${a.name} выбрасывает шайбу из зоны` : `${a.name} выводит шайбу по борту`, a);
+          return;
+        }
+        if (pressure < 4 || r < 0.35) { if (this.passBest(a, keep)) return; }
+        this.carryTarget.set(a.id, loc(s, { x: me.x + 9, y: me.y < MID ? 6 : 24 }));
+      } else if (me.x < OPP_BLUE) {
+        if (!allOnside) this.carryTarget.set(a.id, loc(s, { x: Math.min(me.x + 2, OPP_BLUE - 1), y: me.y }));
+        else if (!keep && r < 0.55) {
+          const fromOwnHalf = me.x < RED;
+          this.startLeg('dump', loc(s, { x: 57.5, y: me.y < MID ? 3 : 27 }), this.g + 1.5, { exitSpeed: 8, icing: fromOwnHalf && !sh ? s : null, arc: 0.4 });
+          this.play('dump', s, `${a.name} вбрасывает шайбу в зону`, a);
+          return;
+        } else if (pressure < 3.5 && r < 0.6 && this.passBest(a, keep)) return;
+        else this.carryTarget.set(a.id, loc(s, { x: me.x + 10, y: clamp(me.y + (this.rand() - 0.5) * 6, 4, 26) }));
+      } else {
+        if (!keep) {
+          if (r < 0.45) { this.freeShot(a); return; }
+          if (r < 0.75 && this.passBest(a, false)) return;
+          this.carryTarget.set(a.id, loc(s, { x: 50, y: MID }));
+        } else {
+          if ((pressure < 3 || r < 0.45) && this.passBest(a, true)) return;
+          if (me.x > 46 && Math.abs(me.y - MID) < 6 && r > 0.9) { this.freeShot(a); return; }
+          this.carryTarget.set(a.id, loc(s, r < 0.6 ? { x: Math.min(me.x + 4, 54.5), y: me.y < MID ? 3.5 : 26.5 } : { x: 47, y: me.y < MID ? 9 : 21 }));
+        }
+      }
+    }
+    const t = this.carryTarget.get(a.id) ?? loc(s, { x: me.x + 6, y: me.y });
+    this.setT(a, this.onsideClamp(a, t, true), keep ? 0.85 : 0.7);
+  }
+  private passBest(a: Agent, safe: boolean): boolean {
+    const s = a.side, opps = this.skaters((1 - s) as Side);
+    let best: Agent | null = null, score = -1e9;
+    for (const m of this.skaters(s)) {
+      if (m === a || m.stun > 0 || !this.onsideOk(a, m)) continue;
+      const d = dist(a, m);
+      if (d < 3 || d > 30) continue;
+      const open = Math.min(9, ...opps.map(o => dist(o, m)));
+      const lane = Math.min(9, ...opps.map(o => segDist(o, a, m)));
+      const sc = (loc(s, m).x - loc(s, a).x) * 0.25 + open + (safe ? lane * 1.5 : 0) - d * 0.05;
+      if (sc > score) { score = sc; best = m; }
+    }
+    if (!best) return false;
+    const t1 = this.g + clamp(dist(a, best) / 16, 0.25, 1.8);
+    this.startLeg('pass', best, t1, { exitSpeed: 5, protect: safe && this.rand() < 0.85 });
+    return true;
+  }
+  /** Shot that does not reach the goalie: wide of the net or blocked. Never an extra shot on goal. */
+  private freeShot(a: Agent) {
+    const s = a.side, net = loc(s, { x: OPP_GOAL, y: MID });
+    const blocker = this.skaters((1 - s) as Side).filter(o => segDist(o, a, net) < 1.2 && dist(o, a) < dist(a, net) * 0.75 && dist(o, a) > 1).sort((x, y) => dist(x, a) - dist(y, a))[0];
+    if (blocker) {
+      this.startLeg('block', blocker, this.g + clamp(dist(a, blocker) / 26, 0.08, 0.6), { exitSpeed: 5, h1: 0.2 });
+    } else {
+      const wide = loc(s, { x: OPP_GOAL + 0.2, y: MID + (loc(s, a).y < MID ? -1 : 1) * (1.7 + this.rand() * 1.8) });
+      this.startLeg('wide', wide, this.g + clamp(dist(a, wide) / 25, 0.15, 1), { exitSpeed: 13, h1: 0.3 + this.rand() * 0.6 });
+      this.play('wide', s, `Бросок мимо: ${a.name}`, a);
+    }
+  }
+
+  /* --- puck physics --- */
+  private nearest(list: Agent[], p: V2) { let best: Agent | null = null, d = 1e9; for (const a of list) { const x = dist(a, p); if (x < d) { d = x; best = a; } } return best; }
+  private blade(a: Agent): V2 { return a.goalie ? { x: a.x, y: a.y } : { x: a.x + a.fx * 0.75, y: a.y + a.fy * 0.75 }; }
+  private legTarget(leg: Leg): V2 { return isAgent(leg.to) ? this.blade(leg.to) : leg.to; }
+  private startLeg(kind: LegKind, to: V2 | Agent, t1: number, o: { by?: Agent | null; h1?: number; arc?: number; exitSpeed?: number; protect?: boolean; event?: GameEvent; icing?: Side | null; via?: Agent; tv?: number } = {}) {
+    const p = this.puck, by = o.by === undefined ? p.carrier : o.by;
+    p.leg = { kind, t0: this.g, t1: Math.max(this.g + 0.05, t1), from: { x: p.x, y: p.y }, to, h0: p.h, h1: o.h1 ?? 0, arc: o.arc ?? 0, by, protect: !!o.protect, exitSpeed: o.exitSpeed ?? 0, event: o.event, icing: o.icing ?? null, via: o.via, tv: o.tv };
+    p.carrier = null; p.dead = false; p.reserved = null;
+    p.icing = o.icing ?? null;
+    if (by) { p.noTouch = by; p.noTouchUntil = this.g + 0.4; p.last = by.side; }
+    this.carryTarget.clear();
+  }
+  private loosePuck(vx: number, vy: number) { const p = this.puck; p.carrier = null; p.leg = null; p.vx = vx; p.vy = vy; p.dead = false; }
+  private take(a: Agent, kind: PlayKind | null) {
+    const p = this.puck;
+    if (p.carrier && p.carrier !== a) p.noTouch = p.carrier, p.noTouchUntil = this.g + 0.6;
+    p.carrier = a; p.leg = null; p.reserved = null; p.icing = null; p.last = a.side; p.h = 0;
+    if (kind === 'takeaway') this.play('takeaway', a.side, `Отбор: ${a.name}`, a);
+    if (kind === 'interception') this.play('interception', a.side, `Перехват: ${a.name}`, a);
+    this.decideAt.set(a.id, this.g + 0.3 + this.rand() * 0.4);
+    this.carryTarget.delete(a.id);
+  }
+  private movePuck(dt: number) {
+    const p = this.puck;
+    if (p.dead) return;
+    const ox = p.x, oy = p.y;
+    if (p.carrier) {
+      const b = this.blade(p.carrier);
+      p.x = b.x; p.y = b.y; p.h = 0;
+    } else if (p.leg) {
+      const leg = p.leg;
+      if (leg.via && leg.tv !== undefined) {
+        if (this.g < leg.tv) {
+          const u = clamp((this.g - leg.t0) / (leg.tv - leg.t0), 0, 1), b = this.blade(leg.via);
+          p.x = leg.from.x + (b.x - leg.from.x) * u; p.y = leg.from.y + (b.y - leg.from.y) * u; p.h = 0;
+          p.vx = (p.x - ox) / dt; p.vy = (p.y - oy) / dt;
+          return;
+        }
+        leg.from = { x: p.x, y: p.y }; leg.t0 = leg.tv; leg.via = undefined; leg.tv = undefined;
+      }
+      const u = clamp((this.g - leg.t0) / (leg.t1 - leg.t0), 0, 1), end = this.legTarget(leg);
+      p.x = leg.from.x + (end.x - leg.from.x) * u; p.y = leg.from.y + (end.y - leg.from.y) * u;
+      p.h = Math.max(0, leg.h0 + (leg.h1 - leg.h0) * u + leg.arc * 4 * u * (1 - u));
+      p.vx = (p.x - ox) / dt; p.vy = (p.y - oy) / dt;
+      if (u >= 1 - 1e-9) this.legEnd(leg);
+      return;
+    } else {
+      const sp = Math.hypot(p.vx, p.vy);
+      if (sp > 0) { const ns = Math.max(0, sp - 1.6 * dt); p.vx *= ns / sp; p.vy *= ns / sp; }
+      let nx = p.x + p.vx * dt; const ny = p.y + p.vy * dt;
+      for (const gx of [GOAL, L - GOAL]) {
+        const back = gx < RED ? gx - 1.15 : gx + 1.15;
+        if (nx > Math.min(gx, back) - 0.12 && nx < Math.max(gx, back) + 0.12 && Math.abs(ny - MID) < 1.1) { p.vx = -p.vx * 0.45; nx = p.x; }
+      }
+      const c = inside({ x: nx, y: ny }, 0.3);
+      if (c.x !== nx || c.y !== ny) {
+        const nX = nx - c.x, nY = ny - c.y, nl = Math.hypot(nX, nY) || 1, vn = (p.vx * nX + p.vy * nY) / nl;
+        if (vn > 0) { p.vx -= (1.55 * vn * nX) / nl; p.vy -= (1.55 * vn * nY) / nl; }
+      }
+      p.x = c.x; p.y = c.y; p.h = Math.max(0, p.h - 2 * dt);
+      // icing: shot from own half crosses the opponents' goal line untouched
+      if (p.icing !== null && loc(p.icing, p).x > OPP_GOAL) {
+        const s = p.icing;
+        this.icings[s]++;
+        this.play('icing', s, `Проброс: ${this.teamShort(s)}`);
+        this.startStop('icing', zoneDot(s, p.y));
+      }
+    }
+    if (!p.leg && !p.carrier && !p.dead) return;
+    if (p.carrier) { p.vx = (p.x - ox) / dt; p.vy = (p.y - oy) / dt; }
+  }
+  private legEnd(leg: Leg) {
+    const p = this.puck, sp = Math.hypot(p.vx, p.vy) || 1, ux = p.vx / sp, uy = p.vy / sp;
+    p.leg = null;
+    if ((leg.kind === 'pass' || leg.kind === 'giveaway') && isAgent(leg.to)) {
+      const r = leg.to;
+      if (r.on === 'ice' && !r.leave && r.stun <= 0) { this.take(r, null); return; }
+    }
+    if (leg.kind === 'shot' && leg.event) { this.shotArrives(leg); return; }
+    if (leg.kind === 'block' && isAgent(leg.to)) {
+      const b = leg.to, ang = this.rand() * Math.PI * 2;
+      this.blocks[b.side]++;
+      this.play('block', b.side, `Блок-шот: ${b.name}`, b);
+      this.loosePuck(Math.cos(ang) * 5, Math.sin(ang) * 5);
+      p.noTouch = b; p.noTouchUntil = this.g + 0.25;
+      return;
+    }
+    this.loosePuck(ux * leg.exitSpeed, uy * leg.exitSpeed);
+    p.icing = leg.icing ?? null;
+  }
+  private shotArrives(leg: Leg) {
+    const e = leg.event!, p = this.puck, T: Side = e.team === this.teams[1].id ? 1 : 0, D = (1 - T) as Side;
+    this.delivered.add(e);
+    const shooter = this.agents.get(e.player!);
+    if (e.type === 'goal') {
+      const inNet = loc(T, { x: OPP_GOAL + 0.75, y: clamp(loc(T, p).y, MID - 0.8, MID + 0.8) });
+      p.x = inNet.x; p.y = inNet.y; p.h = Math.min(p.h, 0.9);
+      this.play('goal', T, `ГОЛ! ${shooter?.name ?? ''}`, shooter);
+      if (e.strength === 'PP') {
+        const boxed = [...this.agents.values()].filter(a => a.side === D && (a.on === 'box' || a.leave === 'box') && a.pim === 2).sort((x, y) => x.boxUntil - y.boxUntil)[0];
+        if (boxed) boxed.boxUntil = this.g;
+      }
+      this.startStop('goal', FACEOFF_DOTS.center, shooter);
+      p.dead = true;
+      return;
+    }
+    if (e.type === 'shot') {
+      const gk = this.goalieOf(D);
+      if (!gk || this.rand() < 0.45) {
+        this.play('freeze', D, `${gk?.name ?? 'Вратарь'} фиксирует шайбу`, gk ?? undefined);
+        this.startStop('freeze', zoneDot(D, p.y));
+        return;
+      }
+      this.play('save', D, `Сейв: ${gk.name}`, gk);
+      const away = loc(T, { x: 50 - this.rand() * 4, y: this.rand() < 0.5 ? 4 + this.rand() * 6 : 26 - this.rand() * 6 });
+      const d = dist(p, away) || 1;
+      this.loosePuck(((away.x - p.x) / d) * 7, ((away.y - p.y) / d) * 7);
+      p.noTouch = gk; p.noTouchUntil = this.g + 0.5; p.h = 0.2;
+      return;
+    }
+    const sp = Math.hypot(p.vx, p.vy) || 1;
+    this.loosePuck((p.vx / sp) * 14, (p.vy / sp) * 14);
+    this.play('wide', T, `Мимо пустых ворот: ${shooter?.name ?? ''}`, shooter);
+  }
+
+  /* --- contact: pick-ups, stick checks, interceptions --- */
+  private interact() {
+    const p = this.puck;
+    if (p.dead) return;
+    const want = this.desiredSide();
+    const free = (a: Agent) => a.on === 'ice' && !a.leave && a.stun <= 0 && !(p.noTouch === a && this.g < p.noTouchUntil);
+    if (p.carrier) {
+      const c = p.carrier;
+      const protectedC = (this.plan && this.plan.T === c.side) || this.duel?.victim === c;
+      if (!protectedC) for (const o of this.skaters((1 - c.side) as Side)) {
+        if (!free(o) || o.scripted && this.plan?.T !== o.side || dist(o, c) > 1.3) continue;
+        const chance = (want === o.side ? 0.13 : 0.005) * (0.6 + o.check / 160);
+        if (this.rand() < chance) { this.take(o, 'takeaway'); return; }
+      }
+      return;
+    }
+    if (p.leg) {
+      const leg = p.leg;
+      if (leg.protect || leg.kind === 'shot' || leg.kind === 'block' || p.h > 0.6) return;
+      for (const o of this.onIce()) {
+        if (o.goalie || !free(o) || (leg.by && o.side === leg.by.side) || dist(o, p) > 0.9) continue;
+        const chance = want === o.side ? 0.45 : 0.03;
+        if (this.rand() < chance) { this.take(o, 'interception'); return; }
+      }
+      return;
+    }
+    // loose puck
+    if (p.h > 0.5) return;
+    const near = this.onIce().filter(a => free(a) && dist(this.blade(a), p) < (a.goalie ? 0.9 : 1.1) && (!p.reserved || a === p.reserved || a.goalie));
+    if (!near.length) return;
+    const gk = near.find(a => a.goalie);
+    if (gk && Math.hypot(p.vx, p.vy) < 6 && !p.reserved) {
+      this.play('freeze', gk.side, `${gk.name} накрывает шайбу`, gk);
+      this.startStop('freeze', zoneDot(gk.side, p.y));
+      return;
+    }
+    const skaters = near.filter(a => !a.goalie);
+    if (!skaters.length) { if (gk) { const out = loc(gk.side, { x: GOAL + 6, y: p.y < MID ? 6 : 24 }); const d = dist(p, out) || 1; this.loosePuck(((out.x - p.x) / d) * 6, ((out.y - p.y) / d) * 6); p.noTouch = gk; p.noTouchUntil = this.g + 0.5; } return; }
+    const pref = skaters.filter(a => a.side === want);
+    const winner = p.reserved && skaters.includes(p.reserved) ? p.reserved : pref.length && this.rand() < 0.8 ? pref[0] : skaters[Math.floor(this.rand() * skaters.length)];
+    const was = p.last;
+    this.take(winner, null);
+    if (was !== null && was !== winner.side && dist(winner, loc(winner.side, { x: GOAL, y: MID })) > 6) this.play('loose', winner.side, `Подбор: ${winner.name}`, winner);
+    // possession over the blue line on the carry is a legal zone entry
+  }
+
+  /* --- skating --- */
+  private move(a: Agent, dt: number) {
+    if (a.stun > 0) {
+      a.stun -= dt; a.vx *= 0.92; a.vy *= 0.92;
+    } else {
+      if (!a.goalie && a.on === 'ice' && !a.leave && this.mode === 'play' && !this.zoneIn[a.side] && this.puck.carrier !== a) {
+        // tag up: an attacker left in the zone after the puck went out skates back over the blue line at once
+        const l = loc(a.side, a);
+        if (l.x > OPP_BLUE - 0.4) { const t = loc(a.side, { x: Math.min(loc(a.side, { x: a.tx, y: a.ty }).x, OPP_BLUE - 1.5), y: loc(a.side, { x: a.tx, y: a.ty }).y }); a.tx = t.x; a.ty = t.y; a.urg = 1; a.arrive = Infinity; }
+      }
+      const dx = a.tx - a.x, dy = a.ty - a.y, d = Math.hypot(dx, dy);
+      let want = a.goalie ? Math.min(a.max, d * 5) : Math.min(a.max * a.urg, d * 1.7 + (d > 0.4 ? 0.5 : 0));
+      if (Number.isFinite(a.arrive)) { const left = a.arrive - this.g; want = left > 0.05 ? Math.min(a.max, Math.max(d / left, d > 0.5 ? 1.5 : 0)) : Math.min(a.max, d * 3); }
+      if (a === this.puck.carrier) want = Math.min(want, a.max * 0.93);
+      let vx = d > 1e-6 ? (dx / d) * want : 0, vy = d > 1e-6 ? (dy / d) * want : 0;
+      if (!a.goalie) for (const b of this.onIce()) {
+        if (b === a || b.goalie) continue;
+        const ex = a.x - b.x, ey = a.y - b.y, e = Math.hypot(ex, ey);
+        if (e > 0.01 && e < 1.3) { const f = ((1.3 - e) / 1.3) * (a.scripted ? 1.2 : 2.6); vx += (ex / e) * f; vy += (ey / e) * f; }
+      }
+      let ax = vx - a.vx, ay = vy - a.vy;
+      const am = Math.hypot(ax, ay), lim = a.acc * dt * (want < Math.hypot(a.vx, a.vy) ? 1.6 : 1);
+      if (am > lim) { ax *= lim / am; ay *= lim / am; }
+      a.vx += ax; a.vy += ay;
+    }
+    const sp = Math.hypot(a.vx, a.vy);
+    if (sp > a.max * 1.05) { a.vx *= (a.max * 1.05) / sp; a.vy *= (a.max * 1.05) / sp; }
+    const prevX = loc(a.side, a).x;
+    a.x += a.vx * dt; a.y += a.vy * dt;
+    if (!a.goalie && a.on === 'ice' && this.mode === 'play') this.keepOnside(a, prevX);
+    if (!a.goalie || a.leave) { const c = inside(a, 0.5); if (c.x !== a.x) a.vx *= 0.3; if (c.y !== a.y) a.vy *= 0.3; a.x = c.x; a.y = c.y; }
+    if (sp > 0.6) { const k = Math.min(1, dt * 8); a.fx += (a.vx / sp - a.fx) * k; a.fy += (a.vy / sp - a.fy) * k; }
+    else { const px = this.puck.x - a.x, py = this.puck.y - a.y, pd = Math.hypot(px, py) || 1, k = Math.min(1, dt * 3); a.fx += (px / pd - a.fx) * k; a.fy += (py / pd - a.fy) * k; }
+    const fl = Math.hypot(a.fx, a.fy) || 1; a.fx /= fl; a.fy /= fl;
+    // a legal zone entry by the carrier
+    const pc = this.puck.carrier;
+    if (pc === a && this.mode === 'play') {
+      const inZone = loc(a.side, a).x > OPP_BLUE;
+      if (inZone && this.zoneEntry !== a.side) { this.zoneEntry = a.side; this.play('entry', a.side, `Вход в зону: ${a.name}`, a); }
+      if (!inZone && loc(a.side, a).x < OPP_BLUE - 3 && this.zoneEntry === a.side) this.zoneEntry = null;
+    }
+  }
+
+  private record() {
+    const list = [...this.agents.values()].filter(a => a.on === 'ice' || a.on === 'box');
+    const ids = list.map(a => a.id);
+    const same = ids.length === this.lastIds.length && ids.every((id, i) => id === this.lastIds[i]);
+    if (!same) this.lastIds = ids;
+    const pos = new Float32Array(list.length * 2), flags = new Uint8Array(list.length);
+    list.forEach((a, i) => { pos[i * 2] = a.x; pos[i * 2 + 1] = a.y; flags[i] = (a.goalie ? 1 : 0) | (a.on === 'box' ? 2 : 0); });
+    const st = this.stop;
+    const faceoff = !!st && (st.phase === 'set' || st.phase === 'drop' || (st.phase === 'gather' && dist(this.puck, st.dot) < 0.05));
+    const off = st ? { x: st.dot.x + 0.9, y: st.dot.y + 1.6 } : { x: 0, y: 0 };
+    this.frames.push({ tau: this.tau, g: this.g, px: this.puck.x, py: this.puck.y, ph: this.puck.h, ids: this.lastIds, pos, flags, carrier: this.puck.carrier ? this.lastIds.indexOf(this.puck.carrier.id) : -1, stop: st ? (faceoff ? 1 : 2) : 0, ox: off.x, oy: off.y });
+  }
+}
+
+function segDist(p: V2, a: V2, b: V2): number {
+  const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy || 1;
+  const t = clamp(((p.x - a.x) * dx + (p.y - a.y) * dy) / l2, 0, 1);
+  return Math.hypot(p.x - (a.x + dx * t), p.y - (a.y + dy * t));
+}

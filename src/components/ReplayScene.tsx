@@ -8,6 +8,15 @@ export type ReplayCamera = 'broadcast' | 'ice' | 'net';
 type Props = { clip: ReplayClip; time: number; camera: ReplayCamera; home: Team; away: Team; players: Record<string, Player> };
 const world = (p: Point) => new T.Vector3((p.x - 50) * .6, p.h + .08, (p.y - 50) * .3);
 
+/** Where the broadcast camera aims: the smoothed puck position, pulled slightly toward the attacked net. */
+export function broadcastFocus(clip: ReplayClip, time: number): { x: number; z: number } {
+  let x = 0, z = 0, n = 0;
+  const span = .25 / Math.max(.5, clip.duration);
+  for (let i = -6; i <= 6; i++) { const p = world(samplePath(clip.puck, clamp(time + (i / 6) * span, 0, 1))); const w = 7 - Math.abs(i); x += p.x * w; z += p.z * w; n += w; }
+  const dir = clip.attacking ? -1 : 1;
+  return { x: clamp(x / n + dir * 2, -21, 21), z: clamp((z / n) * .55, -6, 6) };
+}
+
 /** Real perspective geometry, lighting and depth testing, not CSS-transformed sprites. */
 export function ReplayScene(props: Props) {
   const host = useRef<HTMLDivElement>(null);
@@ -94,7 +103,8 @@ export function ReplayScene(props: Props) {
       }
       const actors = clip.tracks.map(track => {
         const team = track.side === 0 ? home : away;
-        const jersey = mat(team.primaryColor), trim = mat(track.side === 0 ? team.secondaryColor : '#f4f7fa');
+        // Home in dark, visitors in white (as in the KHL and on the 2D rink), so similar club colours never clash.
+        const jersey = mat(track.side === 0 ? team.primaryColor : '#f4f7fa'), trim = mat(track.side === 0 ? team.secondaryColor : team.primaryColor);
         const group = new T.Group(); scene.add(group);
         const torso = addMesh(group, new T.CylinderGeometry(.28, .35, .65, 8), jersey, 0, 1.18); torso.rotation.z = -.13;
         box(group, .56, .12, .53, trim, 0, .98);
@@ -120,7 +130,7 @@ export function ReplayScene(props: Props) {
         const canvas = document.createElement('canvas'); canvas.width = 64; canvas.height = 64;
         const ctx = canvas.getContext('2d');
         if (ctx) {
-          ctx.fillStyle = '#ffffff'; ctx.font = 'bold 46px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.strokeStyle = '#142337'; ctx.lineWidth = 6;
+          ctx.fillStyle = track.side === 0 ? '#ffffff' : team.primaryColor; ctx.font = 'bold 46px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.strokeStyle = track.side === 0 ? '#142337' : '#ffffff'; ctx.lineWidth = 6;
           const num = String(players[track.id]?.number ?? ''); ctx.strokeText(num, 32, 34); ctx.fillText(num, 32, 34);
           const tex = new T.CanvasTexture(canvas); tex.colorSpace = T.SRGBColorSpace; textures.push(tex);
           const m = new T.MeshBasicMaterial({ map: tex, transparent: true, side: T.DoubleSide }); materials.add(m);
@@ -154,8 +164,8 @@ export function ReplayScene(props: Props) {
             group.position.y = Math.abs(Math.sin(time * 65 + index)) * .045 * (time < clip.goal ? 1 : .3);
             legs.forEach((leg, i) => { leg.rotation.z = Math.sin(time * 65 + i * Math.PI + index) * .16; });
             // Paths identify blade positions: carrying the puck no longer floats a metre from the stick.
-            const bladeOffset = new T.Vector3(1.02, 0, .56).applyAxisAngle(new T.Vector3(0, 1, 0), group.rotation.y);
-            group.position.sub(bladeOffset);
+            // (agent clips already carry body positions, the stick reaches the puck by itself)
+            if (!clip.bodies) group.position.sub(new T.Vector3(1.02, 0, .56).applyAxisAngle(new T.Vector3(0, 1, 0), group.rotation.y));
             const windup = time < clip.release ? clamp((time - clip.release + .10) / .10, 0, 1) : clamp(1 - (time - clip.release) / .10, 0, 1);
             if (track.id === clip.scorer) {
               stick.rotation.y = time <= clip.release ? -.8 * Math.sin(windup * Math.PI) : .6 * Math.sin(windup * Math.PI);
@@ -167,13 +177,19 @@ export function ReplayScene(props: Props) {
         const attr = trailGeometry.getAttribute('position');
         for (let i = 0; i < 18; i++) { const v = world(samplePath(clip.puck, Math.max(0, time - i * .0025))); attr.setXYZ(i, v.x, v.y + .04, v.z); } attr.needsUpdate = true; trailGeometry.computeBoundingSphere();
         lamp.intensity = time >= clip.goal ? 14 : 0;
-        if (activeCamera !== view) {
+        const dir = clip.attacking ? -1 : 1;
+        if (view === 'broadcast') {
+          // A TV camera that pans with the play: the puck (smoothed over ±0.25 s, so scrubbing stays deterministic)
+          // is kept in the middle of the frame both horizontally and vertically, never drifting off the bottom.
+          const focus = broadcastFocus(clip, time);
+          const aspect = Math.max(.5, camera.aspect), back = 25 * clamp(1.75 / aspect, 1, 2.2);
+          camera.position.set(focus.x, back * .62, focus.z + back * .78);
+          camera.lookAt(focus.x, 0, focus.z);
           activeCamera = view;
-          const dir = clip.attacking ? -1 : 1;
+        } else if (activeCamera !== view) {
+          activeCamera = view;
           const shot = world(samplePath(clip.puck, clip.release));
-          const narrow = element.clientWidth < 600;
-          if (view === 'broadcast') { camera.position.set(dir * 18, narrow ? 34 : 24, narrow ? 39 : 29); camera.lookAt(dir * 15, 0, 0); }
-          else if (view === 'ice') { camera.position.set(shot.x - dir * 15, 5, shot.z + 18); camera.lookAt(dir * 24, .5, 0); }
+          if (view === 'ice') { camera.position.set(shot.x - dir * 15, 5, shot.z + 18); camera.lookAt(dir * 24, .5, 0); }
           else { camera.position.set(dir * 30, 4.8, 10); camera.lookAt(dir * 18, .4, 0); }
         }
         renderer.render(scene, camera);

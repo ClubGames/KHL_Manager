@@ -94,10 +94,47 @@ try {
   await match.waitForTimeout(100); const frozen = await rink.locator('[data-rink-puck]').getAttribute('cx');
   await match.waitForTimeout(250); assert.equal(await rink.locator('[data-rink-puck]').getAttribute('cx'), frozen);
   await match.getByRole('button', { name: 'Возобновить', exact: true }).click();
-  await match.waitForTimeout(1900);
-  assert.notEqual(await rink.locator('[data-rink-puck]').getAttribute('cx'), frozen);
+  // (the puck may rest on a faceoff dot during a stoppage, so allow it a few seconds to move again)
+  let moved = false;
+  for (let i = 0; i < 30 && !moved; i++) { await match.waitForTimeout(250); moved = (await rink.locator('[data-rink-puck]').getAttribute('cx')) !== frozen; }
+  assert.ok(moved, 'puck moves after resume');
   await match.getByRole('button', { name: 'Скрыть площадку 2D', exact: true }).click(); assert.equal(await rink.count(), 0);
   await match.getByRole('button', { name: 'Показать площадку 2D', exact: true }).click(); assert.equal(await rink.count(), 1);
   await match.close(); console.log('ok actual match: moving 2D rink, freeze/resume and hide/show');
+
+  // The replay is centred in the viewport even inside a transformed, scrolled page (phone held sideways).
+  const sideways = await open({ viewport: { width: 844, height: 390 }, reducedMotion: 'reduce', isMobile: true, hasTouch: true });
+  await sideways.evaluate(() => { document.body.style.minHeight = '3000px'; const root = document.getElementById('root'); if (root) root.style.transform = 'translateY(0)'; window.scrollTo(0, 900); });
+  await mount(sideways);
+  const box = await sideways.locator('[data-goal-replay] > div').boundingBox();
+  assert.ok(box && box.y >= -1 && box.y + box.height <= 391, `replay inside viewport ${JSON.stringify(box)}`);
+  assert.ok(Math.abs(box.y - (390 - box.y - box.height)) < 2, 'replay vertically centred');
+  assert.equal(await sideways.locator('[data-goal-replay]').evaluate(el => el.parentElement === document.body), true);
+  assert.ok(await sideways.getByRole('button', { name: 'Продолжить матч', exact: true }).isVisible());
+  await sideways.keyboard.press('Escape'); await sideways.close();
+  console.log('ok replay centred in a landscape phone viewport, portalled out of transformed ancestors');
+
+  // Landscape match: nothing but the side list scrolls, the clock waits for the opening faceoff.
+  const land = await open({ viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true });
+  await land.getByRole('button', { name: /^СКА/ }).click();
+  await land.getByRole('button', { name: 'Начать карьеру', exact: true }).click();
+  const toMatch2 = land.getByRole('button', { name: 'Симулировать до матча', exact: true });
+  if (await toMatch2.count()) await toMatch2.click();
+  await land.getByRole('button', { name: 'Играть матч', exact: true }).click();
+  await land.getByRole('button', { name: 'Начать матч', exact: true }).click();
+  await land.locator('[data-match-land]').waitFor();
+  assert.equal(await land.locator('[data-live-rink][data-faceoff]').count(), 1, 'opening faceoff is shown');
+  assert.equal(await land.locator('[data-clock]').innerText(), '20:00', 'clock does not run before the drop');
+  const fit = await land.evaluate(() => ({ sh: document.documentElement.scrollHeight, ih: innerHeight, rink: document.querySelector('[data-rink-svg]').getBoundingClientRect().bottom }));
+  assert.ok(fit.sh <= fit.ih && fit.rink <= fit.ih, `fits the screen ${JSON.stringify(fit)}`);
+  assert.equal(await land.locator('[data-land-side]').evaluate(el => getComputedStyle(el).overflowY), 'auto');
+  let running = false;
+  for (let i = 0; i < 40 && !running; i++) { await land.waitForTimeout(250); running = (await land.locator('[data-clock]').innerText()) !== '20:00'; }
+  assert.ok(running, 'clock runs after the drop');
+  await land.waitForTimeout(500);
+  assert.ok(await land.locator('[data-feed-play="faceoff"]').count() >= 1, 'faceoff reported in the feed');
+  await land.getByRole('button', { name: /^Статистика/ }).click();
+  assert.ok(await land.locator('[data-faceoffs]').count() === 1);
+  await land.close(); console.log('ok landscape match screen: fixed layout, faceoff stops the clock, rink plays in feed and stats');
   assert.deepEqual(errors, []); console.log('PASS: rink browser flow, no runtime errors');
 } finally { await browser.close(); }
