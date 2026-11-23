@@ -3,6 +3,7 @@ import type { GameState, Lineup } from '../types';
 import { compareTeamLineups, type LineComparisonRow, type PPUnitPreview } from '../game/lineupCompare';
 import { POS_RU, goalieSavePct } from '../game/ratings';
 import { isLegionnaire } from '../game/legionnaires';
+import { visibleClubColor } from '../game/clubColors';
 import { Panel, Tag, TeamLogo } from './ui';
 import { cn } from '../utils/cn';
 
@@ -308,7 +309,7 @@ export function LineupPreview({
                   </div>
                 </div>
 
-                <OffensiveZonePPRink unit={unit} color={shownTeam.primaryColor || '#1E88E5'} />
+                <OffensiveZonePPRink unit={unit} color={visibleClubColor(shownTeam, '#1E88E5')} />
 
                 <div className="divide-y divide-line/50 text-xs">
                   {unit.slots.map((s, idx) => {

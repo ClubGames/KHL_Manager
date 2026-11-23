@@ -18,6 +18,7 @@ import { ensureCaptains, getTeamTactics, goalieFreshness, recordLineupChemistryG
 import { advanceAiDraftToUser, autoCompleteDraft, currentDraftTeamId, executeSingleDraftPick } from './dynasty';
 import { activeKhlCount, aiShouldMatchOfferSheet, canHaveNmc, canSignTwoWay, isOnWaivers, isRfaEligibleAge, isWaiverExempt, MAX_VHL_PLAYERS, offerSheetCompensation, processDailyWaivers, vhlPlayerCapRelief, WAIVER_DAYS } from './khlRules';
 import { getDerby, isFarEastClub } from './derbies';
+import { upgradeLegacyClubColors } from './clubColors';
 import {
   allStarTargetDay,
   canPlaceInLtir,
@@ -229,6 +230,8 @@ export function migrateState(raw: unknown): GameState | null {
   }
   // Points are derived from the record (minus any salary-cap penalty deductions), so saves made under the old 3-point rule are converted automatically.
   for (const t of Object.values(s.teams)) {
+    upgradeLegacyClubColors(t);
+    if (t.id === 'shanghai-dragons' && t.short === 'ШАН') t.short = 'ШХД';
     t.deadCap ??= 0;
     t.capViolationDays ??= 0;
     t.capViolationGames ??= 0;
@@ -366,7 +369,22 @@ export async function listSaves(): Promise<SaveMeta[]> {
       /* keep the legacy save in place and retry next time */
     }
   }
-  return listMetas();
+  const metas = await listMetas();
+  return metas.map((m) => {
+    const upgraded = upgradeLegacyClubColors({
+      id: m.teamId,
+      name: m.teamName,
+      short: m.teamShort,
+      primaryColor: m.primaryColor,
+      secondaryColor: m.secondaryColor,
+    });
+    return {
+      ...m,
+      teamShort: m.teamId === 'shanghai-dragons' && m.teamShort === 'ШАН' ? 'ШХД' : m.teamShort,
+      primaryColor: upgraded.primaryColor,
+      secondaryColor: upgraded.secondaryColor,
+    };
+  });
 }
 
 /** The requested career as plain data: the live one if it is open, otherwise read from its slot. */

@@ -8,6 +8,7 @@ import type { ContractTerms } from './contracts';
 import { DEFAULT_FOREIGN_LIMIT, teamForeignLimit } from './legionnaires';
 import { isYouthPlayer, recommendYouthPlan } from './training';
 import { defaultFacilities, normalizeInjury } from './medical';
+import { getOfficialClubPalette } from './clubColors';
 
 export interface NormalizedRoster {
   leagueName: string;
@@ -35,10 +36,10 @@ export const POS_MAP: Record<string, PosCode> = {
 
 const SHORT_MAP: Record<string, string> = {
   'СКА': 'СКА', 'ЦСКА': 'ЦСКА', 'Динамо Москва': 'ДМ', 'Динамо М': 'ДМ', 'Спартак': 'СПА', 'Спартак Москва': 'СПА',
-  'Локомотив': 'ЛОК', 'Северсталь': 'СЕВ', 'Витязь': 'ВИТ', 'Торпедо': 'ТОР', 'Торпедо НН': 'ТОР', 'ХК Сочи': 'СОЧ',
+  'Локомотив': 'ЛОК', 'Северсталь': 'СЕВ', 'Витязь': 'ВИТ', 'Торпедо': 'ТОР', 'Торпедо НН': 'ТОР', 'ХК Сочи': 'СОЧ', 'Сочи': 'СОЧ',
   'Динамо Минск': 'ДМН', 'Динамо Рига': 'ДРИ', 'Ак Барс': 'АКБ', 'Салават Юлаев': 'САЛ', 'Металлург Магнитогорск': 'ММГ',
-  'Металлург Мг': 'ММГ', 'Авангард': 'АВА', 'Барыс': 'БАР', 'Автомобилист': 'АВТ', 'Сибирь': 'СИБ', 'Нефтехимик': 'НЕФ',
-  'Амур': 'АМУ', 'Лада': 'ЛАД', 'Куньлунь Ред Стар': 'КРС', 'Адмирал': 'АДМ', 'ХК Москва': 'МСК', 'Минские Зубры': 'МЗБ',
+  'Металлург Мг': 'ММГ', 'Трактор': 'ТРА', 'Авангард': 'АВА', 'Барыс': 'БАР', 'Автомобилист': 'АВТ', 'Сибирь': 'СИБ', 'Нефтехимик': 'НЕФ',
+  'Амур': 'АМУ', 'Лада': 'ЛАД', 'Куньлунь Ред Стар': 'КРС', 'Шанхайские Драконы': 'ШХД', 'Адмирал': 'АДМ', 'ХК Москва': 'МСК', 'Минские Зубры': 'МЗБ',
 };
 
 const PALETTE = ['#0A4FA3', '#C8102E', '#1E7A46', '#E8B23C', '#2E6DB4', '#1D8A4E', '#1F6FC2', '#2C73C4', '#1B5FB0', '#D12D3A', '#1C5BA8', '#4CAF50'];
@@ -240,15 +241,17 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
       ids.push(pid);
     });
     if (rawPlayers.length < 15) warnings.push(`«${name}»: всего ${rawPlayers.length} игроков — рекомендуется 20–28 (12 нападающих, 6–8 защитников, 2 вратаря)`);
+    const short = String(t?.short ?? SHORT_MAP[name] ?? name.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 3).toUpperCase());
+    const officialColors = getOfficialClubPalette({ id, name, short });
     const team: Team = {
       id,
       name,
-      short: String(t?.short ?? SHORT_MAP[name] ?? name.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 3).toUpperCase()),
+      short,
       city: String(t?.city ?? ''),
       conference: conferences[i],
       division: String(t?.division ?? ''),
-      primaryColor: String(t?.primaryColor ?? t?.color ?? PALETTE[i % PALETTE.length]),
-      secondaryColor: String(t?.secondaryColor ?? '#FFFFFF'),
+      primaryColor: String(t?.primaryColor ?? t?.color ?? officialColors?.primaryColor ?? PALETTE[i % PALETTE.length]),
+      secondaryColor: String(t?.secondaryColor ?? officialColors?.secondaryColor ?? '#FFFFFF'),
       budget: Math.max(0, num(t?.budget, DEFAULT_BUDGET)),
       players: ids,
       lineup: emptyLineup(),
@@ -390,7 +393,7 @@ export const ROSTER_EXAMPLE = `{
       "city": "Санкт-Петербург",
       "conference": "Запад",
       "division": "Боброва",
-      "primaryColor": "#0A4FA3",
+      "primaryColor": "#00468B",
       "secondaryColor": "#FFFFFF",
       "budget": 1500000000,
       "players": [
@@ -439,13 +442,13 @@ export function downloadExampleRoster() {
   const example = {
     league: { name: 'КХЛ', season: '2025/26', gamesPerTeam: 68, salaryCap: 900000000 },
     teams: [
-      { id: 'ska', name: 'СКА', city: 'Санкт-Петербург', conference: 'Запад', division: 'Боброва', primaryColor: '#0A4FA3', secondaryColor: '#FFFFFF', budget: 1500000000, players: [
+      { id: 'ska', name: 'СКА', city: 'Санкт-Петербург', conference: 'Запад', division: 'Боброва', primaryColor: '#00468B', secondaryColor: '#FFFFFF', budget: 1500000000, players: [
         { id: 'ska-c01', name: 'Иван Примеров', position: 'Ц', age: 27, height: 185, weight: 92, number: 17, country: 'Россия', overall: 82, potential: 84, skills: { skating: 84, shooting: 78, passing: 88, puckControl: 85, checking: 62, defense: 74 }, contract: { salary: 65000000, years: 2 }, injury: null, morale: 78 },
         { id: 'ska-g01', name: 'Вратарей Голстоппер', position: 'В', age: 29, height: 190, weight: 90, number: 31, country: 'Россия', overall: 83, potential: 83, skills: { reflexes: 86, positioning: 84, reboundControl: 80, puckHandling: 65, endurance: 82 }, contract: { salary: 80000000, years: 1 } },
         { id: 'ska-d01', name: 'Защитей Блюлайн', position: 'З', age: 25, height: 189, weight: 95, number: 7, country: 'Россия', overall: 79, potential: 82, skills: { skating: 80, shooting: 72, passing: 78, puckControl: 76, checking: 84, defense: 85 }, contract: { salary: 40000000, years: 3 } },
         { id: 'ska-lw01', name: 'Крайний Снайперов', position: 'ЛК', age: 23, height: 183, weight: 88, number: 91, country: 'Россия', overall: 78, potential: 86, skills: { skating: 85, shooting: 86, passing: 70, puckControl: 80, checking: 55, defense: 60 }, contract: { salary: 25000000, years: 2 } },
       ] },
-      { id: 'cska', name: 'ЦСКА', city: 'Москва', conference: 'Запад', division: 'Боброва', primaryColor: '#D11F2F', secondaryColor: '#FFFFFF', budget: 1500000000, players: [
+      { id: 'cska', name: 'ЦСКА', city: 'Москва', conference: 'Запад', division: 'Боброва', primaryColor: '#CE1126', secondaryColor: '#FFFFFF', budget: 1500000000, players: [
         { id: 'cska-c01', name: 'Центр Примерцев', position: 'Ц', age: 30, height: 186, weight: 93, number: 10, country: 'Россия', overall: 80, potential: 80, skills: { skating: 80, shooting: 80, passing: 84, puckControl: 82, checking: 65, defense: 76 }, contract: { salary: 55000000, years: 1 } },
         { id: 'cska-g01', name: 'Вратарь Второй', position: 'G', age: 26, height: 188, weight: 89, number: 30, country: 'Россия', overall: 79, potential: 82, skills: { reflexes: 82, positioning: 80, reboundControl: 77, puckHandling: 60, endurance: 78 }, contract: { salary: 35000000, years: 2 } },
       ] },

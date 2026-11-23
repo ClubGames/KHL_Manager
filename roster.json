@@ -12,8 +12,8 @@
       "city": "Омск",
       "conference": "Восток",
       "division": "Чернышёва",
-      "primaryColor": "#D52B1E",
-      "secondaryColor": "#000000",
+      "primaryColor": "#C41E24",
+      "secondaryColor": "#FFE066",
       "budget": 1500000000,
       "players": [
         {
@@ -720,8 +720,8 @@
       "city": "Екатеринбург",
       "conference": "Восток",
       "division": "Харламова",
-      "primaryColor": "#D11F2F",
-      "secondaryColor": "#FFD700",
+      "primaryColor": "#CE1126",
+      "secondaryColor": "#FFFFFF",
       "budget": 1300000000,
       "players": [
         {
@@ -1553,8 +1553,8 @@
       "city": "Владивосток",
       "conference": "Восток",
       "division": "Чернышёва",
-      "primaryColor": "#003E7E",
-      "secondaryColor": "#FFFFFF",
+      "primaryColor": "#0C2340",
+      "secondaryColor": "#E0B85C",
       "budget": 900000000,
       "players": [
         {
@@ -2308,8 +2308,8 @@
       "city": "Казань",
       "conference": "Восток",
       "division": "Харламова",
-      "primaryColor": "#006B3F",
-      "secondaryColor": "#D11F2F",
+      "primaryColor": "#00693E",
+      "secondaryColor": "#FFFFFF",
       "budget": 1500000000,
       "players": [
         {
@@ -3039,8 +3039,8 @@
       "city": "Хабаровск",
       "conference": "Восток",
       "division": "Чернышёва",
-      "primaryColor": "#003E7E",
-      "secondaryColor": "#D11F2F",
+      "primaryColor": "#F37021",
+      "secondaryColor": "#14181F",
       "budget": 900000000,
       "players": [
         {
@@ -3846,8 +3846,8 @@
       "city": "Астана",
       "conference": "Восток",
       "division": "Чернышёва",
-      "primaryColor": "#00A0E3",
-      "secondaryColor": "#FFD700",
+      "primaryColor": "#0055A4",
+      "secondaryColor": "#FFD100",
       "budget": 1100000000,
       "players": [
         {
@@ -4602,8 +4602,8 @@
       "city": "Минск",
       "conference": "Запад",
       "division": "Тарасова",
-      "primaryColor": "#D11F2F",
-      "secondaryColor": "#003E7E",
+      "primaryColor": "#141B24",
+      "secondaryColor": "#00B5E2",
       "budget": 1100000000,
       "players": [
         {
@@ -5539,7 +5539,7 @@
       "city": "Москва",
       "conference": "Запад",
       "division": "Боброва",
-      "primaryColor": "#0038A8",
+      "primaryColor": "#004B9B",
       "secondaryColor": "#FFFFFF",
       "budget": 1500000000,
       "players": [
@@ -6372,7 +6372,7 @@
       "city": "Тольятти",
       "conference": "Запад",
       "division": "Харламова",
-      "primaryColor": "#C8102E",
+      "primaryColor": "#003366",
       "secondaryColor": "#FFFFFF",
       "budget": 700000000,
       "players": [
@@ -7205,7 +7205,7 @@
       "city": "Ярославль",
       "conference": "Запад",
       "division": "Боброва",
-      "primaryColor": "#D22630",
+      "primaryColor": "#B5121B",
       "secondaryColor": "#FFFFFF",
       "budget": 1300000000,
       "players": [
@@ -7816,8 +7816,8 @@
       "city": "Магнитогорск",
       "conference": "Восток",
       "division": "Харламова",
-      "primaryColor": "#E31E24",
-      "secondaryColor": "#003DA5",
+      "primaryColor": "#003087",
+      "secondaryColor": "#FFFFFF",
       "budget": 1400000000,
       "players": [
         {
@@ -8476,7 +8476,7 @@
       "city": "Нижнекамск",
       "conference": "Восток",
       "division": "Харламова",
-      "primaryColor": "#008752",
+      "primaryColor": "#0A2240",
       "secondaryColor": "#FFFFFF",
       "budget": 800000000,
       "players": [
@@ -9161,8 +9161,8 @@
       "city": "Уфа",
       "conference": "Восток",
       "division": "Чернышёва",
-      "primaryColor": "#003DA5",
-      "secondaryColor": "#FFD700",
+      "primaryColor": "#00873E",
+      "secondaryColor": "#FFFFFF",
       "budget": 1300000000,
       "players": [
         {
@@ -9919,7 +9919,7 @@
       "city": "Санкт-Петербург",
       "conference": "Запад",
       "division": "Боброва",
-      "primaryColor": "#0A4FA3",
+      "primaryColor": "#00468B",
       "secondaryColor": "#FFFFFF",
       "budget": 1500000000,
       "players": [
@@ -10601,8 +10601,8 @@
       "city": "Череповец",
       "conference": "Запад",
       "division": "Боброва",
-      "primaryColor": "#FFD700",
-      "secondaryColor": "#000000",
+      "primaryColor": "#FFD100",
+      "secondaryColor": "#141414",
       "budget": 1000000000,
       "players": [
         {
@@ -11538,7 +11538,7 @@
       "city": "Новосибирск",
       "conference": "Восток",
       "division": "Чернышёва",
-      "primaryColor": "#005A9C",
+      "primaryColor": "#0B2D5C",
       "secondaryColor": "#FFFFFF",
       "budget": 1100000000,
       "players": [
@@ -12349,8 +12349,8 @@
       "city": "Сочи",
       "conference": "Запад",
       "division": "Тарасова",
-      "primaryColor": "#000000",
-      "secondaryColor": "#FFFFFF",
+      "primaryColor": "#092C5C",
+      "secondaryColor": "#FFD100",
       "budget": 900000000,
       "players": [
         {
@@ -13184,7 +13184,7 @@
       "city": "Москва",
       "conference": "Запад",
       "division": "Боброва",
-      "primaryColor": "#D11F2F",
+      "primaryColor": "#D50032",
       "secondaryColor": "#FFFFFF",
       "budget": 1400000000,
       "players": [
@@ -14019,7 +14019,7 @@
       "city": "Нижний Новгород",
       "conference": "Запад",
       "division": "Тарасова",
-      "primaryColor": "#005BAA",
+      "primaryColor": "#003882",
       "secondaryColor": "#FFFFFF",
       "budget": 1200000000,
       "players": [
@@ -14830,7 +14830,7 @@
       "city": "Челябинск",
       "conference": "Восток",
       "division": "Харламова",
-      "primaryColor": "#000000",
+      "primaryColor": "#181B20",
       "secondaryColor": "#FFFFFF",
       "budget": 1500000000,
       "players": [
@@ -15468,8 +15468,8 @@
       "city": "Москва",
       "conference": "Запад",
       "division": "Боброва",
-      "primaryColor": "#D11F2F",
-      "secondaryColor": "#003E7E",
+      "primaryColor": "#CE1126",
+      "secondaryColor": "#FFFFFF",
       "budget": 1500000000,
       "players": [
         {
@@ -16200,8 +16200,8 @@
       "city": "Шанхай",
       "conference": "Запад",
       "division": "Боброва",
-      "primaryColor": "#C8102E",
-      "secondaryColor": "#F2A900",
+      "primaryColor": "#B80F28",
+      "secondaryColor": "#FFD100",
       "budget": 1100000000,
       "players": [
         {
