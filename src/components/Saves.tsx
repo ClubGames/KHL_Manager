@@ -43,7 +43,7 @@ function SaveCard({ meta, current, busy, onAct, onRenamed }: { meta: SaveMeta; c
   return (
     <li data-save-card={meta.id} className={cn('rounded-md border p-3 transition-colors', current ? 'border-ice/60 bg-ice/5' : 'border-line bg-panel2/50 hover:border-muted/60')}>
       <div className="flex items-start gap-3">
-        <TeamLogo team={{ id: meta.teamId, name: meta.teamName, short: meta.teamShort, primaryColor: meta.primaryColor, secondaryColor: meta.secondaryColor }} size={46} />
+        <TeamLogo team={{ id: meta.teamId, name: meta.teamName, short: meta.teamShort, primaryColor: meta.primaryColor, secondaryColor: meta.secondaryColor, logo: meta.logo }} size={46} />
         <div className="min-w-0 flex-1">
           {editing ? (
             <form

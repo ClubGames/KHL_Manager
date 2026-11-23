@@ -5,145 +5,171 @@ export interface ClubPalette {
   secondaryColor: string;
   /** Third signature color from the real club logo (bottom jersey/shield bar & dark-UI accent). */
   accentColor: string;
+  /** Bundled transparent 160x160 RGBA logo inside public/logos/. */
+  logo?: string;
+  /** Official KHL CDN 200x200 transparent PNG fallback (when standalone HTML is opened without logos/). */
+  khlCdnLogo?: string;
 }
 
 /**
- * Official current KHL club logo palettes (2025/26–2026/27 brand identities),
+ * Official current KHL club logo palettes & real transparent logos (2025/26–2026/27 brand identities),
  * plus classic KHL clubs for custom/historical rosters.
  */
 export const OFFICIAL_KHL_PALETTES: Record<string, ClubPalette> = {
   // === Current 22 KHL clubs ===
   avangard: {
-    // Омский «Авангард» — ястреб: алый, золотой и чёрный
     primaryColor: '#C41E24',
     secondaryColor: '#FFE066',
     accentColor: '#141414',
+    logo: './logos/avangard.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/34/200.png?u=2026',
   },
   avtomobilist: {
-    // «Автомобилист» Екатеринбург — крылатая «А»: красно-бело-чёрные
     primaryColor: '#CE1126',
     secondaryColor: '#FFFFFF',
     accentColor: '#141414',
+    logo: './logos/avtomobilist.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/190/200.png?u=2026',
   },
   admiral: {
-    // «Адмирал» Владивосток — якорь: глубокий морской тёмно-синий, золото и белый
     primaryColor: '#0C2340',
     secondaryColor: '#E0B85C',
     accentColor: '#FFFFFF',
+    logo: './logos/admiral.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/418/200.png?u=2026',
   },
   akbars: {
-    // «Ак Барс» Казань — снежный барс: зелёный, белый и красный
     primaryColor: '#00693E',
     secondaryColor: '#FFFFFF',
     accentColor: '#DA291C',
+    logo: './logos/akbars.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/53/200.png?u=2026',
   },
   amur: {
-    // «Амур» Хабаровск — амурский тигр: огненно-оранжевый, чёрный и белый
     primaryColor: '#F37021',
     secondaryColor: '#14181F',
     accentColor: '#FFFFFF',
+    logo: './logos/amur.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/54/200.png?u=2026',
   },
   barys: {
-    // «Барыс» Астана — снежный барс: насыщенный синий, казахстанское золото и небесно-голубой
     primaryColor: '#0055A4',
     secondaryColor: '#FFD100',
     accentColor: '#00AEEF',
+    logo: './logos/barys.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/198/200.png?u=2026',
   },
   'dinamo-mn': {
-    // «Динамо» Минск — зубр: антрацитово-чёрный, фирменный голубой циан и белый
     primaryColor: '#141B24',
     secondaryColor: '#00B5E2',
     accentColor: '#FFFFFF',
+    logo: './logos/dinamo-mn.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/207/200.png?u=2026',
   },
   'dinamo-msk': {
-    // «Динамо» Москва — классическая литера «Д»: динамовский синий и белый
     primaryColor: '#004B9B',
     secondaryColor: '#FFFFFF',
     accentColor: '#8BB8E8',
+    logo: './logos/dinamo-msk.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/719/200.png?u=2026',
   },
   lada: {
-    // «Лада» Тольятти — ладья: тёмно-синий, белый и серебристо-голубой
     primaryColor: '#003366',
     secondaryColor: '#FFFFFF',
     accentColor: '#6CA6CD',
+    logo: './logos/lada.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/66/200.png?u=2026',
   },
   lokomotiv: {
-    // «Локомотив» Ярославль — крылатая «Л»: карминно-красный, белый и тёмно-синий
     primaryColor: '#B5121B',
     secondaryColor: '#FFFFFF',
     accentColor: '#002F6C',
+    logo: './logos/lokomotiv.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/1/200.png?u=2026',
   },
   'metallurg-mg': {
-    // «Металлург» Магнитогорск — лис: магнитогорский синий, белый и красный
     primaryColor: '#003087',
     secondaryColor: '#FFFFFF',
     accentColor: '#E31E24',
+    logo: './logos/metallurg-mg.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/37/200.png?u=2026',
   },
   neftekhimik: {
-    // «Нефтехимик» Нижнекамск — волк: тёмно-синий, белый и красный
     primaryColor: '#0A2240',
     secondaryColor: '#FFFFFF',
     accentColor: '#E31E24',
+    logo: './logos/neftekhimik.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/71/200.png?u=2026',
   },
   salavat: {
-    // «Салават Юлаев» Уфа — изумрудно-зелёный, белый и башкирский синий
     primaryColor: '#00873E',
     secondaryColor: '#FFFFFF',
     accentColor: '#005BBB',
+    logo: './logos/salavat.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/38/200.png?u=2026',
   },
   ska: {
-    // СКА Санкт-Петербург — армейский синий, белый и красный
     primaryColor: '#00468B',
     secondaryColor: '#FFFFFF',
     accentColor: '#E30613',
+    logo: './logos/ska.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/24/200.png?u=2026',
   },
   severstal: {
-    // «Северсталь» Череповец — стальная искра: жёлто-золотой, чёрный и белый
     primaryColor: '#FFD100',
     secondaryColor: '#141414',
     accentColor: '#FFFFFF',
+    logo: './logos/severstal.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/56/200.png?u=2026',
   },
   sibir: {
-    // «Сибирь» Новосибирск — снежинка: глубокий сибирский синий, белый и морозно-голубой
     primaryColor: '#0B2D5C',
     secondaryColor: '#FFFFFF',
     accentColor: '#4AC1E8',
+    logo: './logos/sibir.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/29/200.png?u=2026',
   },
   sochi: {
-    // ХК «Сочи» — леопард: черноморский тёмно-синий, солнечно-жёлтый и бирюзовый
     primaryColor: '#092C5C',
     secondaryColor: '#FFD100',
     accentColor: '#00B2A9',
+    logo: './logos/sochi.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/451/200.png?u=2026',
   },
   spartak: {
-    // «Спартак» Москва — классический красно-белый ромб
     primaryColor: '#D50032',
     secondaryColor: '#FFFFFF',
     accentColor: '#FFFFFF',
+    logo: './logos/spartak.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/7/200.png?u=2026',
   },
   torpedo: {
-    // «Торпедо» Нижний Новгород — олень: нижегородский синий, белый и красный
     primaryColor: '#003882',
     secondaryColor: '#FFFFFF',
     accentColor: '#D52B1E',
+    logo: './logos/torpedo.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/26/200.png?u=2026',
   },
   traktor: {
-    // «Трактор» Челябинск — белый медведь: графитово-чёрный, белый и красный акцент
     primaryColor: '#181B20',
     secondaryColor: '#FFFFFF',
     accentColor: '#E31E24',
+    logo: './logos/traktor.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/25/200.png?u=2026',
   },
   cska: {
-    // ЦСКА Москва — красная звезда на красно-синем щите: армейский красный, белый и синий
     primaryColor: '#CE1126',
     secondaryColor: '#FFFFFF',
     accentColor: '#0033A0',
+    logo: './logos/cska.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/2/200.png?u=2026',
   },
   'shanghai-dragons': {
-    // «Шанхайские Драконы» — императорский багряный, золотой и нефритово-бирюзовый
     primaryColor: '#B80F28',
     secondaryColor: '#FFD100',
     accentColor: '#00A39B',
+    logo: './logos/shanghai-dragons.png',
+    khlCdnLogo: 'https://img.khl.ru/teams/ru/1436/568/200.png?u=2026',
   },
 
   // === Additional / historical KHL clubs & alternate IDs ===
@@ -151,16 +177,21 @@ export const OFFICIAL_KHL_PALETTES: Record<string, ClubPalette> = {
     primaryColor: '#D50032',
     secondaryColor: '#FFFFFF',
     accentColor: '#D4AF37',
+    logo: './logos/vityaz.png',
+    khlCdnLogo: 'https://img.khl.ru/clubs/ru/19/200.png?u=2026',
   },
   kunlun: {
     primaryColor: '#C8102E',
     secondaryColor: '#FFD100',
     accentColor: '#141414',
+    logo: './logos/kunlun.png',
   },
   'dynamo-riga': {
     primaryColor: '#7A1C24',
     secondaryColor: '#FFFFFF',
     accentColor: '#C5B358',
+    logo: './logos/dynamo-riga.png',
+    khlCdnLogo: 'https://img.khl.ru/clubs/ru/208/200.png?u=2026',
   },
 };
 
@@ -205,6 +236,7 @@ const ALIAS_TO_KEY: Record<string, string> = {
   трактор: 'traktor',
   цска: 'cska',
   'шанхайские драконы': 'shanghai-dragons',
+  драконы: 'shanghai-dragons',
   витязь: 'vityaz',
   'куньлунь ред стар': 'kunlun',
   'динамо рига': 'dynamo-riga',
@@ -263,6 +295,27 @@ export function getOfficialClubPalette(ref: {
   return null;
 }
 
+/**
+ * Ordered list of candidate logo image URLs for a club:
+ * 1) Custom `team.logo` from roster.json (if specified),
+ * 2) Local bundled transparent crest `./logos/<club>.png`,
+ * 3) Official KHL CDN 200x200 PNG fallback (for standalone HTML without `logos/`).
+ */
+export function getClubLogoSources(ref: {
+  id?: string;
+  name?: string;
+  short?: string;
+  logo?: string;
+}): string[] {
+  const out: string[] = [];
+  const custom = typeof ref.logo === 'string' ? ref.logo.trim() : '';
+  if (custom) out.push(custom);
+  const official = getOfficialClubPalette(ref);
+  if (official?.logo && !out.includes(official.logo)) out.push(official.logo);
+  if (official?.khlCdnLogo && !out.includes(official.khlCdnLogo)) out.push(official.khlCdnLogo);
+  return out;
+}
+
 export function hexLuminance(hex: string): number {
   const c = (hex || '').trim().replace('#', '');
   if (c.length !== 6) return 128;
@@ -319,4 +372,3 @@ export function upgradeLegacyClubColors<
   }
   return club;
 }
-

@@ -243,6 +243,7 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
     if (rawPlayers.length < 15) warnings.push(`«${name}»: всего ${rawPlayers.length} игроков — рекомендуется 20–28 (12 нападающих, 6–8 защитников, 2 вратаря)`);
     const short = String(t?.short ?? SHORT_MAP[name] ?? name.replace(/[^\p{L}\p{N}]/gu, '').slice(0, 3).toUpperCase());
     const officialColors = getOfficialClubPalette({ id, name, short });
+    const rawLogo = typeof t?.logo === 'string' && t.logo.trim() ? t.logo.trim() : undefined;
     const team: Team = {
       id,
       name,
@@ -252,6 +253,7 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
       division: String(t?.division ?? ''),
       primaryColor: String(t?.primaryColor ?? t?.color ?? officialColors?.primaryColor ?? PALETTE[i % PALETTE.length]),
       secondaryColor: String(t?.secondaryColor ?? officialColors?.secondaryColor ?? '#FFFFFF'),
+      ...(rawLogo ? { logo: rawLogo } : {}),
       budget: Math.max(0, num(t?.budget, DEFAULT_BUDGET)),
       players: ids,
       lineup: emptyLineup(),

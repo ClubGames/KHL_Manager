@@ -1,9 +1,9 @@
-import { createContext, useContext, useEffect } from 'react';
+import { createContext, useContext, useEffect, useState } from 'react';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import { cn } from '../utils/cn';
 import type { PosCode, Team } from '../types';
 import { overallColor, POS_RU } from '../game/ratings';
-import { getOfficialClubPalette, hexLuminance } from '../game/clubColors';
+import { getClubLogoSources, getOfficialClubPalette, hexLuminance } from '../game/clubColors';
 
 export type View = 'dashboard' | 'roster' | 'lines' | 'schedule' | 'standings' | 'stats' | 'trades' | 'market' | 'contracts' | 'club' | 'format' | 'offseason';
 
@@ -97,10 +97,34 @@ export function TeamLogo({
   size = 32,
   className,
 }: {
-  team: Pick<Team, 'short' | 'primaryColor' | 'secondaryColor'> & Partial<Pick<Team, 'id' | 'name'>>;
+  team: Pick<Team, 'short' | 'primaryColor' | 'secondaryColor'> & Partial<Pick<Team, 'id' | 'name' | 'logo'>>;
   size?: number;
   className?: string;
 }) {
+  const [failedUrls, setFailedUrls] = useState<Record<string, true>>({});
+  const sources = getClubLogoSources(team);
+  const activeSrc = sources.find((u) => !failedUrls[u]);
+
+  if (activeSrc) {
+    return (
+      <span
+        className={cn('inline-flex items-center justify-center shrink-0 select-none', className)}
+        style={{ width: size, height: size }}
+        title={team.name ?? team.short}
+      >
+        <img
+          src={activeSrc}
+          alt={team.short}
+          referrerPolicy="no-referrer"
+          decoding="async"
+          draggable={false}
+          onError={() => setFailedUrls((prev) => (prev[activeSrc] ? prev : { ...prev, [activeSrc]: true }))}
+          className="w-full h-full object-contain drop-shadow-[0_1px_2px_rgba(0,0,0,0.45)]"
+        />
+      </span>
+    );
+  }
+
   const letters = team.short.length <= 4 ? team.short : team.short.slice(0, 3);
   const official = getOfficialClubPalette(team);
   const accent = official?.accentColor;
