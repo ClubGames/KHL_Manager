@@ -103,6 +103,11 @@ export interface PlayerStats {
   minutes: number;
 }
 
+/**
+ * One row of a player's career table: a season at one club in one stage (regular season / playoffs).
+ * Rows written before per-club splits existed have no `kind` and cover the whole season (regular season + playoffs)
+ * at the club the player finished it with; the detailed counters are optional for the same reason.
+ */
 export interface SeasonHistory {
   season: string;
   teamId: string | null;
@@ -112,6 +117,21 @@ export interface SeasonHistory {
   assists: number;
   wins: number;
   shutouts: number;
+  kind?: GameKind;
+  plusMinus?: number;
+  pim?: number;
+  shots?: number;
+  losses?: number;
+  otl?: number;
+  saves?: number;
+  shotsAgainst?: number;
+  minutes?: number;
+}
+
+/** Current-season statistics of a player at one club in one stage; summed over all splits they equal `Player.stats`. */
+export interface StatSplit extends PlayerStats {
+  teamId: string;
+  kind: GameKind;
 }
 
 export interface Player {
@@ -159,6 +179,8 @@ export interface Player {
   morale: number;
   teamId: string | null;
   stats: PlayerStats;
+  /** current season by club and stage (filled as games are committed; rebuilt from the schedule for older saves) */
+  seasonSplits?: StatSplit[];
   history: SeasonHistory[];
 }
 
@@ -303,8 +325,10 @@ export interface GameEvent {
   penUntil?: [number, number];
   /** skaters on the ice [home, away] at the moment of a shot */
   ice?: [(string | null)[], (string | null)[]];
-  /** shootout result, on the event that ends the shootout */
+  /** shootout tally [home, away] after this attempt (and the final one on the event that ends the shootout) */
   so?: [number, number];
+  /** shootout round of the attempt (1-3 regular, 4+ sudden death) */
+  round?: number;
   /** rink shot coordinates 0..100 (away attacks left net x=7, home attacks right net x=93) */
   x?: number;
   y?: number;
@@ -578,6 +602,8 @@ export interface GameState {
   coachMarketSource?: 'roster' | 'builtin';
   /** photos (`face`) were copied from roster.json into this career (older saves predate the field) */
   facesSynced?: boolean;
+  /** season whose `Player.seasonSplits` are being kept (older saves lack it and get the splits rebuilt) */
+  splitsSeason?: string;
   /** KHL All-Star Weekend result for the current season */
   allStar?: AllStarResult | null;
   /** fan support 0..100: gate revenue, press reactions */

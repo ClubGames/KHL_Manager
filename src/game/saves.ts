@@ -95,13 +95,23 @@ export async function unpack(payload: string): Promise<string> {
   return payload;
 }
 
-/** Keep saves small: match logs are not needed after a game is committed. */
+/** Events kept in saves for the manager's games: goals (3D replays in the match report) and shootout attempts. */
+const KEPT_EVENTS = new Set(['goal', 'so_goal', 'so_miss']);
+
+/** Keep saves small: match logs are not needed after a game is committed (except goals of the manager's games). */
 export function compactState(state: GameState): GameState {
+  const U = state.userTeamId;
   return {
     ...state,
     news: state.news.slice(0, 60),
     schedule: state.schedule.map((day) =>
-      day.map((g) => (g.result ? { ...g, result: { ...g.result, events: [], lines: {} } } : g))
+      day.map((g) => {
+        if (!g.result) return g;
+        const mine = g.home === U || g.away === U;
+        // The tally on the last shootout attempt is enough for the report; the shot geometry of goals stays for replays.
+        const events = mine ? g.result.events.filter((e) => KEPT_EVENTS.has(e.type)).map(({ penUntil: _p, lines: _l, ...e }) => e) : [];
+        return { ...g, result: { ...g.result, events, lines: {} } };
+      })
     ),
   };
 }

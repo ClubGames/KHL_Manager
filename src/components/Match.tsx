@@ -9,6 +9,9 @@ import type { LiveStats } from '../game/live';
 import { Button, Icon, Panel, PlayerFace, PosBadge, shortName, TeamLogo } from './ui';
 import { cn } from '../utils/cn';
 import { GoalReplay } from './GoalReplay';
+import { ShooterPicker, ShootoutBoard } from './Shootout';
+import { goalEventFor } from '../game/live';
+import type { ReplayClip } from '../game/rinkPlayback';
 import { ShotMap } from './ShotMap';
 import { RinkAI, type PlayKind, type RinkPlay, type RinkTactics } from '../game/rinkAI';
 import { LiveRink } from './RinkView';
@@ -20,6 +23,15 @@ import { formatMoney } from '../game/ratings';
 import { intermissionHints, promoteToPP1, swapInLineup, type CoachHint } from '../game/assistant';
 
 const RATE: Record<1 | 2 | 4, number> = { 1: 30, 2: 60, 4: 120 };
+/** Seconds between shootout attempts at each speed: one shooter at a time, with a moment to see the result. */
+const SO_STEP: Record<1 | 2 | 4, number> = { 1: 2.6, 2: 1.7, 4: 0.85 };
+/** Three different shooters still in the lineup (the best remaining ones fill any gap). */
+const validPick = (pick: string[], candidates: string[]) => {
+  const out = pick.filter((id, i) => candidates.includes(id) && pick.indexOf(id) === i).slice(0, 3);
+  for (const id of candidates) if (out.length < 3 && !out.includes(id)) out.push(id);
+  return out;
+};
+const clipKey = (e: GameEvent) => `${e.period}:${e.sec}:${e.player ?? ''}`;
 /** Rink plays that also go to the match feed (the engine already reports shots, goals, penalties and hits). */
 const FEED_PLAYS = new Set<PlayKind>(['faceoff', 'takeaway', 'interception', 'block', 'icing', 'offside']);
 const PLAY_ICON: Partial<Record<PlayKind, string>> = { faceoff: '◎', takeaway: '⇄', interception: '✂', block: '▣', icing: '⇥', offside: '⊘' };
@@ -98,6 +110,21 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const blockStart = useRef(0);
   const blockEnd = useRef(0);
   const feedRef = useRef<HTMLDivElement>(null);
+  // Shootout: attempts are revealed one by one (soAcc counts revealed steps).
+  const soMode = useRef(false);
+  const soAcc = useRef(0);
+  const [soPick, setSoPick] = useState<string[]>(() => sim.shootoutCandidates(userIdx).slice(0, 3));
+  // Rink-based motion of every goal, kept after its period is over so the goals can be replayed after the match.
+  const clips = useRef(new Map<string, ReplayClip>());
+  const clipFor = (e: GameEvent): ReplayClip | undefined => {
+    const key = clipKey(e);
+    let c = clips.current.get(key);
+    if (!c && rinkAI.current) {
+      c = rinkAI.current.goalClip(e) ?? undefined;
+      if (c) clips.current.set(key, c);
+    }
+    return c;
+  };
 
   const blockKind = (): BlockKind => (sim.status === 'ot' ? (sim.playoff ? 'ot5' : 'ot3') : sim.status === 'so' ? 'so' : 'reg');
 
@@ -105,10 +132,14 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     const k = blockKind();
     setVisibleGoalies([sim.team(0).lineup.starterG, sim.team(1).lineup.starterG]);
     if (rinkAI.current) {
+      for (const e of periodEvs.current) if (e.type === 'goal') clipFor(e);
       const t = rinkAI.current.tally(Infinity);
       (Object.keys(t) as (keyof RinkTally)[]).forEach(key => { doneTally.current[key][0] += t[key][0]; doneTally.current[key][1] += t[key][1]; });
       rinkAI.current = null;
     }
+    if (k === 'so') sim.soOrder[userIdx] = validPick(soPick, sim.shootoutCandidates(userIdx));
+    soMode.current = k === 'so';
+    soAcc.current = 0;
     const evs = k === 'so' ? sim.simShootout() : k === 'reg' ? sim.simPeriod() : sim.simOT();
     periodEvs.current = evs;
     idx.current = 0;
@@ -155,9 +186,11 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         // The game clock comes from the rink: it stands still from every whistle until the puck is dropped.
         clockRef.current = Math.max(clockRef.current, ai.clockAt(tauRef.current));
         if (ai.ended && tauRef.current >= ai.lastTau) clockRef.current = blockEnd.current;
-      } else clockRef.current += dt * RATE[speed];
+      } else if (soMode.current) soAcc.current += dt / SO_STEP[speed];
+      else clockRef.current += dt * RATE[speed];
       const evs = periodEvs.current;
       let c = Math.min(clockRef.current, blockEnd.current);
+      const soShown = 1 + Math.floor(soAcc.current);
       let hitGoal = false;
       const newly: FeedItem[] = [];
       if (ai) {
@@ -168,7 +201,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           newly.push({ k: seq.current++, play: p, e: { type: 'info', sec: p.g, period: evs[0]?.period ?? 1, time: fmtClock(Math.max(0, blockEnd.current - p.g)), team: p.side === null ? null : p.side ? game.away : game.home, text: p.text } });
         }
       }
-      while (idx.current < evs.length && evs[idx.current].sec <= c) {
+      while (idx.current < evs.length && (soMode.current ? idx.current < soShown : evs[idx.current].sec <= c)) {
         const e = evs[idx.current++];
         newly.push({ k: seq.current++, e });
         applyEvent(live.current, e, game.home);
@@ -212,7 +245,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         setMpKey(mpNow);
       }
       if (hitGoal) return; // Freeze exactly on the revealed goal; no extra frame leaks past it.
-      if (c >= blockEnd.current) {
+      // The shootout ends one step after its last attempt is shown.
+      if (soMode.current ? idx.current >= evs.length && soAcc.current >= evs.length : c >= blockEnd.current) {
         setStatus(sim.status === 'done' ? 'done' : 'break');
         return;
       }
@@ -221,6 +255,11 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
   }, [status, speed, sim, paused, replayEvent, game.home, ticker]);
+
+  // The shootout board replaces the rink: bring it into view when the shootout starts.
+  useEffect(() => {
+    if (kind === 'so' && status === 'playing') (document.querySelector('[data-shootout]') as HTMLElement | null)?.scrollIntoView?.({ block: 'center', behavior: 'smooth' });
+  }, [kind, status]);
 
   // Space toggles pause while the puck is in play.
   useEffect(() => {
@@ -423,7 +462,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     });
   };
 
-  const periodLabel = period === 0 ? '' : `${periodNameOf(period, kind)}`;
+  const soNow = kind === 'so' ? feed.find((it) => !it.play && it.e.so)?.e.so : undefined;
+  const periodLabel = period === 0 ? '' : kind === 'so' ? `серия ${soNow ? `${soNow[0]}:${soNow[1]}` : '0:0'}` : `${periodNameOf(period, kind)}`;
   const homeL = sim.team(0).lineup;
   const awayL = sim.team(1).lineup;
   const goalieName = (ti: 0 | 1) => {
@@ -502,6 +542,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
 
   // The engine finishes a period ahead of the playback, so the result may only be read once the playback is over.
   const res = status === 'done' && sim.status === 'done' ? sim.result() : null;
+  // Revealed shootout attempts (the feed is newest first).
+  const soEvents = kind === 'so' ? feed.filter((it) => !it.play && (it.e.type === 'so_goal' || it.e.type === 'so_miss' || it.e.type === 'period_end')).map((it) => it.e).reverse() : [];
   const teamShort = (id: string) => {
     const p = P[id];
     return p && p.teamId ? s.teams[p.teamId]?.short ?? '' : '';
@@ -895,7 +937,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       {land ? (
         <div className="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)_minmax(270px,36%)] grid-rows-[minmax(0,1fr)] gap-2 py-1.5 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.375rem,env(safe-area-inset-bottom))]" data-match-land>
           <div className="min-h-0 flex flex-col">
-            <LiveRink fill className="flex-1 min-h-0" ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} />
+            {kind === 'so' && status !== 'intro' ? <ShootoutBoard events={soEvents} home={H} away={A} players={P} live className="flex-1 min-h-0 overflow-y-auto" /> : <LiveRink fill className="flex-1 min-h-0" ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} />}
           </div>
           {/* Only this side list scrolls; the rink, score and controls stay put. */}
           <div ref={mobileTab === 'live' ? feedRef : undefined} className="min-h-0 overflow-y-auto overscroll-contain rounded-md border border-line bg-panel" data-land-side data-feed={mobileTab === 'live' || undefined}>
@@ -912,7 +954,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         <div className="space-y-3 min-w-0">
           <div className={cn(mobileTab !== 'live' && 'hidden lg:block')}>
             <button type="button" className="text-xs text-ice mb-2" aria-expanded={showRink} onClick={() => setShowRink(v => !v)}>{showRink ? 'Скрыть площадку 2D' : 'Показать площадку 2D'}</button>
-            {showRink && <LiveRink ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} />}
+            {kind === 'so' && status !== 'intro' && <ShootoutBoard events={soEvents} home={H} away={A} players={P} live className="mb-2" />}
+            {showRink && kind !== 'so' && <LiveRink ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} />}
           </div>
           <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-2', mobileTab !== 'live' && 'hidden lg:grid')}>
             {renderOnIce(0)}
@@ -966,7 +1009,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       )}
 
       {replayEvent && (
-        <GoalReplay motionClip={rinkAI.current?.goalClip(replayEvent) ?? undefined} event={replayEvent} home={H} away={A} players={P} onClose={() => setReplayEvent(null)} />
+        <GoalReplay motionClip={clipFor(replayEvent)} closeLabel={status === 'done' ? 'Назад к итогам' : undefined} event={replayEvent} home={H} away={A} players={P} onClose={() => setReplayEvent(null)} />
       )}
       {status === 'intro' && (() => {
         const oppId = game.home === s.userTeamId ? game.away : game.home;
@@ -1094,9 +1137,15 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               </div>
             </div>
           )}
+          {sim.status === 'so' && (
+            <>
+              <div className="text-sm mb-2">Ничья после овертайма — <b>серия буллитов</b>.</div>
+              <ShooterPicker candidates={sim.shootoutCandidates(userIdx)} value={validPick(soPick, sim.shootoutCandidates(userIdx))} players={P} onChange={(ids) => { setSoPick(ids); setCountdown((c) => Math.max(c, 12)); }} />
+            </>
+          )}
           <div className="flex gap-2 mt-4 flex-wrap justify-center items-center">
             <Button variant="primary" size="lg" onClick={startBlock}>
-              Продолжить
+              {sim.status === 'so' ? 'К буллитам' : 'Продолжить'}
             </Button>
             <span className="text-xs text-muted">автоматически через {Math.max(0, countdown)} с</span>
             <Button size="lg" onClick={finishNow}>
@@ -1113,7 +1162,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
             {H.short} {res.homeScore} : {res.awayScore} {A.short}
           </div>
           <div className="text-xs text-muted">
-            {res.periodScores.map((p, i) => `${i < 3 ? i + 1 : 'OT'}-й: ${p[0]}-${p[1]}`).join(' · ')} · броски {res.homeStats.shots}:{res.awayStats.shots} · xG {(res.homeStats.xg ?? 0).toFixed(2)}:{(res.awayStats.xg ?? 0).toFixed(2)}
+            {res.periodScores.map((p, i) => `${res.so && i === res.periodScores.length - 1 ? 'Буллиты' : i < 3 ? `${i + 1}-й` : 'ОТ'}: ${p[0]}-${p[1]}`).join(' · ')} · броски {res.homeStats.shots}:{res.awayStats.shots} · xG {(res.homeStats.xg ?? 0).toFixed(2)}:{(res.awayStats.xg ?? 0).toFixed(2)}
           </div>
           <div className="flex gap-2 mt-3 flex-wrap justify-center">
             {res.stars.map((id, i) => (
@@ -1129,16 +1178,26 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               <ShotMap shots={res.shotMap ?? stats.shotMap} home={H} away={A} players={P} compact />
             </div>
           )}
-          <div className="mt-3 w-full max-w-lg text-left text-xs max-h-32 overflow-y-auto">
-            {res.scorers.map((sc, i) => (
-              <div key={i} className="flex gap-2 py-0.5">
-                <span className="w-12 text-muted tabular shrink-0">{sc.period <= 3 ? sc.period : 'ОТ'} · {sc.time}</span>
-                <span>
-                  <b className={sc.team === game.home ? 'text-ice' : 'text-amber'}>{s.teams[sc.team].short}</b> {P[sc.scorer]?.name}
-                  {sc.assists.length > 0 && <span className="text-muted"> ({sc.assists.map((a) => P[a]?.name).join(', ')})</span>}
-                </span>
-              </div>
-            ))}
+          {res.so && <ShootoutBoard events={res.events} home={H} away={A} players={P} className="mt-3 w-full max-w-lg" />}
+          <div className="mt-3 w-full max-w-lg text-left text-xs max-h-48 overflow-y-auto" data-final-goals>
+            {res.scorers.length > 0 && <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Голы · нажмите «▶ Повтор», чтобы посмотреть 3D-повтор</div>}
+            {res.scorers.map((sc, i) => {
+              const ev = goalEventFor(res.events, sc);
+              return (
+                <div key={i} className="flex items-center gap-2 py-0.5">
+                  <span className="w-16 text-muted tabular shrink-0 whitespace-nowrap">{sc.period <= 3 ? sc.period : 'ОТ'} · {sc.time}</span>
+                  <span className="flex-1 min-w-0">
+                    <b className={sc.team === game.home ? 'text-ice' : 'text-amber'}>{s.teams[sc.team].short}</b> {P[sc.scorer]?.name}
+                    {sc.assists.length > 0 && <span className="text-muted"> ({sc.assists.map((a) => P[a]?.name).join(', ')})</span>}
+                  </span>
+                  {ev && (
+                    <button type="button" onClick={() => setReplayEvent(ev)} className="shrink-0 rounded border border-accent/50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent hover:bg-accent/10" data-final-replay title="Посмотреть 3D-повтор гола">
+                      ▶ Повтор
+                    </button>
+                  )}
+                </div>
+              );
+            })}
           </div>
           <div className="flex gap-2 mt-4 flex-wrap justify-center">
             <Button variant="secondary" onClick={() => setShowPostMap((v) => !v)}>
@@ -1241,7 +1300,7 @@ function PenaltyTimer({ ticker, live }: { ticker: Ticker; live: MutableRefObject
 const FeedRow = memo(function FeedRow({ e, onReplay }: { e: GameEvent; onReplay: (event: GameEvent) => void }) {
   return (
     <div className={cn('flex items-start gap-3 px-4 py-1.5 text-sm fade-in', e.type === 'goal' && 'bg-accent/10')}>
-      <span className="w-14 shrink-0 text-[11px] text-muted tabular pt-0.5">{e.type === 'period_start' || e.type === 'period_end' ? '' : `${e.period <= 3 ? e.period : 'ОТ'} · ${e.time}`}</span>
+      <span className="w-14 shrink-0 text-[11px] text-muted tabular pt-0.5">{e.type === 'period_start' || e.type === 'period_end' ? '' : e.type === 'so_goal' || e.type === 'so_miss' ? `Б · ${e.round ?? ''}` : `${e.period <= 3 ? e.period : 'ОТ'} · ${e.time}`}</span>
       <span className="mt-0.5 shrink-0" style={{ color: EVENT_COLOR[e.type] ?? '#93A4BC' }}>
         <Icon name={e.type === 'goal' || e.type === 'so_goal' ? 'puck' : e.type === 'penalty' ? 'alert' : e.type === 'hit' ? 'injury' : e.type === 'shot' || e.type === 'miss' ? 'puck' : 'check'} />
       </span>
