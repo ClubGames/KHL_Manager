@@ -47,59 +47,77 @@ assert.equal(altPs[0].face, 'https://x.y/a.jpg');
 assert.equal(altPs[1].face, undefined);
 ok('face URLs: http(s), relative paths and data:image accepted; junk and javascript: rejected; `photo` alias works');
 
-// 2. New career keeps photos; old careers adopt them once
+// 2. New career keeps photos; an old save without photos adopts them by player id (renamed save player included)
 const st = G.createGameState(r, 'ska');
 assert.equal(st.facesSynced, true);
 assert.equal(Object.values(st.players).filter((p) => p.face).length, parsed.length);
+assert.equal(G.adoptRosterUpdates(st, r), 0, 'a fresh career already matches the file');
 const legacy = JSON.parse(JSON.stringify(st));
 delete legacy.facesSynced;
 for (const p of Object.values<{ face?: string }>(legacy.players)) delete p.face;
-legacy.players[Object.keys(legacy.players)[0]].name = 'Переименованный Игрок'; // id match with another name: skipped
+const firstId = Object.keys(legacy.players).find((id) => r.players[id]?.face)!;
+legacy.players[firstId].name = 'Переименованный Игрок';
 const migrated = G.migrateState(legacy)!;
 assert.ok(!migrated.facesSynced);
-const filled = G.adoptRosterFaces(migrated, r);
+const filled = G.adoptRosterUpdates(migrated, r);
 assert.equal(migrated.facesSynced, true);
-assert.ok(filled >= parsed.length - 1 && filled <= parsed.length, `filled ${filled}`);
-assert.equal(G.adoptRosterFaces(migrated, r), 0, 'second pass changes nothing');
-ok(`old save: ${filled} photos adopted by id/name, renamed player skipped, idempotent`);
+assert.equal(filled, parsed.length + 1, `photos + the name (${filled})`);
+assert.equal(migrated.players[firstId].name, r.players[firstId].name, 'name restored from the file by id');
+assert.equal(G.adoptRosterUpdates(migrated, r), 0, 'second pass changes nothing');
+ok(`old save: ${parsed.length} photos adopted by id, renamed player follows the file, idempotent`);
 
-// 2b. Editing roster.json later updates careers that already have photos (changed link, removed link, new link)
+// 2b. Editing roster.json later: name, number, nationality and photo changes reach the save by player id
 {
   const save = G.createGameState(r, 'ska');
-  const withFace = Object.values(save.players).filter((p) => p.face);
-  const noFace = Object.values(save.players).find((p) => !p.face && r.players[p.id])!;
-  const [changedP, removedP] = withFace;
+  const ids = Object.keys(save.players).filter((id) => r.players[id]);
+  const withFace = ids.filter((id) => save.players[id].face);
+  const noFace = ids.find((id) => !save.players[id].face)!;
+  const [renamed, renumbered, moved, newPhoto, removedPhoto] = withFace;
   const edited = JSON.parse(JSON.stringify(r)) as typeof r;
-  edited.players[changedP.id].face = 'https://www.khl.ru/img/new/changed.jpg';
-  delete edited.players[removedP.id].face;
-  edited.players[noFace.id].face = 'https://www.khl.ru/img/new/added.jpg';
-  const changed = G.adoptRosterFaces(save, edited);
-  assert.equal(changed, 3, `changed ${changed}`);
-  assert.equal(save.players[changedP.id].face, 'https://www.khl.ru/img/new/changed.jpg');
-  assert.equal(save.players[removedP.id].face, undefined);
-  assert.equal(save.players[noFace.id].face, 'https://www.khl.ru/img/new/added.jpg');
-  assert.equal(G.adoptRosterFaces(save, edited), 0);
+  edited.players[renamed].name = 'Новое Имя';
+  edited.players[renumbered].number = 99;
+  edited.players[moved].country = 'Канада';
+  edited.players[newPhoto].face = 'https://www.khl.ru/img/new/changed.jpg';
+  delete edited.players[removedPhoto].face;
+  edited.players[noFace].face = 'https://www.khl.ru/img/new/added.jpg';
+  // a player the file does not know (draft pick) is never touched
+  const draftee = { ...save.players[renamed], id: 'draft-x', name: 'Новое Имя Драфт' };
+  save.players['draft-x'] = draftee;
+  const before = save.players[renumbered];
+  const changed = G.adoptRosterUpdates(save, edited);
+  assert.equal(changed, 6, `changed ${changed}`);
+  assert.equal(save.players[renamed].name, 'Новое Имя');
+  assert.equal(save.players[renumbered].number, 99);
+  assert.equal(save.players[moved].country, 'Канада');
+  assert.equal(save.players[newPhoto].face, 'https://www.khl.ru/img/new/changed.jpg');
+  assert.equal(save.players[removedPhoto].face, undefined);
+  assert.equal(save.players[noFace].face, 'https://www.khl.ru/img/new/added.jpg');
+  assert.equal(save.players['draft-x'].name, 'Новое Имя Драфт');
+  assert.equal(before.skills, save.players[renumbered].skills, 'ratings, contract and stats stay the career\'s own');
+  assert.equal(G.adoptRosterUpdates(save, edited), 0);
 
   // the real loader: fetches roster.json on every open and re-saves only when something changed
-  const text = JSON.stringify({ ...JSON.parse(readFileSync('roster.json', 'utf8')) });
   const raw = JSON.parse(text);
   const target = raw.teams.find((t: { id: string }) => t.id === 'ska').players.find((p: { face?: string }) => p.face);
   const old = G.createGameState(parseRosterText(text), 'ska');
-  const id = Object.values(old.players).find((p) => p.face === target.face)!.id;
   target.face = 'https://www.khl.ru/img/teamplayers_db/15542/updated.jpg';
+  target.name = 'Исправленное Имя';
+  target.number = 77;
+  target.country = 'Беларусь';
   let served = JSON.stringify(raw);
   (globalThis as { fetch: unknown }).fetch = async () => ({ ok: true, status: 200, text: async () => served });
   G.store.set(old);
-  let n = await G.syncFacesFromRoster(old.saveId);
-  assert.equal(n, 1);
-  assert.equal(G.store.get()!.players[id].face, 'https://www.khl.ru/img/teamplayers_db/15542/updated.jpg');
+  let n = await G.syncPlayersFromRoster(old.saveId);
+  assert.equal(n, 4);
+  const p = G.store.get()!.players[target.id];
+  assert.deepEqual([p.name, p.number, p.country, p.face], ['Исправленное Имя', 77, 'Беларусь', 'https://www.khl.ru/img/teamplayers_db/15542/updated.jpg']);
   const ref = G.store.get();
-  n = await G.syncFacesFromRoster(old.saveId);
+  n = await G.syncPlayersFromRoster(old.saveId);
   assert.equal(n, 0);
   assert.equal(G.store.get(), ref, 'unchanged roster does not touch the state');
   served = '<html>';
-  assert.equal(await G.syncFacesFromRoster(old.saveId), 0, 'broken roster.json keeps the saved photos');
-  ok('roster edits reach old saves: changed, removed and added links; no-op when unchanged');
+  assert.equal(await G.syncPlayersFromRoster(old.saveId), 0, 'broken roster.json keeps the saved data');
+  ok('roster edits reach old saves by id: name, number, nationality, photo (changed/removed/added); no-op when unchanged');
 }
 
 // 3. Club profile
