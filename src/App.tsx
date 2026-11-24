@@ -21,7 +21,7 @@ import { Inbox } from './components/Inbox';
 import { FullscreenButton } from './components/FullscreenButton';
 import { buildInbox } from './game/inbox';
 import { SaveIndicator, SavesList } from './components/Saves';
-import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, syncCoachMarketFromRoster, syncFacesFromRoster, useGame, useSaveStatus } from './game/state';
+import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, syncCoachMarketFromRoster, syncPlayersFromRoster, useGame, useSaveStatus } from './game/state';
 import { regularSeasonLength, seasonDate } from './game/schedule';
 import { effectivePayroll } from './game/cap';
 import { countRosterLegionnaires, teamForeignLimit } from './game/legionnaires';
@@ -87,9 +87,10 @@ export default function App() {
   useEffect(() => {
     if (saveId && coachSource !== 'roster') void syncCoachMarketFromRoster(saveId);
   }, [saveId, coachSource]);
-  // Photos follow roster.json: re-read them whenever a career is opened (old saves pick up new/changed `face` links).
+  // roster.json is the source of truth for names, numbers, nationality and photos (matched by player id):
+  // re-read it whenever a career is opened, so edits to the file reach old saves.
   useEffect(() => {
-    if (saveId) void syncFacesFromRoster(saveId);
+    if (saveId) void syncPlayersFromRoster(saveId);
   }, [saveId]);
 
   const api = useMemo<UIApi>(

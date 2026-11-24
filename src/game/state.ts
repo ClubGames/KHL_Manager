@@ -383,77 +383,78 @@ export async function syncCoachMarketFromRoster(saveId: string, url = './roster.
   }
 }
 
+/** Player fields that follow roster.json in an existing career (matched by player id). */
+export const ROSTER_SYNC_FIELDS = ['name', 'number', 'country', 'face'] as const;
+export type RosterSyncField = (typeof ROSTER_SYNC_FIELDS)[number];
+
 /**
- * Bring player/coach photos of a saved career in line with roster.json. roster.json is the source of truth for every
- * player it still describes (same id and name, or an unambiguous name): a new link replaces the old one, and a link
- * removed from the file is removed from the save. Generated players (draft, juniors) are not touched.
- * Returns how many photos changed.
+ * Bring a saved career in line with roster.json, player by player **by id**: if the file has a different name,
+ * jersey number, nationality or photo for that id, the save takes the file's value (a photo removed from the file is
+ * removed from the save). Players the file does not know (draft picks, generated juniors) are left alone.
+ * Coach photos follow the file by coach name. Returns how many fields changed.
  */
-export function adoptRosterFaces(s: GameState, r: Pick<NormalizedRoster, 'players' | 'teams' | 'freeCoaches'>): number {
-  const AMBIGUOUS = '\u0000';
-  const byName = new Map<string, string>();
-  for (const p of Object.values(r.players)) {
-    const k = p.name.trim().toLowerCase();
-    byName.set(k, byName.has(k) ? AMBIGUOUS : p.face ?? '');
-  }
+export function adoptRosterUpdates(s: GameState, r: Pick<NormalizedRoster, 'players' | 'teams' | 'freeCoaches'>): number {
   let n = 0;
-  const apply = (o: { face?: string }, face: string | undefined) => {
-    if ((o.face ?? '') === (face ?? '')) return;
-    if (face) o.face = face;
-    else delete o.face;
-    n++;
-  };
   for (const p of Object.values(s.players)) {
     const src = r.players[p.id];
-    if (src && src.name.trim().toLowerCase() === p.name.trim().toLowerCase()) {
-      apply(p, src.face);
-      continue;
+    if (!src) continue;
+    if (src.name && src.name !== p.name) { p.name = src.name; n++; }
+    if (Number.isFinite(src.number) && src.number !== p.number) { p.number = src.number; n++; }
+    if (src.country && src.country !== p.country) { p.country = src.country; n++; }
+    if ((src.face ?? '') !== (p.face ?? '')) {
+      if (src.face) p.face = src.face;
+      else delete p.face;
+      n++;
     }
-    const f = byName.get(p.name.trim().toLowerCase());
-    if (f !== undefined && f !== AMBIGUOUS) apply(p, f || undefined);
   }
   const coachFaces = new Map<string, string>();
   for (const t of r.teams) for (const c of t.coaches ?? []) coachFaces.set(c.name.trim().toLowerCase(), c.face ?? '');
   for (const c of r.freeCoaches ?? []) coachFaces.set(c.name.trim().toLowerCase(), c.face ?? '');
   const fill = (c: Coach) => {
     const f = coachFaces.get(c.name.trim().toLowerCase());
-    if (f !== undefined) apply(c, f || undefined);
+    if (f === undefined || f === (c.face ?? '')) return;
+    if (f) c.face = f;
+    else delete c.face;
+    n++;
   };
   for (const t of Object.values(s.teams)) (t.coaches ?? []).forEach(fill);
   (s.coachMarket ?? []).forEach(fill);
   s.facesSynced = true;
   return n;
 }
+/** @deprecated kept for older callers — same as {@link adoptRosterUpdates}. */
+export const adoptRosterFaces = adoptRosterUpdates;
 
 /**
- * Re-read photos from roster.json every time a career is opened, so edits to `face` reach existing saves.
- * The state is only touched (and re-saved) when something actually changed.
+ * Re-read roster.json every time a career is opened, so edits to names, numbers, nationality and photos reach
+ * existing saves. The state is only touched (and re-saved) when something actually changed.
  */
-export async function syncFacesFromRoster(saveId: string, url = './roster.json'): Promise<number> {
+export async function syncPlayersFromRoster(saveId: string, url = './roster.json'): Promise<number> {
   const cur = store.get();
   if (!cur || cur.saveId !== saveId) return 0;
   try {
     const r = await fetchRoster(url);
     const now = store.get();
     if (!now || now.saveId !== saveId) return 0;
-    // dry run on a shallow copy of the objects that can change
+    // dry run on copies of the objects that can change
     const probe = {
       players: Object.fromEntries(Object.entries(now.players).map(([k, p]) => [k, { ...p }])),
       teams: Object.fromEntries(Object.entries(now.teams).map(([k, t]) => [k, { ...t, coaches: (t.coaches ?? []).map((c) => ({ ...c })) }])),
       coachMarket: (now.coachMarket ?? []).map((c) => ({ ...c })),
     } as unknown as GameState;
-    const changed = adoptRosterFaces(probe, r);
-    if (!changed) return 0;
+    if (!adoptRosterUpdates(probe, r)) return 0;
     let n = 0;
     store.update((s) => {
-      if (s.saveId === saveId) n = adoptRosterFaces(s, r);
+      if (s.saveId === saveId) n = adoptRosterUpdates(s, r);
     });
     return n;
   } catch {
-    /* roster.json unavailable (offline / opened from file): keep the saved photos */
+    /* roster.json unavailable (offline / opened from file): keep the saved data */
     return 0;
   }
 }
+/** @deprecated same as {@link syncPlayersFromRoster}. */
+export const syncFacesFromRoster = syncPlayersFromRoster;
 
 export async function startNewGame(r: NormalizedRoster, userTeamId: string) {
   await store.flush();
