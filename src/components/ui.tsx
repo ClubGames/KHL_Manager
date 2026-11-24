@@ -374,6 +374,8 @@ const ICONS: Record<string, ReactNode> = {
   scout: <><circle cx="11" cy="11" r="6" /><path d="M20 20l-4.5-4.5" /></>,
   mic: <><rect x="9" y="3" width="6" height="11" rx="3" /><path d="M5 11a7 7 0 0 0 14 0M12 18v3" /></>,
   alert: <><path d="M12 3l10 18H2z" /><path d="M12 10v5M12 18h.01" /></>,
+  expand: <><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></>,
+  shrink: <><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /></>,
 };
 export function Icon({ name, className }: { name: keyof typeof ICONS | string; className?: string }) {
   return (

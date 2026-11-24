@@ -9,6 +9,7 @@ import { cn } from '../utils/cn';
 import { Button, OverallChip, Panel, Spinner, TeamLogo } from './ui';
 import { ClubOverview } from './TeamInfo';
 import type { Team } from '../types';
+import { FullscreenButton } from './FullscreenButton';
 import { SavesList } from './Saves';
 
 export function FormatDoc({ compact }: { compact?: boolean }) {
@@ -235,6 +236,7 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
       <div className="relative max-w-6xl mx-auto px-3 sm:px-4 py-5 sm:py-8 md:py-12">
         <header className="relative -mx-3 sm:-mx-4 md:mx-0 mb-6 sm:mb-8 md:rounded-md overflow-hidden border-0 md:border border-line bg-cover bg-center" style={{ backgroundImage: `url(${arena})`, backgroundPosition: 'center 55%' }}>
           <div className="absolute inset-0 bg-gradient-to-r from-bg via-bg/85 to-bg/25" />
+          <FullscreenButton label className="absolute top-3 right-3 z-10 bg-bg/70 backdrop-blur" />
           <div className="relative px-4 sm:px-6 md:px-10 py-6 sm:py-8 md:py-10">
             <p className="text-accent font-display uppercase tracking-[0.25em] sm:tracking-[0.3em] text-[11px] sm:text-xs">Симулятор генерального менеджера</p>
             <h1 className="font-display text-4xl sm:text-5xl md:text-7xl font-bold uppercase leading-none mt-1.5 sm:mt-2">

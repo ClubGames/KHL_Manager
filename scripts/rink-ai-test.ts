@@ -134,4 +134,38 @@ test('frames, clips and replans are deterministic and consistent', () => {
   assert.equal(half.g, end);
 });
 
+test('pulled goalie at the end: six skaters at most, never a full bench on the ice', () => {
+  // Count skaters actually playing (not on their way to the bench) every recorded frame.
+  type Probe = { agents: Map<string, { side: 0 | 1; on: string; goalie: boolean; leave: unknown }>; mode: string };
+  const proto = RinkAI.prototype as unknown as { record: (this: Probe) => void };
+  const rec0 = proto.record;
+  let worst = [0, 0], tooMany = 0, pulledFrames = 0;
+  proto.record = function (this: Probe) {
+    rec0.call(this);
+    for (const s of [0, 1] as const) {
+      let sk = 0, g = 0;
+      for (const a of this.agents.values()) if (a.side === s && a.on === 'ice' && !a.leave) a.goalie ? g++ : sk++;
+      worst[s] = Math.max(worst[s], sk);
+      if (g && sk > 5) tooMany++;
+      if (!g && sk === 6) pulledFrames++;
+    }
+  };
+  try {
+    for (let g = 0; g < 8; g++) {
+      const sim = new GameSim(H, A, r.players);
+      sim.simPeriod(); sim.simPeriod();
+      // the trailing side (or the away side when level) plays the whole third with an extra attacker
+      const side = (sim.score[0] < sim.score[1] ? 0 : 1) as 0 | 1;
+      sim.setForceEmptyNet(side, true);
+      const start = sim.sec, evs = sim.simPeriod();
+      new RinkAI(evs, H, A, r.players, start, sim.sec, { goalies: [side === 0 ? null : H.lineup.starterG, side === 1 ? null : A.lineup.starterG] }).runToEnd();
+    }
+  } finally {
+    proto.record = rec0;
+  }
+  assert.ok(Math.max(...worst) <= 6, `max skaters ${worst}`);
+  assert.equal(tooMany, 0, 'six skaters while the goalie is in the net');
+  assert.ok(pulledFrames > 1000, `the extra attacker is actually used (${pulledFrames} frames)`);
+});
+
 console.log(`\n${pass} rink AI tests passed`);
