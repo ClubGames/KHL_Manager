@@ -161,10 +161,15 @@ jobs:
       group: apps-release
       cancel-in-progress: false
     steps:
+      # Only the app files (the «web» artifact is the browser build, published by pages.yml).
       - uses: actions/download-artifact@v4
         with:
+          name: windows
           path: files
-          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: android
+          path: files
       - name: Upload
         env:
           GH_TOKEN: ${{ github.token }}
@@ -184,9 +189,16 @@ jobs:
           «Подробнее» → «Выполнить в любом случае». Обновление: просто установите новую версию поверх — карьеры сохранятся.
           Браузерная версия: https://clubgames.github.io/KHL_Manager/
           EOF
+          ASSETS="files/KHL-GM-Setup.exe files/KHL-GM-Portable.exe files/KHL-GM.apk"
+          for f in $ASSETS; do test -f "$f" || { echo "::error::missing $f"; exit 1; }; done
           if gh release view app >/dev/null 2>&1; then
-            gh release upload app files/* --clobber
+            gh release upload app $ASSETS --clobber
             gh release edit app --title "Приложения КХЛ ГМ ${APP_VERSION}" --notes-file notes.md --latest
           else
-            gh release create app files/* --target "$GITHUB_SHA" --title "Приложения КХЛ ГМ ${APP_VERSION}" --notes-file notes.md --latest
+            gh release create app $ASSETS --target "$GITHUB_SHA" --title "Приложения КХЛ ГМ ${APP_VERSION}" --notes-file notes.md --latest
           fi
+          # Anything else attached to the release (left over from an earlier run) is removed.
+          gh release view app --json assets --jq '.assets[].name' | while read -r name; do
+            case "$name" in KHL-GM-Setup.exe|KHL-GM-Portable.exe|KHL-GM.apk) ;; *) gh release delete-asset app "$name" --yes ;; esac
+          done
+          gh release view app --json assets --jq '.assets[] | "\(.name) \(.size)"'
