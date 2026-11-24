@@ -1,3 +1,4 @@
+import { creditGame, ensureSeasonSplits } from './careerStats';
 import { adoptRosterCoachMarket, changeTeamFocus, ensureCoachingState, fireCoach, hireCoach, interveneTeam, recordCoachingResult, stepTeamManagement } from './coaching';
 import type { Coach, CoachPitch, PlayerPitch, TeamFocus, TeamIntervention } from '../types';
 import { useSyncExternalStore } from 'react';
@@ -271,6 +272,7 @@ export function migrateState(raw: unknown): GameState | null {
         g.result.homeDressed ??= [];
         g.result.awayDressed ??= [];
       }
+  ensureSeasonSplits(s);
   if (!s.board) setBoardGoal(s);
   s.deadlinePassed ??= s.phase === 'season' && !tradeWindow(s).open;
   s.version = SAVE_VERSION;
@@ -319,6 +321,7 @@ export function createGameState(r: NormalizedRoster, userTeamId: string): GameSt
     // free coaches come from roster.json; the built-in list is only a fallback for files without `freeCoaches`
     ...(r.freeCoaches ? { coachMarket: r.freeCoaches.map((c) => ({ ...c })), coachMarketVersion: 2, coachMarketSource: 'roster' } : { coachMarketSource: 'builtin' }),
     facesSynced: true,
+    splitsSeason: r.season,
     schedule: days,
     day: 0,
     nextGameId: nextId,
@@ -767,9 +770,11 @@ function runGame(state: GameState, g: Game): GameResult {
   const away = prepareLineup(state, g.away);
   const derby = getDerby(state.teams[g.home], state.teams[g.away]);
   const sim = new GameSim(buildSimTeam(state, g.home, home), buildSimTeam(state, g.away, away), state.players, g.kind === 'playoff', derby);
-  // simulated games are never replayed, so no play-by-play is generated for them
-  sim.quiet = true;
-  sim.keepShotMap = g.home === state.userTeamId || g.away === state.userTeamId;
+  // Other clubs' simulated games need no play-by-play; the manager's own simulated games keep it, so their goals can
+  // be replayed and the shootout read attempt by attempt in the match report.
+  const mine = g.home === state.userTeamId || g.away === state.userTeamId;
+  sim.quiet = !mine;
+  sim.keepShotMap = mine;
   return sim.runAll();
 }
 
@@ -883,20 +888,8 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
       p.fatigue = Math.max(0, (p.fatigue ?? 0) - 4);
       continue;
     }
-    p.stats.gp++;
-    p.stats.goals += l.goals;
-    p.stats.assists += l.assists;
-    p.stats.plusMinus += l.plusMinus;
-    p.stats.pim += l.pim;
-    p.stats.shots += l.shots;
+    creditGame(p, ti, g.kind === 'playoff' ? 'playoff' : 'regular', { line: l, goalie: isGoalie(p), won, beyond });
     if (isGoalie(p)) {
-      p.stats.minutes += l.minutes;
-      p.stats.saves += l.saves;
-      p.stats.shotsAgainst += l.shotsAgainst;
-      if (won) p.stats.wins++;
-      else if (beyond) p.stats.otl++;
-      else p.stats.losses++;
-      if (won && l.goalsAgainst === 0 && l.minutes >= 55) p.stats.shutouts++;
       const load = 19 + (l.shotsAgainst >= 34 ? 5 : l.shotsAgainst >= 28 ? 2 : 0) + (ti === g.away && isFarEastClub(H) ? 4 : 0);
       p.fatigue = clamp((p.fatigue ?? 0) + load, 0, 96);
     }

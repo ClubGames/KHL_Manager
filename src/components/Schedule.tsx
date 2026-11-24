@@ -1,5 +1,8 @@
 import { useMemo, useState } from 'react';
-import type { Game } from '../types';
+import type { Game, GameEvent } from '../types';
+import { GoalReplay } from './GoalReplay';
+import { ShootoutBoard } from './Shootout';
+import { goalEventFor } from '../game/live';
 import {
   isWeekendDay,
   MONDAY_FIRST_HEADERS,
@@ -28,6 +31,7 @@ function scoreTag(g: Game) {
 export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => void }) {
   const s = useGame()!;
   const ui = useUI();
+  const [replay, setReplay] = useState<GameEvent | null>(null);
   let game: Game | null = null;
   for (const d of s.schedule) {
     const g = d.find((x) => x.id === gameId);
@@ -148,14 +152,18 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
             </div>
           )}
 
+          {r.so && <ShootoutBoard events={r.events} home={H} away={A} players={P} className="mt-4" />}
+
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <div>
               <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Заброшенные шайбы</div>
-              <ul className="text-xs space-y-1 max-h-56 overflow-y-auto pr-1">
+              <ul className="text-xs space-y-1 max-h-56 overflow-y-auto pr-1" data-box-goals>
                 {r.scorers.length === 0 && <li className="text-muted">Шайб не было</li>}
-                {r.scorers.map((sc, i) => (
-                  <li key={i} className="flex gap-2">
-                    <span className="w-10 text-muted tabular shrink-0">{sc.period <= 3 ? sc.period : 'ОТ'} · {sc.time}</span>
+                {r.scorers.map((sc, i) => {
+                  const ev = goalEventFor(r.events, sc);
+                  return (
+                  <li key={i} className="flex items-center gap-2">
+                    <span className="w-14 text-muted tabular shrink-0 whitespace-nowrap">{sc.period <= 3 ? sc.period : 'ОТ'} · {sc.time}</span>
                     <span className="truncate">
                       <b className={sc.team === game.home ? 'text-ice' : 'text-amber'}>{s.teams[sc.team].short}</b> {P[sc.scorer]?.name}
                       {sc.assists.length > 0 && <span className="text-muted"> ({sc.assists.map((a) => P[a]?.name).join(', ')})</span>}
@@ -163,9 +171,16 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
                       {sc.strength === 'SH' && <span className="text-muted"> Мен</span>}
                       {sc.strength === 'EN' && <span className="text-muted"> ПВ</span>}
                     </span>
+                    {ev && (
+                      <button type="button" onClick={() => setReplay(ev)} className="ml-auto shrink-0 rounded border border-accent/50 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-accent hover:bg-accent/10" data-box-replay title="3D-повтор гола">
+                        ▶ Повтор
+                      </button>
+                    )}
                   </li>
-                ))}
+                  );
+                })}
               </ul>
+              {r.scorers.length > 0 && !r.events.some((e) => e.type === 'goal') && <div className="mt-1 text-[10px] text-muted">{isUserMatch ? '3D-повторы сохраняются для матчей, сыгранных после обновления игры.' : '3D-повторы сохраняются только для матчей вашей команды.'}</div>}
             </div>
             <div>
               <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Вратари и звёзды</div>
@@ -194,6 +209,7 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
           </div>
         </>
       )}
+      {replay && <GoalReplay event={replay} home={H} away={A} players={P} onClose={() => setReplay(null)} closeLabel="Закрыть повтор" />}
     </Modal>
   );
 }

@@ -7,8 +7,10 @@ import { canExportMp4, exportReplayMp4, saveVideo, videoFileName, type ExportGra
 import { Button, Icon, TeamLogo } from './ui';
 import { exitFullscreen, fullscreenElement, useFullscreen } from '../fullscreen';
 
-export function GoalReplay({ event, home, away, players, onClose, motionClip }: {
+export function GoalReplay({ event, home, away, players, onClose, motionClip, closeLabel = 'Продолжить матч' }: {
   event: GameEvent; home: Team; away: Team; players: Record<string, Player>; onClose: () => void; motionClip?: ReplayClip;
+  /** label of the button that closes the replay (the match goes on / back to the report) */
+  closeLabel?: string;
 }) {
   const clip = useMemo(() => motionClip ?? buildReplayClip(event, home, away, players), [motionClip, event, home, away, players]);
   const reduced = useRef(typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches).current;
@@ -136,12 +138,12 @@ export function GoalReplay({ event, home, away, players, onClose, motionClip }: 
             <button type="button" onClick={() => void runExport()} disabled={mp4 === null || exportProgress !== null} data-replay-export title="Сохранить повтор как видео MP4 (с графикой и замедленным повтором)" className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded bg-[#d8314b] hover:bg-[#e8445d] text-white disabled:opacity-50">⤓ Скачать видео</button>
             {mp4 && <select aria-label="Разрешение видео" value={videoHeight} onChange={e => setVideoHeight(Number(e.target.value) === 720 ? 720 : 1080)} disabled={exportProgress !== null} className="bg-[#15283d] rounded p-1 text-xs text-white"><option value={1080}>1080p</option><option value={720}>720p</option></select>}
             <button type="button" onClick={() => toggleFs.current()} aria-pressed={expanded} data-replay-fullscreen title={expanded ? 'Свернуть (Esc)' : 'Во весь экран (F)'} aria-label={expanded ? 'Свернуть повтор' : 'Повтор во весь экран'} className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded border ${expanded ? 'bg-ice text-bg border-ice' : 'border-line text-muted hover:text-white'}`}><Icon name={expanded ? 'shrink' : 'expand'} /><span className="hidden sm:inline">{expanded ? 'Свернуть' : 'Во весь экран'}</span></button>
-            {expanded && <Button size="sm" variant="primary" onClick={finish} data-replay-continue>Продолжить матч</Button>}
+            {expanded && <Button size="sm" variant="primary" onClick={finish} data-replay-continue>{closeLabel}</Button>}
           </div>
           {exportNote && <div className="w-full text-[11px] text-muted" role="status" data-export-note>{exportNote}</div>}
         </div>
       </> : <div className="p-6 text-muted">Недостаточно данных для реконструкции эпизода.</div>}
-      <div className={`${expanded && clip ? 'hidden' : 'flex'} gap-3 justify-between items-center px-3 py-1.5 border-t border-white/10 shrink-0`}><p className="text-[11px] min-w-0 flex-1 truncate" title={event.text}>{event.text}</p><Button size="sm" variant="primary" onClick={finish}>Продолжить матч</Button></div>
+      <div className={`${expanded && clip ? 'hidden' : 'flex'} gap-3 justify-between items-center px-3 py-1.5 border-t border-white/10 shrink-0`}><p className="text-[11px] min-w-0 flex-1 truncate" title={event.text}>{event.text}</p><Button size="sm" variant="primary" onClick={finish}>{closeLabel}</Button></div>
     </div>
   </div>;
   return typeof document === 'undefined' ? overlay : createPortal(overlay, document.body);

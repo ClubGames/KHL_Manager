@@ -1,4 +1,4 @@
-import type { GameEvent, ShotPoint } from '../types';
+import type { GameEvent, ScoringPlay, ShotPoint } from '../types';
 
 /**
  * Match statistics as the viewer has seen them so far. The engine computes a whole period at once,
@@ -136,4 +136,9 @@ export function manpower(L: LiveStats, sec: number): { state: 0 | 1 | 'even' | n
   if (h > 0) return { state: 1, remaining: h };
   if (a > 0) return { state: 0, remaining: a };
   return { state: null, remaining: 0 };
+}
+
+/** The play-by-play event of a goal from the scoring summary (null when the log was not kept, e.g. after a reload). */
+export function goalEventFor(events: GameEvent[] | undefined, sc: ScoringPlay): GameEvent | null {
+  return events?.find((e) => e.type === 'goal' && e.period === sc.period && e.time === sc.time && e.player === sc.scorer && e.team === sc.team) ?? null;
 }

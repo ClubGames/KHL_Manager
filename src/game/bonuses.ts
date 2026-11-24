@@ -1,3 +1,4 @@
+import { pastSeasonTotals } from './careerStats';
 import type { BonusKind, ContractBonus, GameState, Player } from '../types';
 import { teamStrength } from './board';
 import { goalieSavePct } from './ratings';
@@ -124,7 +125,7 @@ export function bonusChance(state: GameState, b: Pick<ContractBonus, 'kind' | 't
   // Per-game rates calibrated on simulated seasons of this engine.
   let goals = d ? 0.002 * (p.overall - 60) + 0.01 : 0.0125 * (p.overall - 60) + 0.047;
   let pts = d ? 0.021 * (p.overall - 60) + 0.095 : 0.0235 * (p.overall - 60) + 0.1;
-  const last = [...(p.history ?? [])].reverse().find((h) => h.gp >= 20);
+  const last = pastSeasonTotals(p).reverse().find((h) => h.gp >= 20);
   if (last) { goals = (goals + last.goals / last.gp) / 2; pts = (pts + (last.goals + last.assists) / last.gp) / 2; }
   const role = rank < top / 2 ? 1.12 : rank < top ? 1 : 0.8;
   const m = Math.max(0.2, (b.kind === 'goals' ? goals : pts) * role * games);

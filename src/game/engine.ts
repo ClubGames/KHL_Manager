@@ -89,6 +89,9 @@ export function periodName(period: number, kind: BlockKind): string {
   return period === 4 ? 'Овертайм' : `${period - 3}-й овертайм`;
 }
 
+/** Shootout ability: finishing, hands and speed. */
+export const shootoutSkill = (p: Player) => (p.skills.shooting ?? 65) * 0.55 + (p.skills.puckControl ?? p.skills.puckHandling ?? 65) * 0.3 + (p.skills.skating ?? 65) * 0.15;
+
 const skatersOf = (ids: (string | null)[], P: Record<string, Player>): string[] =>
   ids.filter((id): id is string => !!id && !!P[id] && !isGoalie(P[id]));
 
@@ -219,6 +222,8 @@ export class GameSim {
   sec = 0;
   status: 'playing' | 'ot' | 'so' | 'done' = 'playing';
   hadSO = false;
+  /** the manager's first three shootout shooters per side (null = the bench picks the best shooters) */
+  soOrder: [string[] | null, string[] | null] = [null, null];
   private unitIdx: [number, number] = [0, 0];
   private blockKind: BlockKind = 'reg';
   private blockStart = 0;
@@ -935,46 +940,64 @@ export class GameSim {
     if (!this.quiet) this.push({ type: 'hit', team: this.team(i).id, player: a, players: [v], text: `Силовой приём: ${this.P[a].name} против ${this.P[v].name}` });
   }
 
+  /** Skaters dressed for the shootout, best shooters first (the manager's picker and the AI order use it). */
+  shootoutCandidates(i: TI): string[] {
+    const L = this.team(i).lineup;
+    const ids = skatersOf([...L.F.flat(), ...L.D.flat(), L.u20F ?? null, L.u20D ?? null], this.P).filter((id) => !this.P[id].injury || this.P[id].playingThroughInjury);
+    return [...new Set(ids)].sort((a, b) => shootoutSkill(this.P[b]) - shootoutSkill(this.P[a]));
+  }
+
+  /**
+   * KHL shootout: three different shooters per team; it stops as soon as one side can no longer catch up. Still level
+   * after three rounds, it goes on one pair at a time (any skater may shoot again) until a round is won.
+   */
   private simSO(): GameEvent[] {
     const start = this.events.length;
     this.period++;
     this.blockKind = 'so';
     this.blockStart = this.sec;
-    this.push({ type: 'period_start', text: 'Начинается серия буллитов' });
-    const shooters = ([0, 1] as TI[]).map((i) => {
-      const L = this.team(i).lineup;
-      const ids = skatersOf([...(L.F[0] ?? []), ...(L.F[1] ?? []), ...(L.D[0] ?? [])], this.P);
-      return [...new Set(ids)].sort((a, b) => (this.P[b].skills.shooting ?? 60) - (this.P[a].skills.shooting ?? 60)).slice(0, 5);
+    this.push({ type: 'period_start', text: 'Начинается серия буллитов: по три броска, при равенстве — по одному до первого промаха' });
+    const order = ([0, 1] as TI[]).map((i) => {
+      const all = this.shootoutCandidates(i);
+      const picked = (this.soOrder[i] ?? []).filter((id, k, arr) => all.includes(id) && arr.indexOf(id) === k).slice(0, 3);
+      return [...picked, ...all.filter((id) => !picked.includes(id))];
     });
     const so: [number, number] = [0, 0];
-    const attempt = (i: TI, r: number) => {
-      const sh = shooters[i][r % Math.max(1, shooters[i].length)];
+    const taken: [number, number] = [0, 0];
+    const attempt = (i: TI, round: number) => {
+      const list = order[i];
+      // Sudden death: the next best shooters, round after round (repeats allowed once everybody has shot).
+      const sh = list.length ? list[(round - 1) % list.length] : null;
       const gid = this.goalies[1 - i];
       const g = gid ? this.P[gid] : null;
+      taken[i]++;
       if (!sh) return false;
       const sp = this.P[sh];
-      const gOvr = g ? effectiveGoalieOvr(g, this.team((1 - i) as TI).roadStreak ?? 0) : 55;
+      const gOvr = g ? effectiveGoalieOvr(g, this.team((1 - i) as TI).roadStreak ?? 0) + (this.team((1 - i) as TI).coaching?.goalie ?? 0) : 55;
       const lead = (this.team(i).leadershipBonus ?? 0) * 0.008;
-      const p = clamp(0.33 + lead + ((sp.skills.shooting ?? 65) - 70) * 0.004 + ((sp.skills.skating ?? 65) - 70) * 0.001 - (gOvr - 70) * 0.0035, 0.12, 0.6);
-      const ok = Math.random() < p;
-      this.push({ type: ok ? 'so_goal' : 'so_miss', team: this.team(i).id, player: sh, time: `${r + 1}-й раунд`, text: `${sp.name} — ${ok ? 'ЗАБИВАЕТ' : 'не реализует буллит'} (${g?.name ?? ''})` });
+      const pr = clamp(0.27 + lead + (shootoutSkill(sp) - 70) * 0.0055 - (gOvr - 70) * 0.0035, 0.12, 0.6);
+      const ok = Math.random() < pr;
+      if (ok) so[i]++;
+      const how = ok ? pick(['ЗАБИВАЕТ финтом', 'ЗАБИВАЕТ кистевым', 'ЗАБИВАЕТ под перекладину', 'ЗАБИВАЕТ между щитков', 'ЗАБИВАЕТ с бэкхенда']) : pick(['вратарь берёт бросок', 'щиток вратаря', 'мимо ворот', 'штанга!', 'вратарь не купился на финт']);
+      this.push({
+        type: ok ? 'so_goal' : 'so_miss', team: this.team(i).id, player: sh, goalie: gid ?? null, round,
+        time: `${round}-й раунд`, so: [so[0], so[1]],
+        text: `Буллит, ${round}-й раунд: ${sp.name} — ${how}${g ? ` (${g.name})` : ''}. Серия ${so[0]}:${so[1]}`,
+      });
       return ok;
     };
-    for (let r = 0; r < 3; r++) {
-      if (attempt(0, r)) so[0]++;
-      if (attempt(1, r)) so[1]++;
+    // The first three rounds, ended early once the result cannot change.
+    const decided = () => so[0] > so[1] + (3 - taken[1]) || so[1] > so[0] + (3 - taken[0]);
+    for (let r = 1; r <= 3 && !decided(); r++) {
+      attempt(0, r);
+      if (decided()) break;
+      attempt(1, r);
     }
-    let round = 3;
-    while (so[0] === so[1] && round < 12) {
-      const a = attempt(0, round);
-      const b = attempt(1, round);
-      if (a) so[0]++;
-      if (b) so[1]++;
+    let round = 4;
+    while (so[0] === so[1] && round < 200) {
+      attempt(0, round);
+      attempt(1, round);
       round++;
-    }
-    if (so[0] === so[1]) {
-      if (Math.random() < 0.5) so[0]++;
-      else so[1]++;
     }
     const w: TI = so[0] > so[1] ? 0 : 1;
     this.score[w]++;

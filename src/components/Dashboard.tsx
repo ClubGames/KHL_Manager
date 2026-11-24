@@ -1,7 +1,8 @@
 import { recentTeamForm } from '../game/coaching';
 import { useState } from 'react';
 import { nextUserGame, regularSeasonLength, seasonDate } from '../game/schedule';
-import { rankConference, simulateDay, simulateDays, simulateToNextUserGame, useGame } from '../game/state';
+import { rankConference, simulateDay, simulateDays, simulateToNextUserGame, store, useGame } from '../game/state';
+import { LastResults, userGamesBetween } from './LastResults';
 import { isGoalie, isSkater, points } from '../game/ratings';
 import { getCapSummary } from '../game/cap';
 import { countRosterLegionnaires, teamForeignLimit } from '../game/legionnaires';
@@ -92,19 +93,35 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
       onYes: run,
     });
   };
+  /** Fast simulation never hides the club's results: they are listed, and a single game opens its report. */
+  const [simulated, setSimulated] = useState<number[]>([]);
+  const track = (run: () => void, openSingle = false) => {
+    const from = store.get()?.day ?? s.day;
+    run();
+    const after = store.get();
+    if (!after) return;
+    const games = userGamesBetween(after, from, after.day);
+    if (games.length) setSimulated(games.map((g) => g.id));
+    if (openSingle && games.length === 1) ui.openGame(games[0].id);
+  };
+  const simDay = () => track(() => simulateDay(true), true);
   const simToNext = () =>
     guarded('Симулировать до следующего матча', () => {
-      const res = simulateToNextUserGame(true);
+      const box: { res: ReturnType<typeof simulateToNextUserGame> } = { res: 'stalled' };
+      track(() => { box.res = simulateToNextUserGame(true); });
+      const res = box.res;
       if (res === 'offseason') ui.nav('offseason');
       setSimNote(res === 'inbox' ? 'Симуляция остановлена: во входящих новая задача.' : null);
     });
   const simGame = () =>
     blockingTasks(s).length
-      ? guarded('Симулировать матч по текущим звеньям', () => simulateDay(true))
-      : ui.confirm({ title: 'Симулировать матч?', text: 'Результат будет рассчитан по текущим звеньям без просмотра матча.', confirmLabel: 'Симулировать', onYes: () => simulateDay(true) });
+      ? guarded('Симулировать матч по текущим звеньям', simDay)
+      : ui.confirm({ title: 'Симулировать матч?', text: 'Результат будет рассчитан по текущим звеньям без просмотра матча. Итог и повторы голов откроются сразу после симуляции.', confirmLabel: 'Симулировать', onYes: simDay });
   const simWeek = () =>
     guarded('Симулировать 5 дней', () => {
-      const res = simulateDays(5);
+      const box: { res: ReturnType<typeof simulateDays> } = { res: { days: 0, stop: 'done' } };
+      track(() => { box.res = simulateDays(5); });
+      const res = box.res;
       setSimNote(res.stop === 'inbox' ? `Симуляция остановлена через ${res.days} дн.: во входящих новая задача.` : null);
     });
 
@@ -119,6 +136,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
         <Stat label="Бюджет" value={money(U.budget)} sub={`ФОТ ${money(fol)}`} color="#3FCF8E" />
       </div>
 
+      <LastResults s={s} simulated={simulated} onDismiss={() => setSimulated([])} />
       {s.press && <PressConferencePanel />}
       <PreseasonPanel />
       {(simNote || inbox.length > 0) && (
@@ -240,7 +258,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
                         <Icon name="fast" /> Симулировать до матча
                       </Button>
                       <div className="grid grid-cols-2 gap-2 sm:contents">
-                        <Button size="lg" className="w-full sm:w-auto" onClick={() => simulateDay(true)}>
+                        <Button size="lg" className="w-full sm:w-auto" onClick={simDay}>
                           Симулировать день
                         </Button>
                         <Button size="lg" variant="ghost" className="w-full sm:w-auto border border-line sm:border-0" onClick={simWeek}>
@@ -278,7 +296,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
                   <Button variant="primary" size="lg" onClick={simToNext}>
                     <Icon name="fast" /> Симулировать до следующего раунда
                   </Button>
-                  <Button size="lg" onClick={() => simulateDay(true)}>
+                  <Button size="lg" onClick={simDay}>
                     Симулировать день
                   </Button>
                   <Button size="lg" variant="ghost" onClick={() => ui.nav('standings')}>
@@ -295,7 +313,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
                   <Button variant="primary" size="lg" onClick={simToNext}>
                     <Icon name="fast" /> Досимулировать плей-офф и перейти в межсезонье
                   </Button>
-                  <Button size="lg" onClick={() => simulateDay(true)}>
+                  <Button size="lg" onClick={simDay}>
                     Симулировать день
                   </Button>
                   <Button size="lg" variant="ghost" onClick={() => ui.nav('standings')}>
@@ -312,7 +330,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
                   <Button variant="primary" size="lg" onClick={simToNext}>
                     <Icon name="fast" /> Досимулировать регулярку
                   </Button>
-                  <Button size="lg" onClick={() => simulateDay(true)}>
+                  <Button size="lg" onClick={simDay}>
                     Симулировать день
                   </Button>
                   <Button size="lg" variant="ghost" onClick={() => ui.nav('standings')}>

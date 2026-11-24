@@ -1,3 +1,4 @@
+import { PlayerCareer } from './PlayerCareer';
 import { StaffSummary } from './Coaching';
 import { useEffect, useMemo, useState } from 'react';
 import type { Player } from '../types';
@@ -1078,37 +1079,9 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
               </div>
             )}
           </div>
-          {p.history.length > 0 && (
-            <div className="bg-panel2/70 border border-line/70 rounded-sm p-3 text-xs">
-              <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Прошлые сезоны</div>
-              <table className="w-full tabular">
-                <thead className="text-muted">
-                  <tr>
-                    <th className="text-left font-semibold">Сезон</th>
-                    <th className="text-left font-semibold">ОВР</th>
-                    <th className="text-right font-semibold">И</th>
-                    <th className="text-right font-semibold">Ш</th>
-                    <th className="text-right font-semibold">П</th>
-                    <th className="text-right font-semibold">{isG ? 'В' : 'О'}</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {p.history.slice(-4).map((h) => (
-                    <tr key={h.season} className="border-t border-line/50">
-                      <td>{h.season}</td>
-                      <td>{h.overall}</td>
-                      <td className="text-right">{h.gp}</td>
-                      <td className="text-right">{h.goals}</td>
-                      <td className="text-right">{h.assists}</td>
-                      <td className="text-right font-semibold">{isG ? h.wins : h.goals + h.assists}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
         </div>
       </div>
+      <PlayerCareer p={p} />
       {modalNotice && (
         <div className="mt-3 rounded-sm border border-ice/40 bg-ice/10 px-3 py-1.5 text-xs text-ice">{modalNotice}</div>
       )}

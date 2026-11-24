@@ -23,12 +23,14 @@ export function isU20DefenseLimiter(p: Player | null | undefined): boolean {
 
 /* ---------------- Veteran Retirements & Hall of Fame ---------------- */
 
-function careerTotals(p: Player) {
-  let gp = p.stats.gp;
-  let goals = p.stats.goals;
-  let assists = p.stats.assists;
-  let wins = p.stats.wins;
-  let shutouts = p.stats.shutouts;
+function careerTotals(p: Player, season?: string) {
+  // The finished season may already be in the history (retirements happen after it is recorded).
+  const live = p.history[p.history.length - 1]?.season === season ? null : p.stats;
+  let gp = live?.gp ?? 0;
+  let goals = live?.goals ?? 0;
+  let assists = live?.assists ?? 0;
+  let wins = live?.wins ?? 0;
+  let shutouts = live?.shutouts ?? 0;
   let peakOvr = p.overall;
   for (const h of p.history) {
     gp += h.gp;
@@ -59,7 +61,7 @@ export function shouldVeteranRetire(p: Player): boolean {
 }
 
 export function buildHallOfFameEntry(state: GameState, p: Player, forceJersey = false): HallOfFameEntry {
-  const tot = careerTotals(p);
+  const tot = careerTotals(p, state.league.season);
   const lastTeamId = p.teamId ?? ([...p.history].reverse().find((h) => h.teamId)?.teamId ?? null);
   const teamName = lastTeamId && state.teams[lastTeamId] ? state.teams[lastTeamId].name : 'КХЛ';
   const jerseyRetired =
@@ -110,7 +112,7 @@ export function processVeteranRetirements(
     }
     if (!shouldVeteranRetire(p)) continue;
 
-    const tot = careerTotals(p);
+    const tot = careerTotals(p, state.league.season);
     const isUserPlayer = p.teamId === state.userTeamId;
     const notable = isUserPlayer || tot.peakOvr >= 77 || tot.gp >= 90 || tot.goals + tot.assists >= 65 || tot.wins >= 35;
     const entry = buildHallOfFameEntry(state, p);

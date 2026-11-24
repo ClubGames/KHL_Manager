@@ -1,3 +1,4 @@
+import { recordSeasonHistory, resetSeasonSplits } from './careerStats';
 import { ensureTeamManagement } from './coaching';
 import type { GameState, OffseasonPlan, YouthTrainingPlan } from '../types';
 import { buildSchedule } from './schedule';
@@ -40,27 +41,7 @@ export function toFreeAgency(state: GameState, id: string, keepRightsTeamId?: st
 
 const aiYears = (age: number) => 1 + Math.floor(Math.random() * Math.min(3, maxYears(age)));
 
-function recordSeasonHistoryOnce(state: GameState) {
-  const P = state.players;
-  const curSeason = state.league.season;
-  for (const id in P) {
-    const p = P[id];
-    if (!p) continue;
-    const last = p.history[p.history.length - 1];
-    if ((p.stats.gp || p.history.length) && last?.season !== curSeason) {
-      p.history.push({
-        season: curSeason,
-        teamId: p.teamId,
-        overall: p.overall,
-        gp: p.stats.gp,
-        goals: p.stats.goals,
-        assists: p.stats.assists,
-        wins: p.stats.wins,
-        shutouts: p.stats.shutouts,
-      });
-    }
-  }
-}
+const recordSeasonHistoryOnce = recordSeasonHistory;
 
 export function startOffseason(state: GameState): OffseasonPlan {
   recordSeasonHistoryOnce(state);
@@ -260,6 +241,7 @@ export function beginNewSeason(state: GameState) {
   }
   state.seasonNumber += 1;
   state.league.season = nextSeasonLabel(state.league.season);
+  resetSeasonSplits(state);
   state.waivers = [];
   state.rfaOffers = [];
   state.allStar = null;
