@@ -1,4 +1,5 @@
 import * as T from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 
 /**
  * Hockey kit volume for the base body, and the helmets.
@@ -184,25 +185,117 @@ function onSkull(mesh: T.Object3D, phi: number, theta: number, grow: number, spi
 }
 
 type GearKit = { helmet: string; trim: string; glove: string; crest?: T.Material; goalie?: boolean };
+type HelmetRole = 'shell' | 'rubber' | 'steel' | 'vent' | 'visor' | 'crest' | 'mask' | 'guard';
+type HelmetPart = { role: HelmetRole; geometry: T.BufferGeometry; cast: boolean };
+
+// Goalie mask: one shell from the crown to the chin with a cat-eye opening covered by the cage.
+const maskSpec: ShellSpec = {
+  edge: phi => { const a = Math.abs(phi); return a < 1.4 ? .86 * Math.PI : lerp(.86 * Math.PI, .7 * Math.PI, smooth(1.4, 2.4, a)); },
+  hole: (phi, theta) => Math.abs(phi) < .78 && theta > .43 * Math.PI && theta < .74 * Math.PI,
+  thickness: .012, boxy: 2.2, scale: [1.02, 1.06, 1.08],
+};
+
+/** Bakes each part's transform and merges the parts of one material role into one geometry (one draw call). */
+function mergeByRole(group: T.Group): HelmetPart[] {
+  const byRole = new Map<HelmetRole, { list: T.BufferGeometry[]; cast: boolean }>();
+  group.updateMatrixWorld(true);
+  group.children.forEach(o => {
+    const mesh = o as T.Mesh, material = mesh.material as T.Material, name = material.name as HelmetRole;
+    let g = mesh.geometry.clone().applyMatrix4(mesh.matrixWorld);
+    if (g.index) g = g.toNonIndexed();
+    const entry = byRole.get(name) ?? { list: [], cast: false };
+    entry.list.push(g); entry.cast ||= mesh.castShadow; byRole.set(name, entry);
+  });
+  const parts: HelmetPart[] = [];
+  byRole.forEach(({ list, cast }, role) => {
+    // Only attributes every part has (the visor has no UVs).
+    const keep = ['position', 'normal', 'uv'].filter(k => list.every(g => g.getAttribute(k)));
+    list.forEach(g => Object.keys(g.attributes).forEach(k => { if (!keep.includes(k)) g.deleteAttribute(k); }));
+    const merged = list.length === 1 ? list[0] : mergeGeometries(list, false);
+    if (list.length > 1) list.forEach(g => g.dispose());
+    if (merged) parts.push({ role, geometry: merged, cast });
+  });
+  group.traverse(o => { const m = o as T.Mesh; if (m.isMesh) { m.geometry.dispose(); (m.material as T.Material).dispose(); } });
+  return parts;
+}
+
+const helmetCache = new Map<boolean, HelmetPart[]>();
+/** Helmet geometry is the same for every player: built once (per skater / goalie), shared by all figures. */
+function helmetParts(goalie: boolean) {
+  let parts = helmetCache.get(goalie);
+  if (!parts) { parts = mergeByRole(helmetMeshes(goalie)); helmetCache.set(goalie, parts); }
+  return parts;
+}
+
+let maskTrim: Uint8Array | null = null;
+const MASK_W = 512, MASK_H = 256;
+/** Pixels of the mask paint texture that carry the club trim (computed once). */
+function maskTrimPixels() {
+  if (maskTrim) return maskTrim;
+  const out = new Uint8Array(MASK_W * MASK_H);
+  for (let py = 0; py < MASK_H; py++) for (let px = 0; px < MASK_W; px++) {
+    const phi = -Math.PI + ((px + .5) / MASK_W) * Math.PI * 2, theta = ((py + .5) / MASK_H) * Math.PI;
+    const p = skull(phi, theta, 0, maskSpec), ax = Math.abs(p.x);
+    if ((ax > .03 && ax < .052 && theta < .72 * Math.PI) || (theta > .8 * Math.PI && theta < .84 * Math.PI)) out[py * MASK_W + px] = 1;
+  }
+  return (maskTrim = out);
+}
+
+/** Painted goalie mask: club trim stripes over the crown, from the cage back to the neck (shell UV space). */
+function maskPaint(kit: GearKit): T.Texture | null {
+  const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
+  const ctx = canvas?.getContext('2d');
+  if (!canvas || !ctx) return null;
+  canvas.width = MASK_W; canvas.height = MASK_H;
+  const base = new T.Color(kit.helmet), trim = new T.Color(kit.trim);
+  const img = ctx.createImageData(MASK_W, MASK_H), d = img.data, trimPx = maskTrimPixels();
+  const b = [base.r, base.g, base.b].map(v => Math.round(v * 255)), t = [trim.r, trim.g, trim.b].map(v => Math.round(v * 255));
+  for (let i = 0; i < trimPx.length; i++) { const c = trimPx[i] ? t : b, k = i * 4; d[k] = c[0]; d[k + 1] = c[1]; d[k + 2] = c[2]; d[k + 3] = 255; }
+  ctx.putImageData(img, 0, 0);
+  const tex = new T.CanvasTexture(canvas); tex.flipY = false; tex.colorSpace = T.SRGBColorSpace; tex.anisotropy = 4;
+  return tex;
+}
 
 /**
  * Builds the helmet (skater: shell with vents, ear guards, chin strap and a half visor; goalie: a mask with
- * a cat-eye cage and a throat guard). Everything is returned in head-bone space; owned resources are pushed
- * to `own` so the figure can dispose of them.
+ * a cat-eye cage and a throat guard). Everything is returned in head-bone space. The geometry is shared (never
+ * pushed to `own`); the kit-coloured materials are owned by the figure.
  */
 export function buildHelmet(kit: GearKit, own: { geometries: T.BufferGeometry[]; materials: T.Material[]; textures?: T.Texture[] }): T.Group {
   const group = new T.Group();
-  const geo = <G extends T.BufferGeometry>(g: G) => { own.geometries.push(g); return g; };
   const mat = <M extends T.Material>(m: M) => { own.materials.push(m); return m; };
-  const add = (g: T.BufferGeometry, m: T.Material, cast = false) => { const mesh = new T.Mesh(geo(g), m); mesh.castShadow = cast; group.add(mesh); return mesh; };
-  // Glossy painted plastic.
-  const shell = mat(new T.MeshPhysicalMaterial({ color: kit.helmet, roughness: .32, metalness: 0, clearcoat: .8, clearcoatRoughness: .15, side: T.DoubleSide }));
-  const rubber = mat(new T.MeshStandardMaterial({ color: '#15181d', roughness: .7 }));
-  const steel = mat(new T.MeshStandardMaterial({ color: '#cfd6dc', roughness: .25, metalness: .85 }));
   const light = new T.Color(kit.helmet).getHSL({ h: 0, s: 0, l: 0 }).l > .55;
-  const vent = mat(new T.MeshStandardMaterial({ color: light ? '#2a2f36' : '#07090c', roughness: .8 }));
+  const paint = kit.goalie ? maskPaint(kit) : null;
+  if (paint) own.textures?.push(paint);
+  const materials: Partial<Record<HelmetRole, T.Material>> = {
+    // Glossy painted plastic.
+    shell: mat(new T.MeshPhysicalMaterial({ color: kit.helmet, roughness: .32, metalness: 0, clearcoat: .8, clearcoatRoughness: .15, side: T.DoubleSide })),
+    rubber: mat(new T.MeshStandardMaterial({ color: '#15181d', roughness: .7 })),
+    steel: mat(new T.MeshStandardMaterial({ color: '#cfd6dc', roughness: .25, metalness: .85 })),
+    vent: mat(new T.MeshStandardMaterial({ color: light ? '#2a2f36' : '#07090c', roughness: .8 })),
+    visor: mat(new T.MeshPhysicalMaterial({ color: '#cfe3ee', roughness: .05, metalness: 0, transparent: true, opacity: .28, side: T.DoubleSide, depthWrite: false, clearcoat: 1 })),
+    crest: kit.crest,
+    mask: kit.goalie ? mat(new T.MeshPhysicalMaterial({ color: paint ? '#ffffff' : kit.helmet, map: paint, roughness: .3, clearcoat: .8, clearcoatRoughness: .15, side: T.DoubleSide })) : undefined,
+    guard: kit.goalie ? mat(new T.MeshPhysicalMaterial({ color: '#dfe7ee', roughness: .1, transparent: true, opacity: .55, side: T.DoubleSide, depthWrite: false })) : undefined,
+  };
+  for (const part of helmetParts(!!kit.goalie)) {
+    const m = materials[part.role];
+    if (!m) continue;
+    const mesh = new T.Mesh(part.geometry, m); mesh.castShadow = part.cast; group.add(mesh);
+  }
+  return group;
+}
 
-  if (!kit.goalie) {
+function helmetMeshes(goalie: boolean): T.Group {
+  const group = new T.Group();
+  const geo = <G extends T.BufferGeometry>(g: G) => g;
+  // Placeholders: each stands for a material role; the parts are merged per role afterwards.
+  const role = (name: HelmetRole) => { const m = new T.MeshBasicMaterial(); m.name = name; return m; };
+  const add = (g: T.BufferGeometry, m: T.Material, cast = false) => { const mesh = new T.Mesh(geo(g), m); mesh.castShadow = cast; group.add(mesh); return mesh; };
+  const shell = role('shell'), rubber = role('rubber'), steel = role('steel'), vent = role('vent');
+  const kit = { crest: role('crest') };
+
+  if (!goalie) {
     add(shellGeometry({ edge: helmetEdge, thickness: .012 }), shell, true);
     // Vent slots: two rows on top, one at the back.
     const slot = geo(new T.CapsuleGeometry(.0065, .022, 3, 6));
@@ -237,7 +330,7 @@ export function buildHelmet(kit: GearKit, own: { geometries: T.BufferGeometry[];
     }
     for (let i = 0; i < VS; i++) for (let j = 0; j < VR; j++) { const a = i * (VR + 1) + j, b = a + VR + 1; visorIdx.push(a, b, a + 1, b, b + 1, a + 1); }
     const vg = new T.BufferGeometry(); vg.setAttribute('position', new T.Float32BufferAttribute(visorPts, 3)); vg.setIndex(visorIdx); vg.computeVertexNormals();
-    add(vg, mat(new T.MeshPhysicalMaterial({ color: '#cfe3ee', roughness: .05, metalness: 0, transparent: true, opacity: .28, side: T.DoubleSide, depthWrite: false, clearcoat: 1 })));
+    add(vg, role('visor'));
     const trimPts: T.Vector3[] = [];
     for (let i = 0; i <= VS; i++) { const k = (i * (VR + 1) + VR) * 3; trimPts.push(new T.Vector3(visorPts[k], visorPts[k + 1], visorPts[k + 2])); }
     add(new T.TubeGeometry(new T.CatmullRomCurve3(trimPts), 32, .0025, 4), rubber);
@@ -249,31 +342,7 @@ export function buildHelmet(kit: GearKit, own: { geometries: T.BufferGeometry[];
     return group;
   }
 
-  // Goalie mask: one shell from the crown to the chin with a cat-eye opening covered by the cage.
-  const maskSpec: ShellSpec = {
-    edge: phi => { const a = Math.abs(phi); return a < 1.4 ? .86 * Math.PI : lerp(.86 * Math.PI, .7 * Math.PI, smooth(1.4, 2.4, a)); },
-    hole: (phi, theta) => Math.abs(phi) < .78 && theta > .43 * Math.PI && theta < .74 * Math.PI,
-    thickness: .012, boxy: 2.2, scale: [1.02, 1.06, 1.08],
-  };
-  // Painted mask: club trim stripes over the crown, from the cage back to the neck (drawn in shell UV space).
-  const canvas = typeof document !== 'undefined' ? document.createElement('canvas') : null;
-  let paintMap: T.Texture | null = null;
-  const ctx = canvas?.getContext('2d');
-  if (canvas && ctx) {
-    const W = 512, H = 256;
-    canvas.width = W; canvas.height = H;
-    ctx.fillStyle = kit.helmet; ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = kit.trim;
-    for (let py = 0; py < H; py++) for (let px = 0; px < W; px++) {
-      const phi = -Math.PI + ((px + .5) / W) * Math.PI * 2, theta = ((py + .5) / H) * Math.PI;
-      const p = skull(phi, theta, 0, maskSpec), ax = Math.abs(p.x);
-      if ((ax > .03 && ax < .052 && theta < .72 * Math.PI) || (theta > .8 * Math.PI && theta < .84 * Math.PI)) ctx.fillRect(px, py, 1, 1);
-    }
-    paintMap = new T.CanvasTexture(canvas); paintMap.flipY = false; paintMap.colorSpace = T.SRGBColorSpace; paintMap.anisotropy = 4;
-    own.textures?.push(paintMap);
-  }
-  const maskMat = mat(new T.MeshPhysicalMaterial({ color: paintMap ? '#ffffff' : kit.helmet, map: paintMap, roughness: .3, clearcoat: .8, clearcoatRoughness: .15, side: T.DoubleSide }));
-  add(shellGeometry(maskSpec), maskMat, true);
+  add(shellGeometry(maskSpec), role('mask'), true);
   // Cage: frame around the opening + vertical and horizontal bars, slightly proud of the shell.
   const frame: T.Vector3[] = [];
   const at = (phi: number, theta: number) => skull(phi, theta, .022, maskSpec);
@@ -293,7 +362,7 @@ export function buildHelmet(kit: GearKit, own: { geometries: T.BufferGeometry[];
     add(new T.TubeGeometry(new T.CatmullRomCurve3(pts), 12, .0032, 4), steel);
   }
   // Throat guard.
-  const guard = add(new T.CylinderGeometry(.06, .07, .07, 16, 1, true, -Math.PI / 2, Math.PI), mat(new T.MeshPhysicalMaterial({ color: '#dfe7ee', roughness: .1, transparent: true, opacity: .55, side: T.DoubleSide, depthWrite: false })));
+  const guard = add(new T.CylinderGeometry(.06, .07, .07, 16, 1, true, -Math.PI / 2, Math.PI), role('guard'));
   guard.position.set(0, -.15, .09); guard.rotation.x = -.25;
   if (kit.crest) for (const side of [1, -1]) {
     const decal = new T.Mesh(geo(new T.PlaneGeometry(.06, .06)), kit.crest);

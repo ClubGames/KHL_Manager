@@ -21,6 +21,7 @@ import { Inbox } from './components/Inbox';
 import { FullscreenButton } from './components/FullscreenButton';
 import { buildInbox } from './game/inbox';
 import { SaveIndicator, SavesList } from './components/Saves';
+import { SettingsPanel } from './components/SettingsPanel';
 import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, syncCoachMarketFromRoster, syncPlayersFromRoster, useGame, useSaveStatus } from './game/state';
 import { regularSeasonLength, seasonDate } from './game/schedule';
 import { effectivePayroll } from './game/cap';
@@ -58,6 +59,7 @@ export default function App() {
   const [preselect, setPreselect] = useState<string | null>(null);
   const [savesOpen, setSavesOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [negId, setNegId] = useState<string | null>(null);
   const saveId = s?.saveId ?? null;
   const phase = s?.phase ?? null;
@@ -112,6 +114,7 @@ export default function App() {
         setView('trades');
       },
       negotiate: (id) => setNegId(id),
+      openSettings: () => setSettingsOpen(true),
     }),
     []
   );
@@ -139,6 +142,11 @@ export default function App() {
     return (
       <UIContext.Provider value={api}>
         <Startup onStart={(r, id) => void startNewGame(r, id)} />
+      {settingsOpen && (
+        <Modal open onClose={() => setSettingsOpen(false)} width="max-w-2xl" title={<span className="font-display uppercase tracking-wide">Настройки</span>}>
+          <SettingsPanel onClose={() => setSettingsOpen(false)} />
+        </Modal>
+      )}
         {confirmModal}
       </UIContext.Provider>
     );
@@ -253,6 +261,7 @@ export default function App() {
               );
             })}
             <button type="button" onClick={() => setSavesOpen(true)} className="flex flex-col items-center gap-0.5 px-1 py-1.5 text-[9.5px] text-muted shrink-0"><Icon name="save" className="w-[18px] h-[18px]" />Сохран.</button>
+            <button type="button" onClick={() => setSettingsOpen(true)} className="flex flex-col items-center gap-0.5 px-1 py-1.5 text-[9.5px] text-muted shrink-0"><Icon name="settings" className="w-[18px] h-[18px]" />Настр.</button>
             <button type="button" onClick={() => void exitToMenu()} className="flex flex-col items-center gap-0.5 px-1 py-1.5 text-[9.5px] text-muted shrink-0"><Icon name="logout" className="w-[18px] h-[18px]" />Меню</button>
           </nav>
           <aside className="hidden lg:flex flex-col w-56 shrink-0 border-r border-line bg-panel/80 sticky top-0 h-screen">
@@ -293,6 +302,9 @@ export default function App() {
               </div>
               <button onClick={() => setSavesOpen(true)} className="flex items-center gap-2 hover:text-text w-full pt-1">
                 <Icon name="save" /> Сохранения
+              </button>
+              <button onClick={() => setSettingsOpen(true)} className="flex items-center gap-2 hover:text-text w-full" data-open-settings>
+                <Icon name="settings" /> Настройки
               </button>
               <button onClick={() => void exitToMenu()} className="flex items-center gap-2 hover:text-text w-full" title="Карьера будет сохранена — продолжить можно из главного меню">
                 <Icon name="logout" /> В главное меню
@@ -343,6 +355,9 @@ export default function App() {
                 >
                   <Icon name="bell" />
                   <span className="tabular">{inboxTasks.length}</span>
+                </button>
+                <button type="button" onClick={() => setSettingsOpen(true)} className="inline-flex items-center justify-center w-8 h-8 rounded-sm border border-line text-muted hover:text-text" title="Настройки" aria-label="Настройки" data-header-settings>
+                  <Icon name="settings" />
                 </button>
                 <FullscreenButton />
                 <SaveIndicator onClick={() => setSavesOpen(true)} />
@@ -441,10 +456,18 @@ export default function App() {
             <button onClick={() => { setMoreOpen(false); setSavesOpen(true); }} className="flex items-center gap-2.5 rounded-sm border border-line bg-panel2 px-3 py-3 text-sm text-left hover:border-muted min-h-[44px]">
               <Icon name="save" /> Сохранения
             </button>
+            <button onClick={() => { setMoreOpen(false); setSettingsOpen(true); }} className="flex items-center gap-2.5 rounded-sm border border-line bg-panel2 px-3 py-3 text-sm text-left hover:border-muted min-h-[44px]">
+              <Icon name="settings" /> Настройки
+            </button>
             <button onClick={() => void exitToMenu()} className="flex items-center gap-2.5 rounded-sm border border-line bg-panel2 px-3 py-3 text-sm text-left hover:border-muted min-h-[44px]">
               <Icon name="logout" /> Главное меню
             </button>
           </div>
+        </Modal>
+      )}
+      {settingsOpen && (
+        <Modal open onClose={() => setSettingsOpen(false)} width="max-w-2xl" title={<span className="font-display uppercase tracking-wide">Настройки</span>}>
+          <SettingsPanel onClose={() => setSettingsOpen(false)} />
         </Modal>
       )}
       {confirmModal}

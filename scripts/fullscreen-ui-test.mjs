@@ -79,8 +79,9 @@ try {
   const stageBefore = await page.locator('[data-replay-stage]').boundingBox();
   await page.locator('[data-replay-fullscreen]').click();
   await waitFs(page, 'replay');
-  await page.waitForTimeout(300);
-  const stageFs = await page.locator('[data-replay-stage]').boundingBox();
+  // The layout settles after the fullscreen change (slow with software WebGL): poll instead of a fixed wait.
+  let stageFs = null;
+  for (let i = 0; i < 40 && !(stageFs && stageFs.width >= 1279 && stageFs.height > stageBefore.height + 100); i++) { await page.waitForTimeout(100); stageFs = await page.locator('[data-replay-stage]').boundingBox(); }
   assert.ok(stageFs.width >= 1279 && stageFs.height > stageBefore.height + 100, `stage grows ${JSON.stringify(stageBefore)} → ${JSON.stringify(stageFs)}`);
   let canvas = null;
   for (let i = 0; i < 40 && !(canvas && canvas.height > stageFs.height - 4); i++) { await page.waitForTimeout(100); canvas = await page.locator('[data-replay-stage] canvas').first().boundingBox(); }

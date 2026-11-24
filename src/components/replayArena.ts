@@ -193,7 +193,7 @@ function buildGoal(parent: T.Object3D, dir: 1 | -1, own: Owned, mats: { red: T.M
 }
 
 /** `onChange`: called when a late asset (the centre-ice logo) changed a texture, so a paused replay redraws. */
-export function buildArena(scene: T.Scene, home: Team, away: Team, anisotropy: number, onChange: () => void = () => {}, options: ArenaOptions = {}): Arena {
+export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy: number, onChange: () => void = () => {}, options: ArenaOptions = {}): Arena {
   const hi = options.detail === 'hi', K = hi ? 2 : 1;
   const own: Owned = { geometries: [], materials: [], textures: [] };
   let disposed = false;

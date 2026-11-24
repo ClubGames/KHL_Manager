@@ -13,7 +13,7 @@ import { viewFor, type ReplayCamera, type ReplayView } from './replayCameras';
 
 /** Implemented by ReplayScene: renders the scene into its own canvas at a given size, time and camera. */
 export type ReplayFrameSource = {
-  begin(width: number, height: number): void;
+  begin(width: number, height: number, options?: { fast?: boolean }): void;
   frame(time: number, view: ReplayView): HTMLCanvasElement;
   end(): void;
 };
@@ -27,8 +27,14 @@ export type ExportGraphics = {
 };
 
 export type ExportOptions = {
-  source: ReplayFrameSource; clip: ReplayClip; camera: ReplayCamera; graphics: ExportGraphics;
+  source: ReplayFrameSource; clip: ReplayClip; camera: ReplayCamera;
+  /** broadcast graphics over the picture; null = clean picture */
+  graphics: ExportGraphics | null;
   height?: 720 | 1080; fps?: 30 | 60;
+  /** the slow-motion replay after the real-time part (default on) */
+  slowmo?: boolean;
+  /** light render preset for the export (no ice reflection, small shadow map) */
+  fast?: boolean;
   onProgress?: (done: number) => void; signal?: AbortSignal;
 };
 
@@ -37,10 +43,11 @@ export type ExportResult = { blob: Blob; codec: string; frames: number; seconds:
 type Shot = { time: number; view: ReplayView; replay: boolean; speed: number };
 
 /** The edit: the whole clip in real time, then the shot and the goal again in slow motion from another angle. */
-export function exportTimeline(clip: ReplayClip, camera: ReplayCamera, fps: number): Shot[] {
+export function exportTimeline(clip: ReplayClip, camera: ReplayCamera, fps: number, slowmo = true): Shot[] {
   const out: Shot[] = [];
   const n = Math.max(1, Math.round(clip.duration * fps));
   for (let i = 0; i <= n; i++) { const time = i / n; out.push({ time, view: viewFor(camera, clip, time), replay: false, speed: 1 }); }
+  if (!slowmo) return out;
   const s = (sec: number) => sec / clip.duration, speed = .35;
   const from = Math.max(0, clip.release - s(1.3)), to = Math.min(1, clip.goal + s(.7));
   const live = viewFor(camera, clip, clip.release);
@@ -60,20 +67,35 @@ const CODECS: [string, 'avc' | 'vp9' | 'av1', (h: number) => string][] = [
   ['AV1', 'av1', () => 'av01.0.08M.08'],
 ];
 
-async function pickCodec(width: number, height: number, fps: number, bitrate: number) {
-  if (typeof VideoEncoder === 'undefined') return null;
-  for (const [name, mux, id] of CODECS) {
-    const config: VideoEncoderConfig = { codec: id(height), width, height, bitrate, framerate: fps, latencyMode: 'quality', ...(mux === 'avc' ? { avc: { format: 'avc' } } : {}) };
-    try { if ((await VideoEncoder.isConfigSupported(config)).supported) return { name, mux, config }; } catch { /* next */ }
+const picked = new Map<string, Promise<{ name: string; mux: 'avc' | 'vp9' | 'av1'; config: VideoEncoderConfig } | null>>();
+/** First supported codec, the hardware encoder first (several times faster than the software one). Cached. */
+function pickCodec(width: number, height: number, fps: number, bitrate: number) {
+  const key = `${width}x${height}@${fps}:${bitrate}`;
+  let found = picked.get(key);
+  if (!found) {
+    found = (async () => {
+      if (typeof VideoEncoder === 'undefined') return null;
+      for (const hardwareAcceleration of ['prefer-hardware', 'no-preference'] as const) {
+        for (const [name, mux, id] of CODECS) {
+          const config: VideoEncoderConfig = { codec: id(height), width, height, bitrate, framerate: fps, latencyMode: 'quality', hardwareAcceleration, ...(mux === 'avc' ? { avc: { format: 'avc' } } : {}) };
+          try { if ((await VideoEncoder.isConfigSupported(config)).supported) return { name, mux, config }; } catch { /* next */ }
+        }
+      }
+      return null;
+    })();
+    picked.set(key, found);
   }
-  return null;
+  return found;
 }
 
 const recorderType = () => (typeof MediaRecorder === 'undefined' ? null : ['video/mp4;codecs=avc1', 'video/mp4'].find(t => MediaRecorder.isTypeSupported(t)) ?? null);
 
 /** Whether this browser can produce an MP4 at all (WebCodecs, or MediaRecorder with MP4 output). */
-export async function canExportMp4(): Promise<boolean> {
-  return !!(await pickCodec(1280, 720, 30, 5e6)) || !!recorderType();
+let canExport: Promise<boolean> | null = null;
+/** Whether this browser can make an MP4 at all (asked once per session). */
+export function canExportMp4(): Promise<boolean> {
+  canExport ??= pickCodec(1280, 720, 30, 5e6).then(c => !!c || !!recorderType(), () => !!recorderType());
+  return canExport;
 }
 
 const yieldToBrowser = () => new Promise<void>(resolve => { const ch = new MessageChannel(); ch.port1.onmessage = () => resolve(); ch.port2.postMessage(0); });
@@ -131,21 +153,29 @@ export function drawGraphics(ctx: CanvasRenderingContext2D, w: number, h: number
 
 export async function exportReplayMp4(opts: ExportOptions): Promise<ExportResult> {
   const fps = opts.fps ?? 30, height = opts.height ?? 1080, width = Math.round((height * 16) / 9 / 2) * 2;
-  const bitrate = height > 720 ? 12_000_000 : 6_000_000;
-  const shots = exportTimeline(opts.clip, opts.camera, fps);
+  const bitrate = Math.round((height > 720 ? 12_000_000 : 6_000_000) * (fps > 30 ? 1.5 : 1));
+  const shots = exportTimeline(opts.clip, opts.camera, fps, opts.slowmo ?? true);
   const comp = document.createElement('canvas'); comp.width = width; comp.height = height;
-  const ctx = comp.getContext('2d');
+  const ctx = comp.getContext('2d', { alpha: false });
   if (!ctx) throw new Error('Canvas 2D недоступен');
   // Make sure the broadcast font is ready before the first frame (it is bundled with the app).
-  try { await document.fonts?.load(`700 40px Oswald`); } catch { /* system font fallback */ }
+  if (opts.graphics) try { await document.fonts?.load(`700 40px Oswald`); } catch { /* system font fallback */ }
   const abort = () => { if (opts.signal?.aborted) throw new DOMException('Экспорт отменён', 'AbortError'); };
+  // Identical consecutive shots (the hold before the slow motion) reuse the composed picture: no re-render.
+  let last: Shot | null = null;
   const compose = (shot: Shot) => {
+    if (last && last.time === shot.time && last.view === shot.view && last.replay === shot.replay) return;
+    last = shot;
     const frame = opts.source.frame(shot.time, shot.view);
     ctx.drawImage(frame, 0, 0, width, height);
-    drawGraphics(ctx, width, height, opts.graphics, shot, opts.clip);
+    if (opts.graphics) drawGraphics(ctx, width, height, opts.graphics, shot, opts.clip);
   };
+  // Hand the main thread back to the browser about every 50 ms (not every n frames): fast machines don't
+  // pay for needless yields, slow ones keep the page responsive.
+  let lastYield = performance.now();
+  const breathe = async () => { const now = performance.now(); if (now - lastYield < 50) return; lastYield = now; await yieldToBrowser(); lastYield = performance.now(); };
   const picked = await pickCodec(width, height, fps, bitrate);
-  opts.source.begin(width, height);
+  opts.source.begin(width, height, { fast: opts.fast });
   try {
     if (picked) {
       const target = new ArrayBufferTarget();
@@ -160,8 +190,14 @@ export async function exportReplayMp4(opts: ExportOptions): Promise<ExportResult
           const frame = new VideoFrame(comp, { timestamp: Math.round((i * 1e6) / fps), duration: Math.round(1e6 / fps) });
           encoder.encode(frame, { keyFrame: i % (fps * 2) === 0 });
           frame.close();
-          while (encoder.encodeQueueSize > 6) await new Promise(r => setTimeout(r, 2));
-          if (i % 4 === 0) { opts.onProgress?.(i / shots.length); await yieldToBrowser(); }
+          // Back-pressure: wait for the encoder to drain (its 'dequeue' event, or a short poll where missing).
+          while (encoder.encodeQueueSize > 6) await new Promise<void>(r => {
+            const done = () => { clearTimeout(timer); encoder.removeEventListener?.('dequeue', done); r(); };
+            const timer = setTimeout(done, 20);
+            encoder.addEventListener?.('dequeue', done);
+          });
+          if (i % 3 === 0) opts.onProgress?.(i / shots.length);
+          await breathe();
         }
         await encoder.flush();
         if (failure) throw failure;
