@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type RefObject } from 'react';
+import { platform } from './platform';
 
 /**
  * Fullscreen API with the WebKit prefixes (Safari on iPad/macOS, older Android browsers).
@@ -23,6 +24,9 @@ export function fullscreenElement(): Element | null {
 export function fullscreenSupported(el?: HTMLElement | null): boolean {
   const d = doc();
   if (!d) return false;
+  // The Android app is always full screen (system bars hidden natively); its WebView has no element fullscreen,
+  // so the replay uses the same «fill the viewport» mode as iPhone Safari.
+  if (platform() === 'android') return false;
   const target = (el ?? d.documentElement) as FsElement;
   const enabled = d.fullscreenEnabled ?? d.webkitFullscreenEnabled ?? false;
   return !!enabled && !!(target.requestFullscreen || target.webkitRequestFullscreen);
@@ -31,6 +35,7 @@ export function fullscreenSupported(el?: HTMLElement | null): boolean {
 /** Launched from the home screen / installed: the browser UI is already gone. */
 export function isStandalone(): boolean {
   if (typeof window === 'undefined') return false;
+  if (platform() === 'android') return true;
   const nav = navigator as Navigator & { standalone?: boolean };
   const mq = (q: string) => typeof window.matchMedia === 'function' && window.matchMedia(q).matches;
   return nav.standalone === true || mq('(display-mode: fullscreen)') || mq('(display-mode: standalone)');

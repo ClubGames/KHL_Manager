@@ -1,3 +1,4 @@
+import { isApp, saveFile } from '../platform';
 import { ensureTeamManagement, normalizeCoach } from './coaching';
 import { makeCoach } from './coachData';
 import type { Coach, CoachRole, Conference, Player, PosCode, Skills, Team } from '../types';
@@ -419,6 +420,7 @@ export function rosterWithContracts(r: NormalizedRoster): string {
 
 /** Write text to a file chosen by the user (overwriting roster.json in the game folder) or download it. */
 export async function saveRosterFile(text: string): Promise<'saved' | 'downloaded' | 'cancelled'> {
+  if (isApp()) return (await saveFile(new Blob([text], { type: 'application/json' }), 'roster.json', 'roster')) ? 'saved' : 'cancelled';
   const w = window as unknown as { showSaveFilePicker?: (o: object) => Promise<{ createWritable: () => Promise<{ write: (t: string) => Promise<void>; close: () => Promise<void> }> }> };
   if (typeof w.showSaveFilePicker === 'function') {
     try {
@@ -518,6 +520,7 @@ export function downloadExampleRoster() {
     ],
   };
   const blob = new Blob([JSON.stringify(example, null, 2)], { type: 'application/json' });
+  if (isApp()) { void saveFile(blob, 'roster.example.json', 'roster'); return; }
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'roster.example.json';

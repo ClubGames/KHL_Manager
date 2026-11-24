@@ -1,0 +1,45 @@
+{
+  "name": "khl-gm-desktop",
+  "productName": "КХЛ ГМ",
+  "version": "1.0.0",
+  "description": "КХЛ Генеральный менеджер — приложение для Windows",
+  "author": "ClubGames",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "prepare-web": "node prepare.mjs",
+    "start": "npm run prepare-web && electron .",
+    "dist:win": "npm run prepare-web && electron-builder --win --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.clubgames.khlgm",
+    "productName": "КХЛ ГМ",
+    "executableName": "KHL-GM",
+    "copyright": "ClubGames",
+    "directories": { "output": "release", "buildResources": "build" },
+    "files": ["main.cjs", "preload.cjs", "app/**/*", "package.json"],
+    "asar": true,
+    "electronLanguages": ["ru", "en-US"],
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "КХЛ ГМ",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "KHL-GM-Setup.${ext}"
+    },
+    "portable": { "artifactName": "KHL-GM-Portable.${ext}" }
+  }
+}

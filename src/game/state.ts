@@ -1,3 +1,4 @@
+import { isApp, saveFile } from '../platform';
 import { creditGame, ensureSeasonSplits } from './careerStats';
 import { adoptRosterCoachMarket, changeTeamFocus, ensureCoachingState, fireCoach, hireCoach, interveneTeam, recordCoachingResult, stepTeamManagement } from './coaching';
 import type { Coach, CoachPitch, PlayerPitch, TeamFocus, TeamIntervention } from '../types';
@@ -596,9 +597,11 @@ export async function exportCareer(id: string): Promise<string | null> {
     const st = await getCareer(id);
     if (!st) return 'Сохранение не найдено или повреждено';
     const blob = new Blob([JSON.stringify({ format: 'khl-gm-save', version: SAVE_VERSION, exportedAt: new Date().toISOString(), state: st })], { type: 'application/json' });
+    const name = `khl-gm-${st.teams[st.userTeamId].id}-${st.league.season.replace('/', '-')}-day${st.day + 1}.json`;
+    if (isApp()) { await saveFile(blob, name, 'save'); return null; }
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
-    a.download = `khl-gm-${st.teams[st.userTeamId].id}-${st.league.season.replace('/', '-')}-day${st.day + 1}.json`;
+    a.download = name;
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 2000);
     return null;
