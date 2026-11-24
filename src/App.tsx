@@ -18,6 +18,7 @@ import { Contracts, NegotiationModal } from './components/Contracts';
 import { Coaching } from './components/Coaching';
 import { Club } from './components/Club';
 import { Inbox } from './components/Inbox';
+import { FullscreenButton } from './components/FullscreenButton';
 import { buildInbox } from './game/inbox';
 import { SaveIndicator, SavesList } from './components/Saves';
 import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, syncCoachMarketFromRoster, syncFacesFromRoster, useGame, useSaveStatus } from './game/state';
@@ -86,11 +87,10 @@ export default function App() {
   useEffect(() => {
     if (saveId && coachSource !== 'roster') void syncCoachMarketFromRoster(saveId);
   }, [saveId, coachSource]);
-  // Careers saved before roster.json had `face`: copy the photos once.
-  const facesSynced = s?.facesSynced;
+  // Photos follow roster.json: re-read them whenever a career is opened (old saves pick up new/changed `face` links).
   useEffect(() => {
-    if (saveId && !facesSynced) void syncFacesFromRoster(saveId);
-  }, [saveId, facesSynced]);
+    if (saveId) void syncFacesFromRoster(saveId);
+  }, [saveId]);
 
   const api = useMemo<UIApi>(
     () => ({
@@ -343,6 +343,7 @@ export default function App() {
                   <Icon name="bell" />
                   <span className="tabular">{inboxTasks.length}</span>
                 </button>
+                <FullscreenButton />
                 <SaveIndicator onClick={() => setSavesOpen(true)} />
               </div>
             </header>

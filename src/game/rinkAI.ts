@@ -97,6 +97,8 @@ export class RinkAI {
   private oz = { side: -1 as Side | -1, t0: 0, passes: 0, lastPasser: '' };
   private lastIds: string[] = [];
   private lastGoalie: [string | null, string | null];
+  /** Skaters the current unit should have without an extra attacker (5 at even strength, 4 on the PK, 3 in OT). */
+  private baseSkaters: [number, number] = [5, 5];
   private zoneEntry: Side | null = null;
   /** Puck is in side s's attacking zone; it leaves only after fully crossing the 30 cm blue line. */
   private zoneIn: [boolean, boolean] = [false, false];
@@ -305,9 +307,12 @@ export class RinkAI {
   private wantedSkaters(s: Side, goalie: string | null): string[] {
     const e = this.nextIceEvent();
     let ids = (e?.ice?.[s] ?? []).filter(id => this.valid(id));
-    if (!ids.length) {
+    if (ids.length) this.baseSkaters[s] = ids.length;
+    else {
+      // No upcoming event (end of the period): keep the unit that is out there. It may already contain the extra
+      // attacker, so it is cut back to the unit size first — otherwise every update would add one more skater.
       const current = this.skaters(s).map(a => a.id);
-      ids = current.length ? current : [...(this.teams[s].lineup.F[0] ?? []), ...(this.teams[s].lineup.D[0] ?? [])].filter(id => this.valid(id)).slice(0, 5);
+      ids = (current.length ? current : [...(this.teams[s].lineup.F[0] ?? []), ...(this.teams[s].lineup.D[0] ?? [])].filter(id => this.valid(id))).slice(0, this.baseSkaters[s]);
     }
     // Participants of an imminent hit/penalty must be on the ice for it.
     const n = this.next();
@@ -319,10 +324,13 @@ export class RinkAI {
     }
     ids = [...new Set(ids)].filter(id => this.agents.get(id)?.on !== 'box');
     if (!goalie) {
-      const extra = [...(this.teams[s].lineup.F.flat()), ...this.teams[s].players].find(id => this.valid(id) && !ids.includes(id) && this.agents.get(id)?.on !== 'box');
+      // Sixth attacker: prefer one already out there, so the extra man does not change on every update.
+      const pool = [...this.skaters(s).map(a => a.id), ...this.teams[s].lineup.F.flat(), ...this.teams[s].players];
+      const extra = pool.find(id => this.valid(id) && !ids.includes(id) && this.agents.get(id)?.on !== 'box');
       if (extra) ids.push(extra);
     }
-    return ids;
+    // Never more than the unit plus one extra attacker for a pulled goalie.
+    return ids.slice(0, this.baseSkaters[s] + (goalie ? 0 : 1));
   }
   private updateRoster() {
     const stopped = this.mode === 'stop';
@@ -331,7 +339,13 @@ export class RinkAI {
     const allowChange = stopped || !n || n.sec - this.g < 14;
     for (const s of [0, 1] as Side[]) {
       // Penalised players return when their time is served.
-      for (const a of this.agents.values()) if (a.side === s && a.on === 'box' && this.g >= a.boxUntil - 1e-9) { a.on = 'ice'; a.x = BOX[s].x; a.y = BOX[s].y - 0.6; a.vx = 0; a.vy = 0; a.leave = null; this.play('change', s, `${a.name} возвращается после удаления`, a); }
+      for (const a of this.agents.values()) if (a.side === s && a.on === 'box' && this.g >= a.boxUntil - 1e-9) {
+        const before = this.skaters(s).length;
+        a.on = 'ice'; a.x = BOX[s].x; a.y = BOX[s].y - 0.6; a.vx = 0; a.vy = 0; a.leave = null; this.play('change', s, `${a.name} возвращается после удаления`, a);
+        // The team gets its man back — but never a sixth skater (seventh with a pulled goalie): someone heads for the bench.
+        this.baseSkaters[s] = Math.min(5, Math.max(this.baseSkaters[s], before + 1));
+        this.trimSkaters(s, this.lastGoalie[s] === null, a);
+      }
       const gWant = goalies[s];
       const gNow = this.onIce(s).find(a => a.goalie);
       if (gNow && gNow.id !== gWant && !gNow.leave) gNow.leave = 'bench';
@@ -340,6 +354,8 @@ export class RinkAI {
         if (!old || dist(old, BENCH[s]) < 7) this.spawn(gWant, s, BENCH[s], true);
       }
       if (gWant !== this.lastGoalie[s] && (gWant === null || this.onIce(s).some(a => a.id === gWant))) this.lastGoalie[s] = gWant;
+      // A goalie back in the net sends the extra attacker off at once, change or no change.
+      this.trimSkaters(s, gWant === null);
       if (!allowChange) continue;
       const want = this.wantedSkaters(s, gWant);
       let changed = false;
@@ -367,6 +383,15 @@ export class RinkAI {
         if (a.goalie) this.assignRoles(a.side);
       }
     }
+  }
+  /** Too many men: skaters beyond the unit size (+1 for a pulled goalie) head for the bench, nearest first. */
+  private trimSkaters(s: Side, pulled: boolean, keep?: Agent) {
+    const allowed = this.baseSkaters[s] + (pulled ? 1 : 0);
+    let excess = this.skaters(s).length - allowed;
+    if (excess <= 0) return;
+    const out = this.skaters(s).filter(b => b !== keep && b !== this.puck.carrier).sort((p, q) => dist(p, BENCH[s]) - dist(q, BENCH[s]));
+    while (excess-- > 0 && out.length) out.shift()!.leave = 'bench';
+    this.assignRoles(s);
   }
   private boxSeat(a: Agent): V2 {
     const others = [...this.agents.values()].filter(b => b.side === a.side && b.on === 'box' && b !== a).length;
