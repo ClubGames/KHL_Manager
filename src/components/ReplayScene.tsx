@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import * as T from 'three';
+import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import type { Player, Team } from '../types';
 import { attackDir, clamp, samplePath, sampleSmooth, type Key, type ReplayClip } from '../game/rinkPlayback';
 import { clipFrame, RinkSvg } from './RinkView';
 import { getClubLogoSources, getOfficialClubPalette, hexLuminance } from '../game/clubColors';
 import type { Kit, PlayerFigure } from './playerModel';
 import { buildArena } from './replayArena';
-import { cameraPose, toWorld, viewFor, ZOOM, type ReplayCamera } from './replayCameras';
+import { cameraPose, toWorld, viewFor, ZOOM, type ReplayCamera, type ReplayView } from './replayCameras';
+import type { ReplayFrameSource } from './replayExport';
 
 export { broadcastFocus, CAMERAS, autoCamera, viewFor, VIEW_LABEL, ZOOM, type ReplayCamera, type ReplayView } from './replayCameras';
 
@@ -21,11 +24,33 @@ type Props = {
   playing?: boolean; speed?: number; zoom?: number; onTime?: (time: number, seek: number) => void; onZoom?: (zoom: number) => void;
   /** Controls that only make sense for the 3D picture (camera label, zoom); hidden in the SVG fallback. */
   overlay?: ReactNode;
+  quality?: ReplayQuality;
+  /** Filled with an offline frame renderer (for the MP4 export) while the WebGL scene is alive. */
+  exporter?: MutableRefObject<ReplayFrameSource | null>;
 };
+
+/**
+ * Picture quality presets. standard: the light setup for phones; high: sharper (supersampled on 1× screens),
+ * soft 2048 shadows, ice reflections, double-resolution arena textures; ultra: 2–2.5× supersampling, 4096
+ * shadows, full-resolution reflections, no adaptive downscaling.
+ */
+export type ReplayQuality = 'standard' | 'high' | 'ultra';
+export const QUALITY_LABEL: Record<ReplayQuality, string> = { standard: 'Стандарт', high: 'Высокое', ultra: 'Ультра' };
+const QUALITY: Record<ReplayQuality, { dpr: (d: number) => number; minDpr: number; shadow: number; radius: number; reflect: number; detail: 'normal' | 'hi'; adaptive: boolean }> = {
+  standard: { dpr: d => Math.min(d, 1.5), minDpr: .6, shadow: 1024, radius: 1, reflect: 0, detail: 'normal', adaptive: true },
+  high: { dpr: d => Math.min(2, Math.max(1.25, d)), minDpr: 1, shadow: 2048, radius: 2.5, reflect: .5, detail: 'hi', adaptive: true },
+  ultra: { dpr: d => Math.min(2.5, Math.max(2, d)), minDpr: 2, shadow: 4096, radius: 3, reflect: 1, detail: 'hi', adaptive: false },
+};
+/** Default: high on desktops, standard on touch devices. */
+export function defaultReplayQuality(): ReplayQuality {
+  try { const saved = localStorage.getItem('khl.replayQuality'); if (saved === 'standard' || saved === 'high' || saved === 'ultra') return saved; } catch { /* private mode */ }
+  return typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 'standard' : 'high';
+}
 
 const contrast = (a: string, b: string) => Math.abs(hexLuminance(a) - hexLuminance(b)) > 70;
 /** Real puck: 7.62 cm × 2.54 cm, drawn 1.25× so it still reads on a phone-sized broadcast shot. */
 const PUCK_R = .0381 * 1.25, PUCK_H = .0254 * 1.25;
+const RINK_LENGTH = 60, RINK_WIDTH = 30;
 const STRIDE = 3.3; // metres per full stride cycle (left + right push)
 
 /** Club kit for the rigged models: home in club colours, visitors in white with club trim (as on the 2D rink). */
@@ -67,6 +92,7 @@ export function ReplayScene(props: Props) {
   const [failed, setFailed] = useState(false);
   const [rigged, setRigged] = useState(false);
   const { clip, home, away, players } = props;
+  const quality = props.quality ?? 'standard';
   // Live values read by the render loop (no React re-render per frame).
   const live = useRef({ time: props.time, seek: props.seek ?? 0, camera: props.camera, zoom: props.zoom ?? 1, failed: false });
   live.current.camera = props.camera;
@@ -95,14 +121,16 @@ export function ReplayScene(props: Props) {
     };
     try {
       if (typeof window.WebGLRenderingContext === 'undefined' && typeof window.WebGL2RenderingContext === 'undefined') throw new Error('WebGL unavailable');
+      const preset = QUALITY[quality];
       renderer = new T.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
       // Adaptive resolution: start sharp, step down while frames are slow, step back up when there is headroom.
-      const maxRatio = Math.min(window.devicePixelRatio || 1, 1.5);
+      const maxRatio = preset.dpr(window.devicePixelRatio || 1);
       let ratio = maxRatio;
       renderer.setPixelRatio(ratio);
       renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFShadowMap;
       renderer.outputColorSpace = T.SRGBColorSpace;
-      renderer.toneMapping = T.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
+      // Neutral tone mapping keeps the club colours true (ACES shifts reds and blues).
+      renderer.toneMapping = T.NeutralToneMapping; renderer.toneMappingExposure = 1.0;
       renderer.setClearColor('#081421');
       renderer.domElement.setAttribute('aria-label', 'Объёмная реконструкция голевого эпизода');
       element.appendChild(renderer.domElement);
@@ -110,15 +138,42 @@ export function ReplayScene(props: Props) {
       renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); if (!stopped) { live.current.failed = true; setFailed(true); } });
       const scene = new T.Scene(); scene.fog = new T.Fog('#081421', 70, 150);
       const camera = new T.PerspectiveCamera(40, 2, .05, 200);
-      scene.add(new T.HemisphereLight('#e6f4ff', '#26384c', 2.1));
+      scene.add(new T.HemisphereLight('#e6f4ff', '#26384c', 1.5));
+      // Image-based lighting: soft arena reflections on helmets, visors, the goal frame and the boards.
+      const pmrem = new T.PMREMGenerator(renderer), room = new RoomEnvironment();
+      const envMap = pmrem.fromScene(room, .04).texture; textures.push(envMap); pmrem.dispose(); room.dispose?.();
+      scene.environment = envMap; scene.environmentIntensity = .45;
       // The arena lights: one shadow-casting key light that follows the play (tight, sharp shadow map) and a fill.
       const sun = new T.DirectionalLight('#fff7e9', 2.9); sun.castShadow = true;
-      sun.shadow.mapSize.set(1024, 1024); sun.shadow.camera.left = -16; sun.shadow.camera.right = 16; sun.shadow.camera.top = 12; sun.shadow.camera.bottom = -12;
+      sun.shadow.mapSize.set(preset.shadow, preset.shadow); sun.shadow.radius = preset.radius; sun.shadow.camera.left = -16; sun.shadow.camera.right = 16; sun.shadow.camera.top = 12; sun.shadow.camera.bottom = -12;
       sun.shadow.camera.near = 1; sun.shadow.camera.far = 60; sun.shadow.normalBias = .03; sun.shadow.bias = -.0005;
       scene.add(sun); scene.add(sun.target);
       const fill = new T.DirectionalLight('#dbe8ff', .9); fill.position.set(-14, 20, -18); scene.add(fill);
-      const arena = buildArena(scene, home, away, Math.min(8, renderer.capabilities.getMaxAnisotropy()), () => requestDraw());
+      const arena = buildArena(scene, home, away, Math.min(preset.detail === 'hi' ? 16 : 8, renderer.capabilities.getMaxAnisotropy()), () => requestDraw(), { detail: preset.detail });
       disposeArena = arena.dispose;
+      // Planar ice reflection (high/ultra): the players, goals and boards mirrored in the ice, rendered at a
+      // fraction of the screen resolution and blended into the ice shader with a fresnel term.
+      let reflector: Reflector | null = null;
+      const reflectorInverse = new T.Matrix4();
+      if (preset.reflect > 0) {
+        reflector = new Reflector(new T.PlaneGeometry(RINK_LENGTH, RINK_WIDTH), { textureWidth: 512, textureHeight: 256, clipBias: .003, multisample: 0 });
+        reflector.rotation.x = -Math.PI / 2; reflector.position.y = .001; reflector.updateMatrixWorld(true);
+        reflectorInverse.copy(reflector.matrixWorld).invert();
+        geometries.add(reflector.geometry); materials.add(reflector.material as T.Material);
+        arena.iceReflection.texture.value = reflector.getRenderTarget().texture;
+        arena.iceReflection.strength.value = 1;
+      }
+      const renderReflection = () => {
+        if (!reflector || !renderer) return;
+        arena.reflectionHidden.forEach(o => { o.visible = false; });
+        const clear = renderer.getClearColor(new T.Color()), alpha = renderer.getClearAlpha();
+        renderer.setClearColor(clear, 0);
+        reflector.onBeforeRender(renderer, scene, camera, reflector.geometry, reflector.material as T.Material, null as unknown as T.Group);
+        renderer.setClearColor(clear, alpha);
+        arena.reflectionHidden.forEach(o => { o.visible = true; });
+        arena.iceReflection.matrix.value.multiplyMatrices((reflector.material as T.ShaderMaterial).uniforms.textureMatrix.value, reflectorInverse);
+      };
+      const sizeReflection = (w: number, h: number) => { reflector?.getRenderTarget().setSize(Math.max(64, Math.round(w * preset.reflect)), Math.max(64, Math.round(h * preset.reflect))); };
 
       const mat = (color: string, extra: T.MeshStandardMaterialParameters = {}) => { const m = new T.MeshStandardMaterial({ color, roughness: .65, ...extra }); materials.add(m); return m; };
       const white = mat('#e9f3f8'), dark = mat('#15283d'), steel = mat('#93aab8', { metalness: .5 });
@@ -209,9 +264,10 @@ export function ReplayScene(props: Props) {
 
       const puckWorld = new T.Vector3(), local = new T.Vector3(), vecUp = new T.Vector3(0, 1, 0), legacy = new T.Vector3();
       const ahead = .2 / Math.max(.5, clip.duration); // ±0.2 s window for headings and speeds
-      const update = (time: number) => {
+      let exporting = false;
+      const update = (time: number, viewOverride?: ReplayView) => {
         if (stopped || !renderer) return;
-        const view = viewFor(live.current.camera, clip, time);
+        const view = viewOverride ?? viewFor(live.current.camera, clip, time);
         const p = samplePath(clip.puck, time), pw = toWorld(p);
         puck.position.set(pw.x, Math.max(0, pw.y) + PUCK_H / 2, pw.z); puckShadow.position.set(pw.x, .012, pw.z);
         puckShadow.visible = pw.y > .03; puckWorld.copy(puck.position);
@@ -295,21 +351,42 @@ export function ReplayScene(props: Props) {
         if (Math.abs(camera.fov - pose.fov) > .01) { camera.fov = pose.fov; camera.updateProjectionMatrix(); }
         // Key light and its shadow map follow what the camera looks at.
         sun.position.set(pose.look.x + 8, 25, pose.look.z + 12); sun.target.position.set(pose.look.x, 0, pose.look.z); sun.target.updateMatrixWorld();
+        camera.updateMatrixWorld();
+        renderReflection();
         renderer.render(scene, camera);
       };
-      const resize = () => { if (!renderer) return; const w = Math.max(1, element.clientWidth), h = Math.max(1, element.clientHeight); renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); update(live.current.time); };
+      const resize = () => {
+        if (!renderer || exporting) return;
+        const w = Math.max(1, element.clientWidth), h = Math.max(1, element.clientHeight);
+        renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+        sizeReflection(w * ratio, h * ratio);
+        update(live.current.time);
+      };
       observer = new ResizeObserver(resize); observer.observe(element); resize();
       // Frame-time governor for the adaptive resolution.
       let slow = 0, fast = 0, lastFrame = 0;
       controller.current = (time: number) => {
         const now = performance.now(), dt = now - lastFrame; lastFrame = now;
+        if (exporting) return;
         update(time);
-        if (dt > 0 && dt < 250) {
+        if (preset.adaptive && dt > 0 && dt < 250) {
           if (dt > 24) { slow++; fast = 0; } else if (dt < 15) { fast++; slow = 0; } else { slow = Math.max(0, slow - 1); fast = Math.max(0, fast - 1); }
-          if (renderer && slow > 20 && ratio > .6) { ratio = Math.max(.6, ratio - .2); renderer.setPixelRatio(ratio); resize(); slow = 0; }
+          if (renderer && slow > 20 && ratio > preset.minDpr) { ratio = Math.max(preset.minDpr, ratio - .2); renderer.setPixelRatio(ratio); resize(); slow = 0; }
           else if (renderer && fast > 120 && ratio < maxRatio) { ratio = Math.min(maxRatio, ratio + .1); renderer.setPixelRatio(ratio); resize(); fast = 0; }
         }
       };
+      // Offline frames for the MP4 export: fixed size, exact time and camera, no adaptive resolution.
+      if (props.exporter) props.exporter.current = {
+        begin: (w, h) => {
+          if (!renderer) return;
+          exporting = true; renderer.setPixelRatio(1); renderer.setSize(w, h, false);
+          camera.aspect = w / h; camera.updateProjectionMatrix(); sizeReflection(w, h);
+        },
+        frame: (time, view) => { update(time, view); return renderer!.domElement; },
+        end: () => { if (!renderer) return; exporting = false; renderer.setPixelRatio(ratio); resize(); },
+      };
+      const exporterRef = props.exporter;
+      unbind.push(() => { if (exporterRef) exporterRef.current = null; });
       // Zoom: mouse wheel and two-finger pinch on the picture.
       const setZoom = (z: number) => { live.current.zoom = clamp(z, ZOOM.min, ZOOM.max); callbacks.current.onZoom?.(live.current.zoom); requestDraw(); };
       const wheel = (e: WheelEvent) => { e.preventDefault(); setZoom(live.current.zoom * Math.exp(clamp(e.deltaY, -200, 200) * .0015)); };
@@ -329,7 +406,7 @@ export function ReplayScene(props: Props) {
     }
     return () => { stopped = true; if (draw.current) cancelAnimationFrame(draw.current); draw.current = 0; dispose(); setRigged(false); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clip, home, away, players]);
+  }, [clip, home, away, players, quality]);
 
   // Seek / restart from the parent.
   useEffect(() => {

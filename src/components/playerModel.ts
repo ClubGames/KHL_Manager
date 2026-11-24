@@ -5,6 +5,7 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 // Base body: "Ultimate Modular Men" by Quaternius (CC0 1.0, https://quaternius.com) — hair removed,
 // materials renamed (Jersey/Pants/Skate) and meshopt-compressed to ~150 KB. Inlined by the single-file build.
 import modelUrl from '../assets/hockey-player.glb?url';
+import { buildHelmet, kitUp } from './playerGear';
 
 /**
  * Rigged 3D hockey players for the goal replay. One skinned template is loaded once and cloned per
@@ -38,6 +39,7 @@ export function loadPlayerTemplate(): Promise<Template> {
 }
 
 function prepare(scene: T.Object3D): Template {
+  kitUp(scene); // shoulder pads, pants, shin guards: the slim base body in full hockey kit
   scene.updateMatrixWorld(true);
   const rest = new Map<string, Rest>();
   scene.traverse(o => {
@@ -154,7 +156,7 @@ export class PlayerFigure {
     // Gloved fists: the base model's open hands are shrunk inside the gloves.
     this.bones.HandL.scale.setScalar(.6); this.bones.HandR.scale.setScalar(.6);
     this.rig.updateMatrixWorld(true);
-    const helmet = std(kit.helmet, { roughness: .35 }), glove = std(kit.glove), steel = std('#c9d6de', { metalness: .7, roughness: .3 });
+    const glove = std(kit.glove), steel = std('#c9d6de', { metalness: .7, roughness: .3 });
     const trim = std(kit.trim), black = std('#111418', { roughness: .5 });
     const geo = <G extends T.BufferGeometry>(g: G) => { this.owned.geometries.push(g); return g; };
     // Props glued to a bone: a holder cancels the bone's rest rotation & scale, so offsets are in character space.
@@ -167,16 +169,7 @@ export class PlayerFigure {
     const part = (parent: T.Object3D, g: T.BufferGeometry, m: T.Material, x = 0, y = 0, z = 0) => {
       const mesh = new T.Mesh(geo(g), m); mesh.position.set(x, y, z); parent.add(mesh); return mesh; // props skip the shadow pass (draw calls on phones)
     };
-    const head = holder('Head');
-    if (kit.goalie) {
-      const mask = part(head, new T.SphereGeometry(.142, 14, 10), helmet, 0, .09, .045); mask.scale.set(.95, 1.08, 1.1);
-      const cage = std('#d9dee3', { metalness: .6, roughness: .3, wireframe: true });
-      const grill = part(head, new T.SphereGeometry(.12, 7, 5, -Math.PI * .35, Math.PI * .7, Math.PI * .3, Math.PI * .45), cage, 0, .07, .09); grill.scale.set(1, 1.1, 1.15);
-    } else {
-      const shell = part(head, new T.SphereGeometry(.138, 14, 9, 0, Math.PI * 2, 0, Math.PI * .58), helmet, 0, .088, .047); shell.scale.set(.98, 1.05, 1.12);
-      const visor = part(head, new T.CylinderGeometry(.128, .128, .05, 12, 1, true, -Math.PI * .32, Math.PI * .64), own(new T.MeshStandardMaterial({ color: '#9fc7dd', transparent: true, opacity: .45, roughness: .1, metalness: .3 })), 0, .07, .05);
-      visor.scale.set(1, 1, 1.13); visor.castShadow = false;
-    }
+    holder('Head').add(buildHelmet(kit, this.owned));
     for (const side of ['L', 'R'] as const) {
       const s = side === 'L' ? 1 : -1, hand = holder('Hand' + side);
       if (kit.goalie && side === 'L') { part(hand, new T.SphereGeometry(.13, 10, 8), glove, s * .09, 0, .02).scale.set(1.15, .72, 1.25); part(hand, new T.BoxGeometry(.1, .13, .15), trim, s * -.01, 0, .01); }
@@ -192,16 +185,9 @@ export class PlayerFigure {
         part(shin, new T.BoxGeometry(.205, .05, .135), trim, s * .01, -.08, .1);
         part(shin, new T.BoxGeometry(.205, .05, .135), trim, s * .01, -.38, .1);
         part(holder('UpperLeg' + side), new T.BoxGeometry(.2, .26, .1), pads, s * .01, -.2, .12);
-      } else {
-        // Shoulder pads and hockey pants bulk out the slim base body.
-        part(holder('Chest'), new T.SphereGeometry(.085, 8, 6), jersey, s * .15, .07, .03).scale.set(1.2, .6, 1.3);
-        part(holder('LowerLeg' + side), new T.CylinderGeometry(.072, .058, .4, 8), socks, 0, -.23, .018);
       }
-      part(holder('UpperLeg' + side), new T.CylinderGeometry(.1, .085, .3, 9), pants, s * .01, -.15, .01);
     }
-    const hips = holder('Hips');
-    part(hips, new T.CylinderGeometry(.19, .18, .2, 12), pants, 0, 0, -.005).scale.set(1, 1, .8);
-    if (kit.goalie) { part(holder('Chest'), new T.SphereGeometry(.15, 12, 8), jersey, 0, .02, .03).scale.set(1.75, 1.05, 1.3); }
+    if (kit.goalie) { part(holder('Chest'), new T.SphereGeometry(.15, 12, 8), jersey, 0, 0, .02).scale.set(1.5, 1.0, .95); }
     // Back number (+ name) and chest crest, painted on canvas.
     const chest = holder('Chest');
     const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 128;
@@ -212,10 +198,10 @@ export class PlayerFigure {
       ctx.font = 'bold 82px Oswald, sans-serif'; ctx.lineWidth = 9; ctx.fillStyle = kit.numberFill; ctx.strokeStyle = kit.numberStroke;
       ctx.strokeText(kit.number, 64, 78); ctx.fillText(kit.number, 64, 78);
       const tex = new T.CanvasTexture(canvas); tex.colorSpace = T.SRGBColorSpace; tex.anisotropy = 4; this.owned.textures.push(tex);
-      const back = part(chest, new T.PlaneGeometry(kit.goalie ? .36 : .3, kit.goalie ? .36 : .3), own(new T.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })), 0, kit.goalie ? -.02 : -.07, kit.goalie ? -.178 : -.118);
+      const back = part(chest, new T.PlaneGeometry(kit.goalie ? .38 : .34, kit.goalie ? .38 : .34), own(new T.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 })), 0, kit.goalie ? -.02 : -.05, kit.goalie ? -.2 : -.152);
       back.rotation.y = Math.PI; back.castShadow = false;
     }
-    if (kit.crest) { const crest = part(chest, new T.PlaneGeometry(.17, .17), kit.crest, 0, kit.goalie ? -.02 : -.07, kit.goalie ? .24 : .165); crest.castShadow = false; crest.rotation.x = -.12; }
+    if (kit.crest) { const crest = part(chest, new T.PlaneGeometry(.19, .19), kit.crest, 0, kit.goalie ? -.02 : -.08, kit.goalie ? .26 : .19); crest.castShadow = false; crest.rotation.x = -.12; }
     // Stick (character space, not bone-attached: the hands are solved onto it).
     this.stickLength = kit.goalie ? 1.32 : 1.48;
     this.shaft = part(this.root, new T.CylinderGeometry(.016, .016, 1, 6), black);
