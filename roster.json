@@ -601,7 +601,7 @@
             "salary": 1000000,
             "years": 2
           },
-          "face": null
+          "face": "https://s3.dtln.ru/storage-hawk/players/%D0%9B%D0%B5%D1%83%D0%BA%D0%B0_%D0%9F%D0%B0%D0%B2%D0%B5%D0%BB_78_JR4A9190__500%D1%85480.png"
         },
         {
           "id": "avg-lw05",
@@ -626,7 +626,7 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": null
+          "face": "https://s3.dtln.ru/storage-hawk/players/%D0%92%D0%BE%D0%BB%D0%BA%D0%BE%D0%B2_%D0%90%D0%BB%D0%B5%D0%BA%D1%81%D0%B0%D0%BD%D0%B4%D1%80_83_JR4A8256__500%D1%85480.png"
         },
         {
           "id": "avg-lw06",
@@ -1374,7 +1374,7 @@
             "salary": 1000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40831/180.jpg"
         },
         {
           "id": "avt-c04",
@@ -1499,7 +1499,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/19000/180.jpg"
         },
         {
           "id": "avt-lw09",
@@ -1601,7 +1601,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/39821/180.jpg"
         },
         {
           "id": "avt-d08",
@@ -1628,7 +1628,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/43080/180.jpg"
         },
         {
           "id": "avt-d13",
@@ -1655,7 +1655,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/35611/180.jpg"
         },
         {
           "id": "avt-c03",
@@ -3379,7 +3379,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/20693/180.jpg"
         },
         {
           "id": "amr-g02",
@@ -4257,7 +4257,7 @@
             "salary": 20000000,
             "years": 2
           },
-          "face": null
+          "face": "https://ru.hcbarys.kz/upload/resize_cache/iblock/642/qrxhkk2bfagpi0smc1gk8lk1fqn0v04q/595_640_1/Shutov_Andrei_43_.png"
         },
         {
           "id": "brs-g02",
@@ -4380,7 +4380,7 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": null
+          "face": "https://ru.hcbarys.kz/upload/resize_cache/iblock/168/53o9cxiykczhnbcrlgobe3ksn3u5j8ox/595_640_1/Priski.png"
         },
         {
           "id": "brs-d04",
@@ -4481,7 +4481,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://ru.hcbarys.kz/upload/resize_cache/iblock/fd5/b50r47avemsbia6vwgzocsi41v0uybqq/595_640_1/Korolyov_Artyom_31_Portrait_6920.png"
         },
         {
           "id": "brs-d08",
@@ -4581,7 +4581,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://ru.hcbarys.kz/upload/resize_cache/iblock/ff7/fe0oy1ej19o51zvcnlnp59l5kse5efbo/595_640_1/Nikitin_Kirill_93.png"
         },
         {
           "id": "brs-rw01",
@@ -5456,7 +5456,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/41508/180.jpg"
         },
         {
           "id": "dmn-lw02",
@@ -6270,7 +6270,7 @@
             "years": 2,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/43165/180.jpg"
         },
         {
           "id": "dms-d07",
@@ -7449,7 +7449,7 @@
             "salary": 10000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/34034/180.jpg"
         },
         {
           "id": "lad-lw06",
@@ -8580,7 +8580,7 @@
             "salary": 15000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39515/180.jpg"
         },
         {
           "id": "mmg-g02",
@@ -8654,7 +8654,7 @@
             "salary": 50000000,
             "years": 1
           },
-          "face": null
+          "face": "https://img.khl.ru/players/15661/180.jpg"
         },
         {
           "id": "mmg-d03",
@@ -9629,7 +9629,7 @@
             "salary": 20000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img-sport.business-gazeta.ru/images/b7/4ebff1-c1d66c.jpg"
         },
         {
           "id": "nhk-lw02",
@@ -10154,7 +10154,7 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": null
+          "face": "https://hcsalavat.ru/upload/resize_cache/webp/iblock/e47/fx5ei8g0ke6o2q81bslushzznvx98wod.webp"
         },
         {
           "id": "syu-d03",
@@ -10606,7 +10606,7 @@
             "salary": 15000000,
             "years": 2
           },
-          "face": null
+          "face": "https://hcsalavat.ru/upload/resize_cache/webp/iblock/e20/nqaqbg9vfz161zlcp3znv712aua31zbv.webp"
         },
         {
           "id": "syu-lw08",
@@ -13851,7 +13851,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://s-cdn.sportbox.ru/images/styles/upload/fp_fotos/e9/76/a4f5e404b90ad24708aafe01cec9d960699892155cf2e817458237.jpg"
         },
         {
           "id": "soc-lw01",
@@ -18393,7 +18393,7 @@
         "defense": 78
       },
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://cdn.nhlpa.com/players/headshots/classic/nid/450/8478903.webp"
     },
     {
       "id": "fa-04",
@@ -18415,7 +18415,7 @@
         "defense": 84
       },
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://cdn.nhlpa.com/players/headshots/classic/nid/450/8476368.webp"
     },
     {
       "id": "fa-05",
@@ -18481,7 +18481,7 @@
         "defense": 69
       },
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://img.khl.ru/players/15781/180.jpg"
     },
     {
       "id": "fa-08",
@@ -18503,7 +18503,7 @@
         "defense": 62
       },
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://cdn.nhlpa.com/players/headshots/classic/nid/450/8476423.webp"
     },
     {
       "id": "fa-09",
@@ -18525,7 +18525,7 @@
         "defense": 79
       },
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://img.khl.ru/players/15999/180.jpg"
     },
     {
       "id": "fa-10",
@@ -18619,7 +18619,7 @@
       "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
       "source": "https://sport24.ru/hockey/article-882204-olimpiyskiy-chempion-gusev-legionery-chempiony-poteryavshiy-rabotu-svechnikov-5-luchshikh-svobodnykh-agentov-kkhl",
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://img.khl.ru/players/19020/180.jpg"
     },
     {
       "id": "fa-2026-08",
@@ -18667,7 +18667,7 @@
       "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
       "source": "https://www.championat.com/hockey/article-6650058-kakie-legionery-khl-nahodyatsya-bez-kontrakta-kakie-inostrannye-igroki-khl-ostayutsya-svobodnymi-agentami.html",
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://cdn.nhlpa.com/players/headshots/classic/nid/450/8476452.webp"
     },
     {
       "id": "fa-2026-10",
@@ -18691,7 +18691,7 @@
       "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
       "source": "https://www.championat.com/hockey/article-6650058-kakie-legionery-khl-nahodyatsya-bez-kontrakta-kakie-inostrannye-igroki-khl-ostayutsya-svobodnymi-agentami.html",
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://cdn.nhlpa.com/players/headshots/classic/nid/450/8477433.webp"
     },
     {
       "id": "fa-2026-11",
