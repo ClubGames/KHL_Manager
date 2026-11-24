@@ -1,19 +1,47 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { GameEvent, Player, Team } from '../types';
 import { clipFrame, liveRinkFrame, type LiveFrame } from '../game/rinkPlayback';
 import type { RinkAI } from '../game/rinkAI';
+import { FACEOFF_SPOTS, RINK } from '../game/rinkGeometry';
 import { cn } from '../utils/cn';
 
 export { clipFrame };
+/** Static ice markings in real IIHF/KHL proportions (viewBox 100 × 50 = 60 × 30 m, 1 m = 5/3 units). */
+const U = 100 / RINK.length;
+const BLUE_X = [RINK.blueLine * U, 100 - RINK.blueLine * U];
+const GOAL_X = [RINK.goalLine * U, 100 - RINK.goalLine * U];
+const END_DOTS = FACEOFF_SPOTS.end.map(d => ({ x: d.x * U, y: d.y * U }));
+const NEUTRAL_DOTS = FACEOFF_SPOTS.neutral.map(d => ({ x: d.x * U, y: d.y * U }));
+const CIRCLE_R = RINK.circleR * U, DOT_R = RINK.dotR * U, CREASE_R = RINK.crease * U, NET_W = RINK.goalWidth * U, NET_D = RINK.goalDepth * U;
+function RinkMarkings() {
+  const clip = useId().replace(/:/g, '');
+  return <>
+    <defs><clipPath id={`rink-${clip}`}><rect x=".7" y=".7" width="98.6" height="48.6" rx={RINK.corner * U} /></clipPath></defs>
+    <rect x=".7" y=".7" width="98.6" height="48.6" rx={RINK.corner * U} fill="#e5f0f4" stroke="#95b1c3" strokeWidth="1.2" />
+    <g clipPath={`url(#rink-${clip})`} data-rink-markings>
+      {GOAL_X.map(x => <path key={x} d={`M ${x} 0 V 50`} stroke="#db5066" strokeWidth={RINK.lineWidth * U * 2} />)}
+      {BLUE_X.map(x => <path key={x} d={`M ${x} 0 V 50`} stroke="#4076b7" strokeWidth={RINK.blueWidth * U} data-rink-blue={x.toFixed(2)} />)}
+      <path d="M 50 0 V 50" stroke="#db5066" strokeWidth={RINK.redWidth * U} strokeDasharray="1.4 .5" />
+      <circle cx="50" cy="25" r={CIRCLE_R} stroke="#4076b7" fill="none" strokeWidth=".2" />
+      <circle cx="50" cy="25" r={DOT_R * .5} fill="#4076b7" />
+      {END_DOTS.map(d => <g key={`${d.x}-${d.y}`} stroke="#dc6070" fill="none" strokeWidth=".2" data-rink-circle>
+        <circle cx={d.x} cy={d.y} r={CIRCLE_R} />
+        <circle cx={d.x} cy={d.y} r={DOT_R} fill="#dc6070" stroke="none" />
+        {[-1, 1].map(sy => [-1, 1].map(sx => <path key={`${sx}${sy}`} d={`M ${d.x + sx * .95} ${d.y + sy * (CIRCLE_R - .1)} V ${d.y + sy * (CIRCLE_R + 1)}`} />))}
+        {[-1, 1].map(sx => <path key={sx} d={`M ${d.x + sx * 1.1} ${d.y - .5} H ${d.x + sx * 2.1} M ${d.x + sx * 1.1} ${d.y + .5} H ${d.x + sx * 2.1}`} />)}
+      </g>)}
+      {NEUTRAL_DOTS.map(d => <circle key={`${d.x}-${d.y}`} cx={d.x} cy={d.y} r={DOT_R} fill="#dc6070" data-rink-neutral-dot />)}
+      {GOAL_X.map((x, i) => { const s = i ? -1 : 1; return <g key={x}>
+        <path d={`M ${x} ${25 - CREASE_R} A ${CREASE_R} ${CREASE_R} 0 0 ${i ? 0 : 1} ${x} ${25 + CREASE_R} Z`} fill="#6db9df66" stroke="#db5066" strokeWidth=".12" />
+        <rect x={s > 0 ? x - NET_D : x} y={25 - NET_W / 2} width={NET_D} height={NET_W} rx=".5" fill="#beced9" stroke="#ce3d51" strokeWidth=".3" />
+      </g>; })}
+    </g>
+    <text x="50" y="26" textAnchor="middle" fontSize="2" fill="#7c9cac" fontFamily="sans-serif">КХЛ</text>
+  </>;
+}
 export function RinkSvg({ frame, home, away, players }: { frame: LiveFrame; home: Team; away: Team; players: Record<string, Player> }) {
   return <svg viewBox="0 0 100 50" className="w-full h-full" role="img" aria-label="Площадка сверху: хоккеисты и шайба" data-rink-svg>
-    <rect x=".7" y=".7" width="98.6" height="48.6" rx="10" fill="#e5f0f4" stroke="#95b1c3" strokeWidth="1.2" />
-    <path d="M 50 1 V 49" stroke="#db5066" strokeWidth=".35" />
-    {[28, 72].map(x => <path key={x} d={`M ${x} 1 V 49`} stroke="#4076b7" strokeWidth=".6" />)}
-    <circle cx="50" cy="25" r="7.3" stroke="#4076b7" fill="none" strokeWidth=".25" />
-    {[19, 81].flatMap(x => [12, 38].map(y => <g key={`${x}-${y}`} stroke="#dc6070" fill="none" strokeWidth=".2"><circle cx={x} cy={y} r="7.3" /><circle cx={x} cy={y} r=".45" fill="#dc6070" /></g>))}
-    {[7, 93].map(x => <g key={x}><path d={`M ${x} 3 V 47`} stroke="#db5066" strokeWidth=".2" /><ellipse cx={x} cy="25" rx="3.5" ry="3" fill="#6db9df66" stroke="#4287b5" strokeWidth=".15" /><rect x={x < 50 ? x - 2.3 : x} y="23.475" width="2.3" height="3.05" fill="#beced9" stroke="#ce3d51" strokeWidth=".3" /></g>)}
-    <text x="50" y="26" textAnchor="middle" fontSize="2" fill="#7c9cac" fontFamily="sans-serif">КХЛ</text>
+    <RinkMarkings />
     {frame.skaters.map(p => <g key={`${p.side}-${p.id}`} transform={`translate(${p.pos.x} ${p.pos.y / 2})`} data-rink-player={p.id}>
       <title>{players[p.id]?.name ?? p.id}{p.goalie ? ' · вратарь' : ''}</title>
       <ellipse cy=".5" rx="1.65" ry="1" fill="#233a4b30" />
@@ -22,8 +50,8 @@ export function RinkSvg({ frame, home, away, players }: { frame: LiveFrame; home
       <text y=".4" textAnchor="middle" fontSize="1.2" fontWeight="bold" fill={p.side ? away.primaryColor : '#fff'} stroke={p.side ? '#fff' : '#000'} strokeWidth=".15" paintOrder="stroke" fontFamily="sans-serif">{players[p.id]?.number ?? ''}</text>
     </g>)}
     {frame.faceoff && <g transform={frame.official ? `translate(${frame.official.x} ${frame.official.y / 2})` : `translate(${frame.puck.x + 1} ${frame.puck.y / 2 + 3})`} aria-label="Судья на вбрасывании" data-rink-official><circle r="1" fill="#202a34" /><path d="M-.6 -.7 V.7 M0 -.9 V.9 M.6 -.7 V.7" stroke="#fff" strokeWidth=".2" /></g>}
-    <circle cx={frame.puck.x} cy={frame.puck.y / 2} r="1.5" fill="none" stroke="#e68c22" strokeWidth=".3" opacity=".7" />
-    <circle data-rink-puck cx={frame.puck.x} cy={frame.puck.y / 2 - frame.puck.h * 1.5} r=".65" fill="#0a1321" stroke="#fff" strokeWidth=".15" />
+    <circle cx={frame.puck.x} cy={frame.puck.y / 2} r="1.2" fill="none" stroke="#e68c22" strokeWidth=".25" opacity=".7" />
+    <circle data-rink-puck cx={frame.puck.x} cy={frame.puck.y / 2 - frame.puck.h * 1.5} r=".5" fill="#0a1321" stroke="#fff" strokeWidth=".12" />
   </svg>;
 }
 
@@ -55,12 +83,14 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
     // Goalie pulls/substitutions are revealed state, never simulator end-of-period state.
     frame = { ...source, skaters: source.skaters.filter(p => !p.goalie || goalies[p.side] !== null).map(p => p.goalie && goalies[p.side] ? { ...p, id: goalies[p.side]! } : p) };
   }
+  const flipped = !!ai?.flipped;
   const state = frame.faceoff ? 'Вбрасывание · время стоит' : frame.stopped ? 'Свисток · время стоит' : running ? 'В игре' : 'Пауза';
   return <section className={cn('rounded-md border border-line bg-panel overflow-hidden flex flex-col', className)} data-live-rink data-faceoff={frame.faceoff || undefined} data-stopped={frame.stopped || undefined}>
     <div className="flex items-center justify-between gap-2 px-2.5 py-1 text-[11px] border-b border-line min-h-[26px]">
       <span className="flex items-center gap-2 min-w-0">
-        <span className="flex items-center gap-1 shrink-0"><i style={{ background: home.primaryColor }} className="inline-block w-2 h-2 rounded-full border border-white/50" />{home.short} →</span>
-        <span className="flex items-center gap-1 shrink-0">← {away.short}<i style={{ background: '#f7fafc', borderColor: away.primaryColor }} className="inline-block w-2 h-2 rounded-full border-2" /></span>
+        {/* Who attacks which way: teams switch ends every period. */}
+        <span className="flex items-center gap-1 shrink-0" data-rink-ends={flipped ? 'switched' : 'normal'}><i style={{ background: home.primaryColor }} className="inline-block w-2 h-2 rounded-full border border-white/50" />{flipped ? `← ${home.short}` : `${home.short} →`}</span>
+        <span className="flex items-center gap-1 shrink-0">{flipped ? `${away.short} →` : `← ${away.short}`}<i style={{ background: '#f7fafc', borderColor: away.primaryColor }} className="inline-block w-2 h-2 rounded-full border-2" /></span>
         <span className="truncate text-muted" data-rink-caption>{frame.caption ?? ''}</span>
       </span>
       <span className={cn('shrink-0 font-semibold', frame.stopped ? 'text-gold' : running ? 'text-ok' : 'text-muted')} data-rink-state>{state}</span>

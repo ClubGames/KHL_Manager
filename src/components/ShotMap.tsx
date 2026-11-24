@@ -235,7 +235,7 @@ export function ShotMap({
         <svg viewBox="0 0 200 100" className={cn('w-full block select-none', compact ? 'max-h-48' : 'max-h-60')}>
           <defs>
             <clipPath id="khl-rink-clip">
-              <rect x="2" y="2" width="196" height="96" rx="18" ry="18" />
+              <rect x="2" y="2" width="196" height="96" rx="28" ry="28" />
             </clipPath>
             <filter id="heat-blur" x="-15%" y="-15%" width="130%" height="130%">
               <feGaussianBlur stdDeviation="3.2" />
@@ -258,38 +258,44 @@ export function ShotMap({
 
             {/* Rink markings */}
             {/* Goal lines */}
-            <line x1="14" y1="2" x2="14" y2="98" stroke="#EF4444" strokeOpacity="0.45" strokeWidth="0.7" />
-            <line x1="186" y1="2" x2="186" y2="98" stroke="#EF4444" strokeOpacity="0.45" strokeWidth="0.7" />
+            {/* Real IIHF/KHL proportions: 200 × 100 units = 60 × 30 m */}
+            <line x1="13.3" y1="2" x2="13.3" y2="98" stroke="#EF4444" strokeOpacity="0.45" strokeWidth="0.7" />
+            <line x1="186.7" y1="2" x2="186.7" y2="98" stroke="#EF4444" strokeOpacity="0.45" strokeWidth="0.7" />
             {/* Blue lines */}
-            <line x1="68" y1="2" x2="68" y2="98" stroke="#38BDF8" strokeOpacity="0.45" strokeWidth="1.2" />
-            <line x1="132" y1="2" x2="132" y2="98" stroke="#38BDF8" strokeOpacity="0.45" strokeWidth="1.2" />
+            <line x1="75.7" y1="2" x2="75.7" y2="98" stroke="#38BDF8" strokeOpacity="0.45" strokeWidth="1" />
+            <line x1="124.3" y1="2" x2="124.3" y2="98" stroke="#38BDF8" strokeOpacity="0.45" strokeWidth="1" />
             {/* Center red line & circle */}
             <line x1="100" y1="2" x2="100" y2="98" stroke="#EF4444" strokeOpacity="0.5" strokeWidth="1.1" strokeDasharray="3 2" />
-            <circle cx="100" cy="50" r="14" fill="none" stroke="#38BDF8" strokeOpacity="0.32" strokeWidth="0.8" />
+            <circle cx="100" cy="50" r="15" fill="none" stroke="#38BDF8" strokeOpacity="0.32" strokeWidth="0.8" />
             <circle cx="100" cy="50" r="1.3" fill="#38BDF8" fillOpacity="0.6" />
 
             {/* End-zone faceoff circles */}
             {[
-              [36, 27],
-              [36, 73],
-              [164, 27],
-              [164, 73],
+              [33.3, 26.7],
+              [33.3, 73.3],
+              [166.7, 26.7],
+              [166.7, 73.3],
             ].map(([cx, cy], idx) => (
               <g key={idx}>
-                <circle cx={cx} cy={cy} r="13" fill="none" stroke="#EF4444" strokeOpacity="0.28" strokeWidth="0.7" />
+                <circle cx={cx} cy={cy} r="15" fill="none" stroke="#EF4444" strokeOpacity="0.28" strokeWidth="0.7" />
                 <circle cx={cx} cy={cy} r="1.1" fill="#EF4444" fillOpacity="0.55" />
               </g>
             ))}
 
+            {/* Neutral-zone faceoff dots (offsides) */}
+            {[[81.2, 26.7], [81.2, 73.3], [118.8, 26.7], [118.8, 73.3]].map(([cx, cy], idx) => (
+              <circle key={idx} cx={cx} cy={cy} r="1" fill="#EF4444" fillOpacity="0.5" />
+            ))}
+
             {/* High-danger slot outlines (subtle tactical guide) */}
-            <polygon points="14,38 45,32 45,68 14,62" fill="none" stroke="#93A4BC" strokeOpacity="0.14" strokeDasharray="2 2" strokeWidth="0.6" />
-            <polygon points="186,38 155,32 155,68 186,62" fill="none" stroke="#93A4BC" strokeOpacity="0.14" strokeDasharray="2 2" strokeWidth="0.6" />
+            <polygon points="13.3,40 46,32 46,68 13.3,60" fill="none" stroke="#93A4BC" strokeOpacity="0.14" strokeDasharray="2 2" strokeWidth="0.6" />
+            <polygon points="186.7,40 154,32 154,68 186.7,60" fill="none" stroke="#93A4BC" strokeOpacity="0.14" strokeDasharray="2 2" strokeWidth="0.6" />
 
             {/* Goal creases & nets */}
-            <path d="M 14 43 A 7 7 0 0 1 14 57 Z" fill="#38BDF8" fillOpacity="0.22" stroke="#38BDF8" strokeOpacity="0.6" strokeWidth="0.7" />
-            <rect x="10.2" y="45.5" width="3.8" height="9" rx="1" fill="none" stroke="#E8EEF5" strokeOpacity="0.7" strokeWidth="0.8" />
-            <path d="M 186 43 A 7 7 0 0 0 186 57 Z" fill="#38BDF8" fillOpacity="0.22" stroke="#38BDF8" strokeOpacity="0.6" strokeWidth="0.7" />
-            <rect x="186" y="45.5" width="3.8" height="9" rx="1" fill="none" stroke="#E8EEF5" strokeOpacity="0.7" strokeWidth="0.8" />
+            <path d="M 13.3 43.9 A 6.1 6.1 0 0 1 13.3 56.1 Z" fill="#38BDF8" fillOpacity="0.22" stroke="#38BDF8" strokeOpacity="0.6" strokeWidth="0.7" />
+            <rect x="9.6" y="46.95" width="3.7" height="6.1" rx="1" fill="none" stroke="#E8EEF5" strokeOpacity="0.7" strokeWidth="0.8" />
+            <path d="M 186.7 43.9 A 6.1 6.1 0 0 0 186.7 56.1 Z" fill="#38BDF8" fillOpacity="0.22" stroke="#38BDF8" strokeOpacity="0.6" strokeWidth="0.7" />
+            <rect x="186.7" y="46.95" width="3.7" height="6.1" rx="1" fill="none" stroke="#E8EEF5" strokeOpacity="0.7" strokeWidth="0.8" />
 
             {/* Shot markers */}
             {filtered.map((s, idx) => {
@@ -338,7 +344,7 @@ export function ShotMap({
           </g>
 
           {/* Outer boards */}
-          <rect x="2" y="2" width="196" height="96" rx="18" ry="18" fill="none" stroke="#2B4263" strokeWidth="1.5" />
+          <rect x="2" y="2" width="196" height="96" rx="28" ry="28" fill="none" stroke="#2B4263" strokeWidth="1.5" />
         </svg>
 
         {filtered.length === 0 && (

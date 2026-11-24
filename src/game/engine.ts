@@ -155,7 +155,8 @@ function generateShotGeometry(
       y = 50 + wingSign * (14 + Math.random() * 19);
       break;
     case 'point':
-      depth = 69.5 + Math.random() * 6;
+      // Just inside the blue line (IIHF: 22.86 m from the end boards → 61.9…62.4 % of the length).
+      depth = 63.2 + Math.random() * 4.6;
       y = 50 + (Math.random() - 0.5) * 64;
       break;
     case 'perimeter':

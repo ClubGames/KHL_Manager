@@ -1,13 +1,17 @@
 import type { GameEvent, Player, Team } from '../types';
+import { endsSwitched, FACEOFF_SPOTS, pctX, pctY, RINK } from './rinkGeometry';
 
 // Presentation only. The engine records shot locations, not tracking data.
 // Deterministic motion is prepared privately; scores, names and outcomes are revealed only by Match at event.sec.
 export type Point = { x: number; y: number; h: number };
 export type Key = Point & { t: number };
 export type Track = { id: string; side: 0 | 1; goalie?: boolean; keys: Key[] };
-/** `bodies`: track positions are skater bodies (agent simulation), not stick blades (legacy reconstruction). */
-export type ReplayClip = { label: string; duration: number; release: number; goal: number; tracks: Track[]; puck: Key[]; scorer: string; attacking: 0 | 1; bodies?: boolean };
+/** `bodies`: track positions are skater bodies (agent simulation), not stick blades (legacy reconstruction).
+ *  `dir`: the attacked net is at +x (1) or -x (-1); teams switch ends between periods. */
+export type ReplayClip = { label: string; duration: number; release: number; goal: number; tracks: Track[]; puck: Key[]; scorer: string; attacking: 0 | 1; bodies?: boolean; dir?: 1 | -1 };
 export const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
+/** Direction of the attack in a clip: +1 toward the right-hand net (x = 100), -1 toward the left one. */
+export const attackDir = (clip: Pick<ReplayClip, 'attacking' | 'dir'>): 1 | -1 => clip.dir ?? (clip.attacking ? -1 : 1);
 const key = (t: number, x: number, y: number, h = 0): Key => ({ t, x, y, h });
 export function samplePath(path: Key[], time: number, smooth = false): Point {
   if (!path.length) return { x: 50, y: 50, h: 0 };
@@ -20,6 +24,24 @@ export function samplePath(path: Key[], time: number, smooth = false): Point {
     return { x: a.x + (b.x - a.x) * u, y: a.y + (b.y - a.y) * u, h: a.h + (b.h - a.h) * u };
   }
   return { ...path[path.length - 1] };
+}
+/** Smooth (Catmull–Rom) sampling through the keys, for bodies: no velocity kinks at every 0.1 s key. */
+export function sampleSmooth(path: Key[], time: number): Point {
+  const n = path.length;
+  if (n < 3) return samplePath(path, time);
+  if (time <= path[0].t) return { ...path[0] };
+  if (time >= path[n - 1].t) return { ...path[n - 1] };
+  let i = 1;
+  while (i < n - 1 && time > path[i].t) i++;
+  const p1 = path[i - 1], p2 = path[i], p0 = path[Math.max(0, i - 2)], p3 = path[Math.min(n - 1, i + 1)];
+  const u = clamp((time - p1.t) / (p2.t - p1.t || 1), 0, 1), u2 = u * u, u3 = u2 * u;
+  // Non-uniform key spacing: tangents scaled to the segment length so the curve never overshoots wildly.
+  const d = p2.t - p1.t || 1, m1 = d / ((p2.t - p0.t) || 1), m2 = d / ((p3.t - p1.t) || 1);
+  const f = (a: number, b: number, c: number, e: number) => {
+    const t1 = (c - a) * m1, t2 = (e - b) * m2;
+    return (2 * u3 - 3 * u2 + 1) * b + (u3 - 2 * u2 + u) * t1 + (-2 * u3 + 3 * u2) * c + (u3 - u2) * t2;
+  };
+  return { x: f(p0.x, p1.x, p2.x, p3.x), y: f(p0.y, p1.y, p2.y, p3.y), h: p1.h + (p2.h - p1.h) * u };
 }
 export function eventSeed(e: GameEvent): number {
   let n = (e.sec * 101 + e.period * 17) | 0;
@@ -35,7 +57,7 @@ export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: R
   const other: 0 | 1 = side === 0 ? 1 : 0;
   const teams = [home, away];
   const seed = eventSeed(e), sign = seed % 2 ? 1 : -1;
-  const sx = clamp(e.x === undefined ? (e.zone === 'point' ? 72 : e.zone === 'crease' ? 89 : 81) : side ? 100 - e.x : e.x, 5, 92);
+  const sx = clamp(e.x === undefined ? (e.zone === 'point' ? 65 : e.zone === 'crease' ? 89 : 81) : side ? 100 - e.x : e.x, 5, 92);
   const sy = clamp(e.y ?? 50 + sign * 16, 6, 94);
   const shot = e.shotType ?? 'wrist';
   const rush = e.strength === 'SH' || (shot === 'backhand' && sx > 78);
@@ -51,13 +73,13 @@ export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: R
   const scorer = [key(0, sx - (rush ? 32 : shot === 'tip' || shot === 'rebound' ? 3 : 9), sy + sign * (rush ? 13 : 6)), key(.32, sx - (rush ? 15 : 4), sy - sign * 4), key(.54, sx - 1.4, sy + (shot === 'backhand' ? sign * 5 : 0)), key(release, sx, sy), key(1, Math.min(91, sx + 4), clamp(sy + sign * 10, 9, 91))];
   tracks.push({ id: e.player, side, keys: scorer });
   ids.slice(1).forEach((id, i) => {
-    const hx = i === 0 ? (shot === 'tip' || shot === 'rebound' ? 73 : sx - 8) : 66 + i * 3;
+    const hx = i === 0 ? (shot === 'tip' || shot === 'rebound' ? 66 : sx - 8) : 64 + i * 3;
     const hy = i === 0 ? clamp(50 - sign * 27, 8, 92) : [22, 78, 42, 62, 50][i % 5];
     tracks.push({ id, side, keys: [key(0, hx - (rush ? 22 : 3), hy + sign * 4), key(.32, hx, hy), key(.54, hx + 1, hy + sign * 2), key(1, Math.min(88, hx + 10), hy - sign * 7)] });
   });
   defense.forEach((id, i) => {
     // Collapse into lanes, trail the shooter, contest the crease; not five stationary spectators.
-    const ex = [sx - 2, 85, 78, 70, 81][i % 5], ey = [sy + sign * 7, 49, 27, 72, 65][i % 5];
+    const ex = [sx - 2, 85, 78, 67, 81][i % 5], ey = [sy + sign * 7, 49, 27, 72, 65][i % 5];
     tracks.push({ id, side: other, keys: [key(0, clamp(ex - (rush ? 20 : 2), 12, 91), clamp(ey - sign * 9, 8, 92)), key(.54, clamp(ex, 10, 91), clamp(ey, 8, 92)), key(1, clamp(ex + 3, 10, 91), clamp(ey - sign * 4, 8, 92))] });
   });
   const at = (id: string, t: number) => ({ ...samplePath(tracks.find(tr => tr.id === id)!.keys, t), t });
@@ -71,15 +93,16 @@ export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: R
   const height = shot === 'rebound' ? .14 : shot === 'backhand' ? .7 : .4 + seed % 60 / 100;
   if (shot === 'tip' || shot === 'rebound') {
     // First attempt from the point; rebound off the goalie or a stick deflection at the actual shot location.
-    const origin = helpers[0] ? at(helpers[0], .43) : key(.43, 72, 50 - sign * 23);
-    puck = helpers[0] ? [at(helpers[0], 0), origin] : [key(0, 72, 50 - sign * 23), origin];
+    const origin = helpers[0] ? at(helpers[0], .43) : key(.43, 65, 50 - sign * 23);
+    puck = helpers[0] ? [at(helpers[0], 0), origin] : [key(0, 65, 50 - sign * 23), origin];
     if (shot === 'rebound') puck.push(key(.53, 90, 50 + (origin.y - 50) * .12, .15));
     puck.push(key(.61, sx, sy, shot === 'tip' ? .28 : 0), key(release, sx, sy, shot === 'tip' ? .28 : 0));
   }
-  const endX = e.type === 'shot' ? 90.8 : 93.3;
+  const goalLine = 100 - pctX(RINK.goalLine), netBack = goalLine + pctX(RINK.goalDepth);
+  const endX = e.type === 'shot' ? goalLine - 2.4 : goalLine + .3;
   puck.push(key(release + flight / 2, (sx + endX) / 2, (sy + targetY) / 2, height), key(goal, endX, targetY, e.type === 'shot' ? .1 : height * .8));
   if (e.type === 'shot') puck.push(key(1, endX, targetY, 0));
-  else puck.push(key(goal + .06, 95.4, targetY, .2), key(1, 94.4, targetY + .5, 0));
+  else puck.push(key(goal + .06, netBack - .3, targetY, .2), key(1, netBack - 1, targetY + .5, 0));
   if (e.goalie !== null && e.strength !== 'EN') {
     const gid = e.goalie ?? teams[other].players.find(id => players[id]?.position === 'G');
     if (gid && players[gid]) {
@@ -94,8 +117,10 @@ export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: R
   }
   const ownGoalie = teams[side].lineup.starterG;
   if (ownGoalie && players[ownGoalie]) tracks.push({ id: ownGoalie, side, goalie: true, keys: [key(0, 10, 50), key(1, 10, 50)] });
-  const mirror = (p: Key) => side ? { ...p, x: 100 - p.x } : p;
-  return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[shot], duration: 8, release, goal, tracks: tracks.map(tr => ({ ...tr, keys: tr.keys.map(mirror) })), puck: puck.map(mirror), scorer: e.player, attacking: side };
+  // Away attacks the left net in the 1st period; everybody switches ends every period.
+  const flip = (side === 1) !== endsSwitched(e.period);
+  const mirror = (p: Key) => flip ? { ...p, x: 100 - p.x } : p;
+  return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[shot], duration: 8, release, goal, tracks: tracks.map(tr => ({ ...tr, keys: tr.keys.map(mirror) })), puck: puck.map(mirror), scorer: e.player, attacking: side, dir: flip ? -1 : 1 };
 }
 
 export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: Point; goalie?: boolean; box?: boolean }[]; faceoff?: boolean; stopped?: boolean; carrier?: string | null; caption?: string; official?: Point };
@@ -129,6 +154,7 @@ function faceoffFrame(ids: [string[], string[]], goalies: [string | null, string
   } });
   frame.puck = { x, y, h: .8 }; frame.faceoff = true; return frame;
 }
+const DOT_X = pctX(FACEOFF_SPOTS.end[0].x), DOT_Y = pctY(FACEOFF_SPOTS.end[0].y);
 /** One authoritative set of paths. The 3D viewer receives these very clip objects, not a second reconstruction. */
 export function buildRinkTimeline(events: GameEvent[], home: Team, away: Team, players: Record<string, Player>, start: number, end: number, initialFrame?: LiveFrame): RinkTimeline {
   const result: RinkTimeline = [];
@@ -154,7 +180,7 @@ export function buildRinkTimeline(events: GameEvent[], home: Team, away: Team, p
     if (e.sec <= cursor + .05) return;
     if (e.type === 'penalty') {
       bridge(previous, e.sec);
-      faceoff(Math.min(end, (shots[i + 1]?.sec ?? end) - .1, e.sec + 1), e.team === home.id ? 19 : 81, 24);
+      faceoff(Math.min(end, (shots[i + 1]?.sec ?? end) - .1, e.sec + 1), (e.team === home.id) !== endsSwitched(e.period) ? DOT_X : 100 - DOT_X, DOT_Y);
       return;
     }
     const clip = buildReplayClip(e, home, away, players);
@@ -173,7 +199,7 @@ export function buildRinkTimeline(events: GameEvent[], home: Team, away: Team, p
       cursor += tail; previous = clipFrame(clip, 1);
     }
     if (e.ice) { ids[0] = e.ice[0].filter((id): id is string => !!id && !!players[id] && players[id].position !== 'G'); ids[1] = e.ice[1].filter((id): id is string => !!id && !!players[id] && players[id].position !== 'G'); }
-    if (e.type !== 'miss' && nextSec > cursor + 1) faceoff(Math.min(nextSec - .1, cursor + 1), e.type === 'goal' ? 50 : e.team === home.id ? 81 : 19, e.type === 'goal' ? 50 : (e.y ?? 50) > 50 ? 76 : 24);
+    if (e.type !== 'miss' && nextSec > cursor + 1) faceoff(Math.min(nextSec - .1, cursor + 1), e.type === 'goal' ? 50 : (e.team === home.id) !== endsSwitched(e.period) ? 100 - DOT_X : DOT_X, e.type === 'goal' ? 50 : (e.y ?? 50) > 50 ? 100 - DOT_Y : DOT_Y);
   });
   bridge(previous, end);
   return result;

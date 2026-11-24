@@ -12,6 +12,7 @@ import { GoalReplay } from './GoalReplay';
 import { ShotMap } from './ShotMap';
 import { RinkAI, type PlayKind, type RinkPlay, type RinkTactics } from '../game/rinkAI';
 import { LiveRink } from './RinkView';
+import { endsSwitched } from '../game/rinkGeometry';
 import { LineupPreview } from './LineupPreview';
 import { previewPowerPlay } from '../game/lineupCompare';
 import { ATTACK_STYLE_INFO, FORECHECK_INFO, freshnessTone, goalieFreshness, PULL_GOALIE_INFO } from '../game/chemistry';
@@ -20,8 +21,8 @@ import { intermissionHints, promoteToPP1, swapInLineup, type CoachHint } from '.
 
 const RATE: Record<1 | 2 | 4, number> = { 1: 30, 2: 60, 4: 120 };
 /** Rink plays that also go to the match feed (the engine already reports shots, goals, penalties and hits). */
-const FEED_PLAYS = new Set<PlayKind>(['faceoff', 'takeaway', 'interception', 'block', 'icing']);
-const PLAY_ICON: Partial<Record<PlayKind, string>> = { faceoff: '◎', takeaway: '⇄', interception: '✂', block: '▣', icing: '⇥' };
+const FEED_PLAYS = new Set<PlayKind>(['faceoff', 'takeaway', 'interception', 'block', 'icing', 'offside']);
+const PLAY_ICON: Partial<Record<PlayKind, string>> = { faceoff: '◎', takeaway: '⇄', interception: '✂', block: '▣', icing: '⇥', offside: '⊘' };
 
 function cloneL(L: Lineup): Lineup {
   return {
@@ -90,7 +91,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const tauRef = useRef(0);
   const playIdx = useRef(0);
   const iceSig = useRef('');
-  const doneTally = useRef<RinkTally>({ faceoff: [0, 0], block: [0, 0], takeaway: [0, 0], icing: [0, 0] });
+  const doneTally = useRef<RinkTally>({ faceoff: [0, 0], block: [0, 0], takeaway: [0, 0], icing: [0, 0], offside: [0, 0] });
   const paceRef = useRef<number>(RinkAI.PACE.cold);
   const idx = useRef(0);
   const clockRef = useRef(0);
@@ -115,6 +116,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     blockEnd.current = sim.sec;
     rinkAI.current = k === 'so' ? null : new RinkAI(evs, H, A, P, blockStart.current, blockEnd.current, {
       suddenDeath: k !== 'reg',
+      // Teams switch ends every period (and for the overtime).
+      flip: endsSwitched(sim.period),
       goalies: [sim.team(0).lineup.starterG || null, sim.team(1).lineup.starterG || null],
       tactics: (): RinkTactics => [
         { forecheck: sim.tactics[0].forecheck, style: sim.tactics[0].style },
@@ -509,7 +512,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   // Rink-level hockey counted over the whole match (finished periods + what has been shown of the current one).
   const shownTally = rinkAI.current?.tally(tauRef.current);
   const rinkTally = status === 'intro' ? null : (() => {
-    const t = { faceoff: [...doneTally.current.faceoff], block: [...doneTally.current.block], takeaway: [...doneTally.current.takeaway], icing: [...doneTally.current.icing] } as RinkTally;
+    const t = { faceoff: [...doneTally.current.faceoff], block: [...doneTally.current.block], takeaway: [...doneTally.current.takeaway], icing: [...doneTally.current.icing], offside: [...doneTally.current.offside] } as RinkTally;
     if (shownTally) (Object.keys(t) as (keyof RinkTally)[]).forEach(k => { t[k][0] += shownTally[k][0]; t[k][1] += shownTally[k][1]; });
     return t;
   })();
@@ -583,6 +586,11 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
                     <td className="pl-4 py-1.5">{rinkTally.icing[0]}</td>
                     <td className="text-center text-xs text-muted">Проброс</td>
                     <td className="pr-4 py-1.5 text-right">{rinkTally.icing[1]}</td>
+                  </tr>
+                  <tr className="border-t border-line/60" data-offsides={`${rinkTally.offside[0]}:${rinkTally.offside[1]}`}>
+                    <td className="pl-4 py-1.5">{rinkTally.offside[0]}</td>
+                    <td className="text-center text-xs text-muted">Офсайды</td>
+                    <td className="pr-4 py-1.5 text-right">{rinkTally.offside[1]}</td>
                   </tr>
                 </>)}
                 <tr className="border-t border-line/60">
@@ -1170,7 +1178,7 @@ function Overlay({ children, wide = false }: { children: React.ReactNode; wide?:
   );
 }
 
-type RinkTally = Record<'faceoff' | 'block' | 'takeaway' | 'icing', [number, number]>;
+type RinkTally = Record<'faceoff' | 'block' | 'takeaway' | 'icing' | 'offside', [number, number]>;
 
 interface FeedItem {
   /** stable number of the event within the match */

@@ -80,7 +80,8 @@ function kitMaterial(kind: 0 | 1 | 2, base: string, trim: string, trim2: string)
 
 const _a = new T.Vector3(), _b = new T.Vector3(), _c = new T.Vector3(), _d = new T.Vector3(), _e = new T.Vector3();
 const _q = new T.Quaternion(), _wq = new T.Quaternion(), _pq = new T.Quaternion(), _bq = new T.Quaternion();
-const Y = new T.Vector3(0, 1, 0), X = new T.Vector3(1, 0, 0);
+const Y = new T.Vector3(0, 1, 0), X = new T.Vector3(1, 0, 0), Z = new T.Vector3(0, 0, 1);
+const _t1 = new T.Quaternion(), _t2 = new T.Quaternion();
 const LIFT = .06; // skate blade height: the rig stands on its blades
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -270,34 +271,53 @@ export class PlayerFigure {
    * Skater pose. phase: stride phase (rad); amp 0..1 skating effort; shot: undefined, or time relative to
    * the release in shot units (-1 windup start, 0 puck leaves the blade, >0 follow-through);
    * cheer 0..1 goal celebration (stick up).
+   * opts.bank: lean into a turn (rad, + = toward the player's left); opts.reach: a puck point in character
+   * space the blade should cup (weight opts.reachWeight 0..1), so a carried puck sits on the blade.
    */
-  skate(phase: number, amp: number, shot?: number, cheer = 0) {
+  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number } = {}) {
     this.reset();
-    const crouch = lerp(.1 + .07 * amp, .02, cheer);
-    this.rig.position.set(.035 * Math.sin(phase) * amp * (1 - cheer), LIFT - crouch, 0);
+    const bank = clamp01(Math.abs(opts.bank ?? 0) / .4) * .4 * Math.sign(opts.bank ?? 0) * (1 - cheer);
+    // Deeper knee bend on a hard stride, a little bob with every push.
+    const crouch = lerp(.1 + .07 * amp + .012 * amp * Math.cos(phase * 2), .02, cheer) + Math.abs(bank) * .08;
+    this.rig.position.set(.035 * Math.sin(phase) * amp * (1 - cheer) + bank * .1, LIFT - crouch, 0);
     // Shot profile: load (stick back, shoulders closed), whip through the puck, follow through high.
     const s = shot === undefined ? -9 : shot;
     const load = s < -1 ? 0 : s < -.35 ? smooth((s + 1) / .65) : s < 0 ? 1 - smooth((s + .35) / .35) : 0;
     const follow = s < 0 ? 0 : s < .5 ? smooth(s / .5) : 1 - smooth((s - 1.1) / .8);
     const twist = -.55 * load + .4 * follow;
     const lean = lerp(.2 + .14 * amp + .1 * load, -.05, cheer);
-    this.turn('Abdomen', _q.setFromAxisAngle(X, lean * .55));
-    this.turn('Torso', new T.Quaternion().setFromAxisAngle(Y, twist * .6).multiply(_q.setFromAxisAngle(X, lean * .3)));
-    this.turn('Chest', new T.Quaternion().setFromAxisAngle(Y, twist * .4).multiply(_q.setFromAxisAngle(X, lean * .25)));
-    this.turn('Neck', _q.setFromAxisAngle(X, -lean * .8));
+    // Shoulders counter-rotate the stride a little (real skaters swing the upper body against the legs).
+    const swing = .07 * amp * Math.sin(phase) * (1 - load) * (1 - follow) * (1 - cheer);
+    this.turn('Abdomen', _t1.setFromAxisAngle(Z, -bank * .45).multiply(_t2.setFromAxisAngle(X, lean * .55)));
+    this.turn('Torso', _t1.setFromAxisAngle(Y, twist * .6 + swing).multiply(_t2.setFromAxisAngle(X, lean * .3)).multiply(_q.setFromAxisAngle(Z, -bank * .35)));
+    this.turn('Chest', _t1.setFromAxisAngle(Y, twist * .4 + swing * .6).multiply(_t2.setFromAxisAngle(X, lean * .25)));
+    this.turn('Neck', _t1.setFromAxisAngle(X, -lean * .8).multiply(_t2.setFromAxisAngle(Z, bank * .5)));
     this.root.updateMatrixWorld(true);
     const feet: [T.Vector3, T.Vector3] = [vec(0, 0, 0), vec(0, 0, 0)], yaw: [number, number] = [0, 0];
     [1, -1].forEach((side, i) => {
       const ph = phase + (i ? Math.PI : 0), push = Math.max(0, Math.sin(ph)), back = Math.sin(ph);
-      const wide = (.17 + .19 * push * amp) * side + (follow + load) * .06 * side;
-      feet[i].set(wide, .023 + LIFT * .2 + .07 * amp * Math.max(0, -Math.sin(ph + .6)), .07 - .26 * amp * back);
-      yaw[i] = side * (.12 + .3 * amp * push);
+      // Push out to the side and back, recover low and forward; the inside skate carries the turn.
+      const wide = (.17 + .2 * push * amp) * side + (follow + load) * .06 * side + bank * .12;
+      const lift = .065 * amp * smooth(Math.max(0, -Math.sin(ph + .5)));
+      feet[i].set(wide, .023 + LIFT * .2 + lift, .08 - .28 * amp * back);
+      yaw[i] = side * (.1 + .32 * amp * push) + bank * .3;
     });
     this.legs(feet, [vec(.25, -.1, 1), vec(-.25, -.1, 1)], yaw);
     // Stick: blade on the ice at the forehand side (≈1 m ahead, 0.55 m right, where the 2D path puts the puck).
-    const carry = vec(-.52 + .07 * Math.sin(phase) * amp, .0, .98), carryTop = vec(.1, 1.02 - crouch, .3);
+    let carry = vec(-.52 + .07 * Math.sin(phase) * amp, .0, .98), carryTop = vec(.1, 1.02 - crouch, .3);
+    const reachW = opts.reach ? clamp01(opts.reachWeight ?? 0) : 0;
+    if (reachW > 0 && opts.reach) {
+      // The blade's middle goes onto the puck: heel a little behind and to the right of it.
+      const r = opts.reach, target = vec(Math.max(-1.05, Math.min(.55, r.x - .04)), 0, Math.max(.35, Math.min(1.45, r.z - .1)));
+      carry = mixV(carry, target, smooth(reachW));
+      carryTop = mixV(carryTop, vec(.1 + target.x * .25, 1.02 - crouch, .22 + target.z * .1), smooth(reachW) * .6);
+    }
     let heel = carry, top = carryTop;
-    if (load > 0) { heel = mixV(carry, vec(-.82, .3, -.15), load); top = mixV(carryTop, vec(.12, 1.12, .02), load); }
+    if (load > 0) {
+      // With the puck on the blade the windup is a short drag behind it, blade low (wrist/snap); without, a full backswing.
+      const back = mixV(vec(-.82, .3, -.15), vec(carry.x - .12, .04, carry.z - .5), smooth(reachW));
+      heel = mixV(carry, back, load); top = mixV(carryTop, vec(.12, 1.12, .02), load * (1 - .5 * smooth(reachW)));
+    }
     if (follow > 0) { heel = mixV(carry, vec(-.08, 1.0, 1.25), follow); top = mixV(carryTop, vec(.36, .98, .6), follow); }
     if (cheer > 0) { heel = mixV(heel, vec(-.2, 2.25, .45), smooth(cheer)); top = mixV(top, vec(.2, 1.12, .3), smooth(cheer)); }
     const grip = this.stick(heel, top);

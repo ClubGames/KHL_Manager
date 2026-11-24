@@ -1,5 +1,6 @@
 import type { AttackStyle, ForecheckStyle, GameEvent, Player, Team } from '../types';
 import type { Key, LiveFrame, ReplayClip, Track } from './rinkPlayback';
+import { RINK } from './rinkGeometry';
 
 /*
  * Agent-based hockey for the 2D rink and the 3D replay.
@@ -7,8 +8,10 @@ import type { Key, LiveFrame, ReplayClip, Track } from './rinkPlayback';
  * Every skater and goalie is an agent with position, velocity, top speed and acceleration taken from skills.
  * Puck carriers decide (carry, pass, dump in, chip out, shoot wide, get stripped); off-puck players take
  * role-based attacking/defending positions, forecheck according to tactics, and change lines on the fly.
- * Nobody moves faster than physics allows, there are no teleports, attackers never enter the zone ahead
- * of the puck (no offside), and the game clock stops at every whistle until the puck is dropped.
+ * Nobody moves faster than physics allows and there are no teleports. Attackers normally tag up and stay
+ * onside; now and then a forward jumps the blue line too early, the linesman whistles the offside and the
+ * puck is dropped at the neutral-zone dot outside that blue line. The game clock stops at every whistle
+ * until the puck is dropped. The rink has real IIHF/KHL proportions (see rinkGeometry.ts).
  *
  * The statistical engine remains authoritative: shots, saves, goals, scorers, assists, penalties and hits
  * happen exactly at their game second. A director steers the free play so that the right team owns the
@@ -19,15 +22,17 @@ import type { Key, LiveFrame, ReplayClip, Track } from './rinkPlayback';
 type Side = 0 | 1;
 type Role = 'C' | 'LW' | 'RW' | 'LD' | 'RD' | 'X';
 type V2 = { x: number; y: number };
-export type PlayKind = 'faceoff' | 'loose' | 'entry' | 'dump' | 'icing' | 'takeaway' | 'interception' | 'block' | 'wide' | 'hit' | 'penalty' | 'freeze' | 'save' | 'goal' | 'change' | 'clear';
+export type PlayKind = 'faceoff' | 'loose' | 'entry' | 'dump' | 'icing' | 'offside' | 'takeaway' | 'interception' | 'block' | 'wide' | 'hit' | 'penalty' | 'freeze' | 'save' | 'goal' | 'change' | 'clear';
 export type RinkPlay = { tau: number; g: number; kind: PlayKind; side: Side | null; player?: string; text: string };
 export type RinkTactics = [{ forecheck: ForecheckStyle; style: AttackStyle }, { forecheck: ForecheckStyle; style: AttackStyle }];
-export interface RinkAIOptions { suddenDeath?: boolean; tactics?: () => RinkTactics; goalies?: [string | null, string | null]; seed?: number }
+/** `flip`: teams have switched ends (2nd period, 1st overtime …). The simulation itself always runs in one
+ *  orientation; frames and goal clips are mirrored lengthwise for presentation. */
+export interface RinkAIOptions { suddenDeath?: boolean; tactics?: () => RinkTactics; goalies?: [string | null, string | null]; seed?: number; flip?: boolean }
 
 const DT = 0.1;
 const L = 60, W = 30, MID = 15;
-export const RINK_M = { length: L, width: W, goalLine: 4.2, blueLine: 16.8, post: 0.915 } as const;
-const GOAL = 4.2, BLUE = 16.8, RED = 30, OPP_BLUE = 43.2, OPP_GOAL = 55.8;
+export const RINK_M = { length: L, width: W, goalLine: RINK.goalLine, blueLine: RINK.blueLine, post: 0.915 } as const;
+const GOAL = RINK.goalLine, BLUE = RINK.blueLine, RED = 30, OPP_BLUE = L - RINK.blueLine, OPP_GOAL = L - RINK.goalLine;
 const BENCH: [V2, V2] = [{ x: 24, y: 0.8 }, { x: 36, y: 0.8 }];
 const BOX: [V2, V2] = [{ x: 27, y: 29.2 }, { x: 33, y: 29.2 }];
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
@@ -39,9 +44,9 @@ function rng(seed: number) {
   let a = seed | 0;
   return () => { a = (a + 0x6d2b79f5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
-/** Rounded-rectangle boards (corner radius 6 m). */
+/** Rounded-rectangle boards (corner radius 8.5 m). */
 function inside(p: V2, m = 0.5): V2 {
-  const r = 6;
+  const r = RINK.corner;
   let x = clamp(p.x, m, L - m), y = clamp(p.y, m, W - m);
   const cx = clamp(x, r + m, L - r - m), cy = clamp(y, r + m, W - r - m);
   if (cx !== x && cy !== y) { const dx = x - cx, dy = y - cy, d = Math.hypot(dx, dy); if (d > r) { x = cx + (dx / d) * r; y = cy + (dy / d) * r; } }
@@ -60,7 +65,7 @@ interface Leg { via?: Agent; tv?: number; kind: LegKind; t0: number; t1: number;
 interface Puck { x: number; y: number; h: number; vx: number; vy: number; carrier: Agent | null; leg: Leg | null; next: Leg | null; last: Side | null; noTouch: Agent | null; noTouchUntil: number; icing: Side | null; reserved: Agent | null; dead: boolean }
 interface ShotPlan { ev: GameEvent; T: Side; chain: Agent[]; spots: V2[]; rel: number[]; arr: number[]; tr: number; target: V2 | Agent; th: number; step: number; acquired: boolean; acqStarted: boolean; shot: boolean }
 interface DuelPlan { ev: GameEvent; kind: 'hit' | 'penalty'; actor: Agent; victim: Agent | null }
-interface Stop { reason: 'start' | 'goal' | 'freeze' | 'icing' | 'penalty'; dot: V2; t0: number; phase: 'whistle' | 'celebrate' | 'gather' | 'set' | 'drop'; phaseAt: number; scorer?: Agent; winner?: Side }
+interface Stop { reason: 'start' | 'goal' | 'freeze' | 'icing' | 'penalty' | 'offside'; dot: V2; t0: number; phase: 'whistle' | 'celebrate' | 'gather' | 'set' | 'drop'; phaseAt: number; scorer?: Agent; winner?: Side }
 interface Frame { tau: number; g: number; px: number; py: number; ph: number; ids: string[]; pos: Float32Array; flags: Uint8Array; carrier: number; stop: 0 | 1 | 2; ox: number; oy: number }
 
 const isAgent = (v: V2 | Agent): v is Agent => typeof (v as Agent).id === 'string';
@@ -68,7 +73,9 @@ const SHOT_SPEED: Record<string, number> = { slap: 36, snap: 30, wrist: 26, back
 const CATCH: Record<string, number> = { slap: 0.3, snap: 0.25, wrist: 0.65, backhand: 0.8, tip: 0.05, rebound: 0.15 };
 const FACEOFF_DOTS = { center: { x: 30, y: 15 } };
 /** End-zone dot of side s's defensive zone, on the half where the puck is. */
-const zoneDot = (s: Side, y: number): V2 => loc(s, { x: 11.4, y: loc(s, { x: 0, y }).y < MID ? 7.2 : 22.8 });
+const zoneDot = (s: Side, y: number): V2 => loc(s, { x: RINK.endDot, y: loc(s, { x: 0, y }).y < MID ? MID - RINK.dotOffset : MID + RINK.dotOffset });
+/** Neutral-zone dot just outside side s's attacking blue line (offside faceoffs), on the puck's half. */
+const neutralDot = (s: Side, y: number): V2 => loc(s, { x: L - RINK.neutralDot, y: loc(s, { x: 0, y }).y < MID ? MID - RINK.dotOffset : MID + RINK.dotOffset });
 
 export class RinkAI {
   readonly frames: Frame[] = [];
@@ -76,6 +83,7 @@ export class RinkAI {
   readonly faceoffWins: [number, number] = [0, 0];
   readonly blocks: [number, number] = [0, 0];
   readonly icings: [number, number] = [0, 0];
+  readonly offsides: [number, number] = [0, 0];
   g: number;
   tau = 0;
   mode: 'play' | 'stop' | 'end' = 'stop';
@@ -102,6 +110,10 @@ export class RinkAI {
   private zoneEntry: Side | null = null;
   /** Puck is in side s's attacking zone; it leaves only after fully crossing the 30 cm blue line. */
   private zoneIn: [boolean, boolean] = [false, false];
+  /** A forward who jumps the attacking blue line before the puck (a rare, deliberate mistake → offside). */
+  private early: { a: Agent; until: number } | null = null;
+  /** Game second before which no new offside is staged (keeps them at a realistic few per period). */
+  private offsideQuiet = 0;
   private readonly teams: [Team, Team];
 
   constructor(events: GameEvent[], home: Team, away: Team, private readonly players: Record<string, Player>, readonly start: number, public end: number, private readonly opts: RinkAIOptions = {}) {
@@ -145,11 +157,11 @@ export class RinkAI {
   get ended() { return this.mode === 'end'; }
   /** Rink-level hockey stats of the plays already shown (up to presentation time `tau`). */
   tally(tau: number) {
-    const t = { faceoff: [0, 0], block: [0, 0], takeaway: [0, 0], icing: [0, 0] } as Record<'faceoff' | 'block' | 'takeaway' | 'icing', [number, number]>;
+    const t = { faceoff: [0, 0], block: [0, 0], takeaway: [0, 0], icing: [0, 0], offside: [0, 0] } as Record<'faceoff' | 'block' | 'takeaway' | 'icing' | 'offside', [number, number]>;
     for (const p of this.plays) {
       if (p.tau > tau) break;
       if (p.side === null) continue;
-      if (p.kind === 'faceoff' || p.kind === 'block' || p.kind === 'icing') t[p.kind][p.side]++;
+      if (p.kind === 'faceoff' || p.kind === 'block' || p.kind === 'icing' || p.kind === 'offside') t[p.kind][p.side]++;
       else if (p.kind === 'takeaway' || p.kind === 'interception') t.takeaway[p.side]++;
     }
     return t;
@@ -185,6 +197,10 @@ export class RinkAI {
     const [a, b, u] = this.bracket(tau);
     return a.g + (b.g - a.g) * u;
   }
+  /** Teams have switched ends: presentation is mirrored lengthwise. */
+  get flipped() { return !!this.opts.flip; }
+  /** Presentation x in rink percent (0…100), mirrored when the teams have switched ends. */
+  private px(x: number) { return (this.opts.flip ? L - x : x) / 0.6; }
   frameAt(tau: number): LiveFrame {
     const [a, b, u] = this.bracket(tau);
     const skaters: LiveFrame['skaters'] = [];
@@ -195,14 +211,14 @@ export class RinkAI {
       const box = (a.flags[i] & 2) > 0;
       let x = ax, y = ay;
       if (j !== undefined && !box && (b.flags[j] & 2) === 0) { x = ax + (b.pos[j * 2] - ax) * u; y = ay + (b.pos[j * 2 + 1] - ay) * u; }
-      skaters.push({ id, side: this.sideOf(id), goalie: (a.flags[i] & 1) > 0, box: box || undefined, pos: { x: x / 0.6, y: y / 0.3, h: 0 } });
+      skaters.push({ id, side: this.sideOf(id), goalie: (a.flags[i] & 1) > 0, box: box || undefined, pos: { x: this.px(x), y: y / 0.3, h: 0 } });
     });
     const caption = [...this.plays].reverse().find(p => p.tau <= tau && tau - p.tau < 2.6);
     return {
-      puck: { x: (a.px + (b.px - a.px) * u) / 0.6, y: (a.py + (b.py - a.py) * u) / 0.3, h: a.ph + (b.ph - a.ph) * u },
+      puck: { x: this.px(a.px + (b.px - a.px) * u), y: (a.py + (b.py - a.py) * u) / 0.3, h: a.ph + (b.ph - a.ph) * u },
       skaters, faceoff: a.stop === 1 || undefined, stopped: a.stop > 0 || undefined,
       carrier: a.carrier >= 0 ? a.ids[a.carrier] : null, caption: caption?.text,
-      official: a.stop === 1 ? { x: a.ox / 0.6, y: a.oy / 0.3, h: 0 } : undefined,
+      official: a.stop === 1 ? { x: this.px(a.ox), y: a.oy / 0.3, h: 0 } : undefined,
     };
   }
   /** The goal sequence as the 3D viewer consumes it — exactly the frames shown on the 2D rink. */
@@ -221,7 +237,7 @@ export class RinkAI {
       for (const f of frames) {
         const j = f.ids === at.ids ? i : f.ids.indexOf(id);
         if (j < 0 || f.flags[j] & 2) continue;
-        last = { t: norm(f.tau), x: f.pos[j * 2] / 0.6, y: f.pos[j * 2 + 1] / 0.3, h: 0 };
+        last = { t: norm(f.tau), x: this.px(f.pos[j * 2]), y: f.pos[j * 2 + 1] / 0.3, h: 0 };
         keys.push(last);
       }
       if (!keys.length) return null;
@@ -229,11 +245,11 @@ export class RinkAI {
       if (last && last.t < 1) keys.push({ ...last, t: 1 });
       return { id, side: this.sideOf(id), goalie: (at.flags[i] & 1) > 0 || undefined, keys } as Track;
     }).filter((t): t is Track => !!t);
-    const puck: Key[] = frames.map(f => ({ t: norm(f.tau), x: f.px / 0.6, y: f.py / 0.3, h: f.ph }));
+    const puck: Key[] = frames.map(f => ({ t: norm(f.tau), x: this.px(f.px), y: f.py / 0.3, h: f.ph }));
     const release = this.releaseTau.get(e) ?? te - 0.4;
     const side: Side = e.team === this.teams[1].id ? 1 : 0;
     const labels = { wrist: 'Кистевой бросок', snap: 'Бросок с ходу', slap: 'Щелчок', tip: 'Подставление на пятаке', rebound: 'Добивание', backhand: 'Бросок с неудобной' };
-    return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[e.shotType ?? 'wrist'], duration, release: norm(release), goal: norm(te), tracks, puck, scorer: e.player, attacking: side, bodies: true };
+    return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[e.shotType ?? 'wrist'], duration, release: norm(release), goal: norm(te), tracks, puck, scorer: e.player, attacking: side, bodies: true, dir: ((side === 0) !== !!this.opts.flip ? 1 : -1) as 1 | -1 };
   }
 
   /* ---------------- internals ---------------- */
@@ -506,7 +522,9 @@ export class RinkAI {
       this.targets();
       for (const a of this.onIce()) this.move(a, dt);
       this.movePuck(dt);
+      const wasIn: [boolean, boolean] = [this.zoneIn[0], this.zoneIn[1]];
       this.updateZones();
+      if (this.mode === 'play') this.checkOffside(wasIn);
       if (this.mode === 'play') this.interact();
       this.fireDue();
       if (this.mode === 'play' && this.g >= this.end - 1e-9) this.finish();
@@ -591,13 +609,13 @@ export class RinkAI {
     const chain = [...helpers].reverse().concat(S);
     const type = n.shotType ?? 'wrist';
     const sl = loc(T, { x: (n.x ?? (T ? 19 : 81)) * 0.6, y: (n.y ?? 50) * 0.3 });
-    sl.x = clamp(sl.x, 44.6, 54.2); sl.y = clamp(sl.y, 2, 28);
-    if (Math.abs(sl.y - MID) < 1.4 && sl.x > 53) sl.x = 53;
+    sl.x = clamp(sl.x, OPP_BLUE + 1, 53.6); sl.y = clamp(sl.y, 2, 28);
+    if (Math.abs(sl.y - MID) < 1.4 && sl.x > 51.8) sl.x = 51.8;
     const sideSign = sl.y < MID ? -1 : 1;
-    const a1: V2 = type === 'tip' ? { x: 44.4, y: MID + sideSign * 6 } : type === 'rebound' ? { x: 47.5, y: MID - sideSign * 6 }
-      : type === 'slap' ? (sl.x < 47 ? { x: 50.5, y: sl.y < MID ? 3.5 : 26.5 } : { x: clamp(sl.x - 1, 44, 52), y: W - sl.y })
-      : type === 'snap' ? { x: 54.5, y: MID - sideSign * 4.5 } : { x: 50, y: sideSign < 0 ? 4 : 26 };
-    const spots = chain.map((_, i) => loc(T, inside(i === chain.length - 1 ? sl : i === chain.length - 2 ? a1 : { x: 44.6, y: sideSign < 0 ? 22 : 8 }, 1)));
+    const a1: V2 = type === 'tip' ? { x: 39.1, y: MID + sideSign * 6 } : type === 'rebound' ? { x: 43.7, y: MID - sideSign * 6 }
+      : type === 'slap' ? (sl.x < 42.9 ? { x: 48.1, y: sl.y < MID ? 3.5 : 26.5 } : { x: clamp(sl.x - 1, OPP_BLUE + 1.2, 50.4), y: W - sl.y })
+      : type === 'snap' ? { x: 54.1, y: MID - sideSign * 4.5 } : { x: 47.4, y: sideSign < 0 ? 4 : 26 };
+    const spots = chain.map((_, i) => loc(T, inside(i === chain.length - 1 ? sl : i === chain.length - 2 ? a1 : { x: 39.4, y: sideSign < 0 ? 22 : 8 }, 1)));
     const gk = this.goalieOf((1 - T) as Side);
     let target: V2 | Agent, th: number;
     if (n.type === 'goal') {
@@ -710,6 +728,7 @@ export class RinkAI {
   private puckLocal(s: Side): V2 { return loc(s, this.puck); }
   private onsideClamp(a: Agent, p: V2, carrier = false): V2 {
     const l = loc(a.side, p);
+    if (this.early && this.early.a.side === a.side && (this.early.a === a || this.puck.carrier === a)) return p;
     if (!this.zoneIn[a.side]) {
       if (carrier && this.puck.carrier === a) {
         if (this.skaters(a.side).some(m => m !== a && loc(a.side, m).x > OPP_BLUE - 0.3)) l.x = Math.min(l.x, OPP_BLUE - 0.9);
@@ -728,6 +747,7 @@ export class RinkAI {
   private keepOnside(a: Agent, prevX: number) {
     const l = loc(a.side, a);
     if (this.zoneIn[a.side]) return;
+    if (this.early && this.early.a.side === a.side && (this.early.a === a || this.puck.carrier === a)) return;
     let lim = Infinity;
     // never pulled backwards (no teleport): at worst a skater is held where he already was
     if (this.puck.carrier === a) {
@@ -741,6 +761,42 @@ export class RinkAI {
   private onsideOk(passer: Agent, receiver: Agent) {
     return this.zoneIn[passer.side] || loc(passer.side, receiver).x < OPP_BLUE - 0.3;
   }
+  /** An offside whistle may only fall where it cannot disturb the engine's next shot sequence. */
+  private offsideRoom(): boolean {
+    if (this.plan || this.duel || this.mode !== 'play') return false;
+    const n = this.next();
+    return !n || n.sec - this.g > 16;
+  }
+  /** Carrier approaching the blue line: now and then a winger cheats and crosses before the puck. */
+  private maybeJumpEarly(a: Agent) {
+    if (this.early || this.g < this.offsideQuiet || !this.offsideRoom() || this.rand() > 0.1) return;
+    const s = a.side, me = loc(s, a);
+    if (me.x < OPP_BLUE - 9 || me.x > OPP_BLUE - 2.5) return;
+    const cheat = this.skaters(s).filter(m => m !== a && !this.isD(m) && m.stun <= 0).sort((p, q) => loc(s, q).x - loc(s, p).x)[0];
+    if (!cheat) return;
+    this.early = { a: cheat, until: this.g + 4 };
+    this.carryTarget.set(a.id, loc(s, { x: OPP_BLUE + 4, y: clamp(me.y, 5, 25) }));
+  }
+  /** The puck has just entered side s's attacking zone with a teammate already over the line: offside. */
+  private checkOffside(wasIn: [boolean, boolean]) {
+    const e = this.early;
+    if (e && (this.g > e.until || e.a.on !== 'ice' || e.a.leave || this.puck.carrier?.side !== e.a.side && !(this.puck.leg && this.puck.leg.by?.side === e.a.side))) this.early = null;
+    for (const s of [0, 1] as Side[]) {
+      if (wasIn[s] || !this.zoneIn[s]) continue;
+      const p = this.puck, by = p.carrier ?? p.leg?.by ?? null;
+      if (!by || by.side !== s) continue;
+      const over = this.skaters(s).filter(m => m !== p.carrier && loc(s, m).x > OPP_BLUE + RINK.blueWidth / 2 + 0.1);
+      if (!over.length) { if (this.early?.a.side === s) this.early = null; continue; }
+      if (!this.offsideRoom()) continue;
+      const who = over.sort((m, q) => loc(s, q).x - loc(s, m).x)[0];
+      this.offsides[s]++;
+      this.play('offside', s, `Офсайд: ${who.name} (${this.teamShort(s)}), вбрасывание в средней зоне`, who);
+      this.early = null; this.offsideQuiet = this.g + 60;
+      this.zoneIn[s] = false;
+      this.startStop('offside', neutralDot(s, p.y));
+      return;
+    }
+  }
   private defendSpot(a: Agent): { p: V2; urg: number } {
     const P = this.puckLocal(a.side), s = a.side;
     const style = this.opts.tactics?.()[s].forecheck ?? 'balanced';
@@ -750,16 +806,16 @@ export class RinkAI {
       t = ({
         LD: puckSideD ? { x: Math.max(GOAL + 1, P.x - 1.2), y: P.y + (MID - P.y) * 0.15 } : { x: GOAL + 2.5, y: MID - 1.5 },
         RD: puckSideD ? { x: Math.max(GOAL + 1, P.x - 1.2), y: P.y + (MID - P.y) * 0.15 } : { x: GOAL + 2.5, y: MID + 1.5 },
-        C: { x: 9, y: MID + (P.y - MID) * 0.35 }, LW: { x: 15.5, y: 6.5 }, RW: { x: 15.5, y: 23.5 }, X: { x: 8, y: MID },
+        C: { x: 11.1, y: MID + (P.y - MID) * 0.35 }, LW: { x: 20.8, y: 6.5 }, RW: { x: 20.8, y: 23.5 }, X: { x: 9.6, y: MID },
       } as Record<Role, V2>)[a.role];
     } else if (P.x <= OPP_BLUE) {
-      t = ({ LD: { x: Math.min(P.x - 9, 18), y: 10.5 }, RD: { x: Math.min(P.x - 9, 18), y: 19.5 }, C: { x: P.x - 2.5, y: P.y }, LW: { x: P.x - 4, y: 6 }, RW: { x: P.x - 4, y: 24 }, X: { x: P.x - 5, y: MID } } as Record<Role, V2>)[a.role];
+      t = ({ LD: { x: Math.min(P.x - 7, 23.4), y: 10.5 }, RD: { x: Math.min(P.x - 7, 23.4), y: 19.5 }, C: { x: P.x - 2.5, y: P.y }, LW: { x: P.x - 4, y: 6 }, RW: { x: P.x - 4, y: 24 }, X: { x: P.x - 5, y: MID } } as Record<Role, V2>)[a.role];
     } else if (style === 'aggressive') {
-      t = ({ C: { x: P.x - 1, y: P.y }, LW: { x: P.x - 3.5, y: clamp(P.y - 6, 2, 28) }, RW: { x: P.x - 3.5, y: clamp(P.y + 6, 2, 28) }, LD: { x: 42, y: 9 }, RD: { x: 42, y: 21 }, X: { x: 40, y: MID } } as Record<Role, V2>)[a.role];
+      t = ({ C: { x: P.x - 1, y: P.y }, LW: { x: P.x - 3.5, y: clamp(P.y - 6, 2, 28) }, RW: { x: P.x - 3.5, y: clamp(P.y + 6, 2, 28) }, LD: { x: 36.6, y: 9 }, RD: { x: 36.6, y: 21 }, X: { x: 35.5, y: MID } } as Record<Role, V2>)[a.role];
     } else if (style === 'balanced') {
-      t = ({ C: { x: P.x - 1.5, y: P.y }, LW: { x: 38, y: 8 }, RW: { x: 38, y: 22 }, LD: { x: 32, y: 10 }, RD: { x: 32, y: 20 }, X: { x: 34, y: MID } } as Record<Role, V2>)[a.role];
+      t = ({ C: { x: P.x - 1.5, y: P.y }, LW: { x: 34.4, y: 8 }, RW: { x: 34.4, y: 22 }, LD: { x: 31.1, y: 10 }, RD: { x: 31.1, y: 20 }, X: { x: 32.2, y: MID } } as Record<Role, V2>)[a.role];
     } else {
-      t = ({ C: { x: 36, y: MID }, LW: { x: 32, y: 7 }, RW: { x: 32, y: 23 }, LD: { x: 24, y: 10 }, RD: { x: 24, y: 20 }, X: { x: 28, y: MID } } as Record<Role, V2>)[a.role];
+      t = ({ C: { x: 33.3, y: MID }, LW: { x: 31.1, y: 7 }, RW: { x: 31.1, y: 23 }, LD: { x: 26.7, y: 10 }, RD: { x: 26.7, y: 20 }, X: { x: 28.9, y: MID } } as Record<Role, V2>)[a.role];
     }
     return { p: loc(s, t), urg: 0.75 };
   }
@@ -824,6 +880,11 @@ export class RinkAI {
       if (ps === side) this.attackShape(side, free);
       else this.defendShape(side, free, pressing ? carrier : null);
     }
+    const e = this.early;
+    if (e && !e.a.scripted && e.a !== carrier) {
+      const l = loc(e.a.side, e.a);
+      this.setT(e.a, loc(e.a.side, { x: Math.max(l.x + 2, OPP_BLUE + 2.5), y: l.y < MID ? 6 : 24 }), 1);
+    }
   }
 
   /** Slow per-player wander (±amp m, 4–7 s period) so nobody freezes on a spot. Deterministic in game time. */
@@ -851,21 +912,21 @@ export class RinkAI {
       for (const a of free.filter(x => this.isD(x))) {
         const left = a.role === 'LD', strong = left === low;
         const y = left ? (strong ? clamp(P.y * 0.35 + 3, 3.5, 8) : 11.5) : (strong ? clamp(W - (W - P.y) * 0.35 - 3, 22, 26.5) : 18.5);
-        const pinch = strong && P.x > 49.5 && Math.abs(P.y - MID) > 9 ? 2.4 : 0;
-        put(a, { x: 44.9 + pinch, y }, 0.65, 0.9);
+        const pinch = strong && P.x > 46.6 && Math.abs(P.y - MID) > 9 ? 3.5 : 0;
+        put(a, { x: OPP_BLUE + 2.5 + pinch, y }, 0.65, 0.9);
       }
       const fw = free.filter(x => !this.isD(x)).sort((a, b) => dist(loc(s, a), P) - dist(loc(s, b), P));
       fw.forEach((a, i) => {
         let t: V2;
-        if (carrierIsD) t = i === 0 ? { x: 52.6, y: MID + (low ? -1.3 : 1.3) } : i === 1 ? { x: 51, y: sideY(5) } : { x: 49, y: W - sideY(8) };
-        else if (i === 0) t = P.x > 50.5 ? { x: Math.max(46.5, P.x - 6.5) + sl, y: sideY(4.2) } : { x: 54.8, y: sideY(7) };
-        else if (i === 1) t = Math.sin(this.g * 0.31 + (a.id.length * 1.7)) > 0.3 ? { x: 53.2, y: W - sideY(9.5) } : { x: 52.6 - Math.max(0, sl), y: MID + (low ? 1.5 : -1.5) };
-        else t = { x: 48.5 + sl * 0.8, y: MID - (P.y - MID) * 0.2 };
+        if (carrierIsD) t = i === 0 ? { x: 51.3, y: MID + (low ? -1.3 : 1.3) } : i === 1 ? { x: 48.9, y: sideY(5) } : { x: 45.9, y: W - sideY(8) };
+        else if (i === 0) t = P.x > 48.1 ? { x: Math.max(42.2, P.x - 9) + sl, y: sideY(4.2) } : { x: 54.5, y: sideY(7) };
+        else if (i === 1) t = Math.sin(this.g * 0.31 + (a.id.length * 1.7)) > 0.3 ? { x: 52.1, y: W - sideY(9.5) } : { x: 51.3 - Math.max(0, sl), y: MID + (low ? 1.5 : -1.5) };
+        else t = { x: 45.2 + sl * 0.8, y: MID - (P.y - MID) * 0.2 };
         put(a, t, i === 0 ? 0.78 : 0.62, i === 1 ? 0.7 : 1.3);
       });
     } else if (P.x >= BLUE) {
       for (const a of free) {
-        const t: V2 = this.isD(a) ? { x: P.x - 9, y: a.role === 'LD' ? 10 : 20 }
+        const t: V2 = this.isD(a) ? { x: P.x - 7, y: a.role === 'LD' ? 10 : 20 }
           : a.role === 'LW' ? { x: P.x + 4.5, y: 4.2 } : a.role === 'RW' ? { x: P.x + 4.5, y: 25.8 }
           : { x: P.x + 1.5, y: MID - (P.y - MID) * 0.5 };
         put(a, t, 0.88, 0.6);
@@ -873,8 +934,8 @@ export class RinkAI {
     } else {
       for (const a of free) {
         let t: V2;
-        if (a.role === 'LW' || a.role === 'RW') { const strong = (a.role === 'LW') === low; t = { x: strong ? 13.8 : 17.6, y: a.role === 'LW' ? 2.7 : 27.3 }; }
-        else if (a.role === 'C' || a.role === 'X') t = { x: clamp(P.x + 4.5, 9, 20), y: MID + (low ? 4 : -4) };
+        if (a.role === 'LW' || a.role === 'RW') { const strong = (a.role === 'LW') === low; t = { x: strong ? 18.3 : 23.2, y: a.role === 'LW' ? 2.7 : 27.3 }; }
+        else if (a.role === 'C' || a.role === 'X') t = { x: clamp(P.x + 5, 11, 24.5), y: MID + (low ? 4 : -4) };
         else if (carrierIsD) t = { x: GOAL + 2, y: W - sideY(6) };
         else t = { x: Math.max(GOAL + 1.5, P.x - 3), y: a.role === 'LD' ? (low ? P.y + 2.5 : 8) : (low ? 22 : P.y - 2.5) };
         put(a, t, 0.75, 0.6);
@@ -922,17 +983,19 @@ export class RinkAI {
       if (me.x < BLUE) {
         if (!keep && r < 0.5) {
           const long = sh || r < 0.12;
-          this.startLeg(long ? 'clear' : 'chip', loc(s, long ? { x: 57, y: me.y < MID ? 4 : 26 } : { x: 32, y: me.y < MID ? 1.5 : 28.5 }), this.g + (long ? 2.2 : 1.1), { exitSpeed: long ? 9 : 5, icing: long && !sh ? s : null });
+          this.startLeg(long ? 'clear' : 'chip', loc(s, long ? { x: 57.1, y: me.y < MID ? 4 : 26 } : { x: 31.1, y: me.y < MID ? 1.5 : 28.5 }), this.g + (long ? 2.2 : 1.1), { exitSpeed: long ? 9 : 5, icing: long && !sh ? s : null });
           this.play(long ? 'clear' : 'dump', s, long ? `${a.name} выбрасывает шайбу из зоны` : `${a.name} выводит шайбу по борту`, a);
           return;
         }
         if (pressure < 4 || r < 0.35) { if (this.passBest(a, keep)) return; }
-        this.carryTarget.set(a.id, loc(s, { x: me.x + 9, y: me.y < MID ? 6 : 24 }));
+        this.carryTarget.set(a.id, loc(s, { x: me.x + 11, y: me.y < MID ? 6 : 24 }));
       } else if (me.x < OPP_BLUE) {
-        if (!allOnside) this.carryTarget.set(a.id, loc(s, { x: Math.min(me.x + 2, OPP_BLUE - 1), y: me.y }));
+        this.maybeJumpEarly(a);
+        if (this.early?.a.side === s) { /* the cheating winger is already gone: carry it in */ }
+        else if (!allOnside) this.carryTarget.set(a.id, loc(s, { x: Math.min(me.x + 2, OPP_BLUE - 1), y: me.y }));
         else if (!keep && r < 0.55) {
           const fromOwnHalf = me.x < RED;
-          this.startLeg('dump', loc(s, { x: 57.5, y: me.y < MID ? 3 : 27 }), this.g + 1.5, { exitSpeed: 8, icing: fromOwnHalf && !sh ? s : null, arc: 0.4 });
+          this.startLeg('dump', loc(s, { x: 57.6, y: me.y < MID ? 3 : 27 }), this.g + 1.5, { exitSpeed: 8, icing: fromOwnHalf && !sh ? s : null, arc: 0.4 });
           this.play('dump', s, `${a.name} вбрасывает шайбу в зону`, a);
           return;
         } else if (pressure < 3.5 && r < 0.6 && this.passBest(a, keep)) return;
@@ -941,7 +1004,7 @@ export class RinkAI {
         if (!keep) {
           if (r < 0.45) { this.freeShot(a); return; }
           if (r < 0.75 && this.passBest(a, false)) return;
-          this.carryTarget.set(a.id, loc(s, { x: 50, y: MID }));
+          this.carryTarget.set(a.id, loc(s, { x: 47.4, y: MID }));
         } else this.ozKeep(a, me, pressure, r);
       }
     }
@@ -957,17 +1020,17 @@ export class RinkAI {
     const s = a.side, oz = this.oz;
     if (oz.side !== s) { oz.side = s; oz.t0 = this.g; oz.passes = 0; oz.lastPasser = ''; }
     const age = this.g - oz.t0, n = oz.passes, top = me.y < MID;
-    const slot = me.x > 46 && Math.abs(me.y - MID) < 6.5, point = me.x < 47.5 && !slot, behind = me.x > OPP_GOAL - 0.5;
+    const slot = me.x > 43.5 && Math.abs(me.y - MID) < 6.5, point = me.x < 43.7 && !slot, behind = me.x > OPP_GOAL - 0.5;
     const passW = (n < 2 ? 0.5 : n < 4 ? 0.28 : 0.12) * (pressure < 2.2 ? 1.6 : 1);
     if (slot && r < (age > 5 ? 0.35 : 0.14)) { this.freeShot(a); return; }
     if (point && r < (age > 7 ? 0.22 : 0.07)) { this.freeShot(a); return; }
     if (this.rand() < passW && this.passBest(a, true)) return;
     let t: V2;
     if (behind) t = { x: OPP_GOAL + 1.6, y: top ? MID + 4.5 : MID - 4.5 }; // walk out the other side of the cage
-    else if (point) t = this.rand() < 0.5 ? { x: 45, y: clamp(me.y + (top ? 7 : -7), 4, 26) } : { x: 48.5, y: top ? 9.5 : 20.5 }; // walk the line / step down
-    else if (me.x > 51 && Math.abs(me.y - MID) > 7) t = r < 0.55 ? { x: OPP_GOAL + 2.3, y: top ? MID - 3 : MID + 3 } : { x: 47.5, y: top ? 2.8 : 27.2 }; // cycle: behind the net or up the wall
-    else if (slot) t = { x: 49, y: top ? 7 : 23 }; // peel off to the half-wall
-    else t = { x: Math.min(me.x + 4, 54.5), y: top ? 3.5 : 26.5 };
+    else if (point) t = this.rand() < 0.5 ? { x: 40, y: clamp(me.y + (top ? 7 : -7), 4, 26) } : { x: 45.2, y: top ? 9.5 : 20.5 }; // walk the line / step down
+    else if (me.x > 48.9 && Math.abs(me.y - MID) > 7) t = r < 0.55 ? { x: OPP_GOAL + 2.3, y: top ? MID - 3 : MID + 3 } : { x: 43.7, y: top ? 2.8 : 27.2 }; // cycle: behind the net or up the wall
+    else if (slot) t = { x: 45.9, y: top ? 7 : 23 }; // peel off to the half-wall
+    else t = { x: Math.min(me.x + 5, 54.1), y: top ? 3.5 : 26.5 };
     if (pressure < 2.2) { const o = this.nearest(this.skaters((1 - s) as Side), a); if (o) { const ol = loc(s, o), dx = me.x - ol.x, dy = me.y - ol.y, d = Math.hypot(dx, dy) || 1; t = { x: me.x + (dx / d) * 4 + (t.x - me.x) * 0.3, y: me.y + (dy / d) * 4 + (t.y - me.y) * 0.3 }; } }
     this.carryTarget.set(a.id, loc(s, { x: clamp(t.x, OPP_BLUE + 1, 58), y: clamp(t.y, 1.5, 28.5) }));
   }
@@ -1121,7 +1184,7 @@ export class RinkAI {
         return;
       }
       this.play('save', D, `Сейв: ${gk.name}`, gk);
-      const away = loc(T, { x: 50 - this.rand() * 4, y: this.rand() < 0.5 ? 4 + this.rand() * 6 : 26 - this.rand() * 6 });
+      const away = loc(T, { x: 47.4 - this.rand() * 5, y: this.rand() < 0.5 ? 4 + this.rand() * 6 : 26 - this.rand() * 6 });
       const d = dist(p, away) || 1;
       this.loosePuck(((away.x - p.x) / d) * 7, ((away.y - p.y) / d) * 7);
       p.noTouch = gk; p.noTouchUntil = this.g + 0.5; p.h = 0.2;
@@ -1183,7 +1246,7 @@ export class RinkAI {
     if (a.stun > 0) {
       a.stun -= dt; a.vx *= 0.92; a.vy *= 0.92;
     } else {
-      if (!a.goalie && a.on === 'ice' && !a.leave && this.mode === 'play' && !this.zoneIn[a.side] && this.puck.carrier !== a) {
+      if (!a.goalie && a.on === 'ice' && !a.leave && this.mode === 'play' && !this.zoneIn[a.side] && this.puck.carrier !== a && this.early?.a !== a) {
         // tag up: an attacker left in the zone after the puck went out skates back over the blue line at once
         const l = loc(a.side, a);
         if (l.x > OPP_BLUE - 0.4) { const t = loc(a.side, { x: Math.min(loc(a.side, { x: a.tx, y: a.ty }).x, OPP_BLUE - 1.5), y: loc(a.side, { x: a.tx, y: a.ty }).y }); a.tx = t.x; a.ty = t.y; a.urg = 1; a.arrive = Infinity; }
