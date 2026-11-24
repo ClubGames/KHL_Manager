@@ -1,6 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { Game, GameEvent } from '../types';
 import { GoalReplay } from './GoalReplay';
+import { prewarmReplays, type FigureRequest } from './replayCache';
+import { arenaDetail, resolveReplayQuality } from './ReplayScene';
+import { getSettings } from '../game/settings';
 import { ShootoutBoard } from './Shootout';
 import { goalEventFor } from '../game/live';
 import {
@@ -32,6 +35,22 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
   const s = useGame()!;
   const ui = useUI();
   const [replay, setReplay] = useState<GameEvent | null>(null);
+  // Goal replays of this game get their arena and players ready in the background (a setting).
+  useEffect(() => {
+    const st = getSettings();
+    if (!st.replay3d || !st.replayPrewarm) return;
+    const g = s.schedule.flat().find((x) => x.id === gameId);
+    const goals = (g?.result?.events ?? []).filter((e) => e.type === 'goal' && e.ice);
+    if (!g || !goals.length) return;
+    const seen = new Set<string>(), figures: FigureRequest[] = [];
+    const add = (id: string | null | undefined, side: 0 | 1, goalie: boolean) => { const k = `${id}|${side}`; if (id && !seen.has(k)) { seen.add(k); figures.push({ id, side, goalie }); } };
+    goals.forEach((e) => {
+      e.ice![0].forEach((id) => add(id, 0, false)); e.ice![1].forEach((id) => add(id, 1, false));
+      add(e.goalie, e.team === g.home ? 1 : 0, true);
+    });
+    return prewarmReplays({ home: s.teams[g.home], away: s.teams[g.away], players: s.players, figures, detail: arenaDetail(resolveReplayQuality(st.replayQuality)) });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gameId]);
   let game: Game | null = null;
   for (const d of s.schedule) {
     const g = d.find((x) => x.id === gameId);

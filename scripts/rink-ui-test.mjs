@@ -101,7 +101,8 @@ try {
   });
   assert.equal(mp4.ftyp, 'ftyp'); assert.ok(mp4.moov && mp4.mdat, 'mp4 boxes'); assert.equal(mp4.type, 'video/mp4');
   assert.deepEqual(mp4.rendered, [1280, 720]); assert.ok(mp4.seconds > 12 && mp4.seconds < 20, `real time + slow-motion replay (${mp4.seconds}s)`);
-  assert.ok(mp4.frames >= mp4.seconds * 30 - 2, 'every frame rendered'); assert.ok(mp4.size > 20000, 'non-trivial video');
+  // Every frame is rendered except the identical ones of the hold before the slow motion (reused, ~0.4 s).
+  assert.ok(mp4.frames >= mp4.seconds * 30 - 14 && mp4.frames < mp4.seconds * 30, `every distinct frame rendered once (${mp4.frames})`); assert.ok(mp4.size > 20000, 'non-trivial video');
   if (mp4.codec === 'H.264') assert.ok(mp4.avc, 'avcC config box');
   console.log(`ok MP4 export pipeline: ${mp4.method}, ${mp4.codec}, ${mp4.seconds.toFixed(1)} s, ${(mp4.size / 1024).toFixed(0)} KB`);
   // … and the replay's «⤓ MP4» button runs it on the 3D scene, with progress and cancel.
@@ -119,7 +120,7 @@ try {
     await page.getByLabel('Качество картинки').selectOption(q); await page.waitForTimeout(300);
     assert.equal(await page.locator('[data-replay-renderer]').getAttribute('data-replay-renderer'), 'webgl');
   }
-  assert.equal(await page.evaluate(() => localStorage.getItem('khl.replayQuality')), 'high');
+  assert.equal(await page.evaluate(() => JSON.parse(localStorage.getItem('khl.settings') ?? '{}').replayQuality), 'high');
   await page.getByRole('button', { name: 'Продолжить матч', exact: true }).last().click();
   await page.emulateMedia({ reducedMotion: 'reduce' });
   console.log('ok export button with progress/cancel; quality presets rebuild the renderer');

@@ -6,7 +6,10 @@ import { fmtClock } from '../game/engine';
 import { commitUserResult, makeUserSim, useGame } from '../game/state';
 import { applyEvent, emptyLive, foldEvents, manpower } from '../game/live';
 import type { LiveStats } from '../game/live';
-import { Button, Icon, Panel, PlayerFace, PosBadge, shortName, TeamLogo } from './ui';
+import { Button, Icon, Panel, PlayerFace, PosBadge, shortName, TeamLogo, useUI } from './ui';
+import { autoReplayFor, getSettings, useSettings } from '../game/settings';
+import { prewarmReplays, type FigureRequest } from './replayCache';
+import { arenaDetail, resolveReplayQuality } from './ReplayScene';
 import { cn } from '../utils/cn';
 import { GoalReplay } from './GoalReplay';
 import { ShooterPicker, ShootoutBoard } from './Shootout';
@@ -72,7 +75,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const [period, setPeriod] = useState(0);
   const [kind, setKind] = useState<BlockKind>('reg');
   const [status, setStatus] = useState<'intro' | 'playing' | 'break' | 'done'>('intro');
-  const [speed, setSpeed] = useState<1 | 2 | 4>(2);
+  const [speed, setSpeed] = useState<1 | 2 | 4>(() => getSettings().matchSpeed);
   const [curLines, setCurLines] = useState<[number, number]>([0, 0]);
   const [score, setScore] = useState<[number, number]>([0, 0]);
   const [curIce, setCurIce] = useState<[(string | null)[], (string | null)[]] | null>(null);
@@ -85,7 +88,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const [swapSel, setSwapSel] = useState<number | null>(null);
   const [showPreLineup, setShowPreLineup] = useState(false);
   const [showPostMap, setShowPostMap] = useState(true);
-  const [showRink, setShowRink] = useState(true);
+  const [showRink, setShowRink] = useState(() => getSettings().matchRink2d);
   const [mobileTab, setMobileTab] = useState<'live' | 'coach' | 'stats'>('live');
   const land = useLandscapePhone();
   const [forecheck, setForecheckState] = useState<ForecheckStyle>(sim.tactics[userIdx].forecheck);
@@ -114,6 +117,22 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const soMode = useRef(false);
   const soAcc = useRef(0);
   const [soPick, setSoPick] = useState<string[]>(() => sim.shootoutCandidates(userIdx).slice(0, 3));
+  const ui = useUI();
+  const settings = useSettings();
+  // 3D replays are prepared in the background while the match runs (arena + every dressed player), so the
+  // first goal's replay opens at once instead of building the scene and compiling its shaders on the spot.
+  const prewarm = settings.replay3d && settings.replayPrewarm, prewarmDetail = arenaDetail(resolveReplayQuality(settings.replayQuality));
+  useEffect(() => {
+    if (!prewarm) return;
+    const figures: FigureRequest[] = [];
+    ([0, 1] as const).forEach((side) => {
+      const L = sim.team(side).lineup;
+      [...L.F.flat(), ...L.D.flat()].forEach((id) => { if (id) figures.push({ id, side, goalie: false }); });
+      if (L.starterG) figures.push({ id: L.starterG, side, goalie: true });
+    });
+    return prewarmReplays({ home: H, away: A, players: P, figures, detail: prewarmDetail });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prewarm, prewarmDetail]);
   // Rink-based motion of every goal, kept after its period is over so the goals can be replayed after the match.
   const clips = useRef(new Map<string, ReplayClip>());
   const clipFor = (e: GameEvent): ReplayClip | undefined => {
@@ -215,9 +234,10 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         if (e.type === 'goal') {
           setGoalFlash(e.team);
           window.setTimeout(() => setGoalFlash(null), 900);
-          setReplayEvent(e);
-          c = e.sec; clockRef.current = c; hitGoal = true;
+          c = e.sec; clockRef.current = c;
           if (rinkAI.current) tauRef.current = rinkAI.current.tauOf(e) ?? tauRef.current;
+          // Auto-replay (a setting): the match freezes on the goal while its replay is open.
+          if (autoReplayFor(getSettings(), e.team, s.userTeamId)) { setReplayEvent(e); hitGoal = true; }
           break;
         }
       }
@@ -994,6 +1014,9 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               <Icon name={paused ? 'play' : 'pause'} /> {paused ? 'Возобновить' : 'Пауза'}
             </Button>
             <div className="text-xs text-muted mt-3 mb-1">Пауза — клавиша «Пробел». Тактику, тайм-аут и вратаря можно менять прямо по ходу периода!</div>
+            <Button className="w-full mt-2" onClick={() => { if (status === 'playing') setPaused(true); ui.openSettings(); }} data-match-settings title="Повторы голов, видео, скорость матча">
+              <Icon name="settings" /> Настройки повторов
+            </Button>
             {status !== 'done' && (
               <Button className="w-full mt-2" onClick={finishNow}>
                 <Icon name="fast" /> Завершить мгновенно
@@ -1298,6 +1321,7 @@ function PenaltyTimer({ ticker, live }: { ticker: Ticker; live: MutableRefObject
 }
 
 const FeedRow = memo(function FeedRow({ e, onReplay }: { e: GameEvent; onReplay: (event: GameEvent) => void }) {
+  const replay3d = useSettings().replay3d;
   return (
     <div className={cn('flex items-start gap-3 px-4 py-1.5 text-sm fade-in', e.type === 'goal' && 'bg-accent/10')}>
       <span className="w-14 shrink-0 text-[11px] text-muted tabular pt-0.5">{e.type === 'period_start' || e.type === 'period_end' ? '' : e.type === 'so_goal' || e.type === 'so_miss' ? `Б · ${e.round ?? ''}` : `${e.period <= 3 ? e.period : 'ОТ'} · ${e.time}`}</span>
@@ -1311,7 +1335,7 @@ const FeedRow = memo(function FeedRow({ e, onReplay }: { e: GameEvent; onReplay:
         </span>
       )}
       {e.type === 'goal' && (
-        <button onClick={() => onReplay(e)} className="shrink-0 text-[10px] uppercase tracking-wide rounded border border-accent/40 px-2 py-1 text-accent hover:bg-accent/10" title="Посмотреть 3D-повтор">3D повтор</button>
+        <button onClick={() => onReplay(e)} className="shrink-0 text-[10px] uppercase tracking-wide rounded border border-accent/40 px-2 py-1 text-accent hover:bg-accent/10" title="Посмотреть повтор гола">{replay3d ? '3D повтор' : 'Повтор'}</button>
       )}
       {e.score && (
         <span className="font-display text-sm tabular text-muted shrink-0">

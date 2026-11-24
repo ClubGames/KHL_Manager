@@ -1,17 +1,16 @@
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
 import * as T from 'three';
-import { Reflector } from 'three/examples/jsm/objects/Reflector.js';
-import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import type { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import type { Player, Team } from '../types';
 import { attackDir, clamp, samplePath, sampleSmooth, type Key, type ReplayClip } from '../game/rinkPlayback';
 import { clipFrame, RinkSvg } from './RinkView';
-import { getClubLogoSources, getOfficialClubPalette, hexLuminance } from '../game/clubColors';
-import type { Kit, PlayerFigure } from './playerModel';
-import { buildArena } from './replayArena';
+import type { PlayerFigure } from './playerModel';
+import { acquireRenderer, addStageLights, compileScene, loadModel, modelLoaded, onCacheRedraw, releaseRenderer, sharedProps, sharedReflector, takeArena, takeFigures } from './replayCache';
 import { cameraPose, toWorld, viewFor, ZOOM, type ReplayCamera, type ReplayView } from './replayCameras';
 import type { ReplayFrameSource } from './replayExport';
 
 export { broadcastFocus, CAMERAS, autoCamera, viewFor, VIEW_LABEL, ZOOM, type ReplayCamera, type ReplayView } from './replayCameras';
+export { kitFor } from './replayCache';
 
 /**
  * `time` is the replay position (0…1). While `playing`, the scene runs its own requestAnimationFrame loop
@@ -27,6 +26,10 @@ type Props = {
   quality?: ReplayQuality;
   /** Filled with an offline frame renderer (for the MP4 export) while the WebGL scene is alive. */
   exporter?: MutableRefObject<ReplayFrameSource | null>;
+  /** 3D turned off in the settings: the episode on the 2D rink, no WebGL at all */
+  flat?: boolean;
+  /** the 3D picture is ready (shaders compiled, first frame drawn) */
+  onReady?: (ready: boolean) => void;
 };
 
 /**
@@ -41,35 +44,17 @@ const QUALITY: Record<ReplayQuality, { dpr: (d: number) => number; minDpr: numbe
   high: { dpr: d => Math.min(2, Math.max(1.25, d)), minDpr: 1, shadow: 2048, radius: 2.5, reflect: .5, detail: 'hi', adaptive: true },
   ultra: { dpr: d => Math.min(2.5, Math.max(2, d)), minDpr: 2, shadow: 4096, radius: 3, reflect: 1, detail: 'hi', adaptive: false },
 };
-/** Default: high on desktops, standard on touch devices. */
-export function defaultReplayQuality(): ReplayQuality {
-  try { const saved = localStorage.getItem('khl.replayQuality'); if (saved === 'standard' || saved === 'high' || saved === 'ultra') return saved; } catch { /* private mode */ }
+/** The quality from the settings; «auto»: high on desktops, standard on touch devices. */
+export function resolveReplayQuality(q: ReplayQuality | 'auto' = 'auto'): ReplayQuality {
+  if (q !== 'auto') return q;
   return typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 'standard' : 'high';
 }
+/** Arena texture detail of a preset (also used by the background preparation of replays). */
+export const arenaDetail = (q: ReplayQuality) => QUALITY[q].detail;
 
-const contrast = (a: string, b: string) => Math.abs(hexLuminance(a) - hexLuminance(b)) > 70;
 /** Real puck: 7.62 cm × 2.54 cm, drawn 1.25× so it still reads on a phone-sized broadcast shot. */
 const PUCK_R = .0381 * 1.25, PUCK_H = .0254 * 1.25;
-const RINK_LENGTH = 60, RINK_WIDTH = 30;
 const STRIDE = 3.3; // metres per full stride cycle (left + right push)
-
-/** Club kit for the rigged models: home in club colours, visitors in white with club trim (as on the 2D rink). */
-export function kitFor(team: Team, side: 0 | 1, goalie: boolean, player?: Player, crest?: T.Material): Kit {
-  const primary = team.primaryColor, secondary = team.secondaryColor, accent = getOfficialClubPalette(team)?.accentColor ?? '#141414';
-  const dark = hexLuminance(primary) < 90 ? primary : hexLuminance(accent) < 90 ? accent : hexLuminance(secondary) < 90 ? secondary : '#161c26';
-  const name = player?.name ? player.name.trim().split(/\s+/).pop() : undefined;
-  const number = player ? String(player.number) : '';
-  if (side === 0) {
-    const trim2 = contrast(accent, primary) && accent.toLowerCase() !== secondary.toLowerCase() ? accent : contrast(primary, '#ffffff') ? '#ffffff' : '#141414';
-    const fill = hexLuminance(primary) > 170 ? dark : '#ffffff';
-    return { jersey: primary, trim: secondary, trim2, pants: dark, socks: primary, sockTrim: secondary, helmet: primary,
-      glove: dark === primary ? secondary : primary, number, name, numberFill: fill, numberStroke: contrast(secondary, fill) ? secondary : dark, goalie, pads: '#f4f6f8', crest };
-  }
-  const ink = hexLuminance(primary) < 200 ? primary : dark;
-  const trim2 = hexLuminance(secondary) < 200 && secondary.toLowerCase() !== ink.toLowerCase() ? secondary : accent;
-  return { jersey: '#f4f7fa', trim: ink, trim2, pants: dark, socks: '#f4f7fa', sockTrim: ink, helmet: '#f4f7fa', glove: ink,
-    number, name, numberFill: ink, numberStroke: '#ffffff', goalie, pads: '#f4f6f8', crest };
-}
 
 /** Cumulative skating distance along a track (metres), sampled finely so the stride follows real speed. */
 function distanceTable(keys: Key[], samples = 240) {
@@ -96,8 +81,8 @@ export function ReplayScene(props: Props) {
   // Live values read by the render loop (no React re-render per frame).
   const live = useRef({ time: props.time, seek: props.seek ?? 0, camera: props.camera, zoom: props.zoom ?? 1, failed: false });
   live.current.camera = props.camera;
-  const callbacks = useRef({ onTime: props.onTime, onZoom: props.onZoom });
-  callbacks.current = { onTime: props.onTime, onZoom: props.onZoom };
+  const callbacks = useRef({ onTime: props.onTime, onZoom: props.onZoom, onReady: props.onReady });
+  callbacks.current = { onTime: props.onTime, onZoom: props.onZoom, onReady: props.onReady };
   const draw = useRef(0);
   const requestDraw = () => {
     if (draw.current || typeof requestAnimationFrame === 'undefined') return;
@@ -111,60 +96,55 @@ export function ReplayScene(props: Props) {
     const geometries = new Set<T.BufferGeometry>(), materials = new Set<T.Material>(), textures: T.Texture[] = [];
     let observer: ResizeObserver | undefined;
     let stopped = false;
-    let disposeFigures = () => {};
-    let disposeArena = () => {};
+    let releaseFigures = () => {};
+    let releaseArena = () => {};
     const unbind: (() => void)[] = [];
+    // The renderer, the arena and the players' figures belong to the replay cache: they are handed back, not
+    // destroyed, so the next replay of this match opens without rebuilding anything or recompiling shaders.
     const dispose = () => {
-      observer?.disconnect(); controller.current = null; disposeFigures(); disposeArena(); unbind.forEach(f => f());
+      observer?.disconnect(); controller.current = null; releaseFigures(); releaseArena(); unbind.forEach(f => f());
       geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose()); textures.forEach(t => t.dispose());
-      renderer?.dispose(); renderer?.forceContextLoss(); renderer?.domElement.remove();
+      if (renderer) { renderer.domElement.remove(); releaseRenderer(renderer); }
     };
+    if (props.flat) { live.current.failed = true; setFailed(true); return () => { stopped = true; }; }
+    live.current.failed = false; setFailed(false);
     try {
-      if (typeof window.WebGLRenderingContext === 'undefined' && typeof window.WebGL2RenderingContext === 'undefined') throw new Error('WebGL unavailable');
       const preset = QUALITY[quality];
-      renderer = new T.WebGLRenderer({ antialias: true, alpha: false, powerPreference: 'high-performance' });
+      renderer = acquireRenderer();
       // Adaptive resolution: start sharp, step down while frames are slow, step back up when there is headroom.
       const maxRatio = preset.dpr(window.devicePixelRatio || 1);
       let ratio = maxRatio;
       renderer.setPixelRatio(ratio);
-      renderer.shadowMap.enabled = true; renderer.shadowMap.type = T.PCFShadowMap;
-      renderer.outputColorSpace = T.SRGBColorSpace;
-      // Neutral tone mapping keeps the club colours true (ACES shifts reds and blues).
-      renderer.toneMapping = T.NeutralToneMapping; renderer.toneMappingExposure = 1.0;
-      renderer.setClearColor('#081421');
-      renderer.domElement.setAttribute('aria-label', 'Объёмная реконструкция голевого эпизода');
+      renderer.setClearColor('#081421', 1);
       element.appendChild(renderer.domElement);
-      renderer.domElement.style.cssText = 'width:100%;height:100%;display:block;touch-action:none';
-      renderer.domElement.addEventListener('webglcontextlost', (e) => { e.preventDefault(); if (!stopped) { live.current.failed = true; setFailed(true); } });
-      const scene = new T.Scene(); scene.fog = new T.Fog('#081421', 70, 150);
+      const lost = (e: Event) => { e.preventDefault(); if (!stopped) { live.current.failed = true; setFailed(true); } };
+      const canvasNode = renderer.domElement;
+      canvasNode.addEventListener('webglcontextlost', lost);
+      unbind.push(() => canvasNode.removeEventListener('webglcontextlost', lost));
+      unbind.push(onCacheRedraw(() => requestDraw()));
+      const scene = new T.Scene();
       const camera = new T.PerspectiveCamera(40, 2, .05, 200);
-      scene.add(new T.HemisphereLight('#e6f4ff', '#26384c', 1.5));
-      // Image-based lighting: soft arena reflections on helmets, visors, the goal frame and the boards.
-      const pmrem = new T.PMREMGenerator(renderer), room = new RoomEnvironment();
-      const envMap = pmrem.fromScene(room, .04).texture; textures.push(envMap); pmrem.dispose(); room.dispose?.();
-      scene.environment = envMap; scene.environmentIntensity = .45;
-      // The arena lights: one shadow-casting key light that follows the play (tight, sharp shadow map) and a fill.
-      const sun = new T.DirectionalLight('#fff7e9', 2.9); sun.castShadow = true;
-      sun.shadow.mapSize.set(preset.shadow, preset.shadow); sun.shadow.radius = preset.radius; sun.shadow.camera.left = -16; sun.shadow.camera.right = 16; sun.shadow.camera.top = 12; sun.shadow.camera.bottom = -12;
-      sun.shadow.camera.near = 1; sun.shadow.camera.far = 60; sun.shadow.normalBias = .03; sun.shadow.bias = -.0005;
-      scene.add(sun); scene.add(sun.target);
-      const fill = new T.DirectionalLight('#dbe8ff', .9); fill.position.set(-14, 20, -18); scene.add(fill);
-      const arena = buildArena(scene, home, away, Math.min(preset.detail === 'hi' ? 16 : 8, renderer.capabilities.getMaxAnisotropy()), () => requestDraw(), { detail: preset.detail });
-      disposeArena = arena.dispose;
+      const { sun, lamp } = addStageLights(scene, preset.shadow, preset.radius);
+      const taken = takeArena(home, away, preset.detail, Math.min(preset.detail === 'hi' ? 16 : 8, renderer.capabilities.getMaxAnisotropy()));
+      const arena = taken.arena;
+      scene.add(arena.group);
+      releaseArena = () => { arena.iceReflection.texture.value = null; arena.iceReflection.strength.value = 0; taken.release(); };
+      arena.iceReflection.texture.value = null; arena.iceReflection.strength.value = 0;
       // Planar ice reflection (high/ultra): the players, goals and boards mirrored in the ice, rendered at a
       // fraction of the screen resolution and blended into the ice shader with a fresnel term.
       let reflector: Reflector | null = null;
       const reflectorInverse = new T.Matrix4();
       if (preset.reflect > 0) {
-        reflector = new Reflector(new T.PlaneGeometry(RINK_LENGTH, RINK_WIDTH), { textureWidth: 512, textureHeight: 256, clipBias: .003, multisample: 0 });
-        reflector.rotation.x = -Math.PI / 2; reflector.position.y = .001; reflector.updateMatrixWorld(true);
+        reflector = sharedReflector();
         reflectorInverse.copy(reflector.matrixWorld).invert();
-        geometries.add(reflector.geometry); materials.add(reflector.material as T.Material);
         arena.iceReflection.texture.value = reflector.getRenderTarget().texture;
         arena.iceReflection.strength.value = 1;
       }
+      let skipReflection = false;
       const renderReflection = () => {
         if (!reflector || !renderer) return;
+        if (skipReflection) { arena.iceReflection.strength.value = 0; return; }
+        arena.iceReflection.strength.value = 1;
         arena.reflectionHidden.forEach(o => { o.visible = false; });
         const clear = renderer.getClearColor(new T.Color()), alpha = renderer.getClearAlpha();
         renderer.setClearColor(clear, 0);
@@ -187,7 +167,15 @@ export function ReplayScene(props: Props) {
       };
 
       // Simple stand-in figures until the rigged models are decoded (and the fallback if that fails).
+      // With the rigged model already decoded the figures come from the cache right away: no stand-ins (they
+      // would only cost geometry and shader compiles for a picture nobody sees).
+      const standIns = !modelLoaded();
       const actors = clip.tracks.map(track => {
+        if (!standIns) {
+          const group = new T.Group(); scene.add(group);
+          const none = new T.Group();
+          return { track, group, legs: [] as T.Mesh[], stick: none, torso: none as unknown as T.Mesh, glove: undefined as T.Mesh | undefined, distance: distanceTable(track.keys) };
+        }
         const team = track.side === 0 ? home : away;
         const jersey = mat(track.side === 0 ? team.primaryColor : '#f4f7fa'), trim = mat(track.side === 0 ? team.secondaryColor : team.primaryColor);
         const group = new T.Group(); scene.add(group);
@@ -223,44 +211,41 @@ export function ReplayScene(props: Props) {
         return { track, group, legs, stick, torso, glove, distance: distanceTable(track.keys) };
       });
       let figures: PlayerFigure[] | null = null;
-      const crestFor = (team: Team) => {
-        const m = new T.MeshBasicMaterial({ transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2, alphaTest: .05 }); m.visible = false; materials.add(m);
-        const sources = getClubLogoSources(team), loader = new T.TextureLoader();
-        const next = (i: number) => {
-          if (i >= sources.length || stopped) return;
-          loader.load(sources[i], tex => {
-            if (stopped) { tex.dispose(); return; }
-            tex.colorSpace = T.SRGBColorSpace; textures.push(tex); m.map = tex; m.visible = true; m.needsUpdate = true; requestDraw();
-          }, undefined, () => next(i + 1));
-        };
-        next(0);
-        return m;
+      // Rigged figures from the replay cache. Figures built just now get their shaders compiled off the main
+      // thread (KHR_parallel_shader_compile) before they replace the stand-ins, so the picture never stalls.
+      let ready = false, sceneCompiled = false;
+      let figuresPending = modelLoaded();
+      const show = () => {
+        if (stopped || ready || !sceneCompiled || figuresPending) return;
+        ready = true; resize(); callbacks.current.onReady?.(true);
       };
-      // Loaded on demand (also keeps the GLB out of node-side imports of this component).
-      import('./playerModel').then(model => model.loadPlayerTemplate().then(template => {
-        if (stopped) return;
-        const crests = [crestFor(home), crestFor(away)];
-        const built: PlayerFigure[] = [];
+      loadModel().then(({ mod, template }) => {
+        if (stopped || !renderer) return;
+        let t: ReturnType<typeof takeFigures>;
         try {
-          clip.tracks.forEach((track, i) => {
-            const figure = new model.PlayerFigure(template, kitFor(track.side === 0 ? home : away, track.side, !!track.goalie, players[track.id], crests[track.side]));
-            figure.root.rotation.y = Math.PI / 2; // model faces +z, replay bodies face +x
-            built.push(figure); actors[i].group.add(figure.root);
-          });
-        } catch { built.forEach(f => f.dispose()); return; }
-        disposeFigures = () => built.forEach(f => f.dispose());
-        figures = built; setRigged(true);
-        actors.forEach(a => a.group.children.forEach(c => { if (!built.some(f => f.root === c)) c.visible = false; }));
-        requestDraw();
-      })).catch(() => { /* keep the simple figures */ });
+          t = takeFigures(mod, template, home, away, players, clip.tracks.map(track => ({ id: track.id, side: track.side, goalie: !!track.goalie })));
+        } catch { figuresPending = false; show(); return; }
+        releaseFigures = t.release;
+        const attach = () => {
+          if (stopped) return;
+          t.figures.forEach((figure, i) => actors[i].group.add(figure.root));
+          figures = t.figures; setRigged(true);
+          actors.forEach((a, i) => a.group.children.forEach(c => { if (c !== t.figures[i].root) c.visible = false; }));
+          figuresPending = false; show(); requestDraw();
+        };
+        if (!t.fresh.length) { attach(); return; }
+        const staging = new T.Scene(); t.fresh.forEach(f => staging.add(f.root));
+        compileScene(renderer, staging, camera, scene, !!reflector).then(attach);
+      }).catch(() => { figuresPending = false; show(); /* keep the simple figures */ });
 
-      const puck = addMesh(scene, new T.CylinderGeometry(PUCK_R, PUCK_R, PUCK_H, 20), mat('#07090d', { roughness: .45 }));
-      const puckShadow = addMesh(scene, new T.CircleGeometry(PUCK_R * 1.5, 16), mat('#0b1622', { transparent: true, opacity: .35, depthWrite: false }), 0, 0, 0, false); puckShadow.rotation.x = -Math.PI / 2;
+      const propMats = sharedProps();
+      const puck = addMesh(scene, new T.CylinderGeometry(PUCK_R, PUCK_R, PUCK_H, 20), propMats.puck);
+      const puckShadow = addMesh(scene, new T.CircleGeometry(PUCK_R * 1.5, 16), propMats.puckShadow, 0, 0, 0, false); puckShadow.rotation.x = -Math.PI / 2;
       const trailGeometry = new T.BufferGeometry().setFromPoints(Array.from({ length: 18 }, () => new T.Vector3())); geometries.add(trailGeometry);
-      const trailMaterial = new T.LineBasicMaterial({ color: '#efad3d', transparent: true, opacity: .7 }); materials.add(trailMaterial);
+      const trailMaterial = propMats.trail;
       const trail = new T.Line(trailGeometry, trailMaterial); trail.frustumCulled = false; scene.add(trail);
       const dir = attackDir(clip);
-      const lamp = new T.PointLight('#ff2847', 0, 15); lamp.position.set(dir * 27.5, 3, 0); scene.add(lamp);
+      lamp.position.set(dir * 27.5, 3, 0);
 
       const puckWorld = new T.Vector3(), local = new T.Vector3(), vecUp = new T.Vector3(0, 1, 0), legacy = new T.Vector3();
       const ahead = .2 / Math.max(.5, clip.duration); // ±0.2 s window for headings and speeds
@@ -360,14 +345,19 @@ export function ReplayScene(props: Props) {
         const w = Math.max(1, element.clientWidth), h = Math.max(1, element.clientHeight);
         renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
         sizeReflection(w * ratio, h * ratio);
-        update(live.current.time);
+        if (ready) update(live.current.time);
       };
       observer = new ResizeObserver(resize); observer.observe(element); resize();
+      // Shaders of the arena and the stand-ins compile in the background; the first frame waits for them.
+      compileScene(renderer, scene, camera, null, !!reflector).finally(() => { sceneCompiled = true; show(); });
+      // Never wait forever (a driver without parallel compile, a slow phone): show what is there after 4 s.
+      const giveUp = setTimeout(() => { sceneCompiled = true; figuresPending = false; show(); }, 4000);
+      unbind.push(() => clearTimeout(giveUp));
       // Frame-time governor for the adaptive resolution.
       let slow = 0, fast = 0, lastFrame = 0;
       controller.current = (time: number) => {
         const now = performance.now(), dt = now - lastFrame; lastFrame = now;
-        if (exporting) return;
+        if (exporting || !ready) return;
         update(time);
         if (preset.adaptive && dt > 0 && dt < 250) {
           if (dt > 24) { slow++; fast = 0; } else if (dt < 15) { fast++; slow = 0; } else { slow = Math.max(0, slow - 1); fast = Math.max(0, fast - 1); }
@@ -376,14 +366,21 @@ export function ReplayScene(props: Props) {
         }
       };
       // Offline frames for the MP4 export: fixed size, exact time and camera, no adaptive resolution.
+      // «fast» export: no ice reflection pass and a 1024 shadow map (the costliest parts of a frame).
+      const setShadow = (size: number) => {
+        if (sun.shadow.mapSize.x === size) return;
+        sun.shadow.map?.dispose(); sun.shadow.map = null; sun.shadow.mapSize.set(size, size);
+      };
       if (props.exporter) props.exporter.current = {
-        begin: (w, h) => {
+        begin: (w, h, options) => {
           if (!renderer) return;
           exporting = true; renderer.setPixelRatio(1); renderer.setSize(w, h, false);
-          camera.aspect = w / h; camera.updateProjectionMatrix(); sizeReflection(w, h);
+          camera.aspect = w / h; camera.updateProjectionMatrix();
+          skipReflection = !!options?.fast;
+          if (options?.fast) setShadow(Math.min(1024, preset.shadow)); else sizeReflection(w, h);
         },
         frame: (time, view) => { update(time, view); return renderer!.domElement; },
-        end: () => { if (!renderer) return; exporting = false; renderer.setPixelRatio(ratio); resize(); },
+        end: () => { if (!renderer) return; exporting = false; skipReflection = false; setShadow(preset.shadow); renderer.setPixelRatio(ratio); resize(); },
       };
       const exporterRef = props.exporter;
       unbind.push(() => { if (exporterRef) exporterRef.current = null; });
@@ -404,9 +401,9 @@ export function ReplayScene(props: Props) {
     } catch {
       live.current.failed = true; setFailed(true); dispose();
     }
-    return () => { stopped = true; if (draw.current) cancelAnimationFrame(draw.current); draw.current = 0; dispose(); setRigged(false); };
+    return () => { stopped = true; if (draw.current) cancelAnimationFrame(draw.current); draw.current = 0; dispose(); setRigged(false); callbacks.current.onReady?.(false); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [clip, home, away, players, quality]);
+  }, [clip, home, away, players, quality, props.flat]);
 
   // Seek / restart from the parent.
   useEffect(() => {
@@ -443,6 +440,6 @@ export function ReplayScene(props: Props) {
   return <div className="absolute inset-0" data-replay-renderer={failed ? 'svg' : 'webgl'} data-replay-models={rigged && !failed ? 'rigged' : 'simple'}>
     <div ref={host} className={failed ? 'hidden' : 'w-full h-full'} />
     {!failed && props.overlay}
-    {failed && <div className="w-full h-full p-3 bg-[#102335]"><RinkSvg frame={clipFrame(clip, props.time)} home={home} away={away} players={players} /><span className="absolute bottom-2 left-3 text-[10px] text-white/70">WebGL недоступен — показан тот же эпизод сверху.</span></div>}
+    {failed && <div className="w-full h-full p-3 bg-[#102335]" data-replay-flat={props.flat || undefined}><RinkSvg frame={clipFrame(clip, props.time)} home={home} away={away} players={players} /><span className="absolute bottom-2 left-3 text-[10px] text-white/70">{props.flat ? '2D-повтор · 3D можно включить в настройках' : 'WebGL недоступен — показан тот же эпизод сверху.'}</span></div>}
   </div>;
 }

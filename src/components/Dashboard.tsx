@@ -1,3 +1,4 @@
+import { getSettings } from '../game/settings';
 import { recentTeamForm } from '../game/coaching';
 import { useState } from 'react';
 import { nextUserGame, regularSeasonLength, seasonDate } from '../game/schedule';
@@ -85,7 +86,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
   /** Before fast simulation: make sure nothing important is left unanswered. */
   const guarded = (label: string, run: () => void) => {
     const open = blockingTasks(s);
-    if (!open.length) return run();
+    if (!open.length || !getSettings().simConfirm) return run();
     ui.confirm({
       title: 'Есть нерешённые задачи',
       text: `Во входящих: ${open.slice(0, 3).map((t) => t.title).join('; ')}${open.length > 3 ? '…' : ''}. ${label}?`,
@@ -102,7 +103,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
     if (!after) return;
     const games = userGamesBetween(after, from, after.day);
     if (games.length) setSimulated(games.map((g) => g.id));
-    if (openSingle && games.length === 1) ui.openGame(games[0].id);
+    if (openSingle && games.length === 1 && getSettings().simOpenReport) ui.openGame(games[0].id);
   };
   const simDay = () => track(() => simulateDay(true), true);
   const simToNext = () =>
@@ -114,7 +115,9 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
       setSimNote(res === 'inbox' ? 'Симуляция остановлена: во входящих новая задача.' : null);
     });
   const simGame = () =>
-    blockingTasks(s).length
+    !getSettings().simConfirm
+      ? simDay()
+      : blockingTasks(s).length
       ? guarded('Симулировать матч по текущим звеньям', simDay)
       : ui.confirm({ title: 'Симулировать матч?', text: 'Результат будет рассчитан по текущим звеньям без просмотра матча. Итог и повторы голов откроются сразу после симуляции.', confirmLabel: 'Симулировать', onYes: simDay });
   const simWeek = () =>

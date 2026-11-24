@@ -85,6 +85,10 @@ try {
   await confirmModal().getByRole('button', { name: /^(Симулировать|Всё равно продолжить)$/ }).click();
   const press = page.locator('[data-press]');
   await press.waitFor();
+  // The simulated match's report opens on its own (setting «Открывать протокол»): close it to reach the press.
+  const overlay = page.locator('div.fixed.inset-0.z-50');
+  await overlay.first().waitFor({ timeout: 3000 }).catch(() => {});
+  for (let k = 0; k < 20 && (await overlay.count()); k++) { await page.keyboard.press('Escape'); await page.waitForTimeout(150); }
   const before = await read((s) => ({ fans: s.fans, conf: s.board.confidence }));
   await press.locator('[data-press-option]').first().click();
   await press.waitFor({ state: 'detached' });
@@ -126,7 +130,7 @@ try {
   console.log(`  first period took ${Math.round((Date.now() - t0) / 1000)} s of wall time`);
   await brk.waitFor({ timeout: 5000 });
   const hints = page.locator('[data-intermission-hints]');
-  await page.screenshot({ path: '.arena/intermission.png' });
+  await page.screenshot({ path: '.arena/intermission.png', timeout: 10000 }).catch(() => {}); // can stall while software WebGL renders
   if (await hints.count()) {
     const n = await hints.locator('> div > div').count();
     const act = hints.locator('[data-hint-action]').first();
