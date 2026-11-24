@@ -1,3 +1,4 @@
+import { isApp, saveFile } from '../platform';
 import { ArrayBufferTarget, Muxer } from 'mp4-muxer';
 import type { ReplayClip } from '../game/rinkPlayback';
 import { viewFor, type ReplayCamera, type ReplayView } from './replayCameras';
@@ -239,16 +240,18 @@ export function videoFileName(parts: string[]): string {
   return `${latin.replace(/[^A-Za-z0-9_.-]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '') || 'replay'}.mp4`;
 }
 
-/** Saves the file (or opens the share sheet on phones that cannot download blobs). */
-export async function saveVideo(blob: Blob, name: string) {
+/** Saves the file (or opens the share sheet on phones that cannot download blobs). Returns where it went. */
+export async function saveVideo(blob: Blob, name: string): Promise<string | null> {
+  if (isApp()) return (await saveFile(blob, name, 'video'))?.where ?? null;
   const file = typeof File !== 'undefined' ? new File([blob], name, { type: 'video/mp4' }) : null;
   const nav = navigator as Navigator & { canShare?: (d: ShareData) => boolean };
   const coarse = typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches;
   if (coarse && file && nav.canShare?.({ files: [file] })) {
-    try { await nav.share({ files: [file], title: name }); return; } catch (e) { if ((e as DOMException)?.name === 'AbortError') return; }
+    try { await nav.share({ files: [file], title: name }); return 'меню «Поделиться»'; } catch (e) { if ((e as DOMException)?.name === 'AbortError') return null; }
   }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = name; a.rel = 'noopener';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  return 'загрузки браузера';
 }

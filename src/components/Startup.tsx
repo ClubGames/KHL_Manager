@@ -1,3 +1,4 @@
+import { APP_RELEASE, platform } from '../platform';
 import { useEffect, useRef, useState } from 'react';
 // served next to index.html (like roster.json) instead of being inlined into the script
 const arena = './arena.jpg';
@@ -238,6 +239,11 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
         <header className="relative -mx-3 sm:-mx-4 md:mx-0 mb-6 sm:mb-8 md:rounded-md overflow-hidden border-0 md:border border-line bg-cover bg-center" style={{ backgroundImage: `url(${arena})`, backgroundPosition: 'center 55%' }}>
           <div className="absolute inset-0 bg-gradient-to-r from-bg via-bg/85 to-bg/25" />
           <div className="absolute top-3 right-3 z-10 flex gap-2">
+            {platform() === 'web' && (
+              <a href={APP_RELEASE} target="_blank" rel="noopener" title="КХЛ ГМ для Windows и Android: отдельное окно, видеокарта всегда включена" className="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line text-xs text-muted hover:text-text bg-bg/70 backdrop-blur" data-startup-apps>
+                ⤓ Приложения
+              </a>
+            )}
             <button type="button" onClick={() => ui.openSettings()} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line text-xs text-muted hover:text-text bg-bg/70 backdrop-blur" data-startup-settings>
               <Icon name="settings" /> Настройки
             </button>

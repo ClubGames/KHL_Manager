@@ -120,6 +120,37 @@ npm run preview    # или любой статический сервер на 
 - Добавлен GitHub Actions workflow `.github/workflows/pages.yml`, который собирает проект и публикует артефакт при каждом пуше в `main` (или вручную через **Actions → Deploy to GitHub Pages → Run workflow**).
 - В настройках репозитория на GitHub достаточно один раз выбрать: **Settings → Pages → Build and deployment → Source: `GitHub Actions`**.
 
+## Приложения для Windows и Android
+
+Браузерная версия остаётся основной. Те же файлы игры упакованы в два приложения:
+
+| | Windows 10/11 (Electron, `desktop/`) | Android 7+ (Capacitor, `android/`) |
+|---|---|---|
+| Скачать | [KHL-GM-Setup.exe](https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM-Setup.exe) · [KHL-GM-Portable.exe](https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM-Portable.exe) | [KHL-GM.apk](https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM.apk) |
+| Графика | видеокарта включена принудительно (без «чёрного списка» драйверов), предпочтение дискретной; матч не замедляется в фоне | аппаратное ускорение WebView |
+| Окно | развёрнуто на весь экран, F11 — полный экран, Ctrl ± — масштаб | всегда полный экран, альбомная ориентация, экран не гаснет |
+| Файлы | видео, сохранения и ростер — через системное окно «Сохранить как» | копия в «Документы/КХЛ ГМ» + меню «Поделиться» |
+| Кнопка «Назад» | — | закрывает открытое окно (как Esc), на главном экране сворачивает игру |
+
+- Сборка идёт в GitHub Actions (`.github/workflows/apps.yml`): на каждом PR приложения собираются и проверяются
+  (Windows: запуск собранного exe с `--smoke-test`, Android: подпись и манифест APK), на `main` — публикуются в релиз
+  [`app`](https://github.com/ClubGames/KHL_Manager/releases/tag/app) с постоянными ссылками.
+- Сохранения у браузера и у каждого приложения свои. Перенос карьеры: «Сохранения» → экспорт в файл → импорт.
+- APK подписан ключом из репозитория (`android/app/khl-release.p12`), поэтому новые версии ставятся поверх старых
+  с сохранением карьер. Свой ключ можно задать секретами `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
+  `ANDROID_KEY_ALIAS` — но после смены ключа приложение придётся один раз переустановить.
+- Windows-сборка не подписана сертификатом: SmartScreen покажет предупреждение → «Подробнее» → «Выполнить в любом случае».
+- В «Настройки → Приложение и графика» видно, где запущена игра и рисует ли браузер 3D видеокартой
+  (программная отрисовка — главная причина лагов в повторах).
+
+Локальная сборка:
+
+```bash
+npm ci && npm run build                     # веб-версия → dist/
+cd desktop && npm ci && npm start           # Windows-приложение из dist/ (npm run dist:win → desktop/release/)
+npx cap sync android && cd android && ./gradlew assembleRelease   # APK (нужны JDK 21 и Android SDK 36)
+```
+
 ## Ростер (roster.json)
 
 Игра при старте загружает файл **`roster.json` из папки рядом с `index.html`** (в сборке — `dist/roster.json`).

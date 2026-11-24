@@ -1,0 +1,186 @@
+name: Apps (Windows + Android)
+
+# Builds the Windows app (Electron: installer + portable exe) and the Android app (Capacitor: signed APK)
+# from the same web build as the browser version. Pull requests: build + checks, files as workflow artifacts.
+# main: also publishes them to the «app» release — stable download links:
+#   https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM-Setup.exe
+#   https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM-Portable.exe
+#   https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM.apk
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_VERSION: 1.0.${{ github.run_number }}
+
+jobs:
+  web:
+    name: Web build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Typecheck & build
+        run: |
+          ./node_modules/.bin/tsc --noEmit
+          npm run build
+          test -f dist/index.html && test -f dist/roster.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web
+          path: dist
+          retention-days: 3
+
+  windows:
+    name: Windows app
+    needs: web
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: dist
+      - name: Install Electron
+        working-directory: desktop
+        run: npm ci
+      - name: Build installer + portable exe
+        working-directory: desktop
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+        run: |
+          npm version "$APP_VERSION" --no-git-tag-version --allow-same-version
+          npm run dist:win
+          ls -la release
+          test -f release/KHL-GM-Setup.exe && test -f release/KHL-GM-Portable.exe
+      - name: Smoke test (the packaged app starts, loads the game and the roster)
+        working-directory: desktop
+        run: |
+          out="$(pwd -W)/smoke.json"
+          timeout 180 ./release/win-unpacked/KHL-GM.exe --smoke-test="$out" || echo "exit code $?"
+          cat smoke.json
+          node -e "const r=require('./smoke.json'); if(!r.ok){console.error('smoke test failed');process.exit(1)}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            desktop/release/KHL-GM-Setup.exe
+            desktop/release/KHL-GM-Portable.exe
+          retention-days: 14
+
+  android:
+    name: Android app
+    needs: web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: gradle
+      - uses: android-actions/setup-android@v3
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: dist
+      - name: Copy the game into the Android project
+        run: npx cap sync android
+      - name: Signing key (repository key unless a private one is set in secrets)
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/release.p12"
+            echo "KHL_KEYSTORE_FILE=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
+            echo "KHL_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "KHL_KEY_ALIAS=${KEY_ALIAS:-khl}" >> "$GITHUB_ENV"
+          fi
+      - name: Build signed APK
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace -PkhlVersionCode=${{ github.run_number }} -PkhlVersionName="$APP_VERSION"
+          cp app/build/outputs/apk/release/app-release.apk ../KHL-GM.apk
+      - name: Verify the APK
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs KHL-GM.apk | head -5
+          "$BT/aapt2" dump badging KHL-GM.apk | grep -E "^package|application-label|sdkVersion|targetSdkVersion|launchable"
+          ls -la KHL-GM.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: KHL-GM.apk
+          retention-days: 14
+
+  release:
+    name: Publish to the «app» release
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: [windows, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: apps-release
+      cancel-in-progress: false
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: files
+          merge-multiple: true
+      - name: Upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -la files
+          cat > notes.md <<EOF
+          **КХЛ ГМ ${APP_VERSION}** — приложения для Windows и Android (сборка ${GITHUB_SHA::7}).
+
+          | Файл | Что это |
+          |---|---|
+          | **KHL-GM-Setup.exe** | Windows 10/11: установщик (без прав администратора), ярлык на рабочем столе |
+          | **KHL-GM-Portable.exe** | Windows: без установки, запускается сразу |
+          | **KHL-GM.apk** | Android 7+: установите файл (разрешите установку из этого источника) |
+
+          Windows может показать «Система Windows защитила ваш компьютер» — приложение не подписано сертификатом:
+          «Подробнее» → «Выполнить в любом случае». Обновление: просто установите новую версию поверх — карьеры сохранятся.
+          Браузерная версия: https://clubgames.github.io/KHL_Manager/
+          EOF
+          if gh release view app >/dev/null 2>&1; then
+            gh release upload app files/* --clobber
+            gh release edit app --title "Приложения КХЛ ГМ ${APP_VERSION}" --notes-file notes.md --latest
+          else
+            gh release create app files/* --target "$GITHUB_SHA" --title "Приложения КХЛ ГМ ${APP_VERSION}" --notes-file notes.md --latest
+          fi

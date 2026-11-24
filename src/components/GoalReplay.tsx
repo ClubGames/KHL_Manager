@@ -16,6 +16,9 @@ const rememberVideo = (key: string, v: { blob: Blob; name: string; note: string 
 };
 const fmtSeconds = (s: number) => (s >= 60 ? `${Math.floor(s / 60)} мин ${Math.round(s % 60)} с` : `${Math.max(1, Math.round(s))} с`);
 
+/** «→ where» for the apps (a file path / the shared folder); the browser's own download bar says it already. */
+const savedTo = (where: string) => (where === 'загрузки браузера' ? '' : ` → ${where}`);
+
 export function GoalReplay({ event, home, away, players, onClose, motionClip, closeLabel = 'Продолжить матч' }: {
   event: GameEvent; home: Team; away: Team; players: Record<string, Player>; onClose: () => void; motionClip?: ReplayClip;
   /** label of the button that closes the replay (the match goes on / back to the report) */
@@ -99,7 +102,7 @@ export function GoalReplay({ event, home, away, players, onClose, motionClip, cl
     const cached = videoCache.get(key);
     if (cached) {
       setExportNote('');
-      try { await saveVideo(cached.blob, cached.name); setExportNote(`${cached.note} · уже был готов, сохранён сразу`); } catch (e) { setExportNote(`Не удалось сохранить видео: ${(e as Error)?.message ?? e}`); }
+      try { const where = await saveVideo(cached.blob, cached.name); setExportNote(where ? `${cached.note} · уже был готов, сохранён сразу${savedTo(where)}` : `${cached.note} · сохранение отменено`); } catch (e) { setExportNote(`Не удалось сохранить видео: ${(e as Error)?.message ?? e}`); }
       return;
     }
     if (!source) { setExportNote('3D-сцена ещё готовится — попробуйте через секунду.'); return; }
@@ -122,8 +125,8 @@ export function GoalReplay({ event, home, away, players, onClose, motionClip, cl
       const took = (performance.now() - exportStart.current) / 1000;
       const note = `MP4 готов: ${(result.blob.size / 1048576).toFixed(1)} МБ · ${Math.round(result.seconds)} с видео · ${result.codec} · ${videoHeight}p${options.fps} · за ${fmtSeconds(took)}`;
       rememberVideo(key, { blob: result.blob, name, note });
-      await saveVideo(result.blob, name);
-      setExportNote(note);
+      const where = await saveVideo(result.blob, name);
+      setExportNote(where ? `${note}${savedTo(where)}` : `${note} · сохранение отменено (можно скачать снова — сразу)`);
     } catch (e) {
       setExportNote((e as DOMException)?.name === 'AbortError' ? 'Экспорт отменён' : `Не удалось сохранить видео: ${(e as Error)?.message ?? e}`);
     } finally { exportAbort.current = null; setExportProgress(null); }

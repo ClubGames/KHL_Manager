@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
+import { APP_DOWNLOADS, APP_RELEASE, appVersion, gpuInfo, platform } from '../platform';
 import { CAMERAS } from './replayCameras';
 import { Button } from './ui';
 import { REPLAY_SPEEDS, resetSettings, setSettings, useSettings, type Settings } from '../game/settings';
@@ -119,11 +120,49 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
         </Row>
       </Section>
 
+      <AppSection />
+
       <div className="flex flex-wrap justify-between gap-2 pt-1">
         <Button variant="ghost" onClick={() => resetSettings()} data-settings-reset>Сбросить настройки</Button>
         {onClose && <Button variant="primary" onClick={onClose}>Готово</Button>}
       </div>
-      <p className="text-[11px] text-muted">Настройки хранятся в этом браузере и не зависят от карьеры.</p>
+      <p className="text-[11px] text-muted">Настройки хранятся {platform() === 'web' ? 'в этом браузере' : 'в приложении'} и не зависят от карьеры.</p>
     </div>
+  );
+}
+
+const PLATFORM_NAME = { web: 'Браузер', windows: 'Приложение для Windows', android: 'Приложение для Android' } as const;
+
+/** Where the game runs, the graphics adapter in use (software rendering explains slow 3D) and the app downloads. */
+function AppSection() {
+  const p = platform();
+  const [version, setVersion] = useState<string | null>(null);
+  const [gpu] = useState(gpuInfo);
+  useEffect(() => { void appVersion().then(setVersion); }, []);
+  const link = 'inline-flex items-center gap-1.5 rounded-sm border border-line bg-panel2 px-2.5 py-1.5 text-xs font-semibold hover:border-ice';
+  return (
+    <Section title="Приложение и графика" hint="Игра одинаково работает в браузере и в приложениях. Сохранения у каждого варианта свои; перенести карьеру можно через «Сохранения» → экспорт/импорт файла.">
+      <Row label="Версия игры">
+        <span className="text-sm tabular" data-app-platform={p}>{PLATFORM_NAME[p]}{version ? ` · ${version}` : ''}</span>
+      </Row>
+      <Row label="Графика" hint={gpu.software
+        ? (p === 'web'
+          ? 'Браузер рисует 3D без видеокарты — отсюда лаги в повторах. Включите «Аппаратное ускорение» в настройках браузера или установите приложение для Windows: оно всегда использует видеокарту.'
+          : 'Видеокарта недоступна, 3D рисуется программно. Обновите драйвер видеокарты; повторы можно смотреть в 2D.')
+        : 'Видеокарта используется для 3D-повторов и видео.'}>
+        <span className={cn('text-xs max-w-[16rem] inline-block text-right break-words', gpu.software ? 'text-accent' : 'text-good')} data-gpu={gpu.software ? 'software' : 'hardware'} title={gpu.renderer}>
+          {gpu.software ? '⚠ Программная · ' : '✓ '}{gpu.renderer}
+        </span>
+      </Row>
+      {p === 'web' && (
+        <Row label="Скачать приложение" hint="Отдельное окно без браузера, принудительно включённая видеокарта, сохранение видео и карьер в файлы. Windows 10/11 и Android 7+.">
+          <div className="flex flex-wrap justify-end gap-1.5" data-app-downloads>
+            <a className={link} href={APP_DOWNLOADS.windowsSetup} target="_blank" rel="noopener" data-download="windows">⊞ Windows</a>
+            <a className={link} href={APP_DOWNLOADS.android} target="_blank" rel="noopener" data-download="android">▶ Android (APK)</a>
+            <a className={cn(link, 'font-normal text-muted')} href={APP_RELEASE} target="_blank" rel="noopener">Все файлы</a>
+          </div>
+        </Row>
+      )}
+    </Section>
   );
 }
