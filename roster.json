@@ -601,7 +601,7 @@
             "salary": 1000000,
             "years": 2
           },
-          "face": "https://s3.dtln.ru/storage-hawk/players/%D0%9B%D0%B5%D1%83%D0%BA%D0%B0_%D0%9F%D0%B0%D0%B2%D0%B5%D0%BB_78_JR4A9190__500%D1%85480.png"
+          "face": "https://img.khl.ru/players/38380/200.jpg"
         },
         {
           "id": "avg-lw05",
@@ -626,7 +626,7 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": "https://s3.dtln.ru/storage-hawk/players/%D0%92%D0%BE%D0%BB%D0%BA%D0%BE%D0%B2_%D0%90%D0%BB%D0%B5%D0%BA%D1%81%D0%B0%D0%BD%D0%B4%D1%80_83_JR4A8256__500%D1%85480.png"
+          "face": "https://img.khl.ru/players/21257/200.jpg"
         },
         {
           "id": "avg-lw06",
@@ -978,7 +978,7 @@
         },
         {
           "id": "avt-d04",
-          "name": "Кейл Клэнг",
+          "name": "Кейл Клэг",
           "position": "З",
           "age": 28,
           "height": 183,
@@ -999,7 +999,7 @@
             "salary": 55000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/46084/200.jpg"
         },
         {
           "id": "avt-d06",
@@ -1074,7 +1074,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40431/200.jpg"
         },
         {
           "id": "avt-d10",
@@ -1524,7 +1524,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/21055/200.jpg"
         },
         {
           "id": "avt-lw10",
@@ -1549,7 +1549,7 @@
             "salary": 10000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/33119/200.jpg"
         },
         {
           "id": "avt-lw11",
@@ -1736,7 +1736,7 @@
       "players": [
         {
           "id": "adm-g01",
-          "name": "Никита Боярский",
+          "name": "Никита Бояркин",
           "position": "В",
           "age": 28,
           "height": 187,
@@ -1756,7 +1756,7 @@
             "salary": 20000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/28244/200.jpg"
         },
         {
           "id": "adm-g02",
@@ -1829,7 +1829,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/25022/200.jpg"
         },
         {
           "id": "adm-d02",
@@ -2454,7 +2454,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/6377/200.jpg"
         },
         {
           "id": "adm-lw11",
@@ -2778,7 +2778,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39453/200.jpg"
         },
         {
           "id": "akb-d05",
@@ -3079,7 +3079,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/32951/200.jpg"
         },
         {
           "id": "akb-c03",
@@ -3229,7 +3229,7 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/17695/200.jpg"
         },
         {
           "id": "akb-lw06",
@@ -3305,7 +3305,7 @@
             "salary": 90000000,
             "years": 1
           },
-          "face": null
+          "face": "https://img.khl.ru/players/14590/200.jpg"
         }
       ]
     },
@@ -3403,7 +3403,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40354/200.jpg"
         },
         {
           "id": "amr-g03",
@@ -3577,7 +3577,7 @@
             "salary": 20000000,
             "years": 1
           },
-          "face": null
+          "face": "https://img.khl.ru/players/38968/200.jpg"
         },
         {
           "id": "amr-d08",
@@ -3636,7 +3636,7 @@
           "age": 33,
           "height": 180,
           "weight": 89,
-          "number": null,
+          "number": 93,
           "country": "Россия",
           "overall": 74,
           "potential": 74,
@@ -3652,7 +3652,7 @@
             "salary": 18000000,
             "years": 1
           },
-          "face": null
+          "face": "https://img.khl.ru/players/16423/200.jpg"
         },
         {
           "id": "amr-lw01",
@@ -3952,7 +3952,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/35395/200.jpg"
         },
         {
           "id": "amr-lw13",
@@ -4086,7 +4086,7 @@
           "age": 35,
           "height": 180,
           "weight": 75,
-          "number": null,
+          "number": 78,
           "country": "Россия",
           "overall": 74,
           "potential": 74,
@@ -4305,7 +4305,7 @@
             "salary": 18000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/25222/200.jpg"
         },
         {
           "id": "brs-d01",
@@ -5406,7 +5406,7 @@
             "salary": 10000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/37679/200.jpg"
         },
         {
           "id": "dmn-c01",
@@ -5506,7 +5506,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/34811/200.jpg"
         },
         {
           "id": "dmn-rw02",
@@ -5606,7 +5606,7 @@
             "salary": 55000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/44593/200.jpg"
         },
         {
           "id": "dmn-lw08",
@@ -5656,7 +5656,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39898/200.jpg"
         },
         {
           "id": "dmn-c03",
@@ -5760,7 +5760,7 @@
         },
         {
           "id": "dmn-lw12",
-          "name": "Никола Обе-Кюбель",
+          "name": "Николя Обе-Кюбель",
           "position": "ЛК",
           "age": 30,
           "height": 180,
@@ -5781,7 +5781,7 @@
             "salary": 40000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/46627/200.jpg"
         },
         {
           "id": "dmn-lw13",
@@ -5971,7 +5971,7 @@
         },
         {
           "id": "dmn-rw04",
-          "name": "Николай Сальго",
+          "name": "Николай Салыго",
           "position": "ПК",
           "age": 20,
           "height": 185,
@@ -5994,7 +5994,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/42471/200.jpg"
         },
         {
           "id": "dmn-lw07",
@@ -18643,7 +18643,7 @@
       "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
       "source": "https://www.championat.com/hockey/article-6650058-kakie-legionery-khl-nahodyatsya-bez-kontrakta-kakie-inostrannye-igroki-khl-ostayutsya-svobodnymi-agentami.html",
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://img.khl.ru/players/42974/200.jpg"
     },
     {
       "id": "fa-2026-09",
