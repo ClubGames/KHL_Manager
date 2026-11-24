@@ -66,6 +66,9 @@ export function startOffseason(state: GameState): OffseasonPlan {
   recordSeasonHistoryOnce(state);
   state.waivers = [];
   state.rfaOffers = [];
+  // Coach contracts run down; an expired one continues year to year on the same terms.
+  for (const c of state.teams[state.userTeamId]?.coaches ?? []) if (c.contract) c.contract.years = Math.max(0, c.contract.years - 1);
+  delete state.coachTalks;
 
   // 1. Veteran retirements & Hall of Fame inductions
   const retired = processVeteranRetirements(state, (txt, tid) => addNews(state, 'milestone', txt, tid));
@@ -91,7 +94,7 @@ export function startOffseason(state: GameState): OffseasonPlan {
     const c = p.contract;
     c.years = Math.max(0, c.years - 1);
     if (c.years === 0 && c.next) {
-      p.contract = { salary: c.next.salary, years: c.next.years, ...(c.next.twoWay !== undefined ? { twoWay: c.next.twoWay } : {}) };
+      p.contract = { salary: c.next.salary, years: c.next.years, ...(c.next.twoWay !== undefined ? { twoWay: c.next.twoWay } : {}), ...(c.next.bonuses?.length ? { bonuses: c.next.bonuses } : {}) };
     }
     delete p.talks;
   }

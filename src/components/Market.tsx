@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { groupOf } from '../game/ai';
 import { askingSalary, talksLeft } from '../game/contracts';
+import { playerInterest, REFUSE_BELOW } from '../game/negotiation';
 import { getCapSummary } from '../game/cap';
 import { countRosterLegionnaires, countryCode, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
 import { activeKhlCount, isRfaEligibleAge, offerSheetCompensation, vhlCount } from '../game/khlRules';
@@ -171,6 +172,7 @@ export function Market() {
                 <th className="text-left py-2 font-semibold">Возр</th>
                 <th className="text-left py-2 font-semibold">ОВР</th>
                 <th className="text-left py-2 font-semibold">Пот</th>
+                <th className="text-left py-2 font-semibold">Интерес</th>
                 <th className="text-right py-2 font-semibold">Запрос за сезон</th>
                 <th className="text-right py-2 font-semibold pr-4">Контракт</th>
               </tr>
@@ -178,7 +180,7 @@ export function Market() {
             <tbody>
               {list.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="py-6 text-center text-muted">
+                  <td colSpan={8} className="py-6 text-center text-muted">
                     Свободных агентов по этому фильтру нет
                   </td>
                 </tr>
@@ -186,6 +188,7 @@ export function Market() {
               {list.map((p) => {
                 const ask = askingSalary(s, p, 1, U.id);
                 const left = talksLeft(s, p);
+                const interest = playerInterest(s, p, U.id);
                 const noRoom = fol + ask * 0.87 > cap;
                 const leg = isLegionnaire(p);
                 const legFull = leg && fl !== null && curLegs >= fl;
@@ -223,6 +226,7 @@ export function Market() {
                       <ScoutOvr p={p} />
                     </td>
                     <td className="py-2 text-muted">{p.age <= 25 ? <ScoutOvr p={p} potential /> : '—'}</td>
+                    <td className="py-2"><InterestBadge score={interest.score} /></td>
                     <td className={cn('py-2 text-right whitespace-nowrap', noRoom && 'text-muted')} title={noRoom ? 'Не помещается под потолок зарплат' : undefined}>
                       {formatMoney(ask)}
                     </td>
@@ -246,6 +250,7 @@ export function Market() {
             list.map((p) => {
               const ask = askingSalary(s, p, 1, U.id);
               const left = talksLeft(s, p);
+              const interest = playerInterest(s, p, U.id);
               const noRoom = fol + ask * 0.87 > cap;
               const leg = isLegionnaire(p);
               const legFull = leg && fl !== null && curLegs >= fl;
@@ -272,6 +277,7 @@ export function Market() {
                       )}
                       {leg && <Tag tone={legFull ? 'bad' : 'warn'}>ЛЕГ</Tag>}
                       <span className={cn('font-semibold', noRoom ? 'text-muted' : 'text-text')}>{formatMoney(ask)}/г.</span>
+                      <InterestBadge score={interest.score} />
                     </div>
                   </div>
                   <Button
@@ -291,7 +297,8 @@ export function Market() {
       </Panel>
       <Panel title="Правила подписания">
         <ul className="text-xs text-text/80 space-y-1.5">
-          <li>• Запрос показан для контракта на один сезон; в переговорах можно выбрать срок и попробовать снизить оклад.</li>
+          <li>• Запрос показан для контракта на один сезон и зависит от интереса игрока к клубу: сила состава, будущая роль, тренер, личные обстоятельства.</li>
+          <li>• В переговорах можно предложить любой оклад, подъёмные и бонусы за достижения, а также заинтересовать игрока (обещание роли, звонок тренера, помощь с переездом). Если интерес слишком низкий, игрок откажется от переговоров.</li>
           <li>• Подписание невозможно, если ФОТ превысит потолок зарплат или в бюджете меньше годового оклада игрока.</li>
           <li>• В межсезонье клубы лиги тоже подписывают свободных агентов, чтобы закрыть позиции.</li>
           <li>• Все условия своих игроков — в разделе «Контракты».</li>
@@ -299,4 +306,10 @@ export function Market() {
       </Panel>
     </div>
   );
+}
+
+function InterestBadge({ score }: { score: number }) {
+  const color = score < REFUSE_BELOW ? '#E5323E' : score < 45 ? '#F2B544' : score < 70 ? '#8FD8F0' : '#3FCF8E';
+  const text = score < REFUSE_BELOW ? 'отказ' : score < 45 ? 'слабый' : score < 70 ? 'средний' : 'высокий';
+  return <span title={`Интерес к вашему клубу: ${score} / 100`} data-fa-interest={score}><Tag color={color}>{text}</Tag></span>;
 }

@@ -9,6 +9,13 @@ export type PullGoaliePolicy = 'early' | 'normal' | 'never';
 
 export type CoachRole = 'head' | 'assistant';
 export type CoachProfile = 'balanced' | 'attack' | 'defense' | 'development' | 'motivator';
+/** Achievement bonus written into a contract: paid from the club budget (outside the cap) when reached. */
+export type BonusKind = 'goals' | 'points' | 'games' | 'wins' | 'svpct' | 'shutouts' | 'playoffs' | 'round2' | 'confFinal' | 'final' | 'cup';
+export interface ContractBonus { kind: BonusKind; target: number; amount: number }
+/** What was agreed beyond the salary (kept for display and bonus payouts). */
+export interface CoachContract { years: number; bonuses?: ContractBonus[]; signingBonus?: number; /** guaranteed powers: dismissal costs more */ guarantee?: boolean }
+export type PlayerPitch = 'role' | 'ambition' | 'coach' | 'development' | 'relocation';
+export type CoachPitch = 'ambition' | 'authority' | 'project' | 'staff';
 export interface Coach {
   id: string;
   name: string;
@@ -27,6 +34,7 @@ export interface Coach {
   label?: string;
   /** photo URL from roster.json `face` */
   face?: string;
+  contract?: CoachContract;
   acting?: boolean; // Interim head, including an assistant promoted in the career.
   actingFromAssistant?: boolean;
 }
@@ -122,9 +130,11 @@ export interface Player {
   potential: number;
   skills: Skills;
   /** years = seasons left including the current one; twoWay = KHL/VHL two-way deal (free VHL moves without waivers); next = extension */
-  contract: { salary: number; years: number; twoWay?: boolean; next?: { salary: number; years: number; twoWay?: boolean } };
-  /** negotiation patience for the current window */
-  talks?: { key: string; left: number };
+  contract: { salary: number; years: number; twoWay?: boolean; bonuses?: ContractBonus[]; next?: { salary: number; years: number; twoWay?: boolean; bonuses?: ContractBonus[] } };
+  /** negotiation state for the current window: patience, interest won by pitches, pitches already used */
+  talks?: { key: string; left: number; boost?: number; pitched?: PlayerPitch[]; promise?: boolean; notes?: string[] };
+  /** a role promised at signing (first two lines / pairs, starting goalie); checked at the end of the regular season */
+  promise?: { season: number };
   /** manager's trade note: on the block / not for sale */
   tradeFlag?: 'block' | 'keep';
   /** youth development training focus (for players aged <= 23) */
@@ -561,6 +571,8 @@ export interface GameState {
   rfaOffers?: RfaOfferSheet[];
   /** Free coaches persist across seasons, including dismissed real specialists. */
   coachMarket?: Coach[];
+  /** negotiation windows with free coaches (by coach id) */
+  coachTalks?: Record<string, { key: string; left: number; boost?: number; pitched?: CoachPitch[]; notes?: string[] }>;
   coachMarketVersion?: number;
   /** 'roster': free coaches came from roster.json `freeCoaches`; otherwise the built-in fallback list. */
   coachMarketSource?: 'roster' | 'builtin';

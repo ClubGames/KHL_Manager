@@ -1,7 +1,8 @@
 import type { GameState, Player } from '../types';
-import { fairSalary, salaryDemand } from './ratings';
+import { fairSalary, formatMoney, salaryDemand } from './ratings';
 import { canHaveNmc, canSignTwoWay } from './khlRules';
 import { scoutingDemandMult } from './medical';
+import { extrasError, extrasValue, interestDemandMult, playerInterest, priorityOf, roundUp, type OfferExtras } from './negotiation';
 
 export interface ContractTerms {
   salary: number;
@@ -66,9 +67,14 @@ export function askingSalary(state: GameState, p: Player, years: number, teamId:
   let v = salaryDemand(p.overall, p.age, p.potential);
   // young players charge for selling their best years; veterans give a discount for security
   v *= p.age < 30 ? 1 + 0.04 * (years - 1) : 1 - 0.03 * (years - 1);
-  if (p.teamId === teamId) v *= p.morale >= 75 ? 0.95 : p.morale < 50 ? 1.1 : 1;
-  const { place, gp } = confPlace(state, teamId);
-  if (gp >= 10) v *= place <= 4 ? 0.97 : place >= 10 ? 1.05 : 1;
+  if (teamId === state.userTeamId) {
+    // The manager's club: interest (strength, role, coach, morale, pitches) moves the price.
+    v *= interestDemandMult(playerInterest(state, p, teamId).score);
+  } else {
+    if (p.teamId === teamId) v *= p.morale >= 75 ? 0.95 : p.morale < 50 ? 1.1 : 1;
+    const { place, gp } = confPlace(state, teamId);
+    if (gp >= 10) v *= place <= 4 ? 0.97 : place >= 10 ? 1.05 : 1;
+  }
   if (withNmc && canHaveNmc(p) && years >= 2) v *= 0.92;
   if (twoWay && canSignTwoWay(p) && p.age > 22) v *= 1.06;
   v *= scoutingDemandMult(state.teams[teamId]?.facilities?.scouting ?? 1);
@@ -90,29 +96,53 @@ export function floorSalary(state: GameState, p: Player, years: number, teamId: 
 export interface Verdict {
   accept: boolean;
   left: number;
-  tone: 'ok' | 'close' | 'low' | 'insult' | 'closed';
+  tone: 'ok' | 'close' | 'low' | 'insult' | 'closed' | 'refuse';
   text: string;
+  /** salary (with the same other terms) the player would sign for */
+  counter?: number;
+  /** offer worth at least 15% more than he needed: he joins happy */
+  generous?: boolean;
 }
 
-/** Player's answer to an offer. A rejected offer costs patience (stored on the player). */
-export function negotiate(state: GameState, p: Player, salary: number, years: number, teamId: string, withNmc = false, twoWay = false): Verdict {
+/** How much the offer is worth to the player per season: salary + signing bonus spread over the term + bonuses weighted by his chances. */
+export function offerWorth(state: GameState, p: Player, salary: number, years: number, teamId: string, extras?: OfferExtras) {
+  const x = extrasValue(state, p, teamId, years, extras, priorityOf(p));
+  return { total: salary + x.signing + x.bonuses, signing: x.signing, bonuses: x.bonuses };
+}
+
+/** Player's answer to an offer. A rejected offer costs patience (stored on the player); he may name a counter-offer. */
+export function negotiate(state: GameState, p: Player, salary: number, years: number, teamId: string, withNmc = false, twoWay = false, extras?: OfferExtras): Verdict {
   const key = talksKey(state);
   let left = talksLeft(state, p);
   if (left <= 0) return { accept: false, left: 0, tone: 'closed', text: `${p.name} прервал переговоры. Вернуться к ним можно ${state.phase === 'offseason' ? 'в следующем сезоне' : 'в межсезонье'}.` };
+  if (teamId === state.userTeamId) {
+    const interest = playerInterest(state, p, teamId);
+    if (interest.refuses) {
+      const why = interest.factors.filter((f) => f.value < 0).sort((a, b) => a.value - b.value).slice(0, 2).map((f) => f.label.toLowerCase());
+      return { accept: false, left, tone: 'refuse', text: `${p.name} отказывается от переговоров с «${state.teams[teamId].name}»${why.length ? `: ${why.join(', ')}` : ''}. Попробуйте его заинтересовать.` };
+    }
+  }
   const my = maxYears(p.age);
   if (years > my) return { accept: false, left, tone: 'low', text: `${p.name} (возраст ${p.age}) не подпишет контракт дольше ${my} ${my === 1 ? 'года' : 'лет'}.` };
   if (twoWay && !canSignTwoWay(p)) {
     return { accept: false, left, tone: 'low', text: `${p.name} (ОВР ${p.overall}) согласен только на односторонний контракт КХЛ.` };
   }
-  const ratio = salary / floorSalary(state, p, years, teamId, withNmc, twoWay);
-  if (ratio >= 1) return { accept: true, left, tone: 'ok', text: `${p.name} согласен.` };
+  const err = extrasError(salary, extras);
+  if (err) return { accept: false, left, tone: 'low', text: err };
+  const floor = floorSalary(state, p, years, teamId, withNmc, twoWay);
+  const worth = offerWorth(state, p, salary, years, teamId, extras);
+  const ratio = worth.total / floor;
+  if (ratio >= 1) return { accept: true, left, tone: 'ok', text: `${p.name} согласен.`, generous: ratio >= 1.15 };
   const insult = ratio < 0.8;
   left = Math.max(0, left - (insult ? 2 : 1));
-  p.talks = { key, left };
+  const prev = p.talks && p.talks.key === key ? p.talks : undefined;
+  p.talks = { ...prev, key, left, ...(insult ? { boost: (prev?.boost ?? 0) - 4 } : {}) };
+  const counter = left > 0 ? roundUp(floor - worth.signing - worth.bonuses) : undefined;
+  const offerTail = counter ? ` Готов подписать за ${formatMoney(counter)} за сезон.` : '';
   const tail = left > 0 ? ` Осталось попыток: ${left}.` : ' Игрок прервал переговоры.';
-  if (insult) return { accept: false, left, tone: 'insult', text: `${p.name} считает предложение неуважительным.${tail}` };
-  if (ratio >= 0.95) return { accept: false, left, tone: 'close', text: `${p.name} отказал, но стороны очень близки.${tail}` };
-  return { accept: false, left, tone: 'low', text: `${p.name} отказал: предложение заметно ниже ожиданий.${tail}` };
+  if (insult) return { accept: false, left, tone: 'insult', text: `${p.name} считает предложение неуважительным.${tail}`, counter };
+  if (ratio >= 0.95) return { accept: false, left, tone: 'close', text: `${p.name} отказал, но стороны очень близки.${offerTail}${tail}`, counter };
+  return { accept: false, left, tone: 'low', text: `${p.name} отказал: предложение заметно ниже ожиданий.${offerTail}${tail}`, counter };
 }
 
 /** Seasons of salary still owed on the contract (the current season counts only for its unplayed part). */

@@ -8,7 +8,7 @@ export const GOAL_TEXT: Record<BoardGoal, string> = {
 };
 const GOAL_LEVEL: Record<BoardGoal, number> = { top10: 1, playoffs: 2, round2: 3, semis: 4 };
 
-function strength(state: GameState, t: Team): number {
+export function teamStrength(state: GameState, t: Team): number {
   const ps = t.players.map((id) => state.players[id]).filter(Boolean);
   const sk = ps.filter((p) => p.position !== 'G').map((p) => p.overall).sort((a, b) => b - a).slice(0, 18);
   const g = Math.max(50, ...ps.filter((p) => p.position === 'G').map((p) => p.overall));
@@ -17,8 +17,8 @@ function strength(state: GameState, t: Team): number {
 
 /** The owners set the season objective from how strong the roster looks compared with the league. */
 export function setBoardGoal(state: GameState) {
-  const mine = strength(state, state.teams[state.userTeamId]);
-  const rank = 1 + state.teamOrder.filter((id) => id !== state.userTeamId && strength(state, state.teams[id]) > mine).length;
+  const mine = teamStrength(state, state.teams[state.userTeamId]);
+  const rank = 1 + state.teamOrder.filter((id) => id !== state.userTeamId && teamStrength(state, state.teams[id]) > mine).length;
   const frac = rank / Math.max(1, state.teamOrder.length);
   const goal: BoardGoal = frac <= 0.16 ? 'semis' : frac <= 0.36 ? 'round2' : frac <= 0.68 ? 'playoffs' : 'top10';
   const prev: Board | undefined = state.board;

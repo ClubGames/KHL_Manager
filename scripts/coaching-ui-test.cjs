@@ -43,8 +43,8 @@ function boot(seed = {}) {
   console.log('ok confirmation and shared meeting cooldown');
   app.click(app.find('Штаб и рынок')); await pause();
   const candidate = app.d.querySelector('[data-coach="free-coach-krikunov"]');
-  app.click(candidate.parentElement.querySelector('button')); await pause(); app.click(app.find('Назначить')); await pause();
-  assert.ok(app.text().includes('Владимир Крикунов назначен'));
+  app.click(candidate.parentElement.querySelector('button')); await pause(); app.click(app.find('Принять условия тренера')); await pause();
+  assert.ok(app.d.querySelector('[data-coach-neg-result]').textContent.includes('Владимир Крикунов — главный тренер')); app.click(app.find('Готово')); await pause();
   assert.ok(app.text().includes('Следующая замена на этой должности через 30 дн.'));
   assert.ok(app.d.querySelector('[data-coaching-hub]').textContent.includes('40%'));
   console.log('ok appointment, adaptation penalty and hire cooldown');

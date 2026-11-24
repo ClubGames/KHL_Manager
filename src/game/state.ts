@@ -1,5 +1,5 @@
 import { adoptRosterCoachMarket, changeTeamFocus, ensureCoachingState, fireCoach, hireCoach, interveneTeam, recordCoachingResult, stepTeamManagement } from './coaching';
-import type { Coach, TeamFocus, TeamIntervention } from '../types';
+import type { Coach, CoachPitch, PlayerPitch, TeamFocus, TeamIntervention } from '../types';
 import { useSyncExternalStore } from 'react';
 import type { Award, FacilityKey, Game, GameResult, GameState, Lineup, NewsItem, NewsType, Series, Team, TeamTactics, YouthTrainingPlan } from '../types';
 import { buildSchedule, isWeekendDay, regularSeasonLength, seasonDateObj } from './schedule';
@@ -10,7 +10,9 @@ import { answerPressConference, createPressConference, fanGateMult } from './pre
 import { autoFinishPreseason, createPreseason, playPreseasonRound, preseasonTable } from './preseason';
 import { blockingTasks, dismissInboxTask } from './inbox';
 import { autoLineup, clubSideProblem, ensureTradeBlock, evaluateTrade, shopTradeBlock, executeTrade, groupOf, lineupConstraintsFor, MAX_ROSTER, maybeAiTrade, maybeIncomingOffer, prepareLineup, sanitizeLineup, tradeWindow, userSideProblem } from './ai';
-import { buyoutCost, commitments, negotiate, talksLeft } from './contracts';
+import { buyoutCost, commitments, negotiate, talksKey, talksLeft, type Verdict } from './contracts';
+import { bonusKindsFor, bonusText, sanitizeBonuses, settleBonuses } from './bonuses';
+import { checkPromises, coachContractFrom, coachTalks, evaluateCoachOffer, pitchCoach, pitchPlayer, type CoachTerms, type CoachVerdict, type OfferExtras } from './negotiation';
 import { evaluateBoard, setBoardGoal } from './board';
 import { beginNewSeason, letGoUser, qualifyUserRfa, startOffseason, toFreeAgency } from './offseason';
 import { clamp, formatMoney, isDefense, isGoalie, isSkater, payroll, points } from './ratings';
@@ -688,6 +690,54 @@ function coachingAction(action: (s: GameState) => string | null): string | null 
   return error;
 }
 export const hireUserCoach = (id: string, role?: import('../types').CoachRole) => coachingAction((s) => hireCoach(s, id, role));
+
+/** Try to win a player over before (or between) offers. */
+export function pitchToPlayer(id: string, pitch: PlayerPitch): { ok: boolean; text: string } {
+  let out = { ok: false, text: 'Игрок не найден' };
+  store.update((s) => {
+    const p = s.players[id];
+    if (!p || (p.teamId && p.teamId !== s.userTeamId)) return;
+    if (talksLeft(s, p) <= 0) { out = { ok: false, text: `${p.name} прервал переговоры.` }; return; }
+    const r = pitchPlayer(s, p, s.userTeamId, pitch);
+    out = { ok: r.ok, text: r.ok ? `${r.text} (${r.delta >= 0 ? '+' : ''}${r.delta} к интересу)` : r.text };
+  });
+  return out;
+}
+export function pitchToCoach(id: string, pitch: CoachPitch, years: number): { ok: boolean; text: string } {
+  let out = { ok: false, text: 'Тренер уже недоступен' };
+  store.update((s) => {
+    const c = s.coachMarket?.find((x) => x.id === id);
+    if (!c) return;
+    if (coachTalks(s, c).left <= 0) { out = { ok: false, text: `${c.name} прервал переговоры.` }; return; }
+    const r = pitchCoach(s, c, s.userTeamId, pitch, years);
+    out = { ok: r.ok, text: r.ok ? `${r.text} (${r.delta >= 0 ? '+' : ''}${r.delta} к интересу)` : r.text };
+  });
+  return out;
+}
+export interface CoachAnswer { ok: boolean; text: string; left: number; tone?: CoachVerdict['tone']; counter?: number }
+/** Offer a contract to a free coach for a post; on agreement he is appointed at once. */
+export function offerCoachContract(id: string, role: import('../types').CoachRole, terms: CoachTerms): CoachAnswer {
+  let out: CoachAnswer = { ok: false, text: 'Тренер уже недоступен', left: 0 };
+  store.update((s) => {
+    const c = s.coachMarket?.find((x) => x.id === id);
+    if (!c) return;
+    const clean: CoachTerms = { salary: Math.max(0, Math.round(terms.salary / 100_000) * 100_000), years: Math.round(terms.years), signingBonus: Math.max(0, Math.round(terms.signingBonus / 100_000) * 100_000), bonuses: sanitizeBonuses(terms.bonuses).filter((b) => bonusKindsFor(null).includes(b.kind)) };
+    const t = s.teams[s.userTeamId];
+    const m = t.management;
+    if (m && m.staffCooldown[role] > 0 && t.coaches?.some((x) => x.role === role && !x.acting)) { out = { ok: false, text: `Следующая смена на этой должности через ${Math.ceil(m.staffCooldown[role])} дн.`, left: coachTalks(s, c).left }; return; }
+    const guarantee = !!coachTalks(s, c).pitched?.includes('authority');
+    const v = evaluateCoachOffer(s, c, role, clean);
+    if (!v.accept) { out = { ok: false, text: v.text, left: v.left, tone: v.tone, counter: v.counter }; return; }
+    const err = hireCoach(s, id, role, { salary: clean.salary, contract: coachContractFrom(clean, guarantee) });
+    if (err) { out = { ok: false, text: err, left: v.left }; return; }
+    if (s.coachTalks) delete s.coachTalks[id];
+    const extra = [clean.signingBonus ? `подъёмные ${formatMoney(clean.signingBonus)}` : '', clean.bonuses.length ? `бонусы: ${clean.bonuses.map((b) => `${bonusText(b)} — ${formatMoney(b.amount)}`).join(', ')}` : '', guarantee ? 'гарантия полномочий' : ''].filter(Boolean).join('; ');
+    const text = `${c.name} — ${role === 'head' ? 'главный тренер' : 'ассистент'} «${t.name}»: ${clean.years} ${clean.years === 1 ? 'год' : 'года'}, ${formatMoney(clean.salary)} за сезон${extra ? ` (${extra})` : ''}.`;
+    addNews(s, 'info', text, t.id);
+    out = { ok: true, text, left: v.left, tone: 'ok' };
+  });
+  return out;
+}
 export const fireUserCoach = (role: import('../types').CoachRole) => coachingAction((s) => fireCoach(s, role));
 export const setUserTeamFocus = (focus: TeamFocus) => coachingAction((s) => changeTeamFocus(s, focus));
 export const holdTeamMeeting = (action: TeamIntervention) => coachingAction((s) => interveneTeam(s, action));
@@ -1356,6 +1406,10 @@ export function startPlayoffs(state: GameState) {
   const awards = computeAwards(state);
   state.playoffs = { round: 0, series, champion: null, mvp: null, awards };
   const U = state.teams[state.userTeamId];
+  const regularBonuses = settleBonuses(state, 'regular');
+  if (regularBonuses.total > 0) addNews(state, 'info', `Бонусы по итогам регулярного чемпионата: ${formatMoney(regularBonuses.total)} — ${regularBonuses.lines.join('; ')}.`, U.id);
+  const promises = checkPromises(state);
+  if (promises.length) addNews(state, 'info', `Обещания игрокам: ${promises.join('; ')}.`, U.id);
   addNews(state, 'playoff', `Регулярный чемпионат завершён. Обладатель Кубка Контина — ${rankAll(state)[0].name}. Стартует плей-офф Кубка Гагарина!`);
   addNews(state, 'playoff', U.seed && U.seed <= 8 ? `${U.name} выходит в плей-офф с ${U.seed}-го места в конференции «${U.conference}»` : `${U.name} не пробилась в плей-офф`, U.id);
   ensurePlayoffDay(state);
@@ -1414,6 +1468,8 @@ function finishSeason(state: GameState) {
   }
   const mvp = champ.players.map((id) => P[id]).filter(isSkater).sort((a, b) => points(b) - points(a))[0];
   po.mvp = mvp?.id ?? null;
+  const playoffBonuses = settleBonuses(state, 'playoffs');
+  if (playoffBonuses.total > 0) addNews(state, 'info', `Бонусы за плей-офф: ${formatMoney(playoffBonuses.total)} — ${playoffBonuses.lines.join('; ')}.`, U.id);
   let userRev = 0;
   let userPay = 0;
   for (const t of Object.values(state.teams)) {
@@ -1648,13 +1704,16 @@ export interface ContractAnswer {
   /** negotiation attempts left with this player */
   left: number;
   matchedByClub?: boolean;
+  /** salary the player would accept with the same other terms */
+  counter?: number;
+  tone?: Verdict['tone'];
 }
 
 /**
  * Offer a contract: to a free agent (UFA or RFA via offer sheet), to an own player whose deal has expired (off-season)
  * or to an own player in the last year of his deal (the extension starts next season).
  */
-export function offerContract(id: string, salary: number, years: number, withNmc = false, twoWay = false): ContractAnswer {
+export function offerContract(id: string, salary: number, years: number, withNmc = false, twoWay = false, extras?: OfferExtras): ContractAnswer {
   let out: ContractAnswer = { ok: false, text: 'Игрок не найден', left: 0 };
   store.update((state) => {
     const P = state.players;
@@ -1703,23 +1762,32 @@ export function offerContract(id: string, salary: number, years: number, withNmc
       const now = committedPayroll(state, t) + salary;
       if (now > cap) return fail(`С этим окладом ФОТ составит ${formatMoney(now)} — это выше потолка зарплат (${formatMoney(cap)})`);
     }
-    if (t.budget < salary + rfaComp) {
+    const signing = Math.max(0, Math.round((extras?.signingBonus ?? 0) / 100_000) * 100_000);
+    const bonuses = sanitizeBonuses(extras?.bonuses).filter((b) => bonusKindsFor(p).includes(b.kind));
+    if (t.budget < salary + rfaComp + signing) {
       return fail(
         rfaComp > 0
-          ? `Для оффершита ОСА нужен бюджет на оклад + компенсацию (${formatMoney(salary + rfaComp)}), сейчас — ${formatMoney(t.budget)}`
-          : `В бюджете клуба должно быть не меньше годового оклада игрока (${formatMoney(salary)}), сейчас — ${formatMoney(t.budget)}`
+          ? `Для оффершита ОСА нужен бюджет на оклад + компенсацию${signing ? ' + подъёмные' : ''} (${formatMoney(salary + rfaComp + signing)}), сейчас — ${formatMoney(t.budget)}`
+          : `В бюджете клуба должно быть не меньше годового оклада игрока${signing ? ' и подъёмных' : ''} (${formatMoney(salary + signing)}), сейчас — ${formatMoney(t.budget)}`
       );
     }
 
-    const v = negotiate(state, p, salary, years, t.id, applyNmc, applyTwoWay);
+    const promised = !!(p.talks && p.talks.key === talksKey(state) && p.talks.promise);
+    const v = negotiate(state, p, salary, years, t.id, applyNmc, applyTwoWay, { signingBonus: signing, bonuses });
     if (!v.accept) {
-      out = { ok: false, text: v.text, left: v.left };
+      out = { ok: false, text: v.text, left: v.left, counter: v.counter, tone: v.tone };
       return;
     }
     delete p.talks;
     const nmcTag = applyNmc ? ' (с пунктом ЗНО)' : applyTwoWay ? ' (двусторонний КХЛ/ВХЛ)' : '';
-    const term = `${years} ${years === 1 ? 'год' : years < 5 ? 'года' : 'лет'}, ${formatMoney(salary)} за сезон${nmcTag}`;
-    const cFlags = { twoWay: applyTwoWay };
+    const extraTag = [signing ? `подъёмные ${formatMoney(signing)}` : '', bonuses.length ? `бонусы: ${bonuses.map((b) => `${bonusText(b)} — ${formatMoney(b.amount)}`).join(', ')}` : ''].filter(Boolean).join('; ');
+    const term = `${years} ${years === 1 ? 'год' : years < 5 ? 'года' : 'лет'}, ${formatMoney(salary)} за сезон${nmcTag}${extraTag ? ` (${extraTag})` : ''}`;
+    const cFlags = { twoWay: applyTwoWay, ...(bonuses.length ? { bonuses } : {}) };
+    const signedHappy = () => {
+      if (signing) t.budget -= signing;
+      if (v.generous) p.morale = clamp(p.morale + 6, 30, 99);
+      if (promised) p.promise = { season: state.seasonNumber + (extension || state.phase === 'offseason' ? 1 : 0) };
+    };
 
     if (free) {
       if (rfaOwnerId) {
@@ -1751,6 +1819,7 @@ export function offerContract(id: string, salary: number, years: number, withNmc
       }
 
       p.contract = { salary, years, ...cFlags };
+      signedHappy();
       p.teamId = t.id;
       p.inVhl = false;
       p.nmc = applyNmc;
@@ -1765,6 +1834,7 @@ export function offerContract(id: string, salary: number, years: number, withNmc
       out = { ok: true, text: `${p.name} подписал контракт: ${term}${compNote}.`, left: v.left };
     } else if (expired) {
       p.contract = { salary, years, ...cFlags };
+      signedHappy();
       p.nmc = applyNmc;
       p.rightsTeamId = isRfaEligibleAge(p.age) ? t.id : null;
       if (state.offseason) state.offseason.expiring = state.offseason.expiring.filter((x) => x !== id);
@@ -1772,6 +1842,7 @@ export function offerContract(id: string, salary: number, years: number, withNmc
       out = { ok: true, text: `${p.name} подписал новый контракт: ${term}.`, left: v.left };
     } else {
       p.contract.next = { salary, years, ...cFlags };
+      signedHappy();
       if (applyNmc) p.nmc = true;
       p.morale = clamp(p.morale + 5, 30, 99);
       addNews(state, 'trade', `${p.name} продлил контракт с ${t.name}: со следующего сезона — ${term}`, t.id);

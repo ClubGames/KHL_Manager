@@ -1,7 +1,9 @@
-import type { CoachProfile, CoachRole, Coach, GameState, Player, Team, TeamFocus, TeamIntervention, TeamManagement } from '../types';
+import type { CoachContract, CoachProfile, CoachRole, Coach, GameState, Player, Team, TeamFocus, TeamIntervention, TeamManagement } from '../types';
 import { COACH_PROFILES, defaultCoachMarket, defaultStaff } from './coachData';
 import { getOfficialClubPalette, OFFICIAL_KHL_PALETTES } from './clubColors';
 import { clamp, mean } from './ratings';
+import { sanitizeBonuses } from './bonuses';
+import { coachSeverance } from './negotiation';
 
 export const TEAM_FOCUS: Record<TeamFocus, { label: string; description: string; attack: number; defense: number; special: number; recovery: number }> = {
   balanced: { label: 'Баланс', description: 'Без профильного бонуса. Нагрузка −4/день.', attack: 0, defense: 0, special: 0, recovery: 4 },
@@ -45,6 +47,15 @@ export function normalizeCoach(raw: unknown, fallback: Coach): Coach {
   delete c.face;
   const face = (r as { face?: unknown }).face;
   if (typeof face === 'string' && /^(https?:\/\/|data:image\/|\.{0,2}\/)/i.test(face.trim()) && face.length < 2000) c.face = face.trim();
+  delete c.contract;
+  const k = r.contract;
+  if (k && typeof k === 'object' && typeof k.years === 'number' && Number.isFinite(k.years)) {
+    c.contract = { years: clamp(Math.round(k.years), 0, 5) };
+    const bonuses = sanitizeBonuses(k.bonuses);
+    if (bonuses.length) c.contract.bonuses = bonuses;
+    if (typeof k.signingBonus === 'number' && k.signingBonus > 0) c.contract.signingBonus = Math.min(k.signingBonus, 1e9);
+    if (k.guarantee === true) c.contract.guarantee = true;
+  }
   if (typeof r.acting === 'boolean') c.acting = r.acting && c.role === 'head';
   if (typeof r.actingFromAssistant === 'boolean') c.actingFromAssistant = r.actingFromAssistant && !!c.acting;
   return c;
@@ -145,11 +156,17 @@ export function recentTeamForm(s: GameState, tid: string) {
   return { played: games.length, wins, losses: games.length - wins, gf, ga, crisis: games.length >= 5 && wins <= 1 };
 }
 
-export function coachHireCost(t: Team, candidate: Coach, role: CoachRole = candidate.role): number {
+/** Compensation to the outgoing coach on this post (interim assistants return to their job for free). */
+export function outgoingSeverance(t: Team, role: CoachRole): number {
   const outgoing = t.coaches?.find((c) => c.role === role);
-  return Math.round((outgoing?.actingFromAssistant ? 0 : outgoing?.salary ?? 0) * 0.5 + candidate.salary * 0.25);
+  return outgoing?.actingFromAssistant ? 0 : coachSeverance(outgoing);
 }
-export function hireCoach(s: GameState, candidateId: string, chosenRole?: CoachRole): string | null {
+/** Default appointment cost: severance + a signing bonus of 25% of the salary (or the negotiated one). */
+export function coachHireCost(t: Team, candidate: Coach, role: CoachRole = candidate.role, signingBonus = candidate.salary * 0.25): number {
+  return Math.round(outgoingSeverance(t, role) + signingBonus);
+}
+export interface HireTerms { salary: number; contract: CoachContract }
+export function hireCoach(s: GameState, candidateId: string, chosenRole?: CoachRole, terms?: HireTerms): string | null {
   const t = s.teams[s.userTeamId]; const m = ensureTeamManagement(t);
   const candidate = s.coachMarket?.find((c) => c.id === candidateId);
   if (!candidate) return 'Этот тренер уже недоступен.';
@@ -157,7 +174,7 @@ export function hireCoach(s: GameState, candidateId: string, chosenRole?: CoachR
   if (role !== 'head' && role !== 'assistant') return 'Выберите должность.';
   const old = t.coaches!.find((c) => c.role === role);
   if (old && !old.acting && m.staffCooldown[role] > 0) return `Следующая смена на этой должности через ${Math.ceil(m.staffCooldown[role])} дн.`;
-  const cost = coachHireCost(t, candidate, role);
+  const cost = coachHireCost(t, candidate, role, terms ? terms.contract.signingBonus ?? 0 : undefined);
   if (t.budget < cost) return 'Недостаточно средств на компенсацию и подписной бонус.';
   if (Object.values(s.teams).some((team) => team.coaches?.some((c) => c.id === candidateId || c.name === candidate.name))) return 'У тренера уже есть клуб.';
   s.coachMarket = s.coachMarket!.filter((c) => c.id !== candidateId);
@@ -167,7 +184,9 @@ export function hireCoach(s: GameState, candidateId: string, chosenRole?: CoachR
     if (!t.coaches.some(c => c.role === 'assistant')) t.coaches.push({ ...old, role: 'assistant', acting: false, actingFromAssistant: false });
     else s.coachMarket.push({ ...old, role: 'assistant', acting: false, actingFromAssistant: false });
   } else if (old) s.coachMarket.push({ ...old, acting: false, actingFromAssistant: false });
-  t.coaches.push({ ...candidate, role, acting: false, actingFromAssistant: false });
+  const hired: Coach = { ...candidate, role, acting: false, actingFromAssistant: false };
+  if (terms) { hired.salary = terms.salary; hired.contract = terms.contract; } else delete hired.contract;
+  t.coaches.push(hired);
   t.coaches.sort((a, b) => Number(b.role === 'head') - Number(a.role === 'head'));
   t.budget -= cost;
   m.familiarity = role === 'head' ? 40 : Math.min(m.familiarity, 70);
@@ -182,12 +201,14 @@ export function fireCoach(s: GameState, role: CoachRole): string | null {
   if (!old) return 'Должность уже свободна.';
   const assistant = t.coaches!.find(c => c.role === 'assistant');
   if (role === 'head' && !assistant) return 'Сначала наймите ассистента или назначьте нового главного: нельзя оставить команду без руководителя.';
-  const cost = Math.round(old.salary * .5);
+  const cost = coachSeverance(old);
   if (t.budget < cost) return 'Недостаточно средств на компенсацию.';
   t.budget -= cost;
   t.coaches = t.coaches!.filter(c => c.id !== old.id && !(role === 'head' && c.id === assistant!.id));
   s.coachMarket ??= [];
-  s.coachMarket.push({ ...old, acting: false, actingFromAssistant: false });
+  const released: Coach = { ...old, acting: false, actingFromAssistant: false };
+  delete released.contract;
+  s.coachMarket.push(released);
   if (role === 'head') {
     t.coaches.push({ ...assistant!, role: 'head', acting: true, actingFromAssistant: true });
     m.familiarity = Math.min(m.familiarity, 70); m.trust = 60;
