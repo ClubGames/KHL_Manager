@@ -82,7 +82,7 @@ jobs:
           out="$(pwd -W)/smoke.json"
           timeout 180 ./release/win-unpacked/KHL-GM.exe --smoke-test="$out" || echo "exit code $?"
           cat smoke.json
-          echo "::notice title=Windows smoke test::$(node -e "const r=require('./smoke.json'); console.log(JSON.stringify(r).replace(/\n/g,' '))")"
+          node -e "const r=require('./smoke.json'); console.log('::notice title=Windows smoke test::' + JSON.stringify(r))"
           node -e "const r=require('./smoke.json'); if(!r.ok){console.error('smoke test failed');process.exit(1)}"
       - uses: actions/upload-artifact@v4
         with:
