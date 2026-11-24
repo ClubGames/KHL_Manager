@@ -391,7 +391,7 @@ export type RosterSyncField = (typeof ROSTER_SYNC_FIELDS)[number];
  * Bring a saved career in line with roster.json, player by player **by id**: if the file has a different name,
  * jersey number, nationality or photo for that id, the save takes the file's value (a photo removed from the file is
  * removed from the save). Players the file does not know (draft picks, generated juniors) are left alone.
- * Coach photos follow the file by coach name. Returns how many fields changed.
+ * Coach photos follow the file by coach name (case, extra spaces and ё/е are ignored). Returns how many fields changed.
  */
 export function adoptRosterUpdates(s: GameState, r: Pick<NormalizedRoster, 'players' | 'teams' | 'freeCoaches'>): number {
   let n = 0;
@@ -407,11 +407,12 @@ export function adoptRosterUpdates(s: GameState, r: Pick<NormalizedRoster, 'play
       n++;
     }
   }
+  const coachKey = (name: string) => name.trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ');
   const coachFaces = new Map<string, string>();
-  for (const t of r.teams) for (const c of t.coaches ?? []) coachFaces.set(c.name.trim().toLowerCase(), c.face ?? '');
-  for (const c of r.freeCoaches ?? []) coachFaces.set(c.name.trim().toLowerCase(), c.face ?? '');
+  for (const t of r.teams) for (const c of t.coaches ?? []) coachFaces.set(coachKey(c.name), c.face ?? '');
+  for (const c of r.freeCoaches ?? []) coachFaces.set(coachKey(c.name), c.face ?? '');
   const fill = (c: Coach) => {
-    const f = coachFaces.get(c.name.trim().toLowerCase());
+    const f = coachFaces.get(coachKey(c.name));
     if (f === undefined || f === (c.face ?? '')) return;
     if (f) c.face = f;
     else delete c.face;

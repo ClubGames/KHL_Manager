@@ -66,6 +66,23 @@ assert.equal(migrated.players[firstId].name, r.players[firstId].name, 'name rest
 assert.equal(G.adoptRosterUpdates(migrated, r), 0, 'second pass changes nothing');
 ok(`old save: ${parsed.length} photos adopted by id, renamed player follows the file, idempotent`);
 
+// 2a. Coach photos: every roster coach with a face reaches an old save, matched by name (ё/е-insensitive)
+{
+  const save = G.createGameState(r, 'ska');
+  const legacyCoaches = JSON.parse(JSON.stringify(save));
+  const coaches = [...Object.values<{ coaches?: { name: string; face?: string }[] }>(legacyCoaches.teams).flatMap((t) => t.coaches ?? []), ...(legacyCoaches.coachMarket ?? [])];
+  const withFace = coaches.filter((c) => c.face).length;
+  assert.ok(withFace > 0, 'roster coaches carry photos');
+  coaches.forEach((c) => delete c.face);
+  const yo = coaches.find((c) => /ё/.test(c.name));
+  if (yo) yo.name = yo.name.replace(/ё/g, 'е');
+  const changed = G.adoptRosterUpdates(legacyCoaches, r);
+  assert.equal(changed, withFace, `coach photos restored (${changed}/${withFace})`);
+  if (yo) assert.ok(yo.face, 'ё/е spelling difference still matches');
+  assert.equal(G.adoptRosterUpdates(legacyCoaches, r), 0, 'coach sync is idempotent');
+  ok(`coach photos: ${withFace} restored in an old save by name (ё/е-insensitive)`);
+}
+
 // 2b. Editing roster.json later: name, number, nationality and photo changes reach the save by player id
 {
   const save = G.createGameState(r, 'ska');

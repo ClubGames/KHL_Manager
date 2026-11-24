@@ -32,7 +32,7 @@
           "source": "https://www.hawk.ru/news/55558/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/2695/200.jpg"
         },
         {
           "id": "avangard-assistant",
@@ -50,7 +50,7 @@
           "source": "https://www.hawk.ru/news/55558/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/2696/200.jpg"
         }
       ],
       "players": [
@@ -807,7 +807,7 @@
           "source": "https://sport24.ru/hockey/news-866089-obyavlen-trenerskiy-shtab-kudashova-v-avtomobiliste",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/583/200.jpg"
         },
         {
           "id": "avtomobilist-assistant",
@@ -825,7 +825,7 @@
           "source": "https://sport24.ru/hockey/news-866089-obyavlen-trenerskiy-shtab-kudashova-v-avtomobiliste",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/players/6304/200.jpg"
         }
       ],
       "players": [
@@ -1712,7 +1712,7 @@
           "source": "https://www.championat.com/hockey/news-6502256-admiral-predstavil-trenerskij-shtab-na-sezon-2026-2027.html",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/148/200.jpg"
         },
         {
           "id": "admiral-assistant",
@@ -1730,7 +1730,7 @@
           "source": "https://www.championat.com/hockey/news-6502256-admiral-predstavil-trenerskij-shtab-na-sezon-2026-2027.html",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/1487/200.jpg"
         }
       ],
       "players": [
@@ -2536,7 +2536,7 @@
           "source": "https://www.ak-bars.ru/uploads/843/programs/pdf/19be8d85d0d301b7b7326dfeb5e33386.pdf",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/487/200.jpg"
         },
         {
           "id": "akbars-assistant",
@@ -2554,7 +2554,7 @@
           "source": "https://www.ak-bars.ru/uploads/843/programs/pdf/19be8d85d0d301b7b7326dfeb5e33386.pdf",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/players/10876/200.jpg"
         }
       ],
       "players": [
@@ -2633,7 +2633,7 @@
         },
         {
           "id": "akb-g04",
-          "name": "Александр Столпченко",
+          "name": "Александр Столпеченков",
           "position": "В",
           "age": 22,
           "height": 183,
@@ -2653,7 +2653,7 @@
             "salary": 5000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40252/200.jpg"
         },
         {
           "id": "akb-g05",
@@ -3335,7 +3335,7 @@
           "source": "https://hcamur.ru/coaches/amur/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/281/200.jpg"
         },
         {
           "id": "amur-assistant",
@@ -3353,7 +3353,7 @@
           "source": "https://hcamur.ru/coaches/amur/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/277/200.jpg"
         }
       ],
       "players": [
@@ -4213,7 +4213,7 @@
           "source": "https://ru.hcbarys.kz/team/trainers/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/163/200.jpg"
         },
         {
           "id": "barys-assistant",
@@ -4231,7 +4231,7 @@
           "source": "https://ru.hcbarys.kz/team/trainers/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/players/5403/200.jpg"
         }
       ],
       "players": [
@@ -5038,7 +5038,7 @@
           "source": "https://hcdinamo.by/team/staff/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/2857/200.jpg"
         },
         {
           "id": "dinamo-mn-assistant",
@@ -5056,7 +5056,7 @@
           "source": "https://hcdinamo.by/team/staff/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/308/200.jpg"
         }
       ],
       "players": [
@@ -6052,7 +6052,7 @@
           "snapshot": "2026/27 · 23.11.2026",
           "acting": true,
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/475/200.jpg"
         },
         {
           "id": "dinamo-msk-assistant",
@@ -6070,7 +6070,7 @@
           "source": "https://dynamo.ru/coach",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/players/548/200.jpg"
         }
       ],
       "players": [
@@ -6850,7 +6850,7 @@
         },
         {
           "id": "dms-d04",
-          "name": "Елисей Рыбаков",
+          "name": "Елисей Рябыкин",
           "position": "З",
           "age": 18,
           "height": 187,
@@ -6873,7 +6873,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/44257/200.jpg"
         },
         {
           "id": "dms-rw02",
@@ -6957,7 +6957,7 @@
           "source": "https://www.sport-interfax.ru/1126573",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/331/200.jpg"
         },
         {
           "id": "lada-assistant",
@@ -6975,7 +6975,7 @@
           "source": "https://belarushockey.com/khl/news/2026/06/08/dva-byvshih-trenera-minskogo-dinamo-voshli-v-trenerskij-shtab-lady/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/players/13024/200.jpg"
         }
       ],
       "players": [
@@ -7503,7 +7503,7 @@
         },
         {
           "id": "lad-lw07",
-          "name": "Владислав Черенко",
+          "name": "Владислав Червоненко",
           "position": "ЛК",
           "age": 27,
           "height": 175,
@@ -7524,7 +7524,7 @@
             "salary": 10000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/24650/200.jpg"
         },
         {
           "id": "lad-lw08",
@@ -7862,7 +7862,7 @@
           "source": "https://metaratings.ru/news/lokomotiv-predstavil-trenerskij-shtab-na-sezon-2026-27-vo-glave-s-kvartalnovym-640908/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/283/200.jpg"
         },
         {
           "id": "lokomotiv-assistant",
@@ -7880,7 +7880,7 @@
           "source": "https://metaratings.ru/news/lokomotiv-predstavil-trenerskij-shtab-na-sezon-2026-27-vo-glave-s-kvartalnovym-640908/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/1619/200.jpg"
         }
       ],
       "players": [
@@ -8536,7 +8536,7 @@
           "source": "https://metaratings.ru/news/zavyalov-voshel-v-trenerskiy-shtab-metallurga-665460/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/1016/200.jpg"
         },
         {
           "id": "metallurg-mg-assistant",
@@ -8554,7 +8554,7 @@
           "source": "https://metaratings.ru/news/zavyalov-voshel-v-trenerskiy-shtab-metallurga-665460/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/375/200.jpg"
         }
       ],
       "players": [
@@ -8834,7 +8834,7 @@
         },
         {
           "id": "mmg-d10",
-          "name": "Егор Ганичев",
+          "name": "Егор Ганабин",
           "position": "З",
           "age": 25,
           "height": 179,
@@ -8855,7 +8855,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39732/200.jpg"
         },
         {
           "id": "mmg-rw01",
@@ -9261,7 +9261,7 @@
           "source": "https://metaratings.ru/news/stal-izvesten-trenerskii-shtab-neftekhimika-na-sezon-kkhl-2026-2027-636003/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/669/200.jpg"
         },
         {
           "id": "neftekhimik-assistant",
@@ -9279,7 +9279,7 @@
           "source": "https://metaratings.ru/news/stal-izvesten-trenerskii-shtab-neftekhimika-na-sezon-kkhl-2026-2027-636003/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/players/5606/200.jpg"
         }
       ],
       "players": [
@@ -9758,7 +9758,7 @@
         },
         {
           "id": "nhk-rw03",
-          "name": "Виктор Андреиченко",
+          "name": "Виктор Андрейченко",
           "position": "ПК",
           "age": 22,
           "height": 188,
@@ -9779,7 +9779,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39787/200.jpg"
         },
         {
           "id": "nhk-lw06",
@@ -10012,7 +10012,7 @@
           "source": "https://www.tatar-inform.ru/news/salavat-yulaev-obyavil-trenerskii-stab-na-sezon20262027-6035783",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/1204/200.jpg"
         },
         {
           "id": "salavat-assistant",
@@ -10030,7 +10030,7 @@
           "source": "https://www.tatar-inform.ru/news/salavat-yulaev-obyavil-trenerskii-stab-na-sezon20262027-6035783",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/1104/200.jpg"
         }
       ],
       "players": [
@@ -10308,7 +10308,7 @@
         },
         {
           "id": "syu-d09",
-          "name": "Виталий Будничкий",
+          "name": "Виталий Будницкий",
           "position": "З",
           "age": 24,
           "height": 186,
@@ -10329,7 +10329,7 @@
             "salary": 15000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/34892/200.jpg"
         },
         {
           "id": "syu-d10",
@@ -10635,7 +10635,7 @@
         },
         {
           "id": "syu-lw09",
-          "name": "Артур Фаворов",
+          "name": "Артур Фаизов",
           "position": "ЛК",
           "age": 20,
           "height": 185,
@@ -10657,11 +10657,11 @@
             "years": 3,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/41697/200.jpg"
         },
         {
           "id": "syu-lw10",
-          "name": "Денис Орлов-Грудков",
+          "name": "Денис Орлович-Грудков",
           "position": "ЛК",
           "age": 31,
           "height": 186,
@@ -10682,7 +10682,7 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/19457/200.jpg"
         },
         {
           "id": "syu-lw11",
@@ -10839,7 +10839,7 @@
           "source": "https://saint-petersburg.ru/news/2026/11/21/53269",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/538/200.jpg"
         },
         {
           "id": "ska-assistant",
@@ -10857,7 +10857,7 @@
           "source": "https://saint-petersburg.ru/news/2026/11/21/53269",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/914/200.jpg"
         }
       ],
       "players": [
@@ -11587,7 +11587,7 @@
           "source": "https://severstalclub.ru/coaches-staff/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/448/200.jpg"
         },
         {
           "id": "severstal-assistant",
@@ -11605,7 +11605,7 @@
           "source": "https://severstalclub.ru/coaches-staff/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/685/200.jpg"
         }
       ],
       "players": [
@@ -12600,7 +12600,7 @@
           "source": "https://www.championat.com/hockey/news-6500794-sibir-predstavila-trenerskij-shtab-na-sezon-2026-2027.html",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/743/200.jpg"
         },
         {
           "id": "sibir-assistant",
@@ -12618,7 +12618,7 @@
           "source": "https://www.championat.com/hockey/news-6500794-sibir-predstavila-trenerskij-shtab-na-sezon-2026-2027.html",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/players/4786/200.jpg"
         }
       ],
       "players": [
@@ -13482,7 +13482,7 @@
           "source": "https://metaratings.ru/news/sformirovan-novyi-trenerskii-shtab-kluba-kkhl-sochi-na-sezon-2026-2027-639578/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/765/200.jpg"
         },
         {
           "id": "sochi-assistant",
@@ -13500,7 +13500,7 @@
           "source": "https://metaratings.ru/news/sformirovan-novyi-trenerskii-shtab-kluba-kkhl-sochi-na-sezon-2026-2027-639578/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/1625/200.jpg"
         }
       ],
       "players": [
@@ -13654,13 +13654,13 @@
         },
         {
           "id": "soc-d07",
-          "name": "Джереми Грман",
+          "name": "Джесси Грэм",
           "position": "З",
           "age": 20,
           "height": 185,
           "weight": 84,
           "number": 64,
-          "country": "Словакия",
+          "country": "Канада",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -13676,7 +13676,7 @@
             "years": 2,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/41861/200.jpg"
         },
         {
           "id": "soc-d08",
@@ -13776,7 +13776,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/teamplayers/14310/43097/170.jpg"
         },
         {
           "id": "soc-c01",
@@ -14055,13 +14055,13 @@
         },
         {
           "id": "soc-rw05",
-          "name": "Гейдж Куини",
+          "name": "Гейдж Куинни",
           "position": "ПК",
           "age": 31,
           "height": 183,
           "weight": 93,
           "number": 72,
-          "country": "Канада",
+          "country": "США",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -14076,7 +14076,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/45344/200.jpg"
         },
         {
           "id": "soc-c03",
@@ -14389,7 +14389,7 @@
           "source": "https://www.championat.com/hockey/news-6500148-hk-spartak-predstavil-trenerskij-shtab-na-sezon-2026-2027-khl.html",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/1445/200.jpg"
         },
         {
           "id": "spartak-assistant",
@@ -14407,7 +14407,7 @@
           "source": "https://www.championat.com/hockey/news-6500148-hk-spartak-predstavil-trenerskij-shtab-na-sezon-2026-2027-khl.html",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/272/200.jpg"
         }
       ],
       "players": [
@@ -14560,13 +14560,13 @@
         },
         {
           "id": "spa-d04",
-          "name": "Илья Ряпин",
+          "name": "Уилл Райлли",
           "position": "З",
           "age": 29,
           "height": 188,
           "weight": 89,
           "number": 44,
-          "country": "Россия",
+          "country": "Канада",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -14581,7 +14581,7 @@
             "salary": 18000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/24359/200.jpg"
         },
         {
           "id": "spa-d05",
@@ -15296,7 +15296,7 @@
           "source": "https://hctorpedo.ru/coaches/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/386/200.jpg"
         },
         {
           "id": "torpedo-assistant",
@@ -15314,7 +15314,7 @@
           "source": "https://hctorpedo.ru/coaches/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/287/200.jpg"
         }
       ],
       "players": [
@@ -16178,7 +16178,7 @@
           "source": "https://hctraktor.org/media/news/90983-trenerskiy-shtab-traktora-2026-2027/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/2854/200.jpg"
         },
         {
           "id": "traktor-assistant",
@@ -16350,13 +16350,13 @@
         },
         {
           "id": "trk-d05",
-          "name": "Марк Робинсон",
+          "name": "Марк Родионов",
           "position": "З",
           "age": 26,
           "height": 188,
           "weight": 75,
           "number": 77,
-          "country": "Канада",
+          "country": "Россия",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -16371,7 +16371,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/42465/200.jpg"
         },
         {
           "id": "trk-d06",
@@ -16527,7 +16527,7 @@
         },
         {
           "id": "trk-lw01",
-          "name": "Степан Горбанков",
+          "name": "Степан Горбунов",
           "position": "ЛК",
           "age": 20,
           "height": 196,
@@ -16549,7 +16549,7 @@
             "years": 2,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/42464/200.jpg"
         },
         {
           "id": "trk-rw03",
@@ -16704,7 +16704,7 @@
         },
         {
           "id": "trk-rw04",
-          "name": "Артём Усюкин",
+          "name": "Артём Удот",
           "position": "ПК",
           "age": 24,
           "height": 183,
@@ -16725,7 +16725,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/34412/200.jpg"
         },
         {
           "id": "trk-c03",
@@ -16880,7 +16880,7 @@
           "source": "https://cska-hockey.ru/news/general/predstavlyaem_trenerskiy_shtab/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/252/200.jpg"
         },
         {
           "id": "cska-assistant",
@@ -16898,7 +16898,7 @@
           "source": "https://cska-hockey.ru/news/general/predstavlyaem_trenerskiy_shtab/",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/324/200.jpg"
         }
       ],
       "players": [
@@ -16977,7 +16977,7 @@
         },
         {
           "id": "csk-g04",
-          "name": "Михаил Петеузов",
+          "name": "Михаил Петухов",
           "position": "В",
           "age": 18,
           "height": 183,
@@ -16998,7 +16998,7 @@
             "years": 3,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/44842/200.jpg"
         },
         {
           "id": "csk-d01",
@@ -17203,7 +17203,7 @@
         },
         {
           "id": "csk-d09",
-          "name": "Артём Барабашов",
+          "name": "Артём Барабоша",
           "position": "З",
           "age": 22,
           "height": 189,
@@ -17224,7 +17224,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39291/200.jpg"
         },
         {
           "id": "csk-d10",
@@ -17478,7 +17478,7 @@
         },
         {
           "id": "csk-lw05",
-          "name": "Олег Мастерюк",
+          "name": "Олег Майстренко",
           "position": "ЛК",
           "age": 21,
           "height": 185,
@@ -17499,7 +17499,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/41317/200.jpg"
         },
         {
           "id": "csk-lw06",
@@ -17528,7 +17528,7 @@
         },
         {
           "id": "csk-lw07",
-          "name": "Ярослав Япаров",
+          "name": "Ярослав Яппаров",
           "position": "ЛК",
           "age": 22,
           "height": 189,
@@ -17549,7 +17549,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39935/200.jpg"
         },
         {
           "id": "csk-lw08",
@@ -17680,7 +17680,7 @@
           "source": "https://www.championat.com/hockey/news-6562158-shanhajskie-drakony-predstavili-trenerskij-shtab-na-sezon-2026-2027.html",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/2834/200.jpg"
         },
         {
           "id": "shanghai-dragons-assistant",
@@ -17698,7 +17698,7 @@
           "source": "https://www.championat.com/hockey/news-6562158-shanhajskie-drakony-predstavili-trenerskij-shtab-na-sezon-2026-2027.html",
           "snapshot": "2026/27 · 23.11.2026",
           "ratingBasis": "Оценка по тренерской карьере, результатам и специализации; игровая шкала, не официальная статистика",
-          "face": null
+          "face": "https://img.khl.ru/coaches/709/200.jpg"
         }
       ],
       "players": [
@@ -18575,7 +18575,7 @@
     },
     {
       "id": "fa-2026-03",
-      "name": "Байрон Фрейз",
+      "name": "Байрон Фрэз",
       "position": "Ц",
       "age": 35,
       "height": 183,
@@ -18595,7 +18595,7 @@
       "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
       "source": "https://sport24.ru/hockey/article-882204-olimpiyskiy-chempion-gusev-legionery-chempiony-poteryavshiy-rabotu-svechnikov-5-luchshikh-svobodnykh-agentov-kkhl",
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://img.khl.ru/players/44229/200.jpg"
     },
     {
       "id": "fa-2026-06",
@@ -18806,7 +18806,7 @@
       "source": "https://www.sports.ru/hockey/blogs/3566337.html",
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по подтверждённой тренерской карьере, результатам и стилю команд; не официальная статистика",
-      "face": null
+      "face": "https://img.khl.ru/coaches/831/200.jpg"
     },
     {
       "id": "free-coach-grou",
@@ -18824,7 +18824,7 @@
       "source": "https://www.sports.ru/hockey/blogs/3566337.html",
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по подтверждённой тренерской карьере, результатам и стилю команд; не официальная статистика",
-      "face": null
+      "face": "https://img.khl.ru/coaches/2616/200.jpg"
     },
     {
       "id": "free-coach-zavarukhin",
@@ -18842,7 +18842,7 @@
       "source": "https://www.sports.ru/hockey/blogs/3566337.html",
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по подтверждённой тренерской карьере, результатам и стилю команд; не официальная статистика",
-      "face": null
+      "face": "https://img.khl.ru/coaches/566/200.jpg"
     },
     {
       "id": "free-coach-skabelka",
@@ -18860,7 +18860,7 @@
       "source": "https://www.sports.ru/hockey/blogs/3566337.html",
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по подтверждённой тренерской карьере, результатам и стилю команд; не официальная статистика",
-      "face": null
+      "face": "https://img.khl.ru/coaches/621/200.jpg"
     },
     {
       "id": "free-coach-zubov",
@@ -18878,7 +18878,7 @@
       "source": "https://www.sports.ru/hockey/blogs/3566337.html",
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по подтверждённой тренерской карьере, результатам и стилю команд; не официальная статистика",
-      "face": null
+      "face": "https://img.khl.ru/coaches/732/200.jpg"
     },
     {
       "id": "free-coach-larionov",
@@ -18896,7 +18896,7 @@
       "source": "https://www.sports.ru/hockey/blogs/3566337.html",
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по подтверждённой тренерской карьере, результатам и стилю команд; не официальная статистика",
-      "face": null
+      "face": "https://img.khl.ru/coaches/2235/200.jpg"
     },
     {
       "id": "free-coach-nazarov",
@@ -18914,7 +18914,7 @@
       "source": "https://www.championat.com/hockey/article-6415248-izvestnye-rossijskie-trenery-kotorye-ischut-rabotu-v-khl-chem-oni-znamenity.html",
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по подтверждённой тренерской карьере, результатам и стилю команд; не официальная статистика",
-      "face": null
+      "face": "https://img.khl.ru/coaches/226/200.jpg"
     },
     {
       "id": "free-coach-ryabykin",
@@ -18932,7 +18932,7 @@
       "source": "https://www.championat.com/hockey/article-6415248-izvestnye-rossijskie-trenery-kotorye-ischut-rabotu-v-khl-chem-oni-znamenity.html",
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по подтверждённой тренерской карьере, результатам и стилю команд; не официальная статистика",
-      "face": null
+      "face": "https://img.khl.ru/coaches/1200/200.jpg"
     },
     {
       "id": "free-coach-belov",
@@ -18950,7 +18950,7 @@
       "source": "https://www.livesport.ru/hockey/2025/11/20/available_coaches_khl/",
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по подтверждённой тренерской карьере, результатам и стилю команд; не официальная статистика",
-      "face": null
+      "face": "https://img.khl.ru/coaches/14/200.jpg"
     },
     {
       "id": "free-coach-znarok",
@@ -18968,7 +18968,7 @@
       "source": "https://www.khl.ru/news/2017/09/26/360717.html",
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по подтверждённой тренерской карьере, результатам и стилю команд; не официальная статистика",
-      "face": null
+      "face": "https://img.khl.ru/coaches/251/200.jpg"
     },
     {
       "id": "free-coach-hartley",
@@ -18986,7 +18986,7 @@
       "source": "https://www.khl.ru/news/2017/09/26/360717.html",
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по подтверждённой тренерской карьере, результатам и стилю команд; не официальная статистика",
-      "face": null
+      "face": "https://img.khl.ru/coaches/1652/200.jpg"
     },
     {
       "id": "free-coach-krikunov",
@@ -19004,7 +19004,7 @@
       "source": "https://www.khl.ru/news/2017/09/26/360717.html",
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по подтверждённой тренерской карьере, результатам и стилю команд; не официальная статистика",
-      "face": null
+      "face": "https://img.khl.ru/coaches/19/200.jpg"
     },
     {
       "id": "free-coach-tambiev",
@@ -19023,7 +19023,7 @@
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по тренерской карьере, результатам и стилю команд; не официальная статистика",
       "availabilityNote": "Контракт с московским «Динамо» расторгнут 18.11.2026",
-      "face": null
+      "face": "https://img.khl.ru/coaches/296/200.jpg"
     },
     {
       "id": "free-coach-pavel-zubov",
@@ -19042,7 +19042,7 @@
       "snapshot": "2026/27 · 23.11.2026",
       "ratingBasis": "Игровая оценка по тренерской карьере, результатам и стилю команд; не официальная статистика",
       "availabilityNote": "Уволен из «Лады» в начале сезона 2026/27",
-      "face": null
+      "face": "https://img.khl.ru/coaches/707/200.jpg"
     }
   ]
 }
