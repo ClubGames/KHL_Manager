@@ -2580,7 +2580,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/35416/200.jpg"
         },
         {
           "id": "akb-g02",
@@ -2629,7 +2629,7 @@
             "years": 3,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/45205/200.jpg"
         },
         {
           "id": "akb-g04",
@@ -2854,7 +2854,7 @@
             "years": 3,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/44004/200.jpg"
         },
         {
           "id": "akb-d08",
@@ -5083,7 +5083,7 @@
             "years": 3,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/41933/200.jpg"
         },
         {
           "id": "dmn-g03",
@@ -6100,7 +6100,7 @@
         },
         {
           "id": "dms-g02",
-          "name": "Владислав Поддубный",
+          "name": "Владислав Подъяпольский",
           "position": "В",
           "age": 31,
           "height": 182,
@@ -6120,7 +6120,7 @@
             "salary": 50000000,
             "years": 3
           },
-          "face": null
+          "face": "https://img.khl.ru/players/20532/200.jpg"
         },
         {
           "id": "dms-g04",
@@ -6169,7 +6169,7 @@
             "salary": 35000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/26690/200.jpg"
         },
         {
           "id": "dms-d02",
@@ -6370,7 +6370,7 @@
             "salary": 40000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/16675/200.jpg"
         },
         {
           "id": "dms-d11",
@@ -6395,7 +6395,7 @@
             "salary": 20000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/35037/200.jpg"
         },
         {
           "id": "dms-d12",
@@ -6570,7 +6570,7 @@
             "salary": 15000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/4491/200.jpg"
         },
         {
           "id": "dms-rw03",
@@ -6599,7 +6599,7 @@
         },
         {
           "id": "dms-rw04",
-          "name": "Никита Тертишний",
+          "name": "Никита Тертышный",
           "position": "ПК",
           "age": 28,
           "height": 175,
@@ -6620,7 +6620,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/23578/200.jpg"
         },
         {
           "id": "dms-rw05",
@@ -6699,7 +6699,7 @@
         },
         {
           "id": "dms-lw08",
-          "name": "Дмитрий Зыган",
+          "name": "Дмитрий Зуган",
           "position": "ЛК",
           "age": 23,
           "height": 178,
@@ -6720,7 +6720,7 @@
             "salary": 12000000,
             "years": 3
           },
-          "face": null
+          "face": "https://img.khl.ru/players/33998/200.jpg"
         },
         {
           "id": "dms-lw09",
@@ -6877,7 +6877,7 @@
         },
         {
           "id": "dms-rw02",
-          "name": "Михаил Меликс",
+          "name": "Михаил Меликов",
           "position": "ПК",
           "age": 19,
           "height": 173,
@@ -6900,7 +6900,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/44033/200.jpg"
         },
         {
           "id": "dms-rw06",
@@ -7053,7 +7053,7 @@
         },
         {
           "id": "lad-d01",
-          "name": "Мэйсон Миллман",
+          "name": "Мэйсон Миллмэн",
           "position": "З",
           "age": 25,
           "height": 185,
@@ -7074,7 +7074,7 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/46488/200.jpg"
         },
         {
           "id": "lad-d02",
@@ -7149,7 +7149,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39307/200.jpg"
         },
         {
           "id": "lad-d05",
@@ -7174,7 +7174,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/34355/200.jpg"
         },
         {
           "id": "lad-d06",
@@ -7199,7 +7199,7 @@
             "salary": 20000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/22160/200.jpg"
         },
         {
           "id": "lad-d08",
@@ -7403,7 +7403,7 @@
         },
         {
           "id": "lad-rw02",
-          "name": "Дмитрий Кудряшов",
+          "name": "Дмитрий Кугрышев",
           "position": "ПК",
           "age": 38,
           "height": 180,
@@ -7424,7 +7424,7 @@
             "salary": 20000000,
             "years": 1
           },
-          "face": null
+          "face": "https://img.khl.ru/players/15925/200.jpg"
         },
         {
           "id": "lad-lw05",
@@ -7549,7 +7549,7 @@
             "salary": 20000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/22604/200.jpg"
         },
         {
           "id": "lad-lw10",
@@ -7574,7 +7574,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/22790/200.jpg"
         },
         {
           "id": "lad-rw04",
@@ -7653,7 +7653,7 @@
         },
         {
           "id": "lad-lw12",
-          "name": "Андрей Альтыбармакян",
+          "name": "Андрей Алтыбармакян",
           "position": "ЛК",
           "age": 28,
           "height": 180,
@@ -7674,11 +7674,11 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/22290/200.jpg"
         },
         {
           "id": "lad-lw13",
-          "name": "Никита Седиков",
+          "name": "Никита Сетдиков",
           "position": "ПК",
           "age": 31,
           "height": 188,
@@ -7699,7 +7699,7 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/18485/200.jpg"
         },
         {
           "id": "lad-lw14",
@@ -7724,7 +7724,7 @@
             "salary": 10000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/27912/200.jpg"
         },
         {
           "id": "lad-d07",
@@ -7832,7 +7832,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/42352/200.jpg"
         }
       ]
     },
@@ -7930,7 +7930,7 @@
             "salary": 35000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/25400/200.jpg"
         },
         {
           "id": "lok-d01",
@@ -8031,7 +8031,7 @@
             "salary": 50000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/17786/200.jpg"
         },
         {
           "id": "lok-d05",
@@ -8085,7 +8085,7 @@
         },
         {
           "id": "lok-d07",
-          "name": "Даниил Миколь",
+          "name": "Даниил Мисюль",
           "position": "З",
           "age": 26,
           "height": 191,
@@ -8106,7 +8106,7 @@
             "salary": 25000000,
             "years": 3
           },
-          "face": null
+          "face": "https://img.khl.ru/players/25404/200.jpg"
         },
         {
           "id": "lok-d08",
@@ -8156,7 +8156,7 @@
             "salary": 40000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/32396/200.jpg"
         },
         {
           "id": "lok-lw02",
@@ -8181,7 +8181,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/29944/200.jpg"
         },
         {
           "id": "lok-lw03",
@@ -8256,7 +8256,7 @@
             "salary": 45000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/16071/200.jpg"
         },
         {
           "id": "lok-lw06",
@@ -8306,7 +8306,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/41370/200.jpg"
         },
         {
           "id": "lok-lw08",
@@ -8506,7 +8506,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/21886/200.jpg"
         }
       ]
     },
@@ -8758,7 +8758,7 @@
         },
         {
           "id": "mmg-d07",
-          "name": "Александр Сиротский",
+          "name": "Александр Сиряцкий",
           "position": "З",
           "age": 24,
           "height": 192,
@@ -8779,7 +8779,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/42458/200.jpg"
         },
         {
           "id": "mmg-d08",
@@ -8859,7 +8859,7 @@
         },
         {
           "id": "mmg-rw01",
-          "name": "Никита Михайлов",
+          "name": "Никита Михайлис",
           "position": "ПК",
           "age": 31,
           "height": 175,
@@ -8880,7 +8880,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/19045/200.jpg"
         },
         {
           "id": "mmg-lw01",
@@ -8905,7 +8905,7 @@
             "salary": 40000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/23461/200.jpg"
         },
         {
           "id": "mmg-lw02",
@@ -8955,7 +8955,7 @@
             "salary": 35000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/26742/200.jpg"
         },
         {
           "id": "mmg-lw03",
@@ -9005,7 +9005,7 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/19014/200.jpg"
         },
         {
           "id": "mmg-lw04",
@@ -9059,7 +9059,7 @@
         },
         {
           "id": "mmg-rw04",
-          "name": "Данил Вовченко",
+          "name": "Даниил Вовченко",
           "position": "ЛК",
           "age": 30,
           "height": 176,
@@ -9080,7 +9080,7 @@
             "salary": 15000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/19514/200.jpg"
         },
         {
           "id": "mmg-lw06",
@@ -9105,7 +9105,7 @@
             "salary": 6000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40899/200.jpg"
         },
         {
           "id": "mmg-rw05",
@@ -9231,7 +9231,7 @@
             "salary": 22000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/21958/200.jpg"
         }
       ]
     },
@@ -9309,7 +9309,7 @@
         },
         {
           "id": "nhk-g02",
-          "name": "Семён Любаблин",
+          "name": "Семён Любалин",
           "position": "В",
           "age": 21,
           "height": 184,
@@ -9329,7 +9329,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/41366/200.jpg"
         },
         {
           "id": "nhk-g03",
@@ -9554,7 +9554,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/35032/200.jpg"
         },
         {
           "id": "nhk-d09",
@@ -9808,7 +9808,7 @@
         },
         {
           "id": "nhk-lw07",
-          "name": "Никита Хозяев",
+          "name": "Никита Хоружев",
           "position": "ЛК",
           "age": 23,
           "height": 183,
@@ -9829,11 +9829,11 @@
             "salary": 10000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40421/200.jpg"
         },
         {
           "id": "nhk-rw04",
-          "name": "Андрей Белов",
+          "name": "Андрей Белозёров",
           "position": "ЛК",
           "age": 30,
           "height": 185,
@@ -9854,7 +9854,7 @@
             "salary": 35000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/20700/200.jpg"
         },
         {
           "id": "nhk-rw05",
@@ -10208,7 +10208,7 @@
         },
         {
           "id": "syu-d05",
-          "name": "Сергей Варпов",
+          "name": "Сергей Варлов",
           "position": "З",
           "age": 26,
           "height": 180,
@@ -10229,7 +10229,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/26210/200.jpg"
         },
         {
           "id": "syu-d06",
@@ -10535,7 +10535,7 @@
         },
         {
           "id": "syu-lw05",
-          "name": "Даниил Алачугин",
+          "name": "Данил Алалыкин",
           "position": "ЛК",
           "age": 25,
           "height": 183,
@@ -10556,7 +10556,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/34493/200.jpg"
         },
         {
           "id": "syu-lw06",
@@ -10883,11 +10883,11 @@
             "salary": 15000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39444/200.jpg"
         },
         {
           "id": "ska-g02",
-          "name": "Артём Плешков",
+          "name": "Артемий Плешков",
           "position": "В",
           "age": 24,
           "height": 179,
@@ -10907,7 +10907,7 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/34163/200.jpg"
         },
         {
           "id": "ska-d01",
@@ -10982,7 +10982,7 @@
             "salary": 55000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/34733/200.jpg"
         },
         {
           "id": "ska-d04",
@@ -11032,7 +11032,7 @@
             "salary": 65000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/16024/200.jpg"
         },
         {
           "id": "ska-d06",
@@ -11161,7 +11161,7 @@
         },
         {
           "id": "ska-lw02",
-          "name": "Линус Вайсбах",
+          "name": "Линус Вайссбак",
           "position": "ЛК",
           "age": 28,
           "height": 175,
@@ -11182,7 +11182,7 @@
             "salary": 40000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/46287/200.jpg"
         },
         {
           "id": "ska-lw03",
@@ -11311,7 +11311,7 @@
         },
         {
           "id": "ska-rw02",
-          "name": "Даниил Аймурзин",
+          "name": "Данил Аймурзин",
           "position": "Ц",
           "age": 24,
           "height": 183,
@@ -11332,7 +11332,7 @@
             "salary": 15000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/35353/200.jpg"
         },
         {
           "id": "ska-lw07",
@@ -11557,7 +11557,7 @@
             "salary": 15000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39113/200.jpg"
         }
       ]
     },
@@ -11779,7 +11779,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/35035/200.jpg"
         },
         {
           "id": "sev-d06",
@@ -11808,7 +11808,7 @@
         },
         {
           "id": "sev-d07",
-          "name": "Томас Грегор",
+          "name": "Томас Грегуар",
           "position": "З",
           "age": 28,
           "height": 180,
@@ -11829,11 +11829,11 @@
             "salary": 18000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/44956/200.jpg"
         },
         {
           "id": "sev-d08",
-          "name": "Геннадий Чайка",
+          "name": "Геннадий Чалый",
           "position": "З",
           "age": 21,
           "height": 179,
@@ -11854,7 +11854,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40463/200.jpg"
         },
         {
           "id": "sev-d09",
@@ -11904,7 +11904,7 @@
             "salary": 10000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39260/200.jpg"
         },
         {
           "id": "sev-d11",
@@ -11933,7 +11933,7 @@
         },
         {
           "id": "sev-lw01",
-          "name": "Илья Иванов",
+          "name": "Илья Иванцов",
           "position": "ЛК",
           "age": 23,
           "height": 177,
@@ -11954,7 +11954,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/35393/200.jpg"
         },
         {
           "id": "sev-rw01",
@@ -11979,11 +11979,11 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/29224/200.jpg"
         },
         {
           "id": "sev-lw02",
-          "name": "Денис Рай",
+          "name": "Денис Ян",
           "position": "ЛК",
           "age": 29,
           "height": 187,
@@ -12004,7 +12004,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/22166/200.jpg"
         },
         {
           "id": "sev-lw03",
@@ -12083,7 +12083,7 @@
         },
         {
           "id": "sev-c01",
-          "name": "Даниил Берлёв",
+          "name": "Данил Веряев",
           "position": "Ц",
           "age": 28,
           "height": 178,
@@ -12104,7 +12104,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/22908/200.jpg"
         },
         {
           "id": "sev-lw05",
@@ -12254,7 +12254,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/22684/200.jpg"
         },
         {
           "id": "sev-lw07",
@@ -12412,7 +12412,7 @@
         },
         {
           "id": "sev-d13",
-          "name": "Семён Чулков",
+          "name": "Семён Чуклинов",
           "position": "З",
           "age": 18,
           "height": 182,
@@ -12435,7 +12435,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/44494/200.jpg"
         },
         {
           "id": "sev-c02",
@@ -12489,7 +12489,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/40906/200.jpg"
         },
         {
           "id": "sev-c04",
@@ -13371,7 +13371,7 @@
             "salary": 50000000,
             "years": 1
           },
-          "face": null
+          "face": "https://img.khl.ru/players/20506/200.jpg"
         },
         {
           "id": "sib-d01",
@@ -13425,7 +13425,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/45080/200.jpg"
         },
         {
           "id": "sib-c05",
@@ -13629,7 +13629,7 @@
         },
         {
           "id": "soc-d06",
-          "name": "Георгий Сорокин",
+          "name": "Георгий Солянников",
           "position": "З",
           "age": 31,
           "height": 185,
@@ -13650,7 +13650,7 @@
             "salary": 18000000,
             "years": 1
           },
-          "face": null
+          "face": "https://img.khl.ru/players/21395/200.jpg"
         },
         {
           "id": "soc-d07",
@@ -13805,7 +13805,7 @@
         },
         {
           "id": "soc-c02",
-          "name": "Денис Венгрияковский",
+          "name": "Денис Венгрыжановский",
           "position": "ЛК",
           "age": 25,
           "height": 188,
@@ -13826,7 +13826,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/31892/200.jpg"
         },
         {
           "id": "soc-rw01",
@@ -13905,7 +13905,7 @@
         },
         {
           "id": "soc-lw02",
-          "name": "Артур Гудайтис",
+          "name": "Артур Гиздатуллин",
           "position": "ЛК",
           "age": 29,
           "height": 183,
@@ -13926,7 +13926,7 @@
             "salary": 18000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/22208/200.jpg"
         },
         {
           "id": "soc-lw03",
@@ -14256,7 +14256,7 @@
         },
         {
           "id": "soc-g01",
-          "name": "Пётр Андрюхов",
+          "name": "Пётр Андреянов",
           "position": "В",
           "age": 19,
           "height": 184,
@@ -14278,7 +14278,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/43282/200.jpg"
         },
         {
           "id": "soc-d02",
@@ -14359,7 +14359,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/30767/200.jpg"
         }
       ]
     },
@@ -14485,7 +14485,7 @@
         },
         {
           "id": "spa-d01",
-          "name": "Джоуи Кин",
+          "name": "Джозеф Кин",
           "position": "З",
           "age": 27,
           "height": 183,
@@ -14506,11 +14506,11 @@
             "salary": 18000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/41928/200.jpg"
         },
         {
           "id": "spa-d02",
-          "name": "Артемий Киняев",
+          "name": "Артемий Князев",
           "position": "З",
           "age": 25,
           "height": 180,
@@ -14531,7 +14531,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/29100/200.jpg"
         },
         {
           "id": "spa-d03",
@@ -14585,7 +14585,7 @@
         },
         {
           "id": "spa-d05",
-          "name": "Кристен Ярош",
+          "name": "Кристиан Ярош",
           "position": "З",
           "age": 30,
           "height": 191,
@@ -14606,7 +14606,7 @@
             "salary": 35000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/20791/200.jpg"
         },
         {
           "id": "spa-d07",
@@ -14656,7 +14656,7 @@
             "salary": 5000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39327/200.jpg"
         },
         {
           "id": "spa-d09",
@@ -14731,7 +14731,7 @@
             "salary": 40000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/17624/200.jpg"
         },
         {
           "id": "spa-c01",
@@ -14756,7 +14756,7 @@
             "salary": 18000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40920/200.jpg"
         },
         {
           "id": "spa-rw01",
@@ -14810,7 +14810,7 @@
         },
         {
           "id": "spa-lw03",
-          "name": "Лукас Лоустай",
+          "name": "Лукас Локхарт",
           "position": "ЛК",
           "age": 32,
           "height": 179,
@@ -14831,11 +14831,11 @@
             "salary": 35000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/27992/200.jpg"
         },
         {
           "id": "spa-rw02",
-          "name": "Руслан Исаков",
+          "name": "Руслан Исхаков",
           "position": "ПК",
           "age": 28,
           "height": 171,
@@ -14856,7 +14856,7 @@
             "salary": 20000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/27608/200.jpg"
         },
         {
           "id": "spa-lw04",
@@ -14956,7 +14956,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/35099/200.jpg"
         },
         {
           "id": "spa-rw03",
@@ -15087,7 +15087,7 @@
         },
         {
           "id": "spa-rw05",
-          "name": "Никита Хлопотикин",
+          "name": "Никита Холодилин",
           "position": "ПК",
           "age": 24,
           "height": 189,
@@ -15108,7 +15108,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39144/200.jpg"
         },
         {
           "id": "spa-lw09",
@@ -15133,7 +15133,7 @@
             "salary": 18000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/24862/200.jpg"
         },
         {
           "id": "spa-c06",
@@ -15162,7 +15162,7 @@
         },
         {
           "id": "spa-d06",
-          "name": "Николай Дроздов",
+          "name": "Николай Дронов",
           "position": "З",
           "age": 18,
           "height": 185,
@@ -15185,7 +15185,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/43948/200.jpg"
         },
         {
           "id": "spa-lw01",
@@ -15243,7 +15243,7 @@
         },
         {
           "id": "spa-rw04",
-          "name": "Силланти Коптёнков",
+          "name": "Силантий Кожушко",
           "position": "ПК",
           "age": 20,
           "height": 175,
@@ -15266,7 +15266,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/42364/200.jpg"
         }
       ]
     },
@@ -15438,7 +15438,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/34055/200.jpg"
         },
         {
           "id": "tor-d03",
@@ -15488,11 +15488,11 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40428/200.jpg"
         },
         {
           "id": "tor-d05",
-          "name": "Скутер Брики",
+          "name": "Рональд Брики",
           "position": "З",
           "age": 27,
           "height": 193,
@@ -15513,7 +15513,7 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/46436/200.jpg"
         },
         {
           "id": "tor-d06",
@@ -15563,7 +15563,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39340/200.jpg"
         },
         {
           "id": "tor-d08",
@@ -15643,7 +15643,7 @@
         },
         {
           "id": "tor-d11",
-          "name": "Бобби Нарделла",
+          "name": "Роберт Нарделла",
           "position": "З",
           "age": 30,
           "height": 175,
@@ -15664,7 +15664,7 @@
             "salary": 18000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/44935/200.jpg"
         },
         {
           "id": "tor-rw01",
@@ -15693,7 +15693,7 @@
         },
         {
           "id": "tor-c01",
-          "name": "Матвей Потяков",
+          "name": "Матвей Поляков",
           "position": "Ц",
           "age": 22,
           "height": 177,
@@ -15714,7 +15714,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40325/200.jpg"
         },
         {
           "id": "tor-rw02",
@@ -15743,7 +15743,7 @@
         },
         {
           "id": "tor-c02",
-          "name": "Кирилл Сивяков",
+          "name": "Кирилл Свищёв",
           "position": "Ц",
           "age": 21,
           "height": 188,
@@ -15765,7 +15765,7 @@
             "years": 2,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40887/200.jpg"
         },
         {
           "id": "tor-c03",
@@ -15790,7 +15790,7 @@
             "salary": 85000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/15481/200.jpg"
         },
         {
           "id": "tor-lw04",
@@ -15815,7 +15815,7 @@
             "salary": 12000000,
             "years": 1
           },
-          "face": null
+          "face": "https://img.khl.ru/players/17661/200.jpg"
         },
         {
           "id": "tor-c04",
@@ -15844,7 +15844,7 @@
         },
         {
           "id": "tor-rw03",
-          "name": "Амир Гарзаев",
+          "name": "Амир Гараев",
           "position": "ПК",
           "age": 25,
           "height": 182,
@@ -15865,7 +15865,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/28624/200.jpg"
         },
         {
           "id": "tor-lw05",
@@ -15942,7 +15942,7 @@
             "years": 2,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40846/200.jpg"
         },
         {
           "id": "tor-lw06",
@@ -15971,7 +15971,7 @@
         },
         {
           "id": "tor-c05",
-          "name": "Майкл Вепков",
+          "name": "Майкл Веккьоне",
           "position": "Ц",
           "age": 33,
           "height": 178,
@@ -15992,7 +15992,7 @@
             "salary": 35000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/45400/200.jpg"
         },
         {
           "id": "tor-lw07",
@@ -16094,7 +16094,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/45320/200.jpg"
         },
         {
           "id": "tor-lw02",
@@ -16121,7 +16121,7 @@
             "twoWay": true
           },
           "inVhl": true,
-          "face": null
+          "face": "https://img.khl.ru/players/44358/200.jpg"
         },
         {
           "id": "tor-lw03",
@@ -16222,17 +16222,17 @@
             "salary": 60000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/24799/200.jpg"
         },
         {
           "id": "trk-g02",
-          "name": "Хенрик Хакулин",
+          "name": "Хенрик Хёукеланд",
           "position": "В",
           "age": 31,
           "height": 188,
           "weight": 93,
           "number": 40,
-          "country": "Финляндия",
+          "country": "Норвегия",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -16246,7 +16246,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/24761/200.jpg"
         },
         {
           "id": "trk-d01",
@@ -16400,7 +16400,7 @@
         },
         {
           "id": "trk-d07",
-          "name": "Андрей Пришбейкин",
+          "name": "Андрей Прибыльский",
           "position": "З",
           "age": 25,
           "height": 179,
@@ -16421,11 +16421,11 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/28556/200.jpg"
         },
         {
           "id": "trk-d08",
-          "name": "Иван Веденеев",
+          "name": "Иван Выдренков",
           "position": "З",
           "age": 26,
           "height": 193,
@@ -16446,7 +16446,7 @@
             "salary": 18000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40268/200.jpg"
         },
         {
           "id": "trk-d09",
@@ -16476,7 +16476,7 @@
         },
         {
           "id": "trk-rw01",
-          "name": "Максим Дроновицян",
+          "name": "Максим Джиошвили",
           "position": "ПК",
           "age": 30,
           "height": 193,
@@ -16497,11 +16497,11 @@
             "salary": 20000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/23644/200.jpg"
         },
         {
           "id": "trk-rw02",
-          "name": "Артемий Никачков",
+          "name": "Артемий Низамеев",
           "position": "ЛК",
           "age": 21,
           "height": 176,
@@ -16523,7 +16523,7 @@
             "years": 2,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40425/200.jpg"
         },
         {
           "id": "trk-lw01",
@@ -16578,13 +16578,13 @@
         },
         {
           "id": "trk-c01",
-          "name": "Борис Кастук",
+          "name": "Борис Катчук",
           "position": "ЛК",
           "age": 28,
           "height": 188,
           "weight": 96,
           "number": 13,
-          "country": "Россия",
+          "country": "Канада",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -16599,11 +16599,11 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/23559/200.jpg"
         },
         {
           "id": "trk-lw02",
-          "name": "Александр Шан",
+          "name": "Александр Шэн",
           "position": "ЛК",
           "age": 20,
           "height": 181,
@@ -16625,7 +16625,7 @@
             "years": 2,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/41702/200.jpg"
         },
         {
           "id": "trk-lw03",
@@ -16679,13 +16679,13 @@
         },
         {
           "id": "trk-c02",
-          "name": "Никита Легара",
+          "name": "Нэйтан Легаре",
           "position": "Ц",
           "age": 25,
           "height": 182,
           "weight": 91,
           "number": 37,
-          "country": "Россия",
+          "country": "Канада",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -16700,7 +16700,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/46519/200.jpg"
         },
         {
           "id": "trk-rw04",
@@ -16729,7 +16729,7 @@
         },
         {
           "id": "trk-c03",
-          "name": "Михаил Грополков-Рольгейсер",
+          "name": "Михаил Рольгизер",
           "position": "ЛК",
           "age": 24,
           "height": 177,
@@ -16750,7 +16750,7 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/34397/200.jpg"
         },
         {
           "id": "trk-lw05",
@@ -16804,7 +16804,7 @@
         },
         {
           "id": "trk-lw06",
-          "name": "Никита Сочинников",
+          "name": "Никита Сошников",
           "position": "ЛК",
           "age": 33,
           "height": 181,
@@ -16825,11 +16825,11 @@
             "salary": 18000000,
             "years": 1
           },
-          "face": null
+          "face": "https://img.khl.ru/players/16731/200.jpg"
         },
         {
           "id": "trk-c05",
-          "name": "Михаил Гиренков",
+          "name": "Михаил Григоренко",
           "position": "Ц",
           "age": 32,
           "height": 189,
@@ -16850,7 +16850,7 @@
             "salary": 25000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/16874/200.jpg"
         }
       ]
     },
@@ -16925,7 +16925,7 @@
             "years": 3,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/43625/200.jpg"
         },
         {
           "id": "csk-g02",
@@ -17052,13 +17052,13 @@
         },
         {
           "id": "csk-d03",
-          "name": "Роберт Хамитзов",
+          "name": "Роберт Хэмилтон",
           "position": "З",
           "age": 31,
           "height": 183,
           "weight": 88,
           "number": 22,
-          "country": "Россия",
+          "country": "Канада",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -17073,11 +17073,11 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/42322/200.jpg"
         },
         {
           "id": "csk-d04",
-          "name": "Иван Патрикиев",
+          "name": "Иван Патрихаев",
           "position": "З",
           "age": 23,
           "height": 181,
@@ -17098,11 +17098,11 @@
             "salary": 8000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/41594/200.jpg"
         },
         {
           "id": "csk-d05",
-          "name": "Никита Нестеров",
+          "name": "Никита Охотюк",
           "position": "З",
           "age": 25,
           "height": 185,
@@ -17123,17 +17123,17 @@
             "salary": 40000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/25388/200.jpg"
         },
         {
           "id": "csk-d06",
-          "name": "Алексей Лектон",
+          "name": "Алекс Коттон",
           "position": "З",
           "age": 25,
           "height": 188,
           "weight": 86,
           "number": 65,
-          "country": "Россия",
+          "country": "Канада",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -17148,7 +17148,7 @@
             "salary": 12000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/45002/200.jpg"
         },
         {
           "id": "csk-d07",
@@ -17174,7 +17174,7 @@
             "years": 2,
             "twoWay": true
           },
-          "face": null
+          "face": "https://img.khl.ru/players/42116/200.jpg"
         },
         {
           "id": "csk-d08",
@@ -17228,7 +17228,7 @@
         },
         {
           "id": "csk-d10",
-          "name": "Никита Нестеров-А",
+          "name": "Никита Нестеров",
           "position": "З",
           "age": 33,
           "height": 181,
@@ -17249,7 +17249,7 @@
             "salary": 50000000,
             "years": 1
           },
-          "face": null
+          "face": "https://img.khl.ru/players/15993/200.jpg"
         },
         {
           "id": "csk-c01",
@@ -17278,7 +17278,7 @@
         },
         {
           "id": "csk-c02",
-          "name": "Павел Карнаух",
+          "name": "Павел Карнаухов",
           "position": "Ц",
           "age": 29,
           "height": 190,
@@ -17299,7 +17299,7 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/21106/200.jpg"
         },
         {
           "id": "csk-rw01",
@@ -17574,7 +17574,7 @@
             "salary": 50000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/20226/200.jpg"
         },
         {
           "id": "csk-lw09",
@@ -17650,7 +17650,7 @@
             "salary": 40000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/18366/200.jpg"
         }
       ]
     },
@@ -18048,7 +18048,7 @@
             "salary": 18000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/20995/200.jpg"
         },
         {
           "id": "shd-lw03",
@@ -18073,7 +18073,7 @@
             "salary": 15000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/21259/200.jpg"
         },
         {
           "id": "shd-rw01",
@@ -18123,11 +18123,11 @@
             "salary": 6000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/40830/200.jpg"
         },
         {
           "id": "shd-lw04",
-          "name": "Бретт Мюррей",
+          "name": "Бретт Мюррэй",
           "position": "ЛК",
           "age": 28,
           "height": 193,
@@ -18148,7 +18148,7 @@
             "salary": 30000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/46148/200.jpg"
         },
         {
           "id": "shd-rw03",
@@ -18323,7 +18323,7 @@
             "salary": 28000000,
             "years": 2
           },
-          "face": null
+          "face": "https://img.khl.ru/players/39994/200.jpg"
         }
       ]
     }
@@ -18437,7 +18437,7 @@
         "defense": 65
       },
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://img.khl.ru/players/45564/200.jpg"
     },
     {
       "id": "fa-06",
@@ -18571,7 +18571,7 @@
       "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
       "source": "https://sport24.ru/hockey/article-882204-olimpiyskiy-chempion-gusev-legionery-chempiony-poteryavshiy-rabotu-svechnikov-5-luchshikh-svobodnykh-agentov-kkhl",
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://img.khl.ru/players/18984/200.jpg"
     },
     {
       "id": "fa-2026-03",
@@ -18715,7 +18715,7 @@
       "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
       "source": "https://www.championat.com/hockey/article-6650058-kakie-legionery-khl-nahodyatsya-bez-kontrakta-kakie-inostrannye-igroki-khl-ostayutsya-svobodnymi-agentami.html",
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://img.khl.ru/players/43874/200.jpg"
     },
     {
       "id": "fa-2026-12",
@@ -18739,7 +18739,7 @@
       "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
       "source": "https://www.championat.com/hockey/article-6650058-kakie-legionery-khl-nahodyatsya-bez-kontrakta-kakie-inostrannye-igroki-khl-ostayutsya-svobodnymi-agentami.html",
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://img.khl.ru/players/28632/200.jpg"
     },
     {
       "id": "fa-2026-13",
@@ -18763,7 +18763,7 @@
       "availabilityNote": "Без контракта по опубликованным материалам на 23.11.2026",
       "source": "https://www.championat.com/hockey/article-6650058-kakie-legionery-khl-nahodyatsya-bez-kontrakta-kakie-inostrannye-igroki-khl-ostayutsya-svobodnymi-agentami.html",
       "snapshot": "2026/27 · 23.11.2026",
-      "face": null
+      "face": "https://img.khl.ru/players/45391/200.jpg"
     },
     {
       "id": "fa-2026-14",
