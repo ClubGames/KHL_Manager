@@ -46,6 +46,23 @@ try {
   await page.getByRole('button', { name: 'Со льда', exact: true }).click();
   assert.equal(await slider.inputValue(), '660');
   const ice = await page.locator('[data-replay-renderer]').screenshot(); assert.ok(!tv.equals(ice), 'camera must change real rendered image');
+  // Auto director: the game picks the angle by itself and cuts as the goal develops.
+  await page.getByRole('button', { name: 'Авто', exact: true }).click();
+  const autoView = page.locator('[data-replay-auto-view]');
+  await slider.fill('100'); const early = await autoView.innerText();
+  await slider.fill('990'); const late = await autoView.innerText();
+  assert.notEqual(early, late, 'auto camera must cut between angles'); assert.match(late, /крупный план/i);
+  // Every camera renders its own picture; zoom changes the picture too.
+  await slider.fill('660');
+  const shots = new Set();
+  for (const name of ['ТВ', 'Со льда', 'У ворот', 'Из ворот', 'За автором', 'Из-за ворот', 'Сверху']) {
+    await page.getByRole('button', { name, exact: true }).click(); await page.waitForTimeout(60);
+    shots.add((await page.locator('[data-replay-renderer]').screenshot()).toString('base64'));
+  }
+  assert.equal(shots.size, 7, 'seven distinct camera images');
+  const far = await page.locator('[data-replay-renderer]').screenshot();
+  await page.getByRole('button', { name: 'Приблизить', exact: true }).click(); await page.waitForTimeout(60);
+  assert.ok(!far.equals(await page.locator('[data-replay-renderer]').screenshot()), 'zoom must change the image');
   await page.getByRole('button', { name: 'У ворот', exact: true }).click();
   await slider.fill('900'); assert.ok(await page.getByText('ГОЛ', { exact: true }).isVisible());
   await slider.fill('500'); assert.equal(await page.getByText('ГОЛ', { exact: true }).count(), 0);
@@ -53,7 +70,7 @@ try {
   await page.getByRole('button', { name: '↻ Повторить', exact: true }).click();
   await page.waitForTimeout(300); assert.ok(Number(await slider.inputValue()) < 200);
   await page.keyboard.press('Escape'); assert.equal(await page.getByRole('dialog', { name: '3D-повтор гола' }).count(), 0);
-  console.log('ok real WebGL, rigged club-kit models, 3 cameras, seek, pause, slow motion, restart, goal timing and Escape');
+  console.log('ok real WebGL, rigged club-kit models, 7 cameras + auto director, zoom, seek, pause, slow motion, restart, goal timing and Escape');
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
   for (const shotType of ['tip', 'rebound', 'slap', 'backhand']) {

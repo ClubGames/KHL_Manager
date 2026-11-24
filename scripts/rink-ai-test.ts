@@ -4,7 +4,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseRosterText } from '../src/game/roster';
 import { GameSim } from '../src/game/engine';
-import { RinkAI } from '../src/game/rinkAI';
+import { RINK_M, RinkAI } from '../src/game/rinkAI';
+import { FACEOFF_SPOTS } from '../src/game/rinkGeometry';
 import type { GameEvent } from '../src/types';
 
 const r = parseRosterText(readFileSync('public/rostfdfer.json', 'utf8'));
@@ -79,31 +80,56 @@ test('nobody skates faster than physics allows; the puck never teleports', () =>
   assert.ok(puckJumps / frames < 0.001, `puck faster than 200 km/h in ${puckJumps} of ${frames} frames`);
 });
 
-test('no offside: attackers do not carry or pass the puck into the zone with a teammate ahead of it', () => {
-  let entries = 0, offside = 0;
+test('offside: early entries are whistled, stay rare and restart at a neutral-zone dot', () => {
+  const blue = 60 - RINK_M.blueLine;
+  let entries = 0, unwhistled = 0, offsides = 0, neutral = 0;
   for (const { ai } of periods) {
     const zin = [false, false];
     const f: Frame[] = ai.frames;
+    const calls = ai.plays.filter(p => p.kind === 'offside');
+    offsides += calls.length;
+    for (const c of calls) {
+      const drop = f.find(fr => fr.tau > c.tau && fr.stop === 1);
+      assert.ok(drop, 'an offside is followed by a faceoff');
+      const atDot = FACEOFF_SPOTS.neutral.some(d => Math.hypot(drop!.px - d.x, drop!.py - d.y) < 0.4);
+      if (atDot) neutral++;
+    }
     for (let i = 1; i < f.length; i++) {
       const a = f[i - 1], b = f[i];
-      if (b.stop) { zin[0] = b.px > 43.2; zin[1] = 60 - b.px > 43.2; continue; }
+      if (b.stop) { zin[0] = b.px > blue; zin[1] = 60 - b.px > blue; continue; }
       for (const side of [0, 1]) {
         const was = zin[side], x = lx(side, b.px);
-        if (x > 43.2) zin[side] = true; else if (x < 42.9) zin[side] = false;
+        if (x > blue) zin[side] = true; else if (x < blue - 0.3) zin[side] = false;
         if (was || !zin[side] || a.carrier < 0 || sideOf(a.ids[a.carrier]) !== side) continue;
         entries++;
-        if (b.ids.some((id, j) => !(b.flags[j] & 3) && sideOf(id) === side && j !== b.carrier && lx(side, b.pos[j * 2]) > 43.4)) offside++;
+        const ahead = b.ids.some((id, j) => !(b.flags[j] & 3) && sideOf(id) === side && id !== a.ids[a.carrier] && lx(side, b.pos[j * 2]) > blue + 0.35);
+        if (ahead && !calls.some(c => c.tau >= a.tau - 1e-6 && c.tau <= b.tau + 0.25)) unwhistled++;
       }
     }
   }
-  assert.ok(entries > periods.length * 30, `carried entries ${entries}`);
-  assert.ok(offside / entries < 0.01, `offside entries ${offside}/${entries}`);
+  assert.ok(entries > periods.length * 25, `carried entries ${entries}`);
+  assert.ok(unwhistled / entries < 0.01, `unwhistled offside entries ${unwhistled}/${entries}`);
+  assert.ok(offsides >= periods.length * 0.5 && offsides <= periods.length * 6, `offsides ${offsides} in ${periods.length} periods`);
+  assert.equal(neutral, offsides, 'offside faceoffs are taken at a neutral-zone dot');
+});
+
+test('teams switch ends: a flipped period is the same hockey mirrored lengthwise', () => {
+  const { evs, start, end, ai } = periods[1];
+  const flipped = new RinkAI(evs, H, A, r.players, start, end, { flip: true }).runToEnd();
+  const a = ai.frameAt(250), b = flipped.frameAt(250);
+  assert.ok(Math.abs(a.puck.x + b.puck.x - 100) < 1e-6 && Math.abs(a.puck.y - b.puck.y) < 1e-6);
+  a.skaters.forEach((p, i) => assert.ok(Math.abs(p.pos.x + b.skaters[i].pos.x - 100) < 1e-6));
+  const goal = evs.find(e => e.type === 'goal' && e.player);
+  if (goal) {
+    const c0 = ai.goalClip(goal)!, c1 = flipped.goalClip(goal)!;
+    assert.equal(c0.dir, -(c1.dir ?? 0));
+  }
 });
 
 test('real hockey happens around the engine events: faceoffs, takeaways, blocks, icings, line changes', () => {
   const kinds: Record<string, number> = {};
   for (const { ai } of periods) ai.plays.forEach(p => { kinds[p.kind] = (kinds[p.kind] ?? 0) + 1; });
-  for (const k of ['faceoff', 'takeaway', 'block', 'icing', 'change', 'entry', 'dump', 'save']) assert.ok((kinds[k] ?? 0) > 0, `${k} occurs`);
+  for (const k of ['faceoff', 'takeaway', 'block', 'icing', 'offside', 'change', 'entry', 'dump', 'save']) assert.ok((kinds[k] ?? 0) > 0, `${k} occurs`);
   const t = periods[0].ai.tally(Infinity);
   assert.ok(t.faceoff[0] + t.faceoff[1] >= 8);
 });
