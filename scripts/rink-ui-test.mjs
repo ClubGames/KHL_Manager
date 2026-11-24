@@ -80,6 +80,49 @@ try {
     await page.getByRole('button', { name: 'Продолжить матч', exact: true }).click();
   }
   console.log('ok repeated WebGL disposal/reopen and reduced-motion default');
+
+  // MP4 export: the encoder + muxer pipeline produces a real MP4 (ftyp/moov/mdat, H.264 when available) …
+  const mp4 = await page.evaluate(async () => {
+    const X = await import('/src/components/replayExport.ts');
+    const { buildReplayClip } = await import('/src/game/rinkPlayback.ts');
+    const { parseRosterText } = await import('/src/game/roster.ts');
+    const r = parseRosterText(await (await fetch('/roster.json')).text());
+    const home = r.teams.find(t => t.id === 'ska'), away = r.teams.find(t => t.id === 'avangard');
+    const ids = t => [...t.lineup.F[0], ...t.lineup.D[0]].filter(Boolean);
+    const e = { sec: 481, period: 1, time: '11:59', type: 'goal', team: home.id, player: ids(home)[0], players: [], goalie: away.lineup.starterG, ice: [ids(home), ids(away)], x: 82, y: 34, shotType: 'wrist', strength: 'EV', score: [1, 0], text: '' };
+    const clip = buildReplayClip(e, home, away, r.players);
+    const canvas = document.createElement('canvas'); let size = [0, 0], frames = 0;
+    const source = { begin: (w, h) => { canvas.width = w; canvas.height = h; size = [w, h]; }, frame: (t) => { const c = canvas.getContext('2d'); c.fillStyle = `hsl(${t * 360},60%,50%)`; c.fillRect(0, 0, canvas.width, canvas.height); frames++; return canvas; }, end: () => {} };
+    const graphics = { label: 'Кистевой бросок', period: '1-й период · 11:59', strength: 'EV', home: { short: 'СКА', color: '#1d58a8' }, away: { short: 'АВГ', color: '#c8243a' }, before: [0, 0], after: [1, 0], scorer: 'Тест Игрок · #9' };
+    const res = await X.exportReplayMp4({ source, clip, camera: 'auto', graphics, height: 720 });
+    const head = new Uint8Array(await res.blob.slice(0, 64).arrayBuffer());
+    const text = new TextDecoder('latin1').decode(new Uint8Array(await res.blob.arrayBuffer()));
+    return { size: res.blob.size, type: res.blob.type, frames, rendered: size, codec: res.codec, method: res.method, seconds: res.seconds, ftyp: new TextDecoder().decode(head.slice(4, 8)), moov: text.includes('moov'), mdat: text.includes('mdat'), avc: text.includes('avcC') };
+  });
+  assert.equal(mp4.ftyp, 'ftyp'); assert.ok(mp4.moov && mp4.mdat, 'mp4 boxes'); assert.equal(mp4.type, 'video/mp4');
+  assert.deepEqual(mp4.rendered, [1280, 720]); assert.ok(mp4.seconds > 12 && mp4.seconds < 20, `real time + slow-motion replay (${mp4.seconds}s)`);
+  assert.ok(mp4.frames >= mp4.seconds * 30 - 2, 'every frame rendered'); assert.ok(mp4.size > 20000, 'non-trivial video');
+  if (mp4.codec === 'H.264') assert.ok(mp4.avc, 'avcC config box');
+  console.log(`ok MP4 export pipeline: ${mp4.method}, ${mp4.codec}, ${mp4.seconds.toFixed(1)} s, ${(mp4.size / 1024).toFixed(0)} KB`);
+  // … and the replay's «⤓ MP4» button runs it on the 3D scene, with progress and cancel.
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await mount(page);
+  await page.locator('[data-replay-models="rigged"]').waitFor({ timeout: 15000 });
+  await page.locator('[data-replay-export]').click();
+  await page.locator('[data-export-progress]').waitFor();
+  assert.ok(await page.getByRole('combobox', { name: 'Качество картинки' }).isDisabled(), 'quality locked while exporting');
+  await page.getByRole('button', { name: 'Отменить', exact: true }).click();
+  await page.locator('[data-export-note]').waitFor(); assert.match(await page.locator('[data-export-note]').innerText(), /отмен/);
+  assert.equal(await page.locator('[data-export-progress]').count(), 0);
+  // Quality presets switch the renderer (and persist).
+  for (const q of ['ultra', 'standard', 'high']) {
+    await page.getByLabel('Качество картинки').selectOption(q); await page.waitForTimeout(300);
+    assert.equal(await page.locator('[data-replay-renderer]').getAttribute('data-replay-renderer'), 'webgl');
+  }
+  assert.equal(await page.evaluate(() => localStorage.getItem('khl.replayQuality')), 'high');
+  await page.getByRole('button', { name: 'Продолжить матч', exact: true }).last().click();
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  console.log('ok export button with progress/cancel; quality presets rebuild the renderer');
   await page.close();
 
   const mobile = await open({ viewport: { width: 390, height: 844 }, reducedMotion: 'reduce' });
