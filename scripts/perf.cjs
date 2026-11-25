@@ -16,7 +16,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const click = (el) => el.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
   await sleep(900); click(find('СКА')); await sleep(100); click(find('Начать карьеру')); await sleep(500);
   if (find('Симулировать до матча')) { click(find('Симулировать до матча')); await sleep(400); }
-  click(find('Играть матч')); await sleep(200); click(find('Начать матч')); await sleep(100); click(find('×4'));
+  click(find('Играть матч')); await sleep(200); click(document.querySelector('[data-match-mode="watch"]')); await sleep(200); click(find('Начать матч')); await sleep(100); click(find('×4'));
   let records = 0, added = 0, removed = 0;
   const mo = new window.MutationObserver((list) => { for (const m of list) { records++; added += m.addedNodes.length; removed += m.removedNodes.length; } });
   mo.observe(document.body, { childList: true, subtree: true, characterData: true, attributes: true });

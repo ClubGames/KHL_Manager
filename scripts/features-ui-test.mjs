@@ -127,6 +127,7 @@ try {
     }
   }
   await page.getByRole('button', { name: 'Играть матч', exact: true }).click();
+  await page.locator('[data-match-mode="watch"]').click();
   await page.getByRole('button', { name: 'Начать матч', exact: true }).click();
   const qd = page.locator('[data-quick-decisions]').first();
   await qd.waitFor();

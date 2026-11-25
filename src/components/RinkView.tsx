@@ -1,7 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { GameEvent, Player, Team } from '../types';
 import { clipFrame, liveRinkFrame, type LiveFrame } from '../game/rinkPlayback';
-import type { RinkAI } from '../game/rinkAI';
+import type { LiveSource } from './liveMotion';
 import { FACEOFF_SPOTS, RINK } from '../game/rinkGeometry';
 import { cn } from '../utils/cn';
 import { LG } from '../brand';
@@ -51,7 +51,9 @@ export function RinkSvg({ frame, home, away, players }: { frame: LiveFrame; home
     {frame.skaters.map(p => <g key={`${p.side}-${p.id}`} transform={`translate(${p.pos.x} ${p.pos.y / 2})`} data-rink-player={p.id}>
       <title>{players[p.id]?.name ?? p.id}{p.goalie ? ' · вратарь' : ''}</title>
       <ellipse cy=".5" rx="1.65" ry="1" fill="#233a4b30" />
+      {p.ctrl && <g data-rink-ctrl><circle r="2.5" fill="#ffd23f33" stroke="#ffd23f" strokeWidth=".45" /><path d="M -1 -4.2 H 1 L 0 -2.9 Z" fill="#ffd23f" /></g>}
       {frame.carrier === p.id && <circle r="2" fill="none" stroke="#f5b942" strokeWidth=".3" data-rink-carrier />}
+      {(p.fall ?? 0) > .3 && <path d="M -1.6 -1.6 L 1.6 1.6 M 1.6 -1.6 L -1.6 1.6" stroke="#e5323e" strokeWidth=".3" opacity={p.fall} />}
       {p.goalie ? <rect x="-1.4" y="-1" width="2.8" height="2" rx=".5" fill={p.side ? '#f7fafc' : home.primaryColor} stroke={p.side ? away.primaryColor : '#fff'} strokeWidth=".35" /> : <circle r="1.3" fill={p.side ? '#f7fafc' : home.primaryColor} stroke={p.side ? away.primaryColor : '#0b1726'} strokeWidth={p.side ? '.5' : '.35'} />}
       <text y=".4" textAnchor="middle" fontSize="1.2" fontWeight="bold" fill={p.side ? away.primaryColor : '#fff'} stroke={p.side ? '#fff' : '#000'} strokeWidth=".15" paintOrder="stroke" fontFamily="sans-serif">{players[p.id]?.number ?? ''}</text>
     </g>)}
@@ -61,13 +63,17 @@ export function RinkSvg({ frame, home, away, players }: { frame: LiveFrame; home
   </svg>;
 }
 
-export function LiveRink({ ticker, ids, goalies, event, home, away, players, running, ai = null, className, fill = false, roster, allow3d = true }: {
+export function LiveRink({ ticker, ids, goalies, event, home, away, players, running, ai = null, className, fill = false, roster, allow3d = true, bare = false, minimap = true }: {
   ticker: { sec: number; tau?: number }; ids: [string[], string[]]; goalies: [string | null, string | null]; event: GameEvent | null;
-  home: Team; away: Team; players: Record<string, Player>; running: boolean; ai?: RinkAI | null; className?: string; fill?: boolean;
+  home: Team; away: Team; players: Record<string, Player>; running: boolean; ai?: LiveSource | null; className?: string; fill?: boolean;
   /** everyone who may come on the ice: the 3D view prepares their figures up front */
   roster?: FigureRequest[];
   /** false while something else uses the 3D renderer (a goal replay is open) */
   allow3d?: boolean;
+  /** no caption bar above the ice (the played match has its own scoreboard; the 2D/3D switch moves onto the ice) */
+  bare?: boolean;
+  /** false: no 2D minimap over the 3D picture (the touch controls need the corner) */
+  minimap?: boolean;
 }) {
   const settings = useSettings();
   const [failed3d, setFailed3d] = useState(false);
@@ -106,7 +112,7 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
       className={cn('px-1.5 py-0.5 text-[10px] font-bold uppercase', settings.matchView === v ? 'bg-ice text-bg' : 'text-muted hover:text-text')} data-rink-view-button={v}>{v}</button>)}
   </span>;
   return <section className={cn('rounded-md border border-line bg-panel overflow-hidden flex flex-col', className)} data-live-rink data-faceoff={frame.faceoff || undefined} data-stopped={frame.stopped || undefined}>
-    <div className="flex items-center justify-between gap-2 px-2.5 py-1 text-[11px] border-b border-line min-h-[26px]">
+    {!bare && <div className="flex items-center justify-between gap-2 px-2.5 py-1 text-[11px] border-b border-line min-h-[26px]">
       <span className="flex items-center gap-2 min-w-0">
         {/* Who attacks which way: teams switch ends every period. */}
         <span className="flex items-center gap-1 shrink-0" data-rink-ends={flipped ? 'switched' : 'normal'}><i style={{ background: home.primaryColor }} className="inline-block w-2 h-2 rounded-full border border-white/50" />{flipped ? `← ${home.short}` : `${home.short} →`}</span>
@@ -117,21 +123,22 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
         <span className={cn('font-semibold', frame.stopped ? 'text-gold' : running ? 'text-ok' : 'text-muted')} data-rink-state>{state}</span>
         {viewToggle}
       </span>
-    </div>
+    </div>}
     {show3d ? (
       <div className={cn('relative bg-[#081421] overflow-hidden', fill ? 'flex-1 min-h-0' : 'w-full')} style={fill ? undefined : { aspectRatio: '16 / 9' }} data-rink-3d>
         <LiveScene3D ai={ai!} ticker={ticker} home={home} away={away} players={players} roster={roster ?? []} camera={settings.matchCamera} quality={resolveReplayQuality(settings.replayQuality)} onFail={() => setFailed3d(true)} />
         <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1" role="radiogroup" aria-label="Камера">
           {LIVE_CAMERAS.map(([c, label]) => <button key={c} type="button" role="radio" aria-checked={settings.matchCamera === c} onClick={() => setSettings({ matchCamera: c })}
             className={cn('rounded-sm px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur-sm', settings.matchCamera === c ? 'bg-white/85 text-[#0b1726]' : 'bg-black/35 text-white/85 hover:bg-black/55')} data-live-camera={c}>{label}</button>)}
+          {bare && viewToggle && <span className="bg-panel/90 rounded-sm">{viewToggle}</span>}
           <button type="button" aria-pressed={settings.matchMinimap} onClick={() => setSettings({ matchMinimap: !settings.matchMinimap })}
             className={cn('rounded-sm px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur-sm', settings.matchMinimap ? 'bg-white/85 text-[#0b1726]' : 'bg-black/35 text-white/85 hover:bg-black/55')} data-live-minimap-toggle>Карта</button>
         </div>
         {/* The same frame on the 2D rink: both pictures are one simulation. */}
-        {settings.matchMinimap && <div className="absolute right-1.5 bottom-1.5 w-[28%] min-w-[120px] max-w-[240px] rounded-sm border border-white/25 bg-[#0a1828]/75 p-0.5 pointer-events-none" style={{ aspectRatio: '2 / 1' }} data-rink-minimap>{svg}</div>}
+        {settings.matchMinimap && minimap && <div className="absolute right-1.5 bottom-1.5 w-[28%] min-w-[120px] max-w-[240px] rounded-sm border border-white/25 bg-[#0a1828]/75 p-0.5 pointer-events-none" style={{ aspectRatio: '2 / 1' }} data-rink-minimap>{svg}</div>}
       </div>
     ) : (
-      <div className="bg-[#0a1828] p-1 flex-1 min-h-0 flex items-center justify-center"><div className={fill ? 'w-full h-full' : 'w-full max-w-[560px]'} style={fill ? undefined : { aspectRatio: '2 / 1' }}>{svg}</div></div>
+      <div className="bg-[#0a1828] p-1 flex-1 min-h-0 flex items-center justify-center relative">{bare && viewToggle && <div className="absolute top-1.5 left-1.5 z-10 bg-panel/90 rounded-sm">{viewToggle}</div>}<div className={fill ? 'w-full h-full' : 'w-full max-w-[560px]'} style={fill ? undefined : { aspectRatio: '2 / 1' }}>{svg}</div></div>
     )}
   </section>;
 }

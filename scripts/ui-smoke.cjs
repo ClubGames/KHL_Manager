@@ -82,6 +82,8 @@ function boot(seed, rosterText) {
   }
   a.click(a.find('Играть матч'));
   await sleep(300);
+  a.click(a.document.querySelector('[data-match-mode="watch"]'));
+  await sleep(300);
   a.click(a.find('Начать матч'));
   await sleep(250);
   const live = () => {

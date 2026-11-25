@@ -41,6 +41,13 @@ interface SimSnap {
   enShown: [boolean, boolean];
 }
 
+/** A play of a period played on the rink (see GameSim.recordPlayed). Coordinates as in the shot map (0…100). */
+export type PlayedRecord =
+  | { type: 'shot'; side: TI; shooter: string; goalie: string | null; outcome: 'goal' | 'save' | 'miss' | 'block'; post?: boolean; blocker?: string; assists: string[]; strength: Strength; shotType: NonNullable<GameEvent['shotType']>; x: number; y: number; xg: number; zone: ShotZone; ice: [(string | null)[], (string | null)[]] }
+  | { type: 'penalty'; side: TI; player: string; min: 2 | 4 | 5; reason: string }
+  | { type: 'hit'; side: TI; player: string; victim: string }
+  | { type: 'info'; side: TI; text: string };
+
 interface ActiveBlockMeta {
   kind: BlockKind;
   dur: number;
@@ -1086,6 +1093,117 @@ export class GameSim {
       else if (m[i] === 3) note = ` «${this.label(i)}» остаётся втроём: ${m[1 - i]} на 3!`;
     }
     this.push({ type: 'penalty', team: teamId, player: p, pim: min, pp: !misconduct, penUntil: this.penUntil(), boxUntil, text: `Штраф ${min} мин: ${this.P[p].name} (${this.label(i)}) — ${type}${note ? `.${note}` : ''}` });
+  }
+
+  /* ---------------- a period played on the rink (the manager controls a skater) ----------------
+   * The rink decides what happens (shots, saves, goals, penalties, hits); the engine only keeps the books, so the
+   * result, the box score, the player lines, the shot map and the play-by-play are the same as for a simulated game.
+   */
+  /** Starts a played block: the next period (or overtime) begins at the current game second. */
+  beginPlayed(kind: BlockKind): GameEvent[] {
+    const start = this.events.length;
+    this.period++;
+    this.blockKind = kind;
+    this.blockStart = this.sec;
+    this.curBlockMeta = null;
+    this.playedS0 = [this.score[0], this.score[1]];
+    if (this.period === 1 && this.derby) this.push({ type: 'info', text: `🔥 ${this.derby.title}! ${this.derby.subtitle} — аншлаг на трибунах!` });
+    this.push({ type: 'period_start', text: `${periodName(this.period, kind)} начался` });
+    return this.events.slice(start);
+  }
+  private playedS0: [number, number] = [0, 0];
+  /** Game second of the played block: `elapsed` seconds on the period clock since its start. */
+  playedClock(elapsed: number) {
+    this.sec = this.blockStart + clamp(elapsed, 0, blockLen(this.blockKind) || 1200);
+  }
+  /** One play of a played block at `elapsed` seconds of the period. Returns the play-by-play event (if any). */
+  recordPlayed(elapsed: number, r: PlayedRecord): GameEvent | null {
+    this.playedClock(elapsed);
+    const i = r.side, o = (1 - i) as TI, teamId = this.team(i).id;
+    // who plays for whom (the three stars and the lines read it)
+    const mark = (ti: TI, id: string | null | undefined) => { if (id) this.teamOf[id] = ti; };
+    if (r.type === 'shot') { r.ice[0].forEach((id) => mark(0, id)); r.ice[1].forEach((id) => mark(1, id)); mark(i, r.shooter); r.assists.forEach((id) => mark(i, id)); mark(o, r.blocker); }
+    if (r.type === 'hit') { mark(i, r.player); mark(o, r.victim); }
+    if (r.type === 'penalty') mark(i, r.player);
+    if (r.type === 'hit') {
+      this.stats[i].hits++;
+      this.push({ type: 'hit', team: teamId, player: r.player, players: [r.victim], text: `Силовой приём: ${this.P[r.player]?.name ?? ''} против ${this.P[r.victim]?.name ?? ''}` });
+      return this.events[this.events.length - 1];
+    }
+    if (r.type === 'info') {
+      this.push({ type: 'info', team: teamId, score: [this.score[0], this.score[1]], penUntil: this.penUntil(), text: r.text });
+      return this.events[this.events.length - 1];
+    }
+    if (r.type === 'penalty') {
+      const min = r.min;
+      this.line(r.player).pim += min;
+      this.stats[i].pim += min;
+      this.pens[i] = this.pens[i].filter((x) => x.end > this.sec);
+      const start = this.penSlot(i), boxUntil = start + min * 60;
+      this.pens[i].push({ player: r.player, min, start, end: boxUntil });
+      this.stats[o].ppChances++;
+      this.unitIdx[o]++;
+      this.push({ type: 'penalty', team: teamId, player: r.player, pim: min, pp: true, penUntil: this.penUntil(), boxUntil, text: `Штраф ${min} мин: ${this.P[r.player]?.name ?? ''} (${this.label(i)}) — ${r.reason}` });
+      return this.events[this.events.length - 1];
+    }
+    // a shot
+    const sp = this.P[r.shooter];
+    const time = this.clock();
+    const zone = r.zone, xg = Math.round(clamp(r.xg, 0, 0.95) * 1000) / 1000;
+    const onNet = r.outcome === 'goal' || r.outcome === 'save';
+    if (onNet) {
+      this.shots[i]++;
+      this.stats[i].shots++;
+      this.line(r.shooter).shots++;
+      this.stats[i].xg = Math.round(((this.stats[i].xg ?? 0) + xg) * 1000) / 1000;
+      if (xg >= 0.12) this.stats[i].dangerShots = (this.stats[i].dangerShots ?? 0) + 1;
+    }
+    const outcome: ShotPoint['outcome'] = r.outcome === 'goal' ? 'goal' : r.outcome === 'save' ? 'save' : 'miss';
+    if (r.outcome !== 'block') this.shotMap.push({ t: i, player: r.shooter, period: this.period, time, x: r.x, y: r.y, xg, outcome, zone, strength: r.strength, shotType: r.shotType });
+    const ice: [(string | null)[], (string | null)[]] = [r.ice[0], r.ice[1]];
+    if (r.outcome === 'goal') {
+      this.score[i]++;
+      this.unansweredGoals[i]++;
+      this.unansweredGoals[o] = 0;
+      if (r.strength === 'PP') { this.stats[i].ppGoals++; this.releaseOnPPGoal(o); }
+      this.line(r.shooter).goals++;
+      for (const a of r.assists) this.line(a).assists++;
+      const mine = skatersOf(ice[i], this.P), theirs = skatersOf(ice[o], this.P);
+      if (r.strength === 'EV' || r.strength === '4v4' || r.strength === 'EN') { for (const id of mine) this.line(id).plusMinus++; for (const id of theirs) this.line(id).plusMinus--; }
+      else if (r.strength === 'SH') for (const id of mine) this.line(id).plusMinus++;
+      if (r.goalie) { const gl = this.line(r.goalie); gl.shotsAgainst++; gl.goalsAgainst++; }
+      this.scorers.push({ period: this.period, time, team: teamId, scorer: r.shooter, assists: r.assists, strength: r.strength });
+      const label = r.strength === 'PP' ? ' — в большинстве' : r.strength === 'SH' ? ' — в меньшинстве' : r.strength === 'EN' ? ' — пустые ворота!' : '';
+      this.push({
+        type: 'goal', team: teamId, player: r.shooter, players: r.assists, strength: r.strength, shotType: r.shotType, x: r.x, y: r.y, xg, zone,
+        score: [this.score[0], this.score[1]], goalie: r.goalie, pp: r.strength === 'PP', penUntil: this.penUntil(), ice,
+        text: `ГОЛ! ${sp?.name ?? ''}${r.assists.length ? ` (${r.assists.map((a) => this.P[a]?.name).join(', ')})` : ''}${label}`,
+      });
+      return this.events[this.events.length - 1];
+    }
+    if (r.outcome === 'save' && r.goalie) {
+      const gl = this.line(r.goalie);
+      gl.shotsAgainst++;
+      gl.saves++;
+      this.push({ type: 'shot', team: teamId, player: r.shooter, shotType: r.shotType, strength: r.strength, x: r.x, y: r.y, xg, zone, goalie: r.goalie, ice, text: `Бросок ${sp?.name ?? ''} — сейв ${this.P[r.goalie]?.name ?? ''}` });
+      return this.events[this.events.length - 1];
+    }
+    this.push({ type: 'info', team: teamId, player: r.shooter, text: r.outcome === 'block' ? `Бросок ${sp?.name ?? ''} заблокирован${r.blocker ? `: ${this.P[r.blocker]?.name ?? ''}` : ''}` : r.post ? `Штанга! Бросок ${sp?.name ?? ''}` : `Бросок ${sp?.name ?? ''} — мимо ворот` });
+    return this.events[this.events.length - 1];
+  }
+  /** Ends a played block at `elapsed` seconds of its clock (the full length, or the sudden-death goal). */
+  endPlayed(elapsed: number): GameEvent[] {
+    const start = this.events.length, kind = this.blockKind, period = this.period;
+    this.playedClock(elapsed);
+    this.periodScores.push([this.score[0] - this.playedS0[0], this.score[1] - this.playedS0[1]]);
+    this.push({ type: 'period_end', text: `${periodName(period, kind)} завершён. Счёт ${this.score[0]}:${this.score[1]}`, score: [this.score[0], this.score[1]] });
+    if (kind === 'reg') this.status = period >= 3 ? (this.tied ? 'ot' : 'done') : 'playing';
+    else this.status = this.tied ? (this.playoff ? 'ot' : 'so') : 'done';
+    return this.events.slice(start);
+  }
+  /** Penalties still running at the end of a played block: [player, end] per team (they carry over to the next one). */
+  playedBox(): [[string, number][], [string, number][]] {
+    return [this.pens[0].filter((x) => x.end > this.sec).map((x): [string, number] => [x.player, x.end]), this.pens[1].filter((x) => x.end > this.sec).map((x): [string, number] => [x.player, x.end])];
   }
 
   private takeHit(i: TI, iceI: (string | null)[], iceO: (string | null)[]) {

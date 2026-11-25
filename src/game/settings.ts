@@ -42,6 +42,14 @@ export type Settings = {
   simOpenReport: boolean;
   /** confirm before a fast simulation (open inbox tasks, simulating a game without watching it) */
   simConfirm: boolean;
+  /** a played match (the manager controls a skater): real minutes per 20-minute period */
+  playPeriod: 3 | 5 | 8 | 12 | 20;
+  /** a played match: how good the opponents are */
+  playDifficulty: 'rookie' | 'pro' | 'star';
+  /** a played match: the player switches automatically to the puck carrier / the nearest defender */
+  playAutoSwitch: boolean;
+  /** a played match: on-screen controls on a touch screen (stick and buttons) */
+  playTouch: 'auto' | 'on' | 'off';
 };
 
 const KEY = 'khl.settings';
@@ -52,6 +60,7 @@ export function defaultSettings(): Settings {
     replay3d: true, autoReplay: 'all', replayQuality: 'auto', replaySpeed: 1, replayCamera: 'auto', replayPrewarm: true,
     videoHeight: coarse() ? 720 : 1080, videoFps: 30, videoSlowmo: true, videoGraphics: true, videoQuality: 'view',
     matchSpeed: 2, matchRink2d: true, matchView: '3d', matchCamera: 'broadcast', matchMinimap: true, matchAdvice: true, simOpenReport: true, simConfirm: true,
+    playPeriod: 5, playDifficulty: 'pro', playAutoSwitch: true, playTouch: 'auto',
   };
 }
 
@@ -72,6 +81,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     videoHeight: one('videoHeight', [720, 1080] as const), videoFps: one('videoFps', [30, 60] as const),
     videoSlowmo: bool('videoSlowmo'), videoGraphics: bool('videoGraphics'), videoQuality: one('videoQuality', ['fast', 'view'] as const),
     matchSpeed: one('matchSpeed', [1, 2, 4] as const), matchRink2d: bool('matchRink2d'), matchView: one('matchView', ['2d', '3d'] as const), matchCamera: one('matchCamera', ['broadcast', 'high', 'ice', 'end'] as const), matchMinimap: bool('matchMinimap'), matchAdvice: bool('matchAdvice'), simOpenReport: bool('simOpenReport'), simConfirm: bool('simConfirm'),
+    playPeriod: one('playPeriod', [3, 5, 8, 12, 20] as const), playDifficulty: one('playDifficulty', ['rookie', 'pro', 'star'] as const), playAutoSwitch: bool('playAutoSwitch'), playTouch: one('playTouch', ['auto', 'on', 'off'] as const),
   };
 }
 

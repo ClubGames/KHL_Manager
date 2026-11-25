@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as T from 'three';
 import type { Player, Team } from '../types';
-import type { RinkAI } from '../game/rinkAI';
 import { clamp } from '../game/rinkPlayback';
 import type { PlayerFigure } from './playerModel';
 import { acquireRenderer, addStageLights, compileScene, kitFor, loadModel, onCacheRedraw, releaseRenderer, sharedProps, takeArena, takeFigures, type FigureRequest } from './replayCache';
@@ -10,7 +9,7 @@ import { liveCameraPose, toWorld, ZOOM, type LiveCamera } from './replayCameras'
 export { LIVE_CAMERAS, type LiveCamera } from './replayCameras';
 import { releaseHeading } from './replayMotion';
 import { replayPreset, type ReplayQuality } from './ReplayScene';
-import { LiveMotion, LOOKAHEAD, puckVelocity, shownSkaters } from './liveMotion';
+import { LiveMotion, LOOKAHEAD, puckVelocity, shownSkaters, type LiveMotionLike, type LiveSource } from './liveMotion';
 
 /**
  * The whole match in 3D, frame for frame the same hockey as the 2D rink: every render reads `ai.frameAt(tau)`
@@ -32,7 +31,7 @@ type Actor = {
 };
 
 type Props = {
-  ai: RinkAI; ticker: { tau?: number; wait?: boolean }; home: Team; away: Team; players: Record<string, Player>;
+  ai: LiveSource; ticker: { tau?: number; wait?: boolean }; home: Team; away: Team; players: Record<string, Player>;
   /** everyone who may come on the ice (dressed players, both goalies): their figures are prepared up front */
   roster: FigureRequest[];
   camera: LiveCamera; quality: ReplayQuality;
@@ -110,6 +109,13 @@ export function LiveScene3D(props: Props) {
         const l = new T.Mesh(legs, refMat); l.position.y = .45; const b = new T.Mesh(body, refShirt); b.position.y = 1.18; const h = new T.Mesh(head, refMat); h.position.y = 1.65;
         [l, b, h].forEach(m => { m.castShadow = true; official.add(m); }); }
       official.visible = false; scene.add(official);
+      // The played match: a ring on the ice under the skater the manager controls (and an arrow above him).
+      const ringGeo = new T.RingGeometry(.52, .66, 40), arrowGeo = new T.ConeGeometry(.16, .3, 4);
+      const ringMat = new T.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: .9, depthWrite: false, side: T.DoubleSide });
+      geometries.push(ringGeo, arrowGeo); materials.push(ringMat);
+      const ctrlRing = new T.Mesh(ringGeo, ringMat); ctrlRing.rotation.x = -Math.PI / 2; ctrlRing.renderOrder = 2;
+      const ctrlArrow = new T.Mesh(arrowGeo, ringMat); ctrlArrow.rotation.x = Math.PI;
+      ctrlRing.visible = ctrlArrow.visible = false; scene.add(ctrlRing, ctrlArrow);
 
       // Stand-ins (until the rigged model is decoded, or if it fails): a capsule in club colours.
       const standGeo = new T.CapsuleGeometry(.27, 1.05, 4, 10), helmetGeo = new T.SphereGeometry(.2, 10, 8);
@@ -163,7 +169,7 @@ export function LiveScene3D(props: Props) {
         compileScene(renderer, staging, camera, scene, false).then(go);
       }).catch(() => { figuresIn(); /* stand-ins stay */ });
 
-      let motion: LiveMotion | null = null;
+      let motion: LiveMotionLike | null = null, motionOf: LiveSource | null = null;
       const focus = { x: 0, z: 0, init: false };
       let lastTau = NaN, lastNow = performance.now(), lastCam = '', firstFrame = true;
       const puckWorld = new T.Vector3(), local = new T.Vector3(), puckOff = { x: 0, z: 0 };
@@ -173,7 +179,7 @@ export function LiveScene3D(props: Props) {
       const update = (now: number) => {
         if (!renderer) return;
         const ai = live.current.ai;
-        if (!motion || motion.ai !== ai) { motion = new LiveMotion(ai); focus.init = false; actors.forEach(a => { a.lx = NaN; a.save = null; }); }
+        if (!motion || motionOf !== ai) { motion = ai.motion ?? new LiveMotion(ai); motionOf = ai; focus.init = false; actors.forEach(a => { a.lx = NaN; a.save = null; }); }
         const tau = tickerRef.current.tau ?? 0;
         const realDt = Math.min(.1, (now - lastNow) / 1000); lastNow = now;
         const camKey = `${live.current.camera}|${live.current.zoom}|${camera.aspect}`;
@@ -200,6 +206,9 @@ export function LiveScene3D(props: Props) {
         if (goal) lamp.position.set(goal.netX + Math.sign(goal.netX) * 1.6, 2.6, 0);
 
         const shown = shownSkaters(f);
+        const ctl = shown.find(p => p.ctrl);
+        ctrlRing.visible = ctrlArrow.visible = !!ctl;
+        if (ctl) { const c = toWorld(ctl.pos); ctrlRing.position.set(c.x, .015, c.z); ctrlArrow.position.set(c.x, 2.35 + Math.sin(now / 180) * .06, c.z); ctrlArrow.rotation.y = now / 600; }
         const onIce = new Set(shown.map(p => p.id));
         actors.forEach(a => { if (!onIce.has(a.id)) { a.group.visible = false; a.lx = NaN; } });
         const prevOf = new Map(fb.skaters.map(p => [p.id, p.pos])), prev2Of = new Map(fb2.skaters.map(p => [p.id, p.pos]));
@@ -211,6 +220,7 @@ export function LiveScene3D(props: Props) {
           const w = toWorld(p.pos), b = toWorld(prevOf.get(p.id) ?? p.pos), b2 = toWorld(prev2Of.get(p.id) ?? prevOf.get(p.id) ?? p.pos);
           a.group.visible = true;
           a.group.position.set(w.x, 0, w.z);
+          a.group.rotation.order = 'YXZ';
           const jumped = Number.isNaN(a.lx) || Math.hypot(w.x - a.lx, w.z - a.lz) > 4;
           const moved = Math.hypot(w.x - b.x, w.z - b.z), speed = moved / .1;
           if (!jumped) a.phase += Math.hypot(w.x - a.lx, w.z - a.lz) / STRIDE * Math.PI * 2;
@@ -256,7 +266,10 @@ export function LiveScene3D(props: Props) {
             target = angleLerp(target, aim, rel.aim);
           }
           a.heading = jumped || firstFrame ? target : angleLerp(a.heading, target, Math.max(alpha, rel ? .35 : 0));
-          a.group.rotation.set(0, a.heading, 0);
+          // knocked down: he goes over backwards and slides, then gets back up (the rink's fall 0…1)
+          const fall = p.fall ?? 0;
+          a.group.rotation.set(-fall * 1.35, a.heading, 0);
+          if (fall > 0) a.group.position.y = -.05 * fall;
           if (!a.figure) { a.group.position.y = Math.abs(Math.sin(a.phase)) * .04 * clamp(speed / 7, 0, 1); continue; }
           a.group.updateMatrixWorld(true);
           const h1 = Math.atan2(-(b.z - b2.z), b.x - b2.x), h2 = motionDir;
@@ -273,7 +286,7 @@ export function LiveScene3D(props: Props) {
             carrierW = Math.max(carrierW, reachWeight);
             reach = local.clone();
           }
-          poses.push({ figure: a.figure, args: [a.phase, amp, shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind }], w: reachWeight, carrier: f.carrier === p.id });
+          poses.push({ figure: a.figure, args: [a.phase, amp * (1 - fall), shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind, deke: p.deke, check: p.check, poke: p.poke }], w: reachWeight, carrier: f.carrier === p.id });
         }
         let blade: { x: number; z: number; w: number } | null = null;
         for (const { figure, args, w, carrier } of poses) {

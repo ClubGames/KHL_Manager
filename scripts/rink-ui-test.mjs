@@ -164,6 +164,7 @@ try {
   // Fast sim pauses when a new inbox task appears; press again until match day.
   for (let k = 0; k < 8 && await toMatch.count(); k++) { await toMatch.click(); await match.waitForTimeout(150); const go = match.getByRole('button', { name: 'Всё равно продолжить', exact: true }); if (await go.count()) { await go.click(); await match.waitForTimeout(150); } }
   await match.getByRole('button', { name: 'Играть матч', exact: true }).click();
+  await match.locator('[data-match-mode="watch"]').click();
   await match.getByRole('button', { name: 'Начать матч', exact: true }).click();
   await match.locator('[data-live-rink]').waitFor();
   for (let i = 0; i < 4; i++) { await match.waitForTimeout(200); const close = match.getByRole('button', { name: 'Закрыть повтор', exact: true }); if (await close.count()) await close.click(); }
@@ -212,6 +213,7 @@ try {
   // Fast sim pauses when a new inbox task appears; press again until match day.
   for (let k = 0; k < 8 && await toMatch2.count(); k++) { await toMatch2.click(); await land.waitForTimeout(150); const go = land.getByRole('button', { name: 'Всё равно продолжить', exact: true }); if (await go.count()) { await go.click(); await land.waitForTimeout(150); } }
   await land.getByRole('button', { name: 'Играть матч', exact: true }).click();
+  await land.locator('[data-match-mode="watch"]').click();
   await land.getByRole('button', { name: 'Начать матч', exact: true }).click();
   await land.locator('[data-match-land]').waitFor();
   // the period starts once the intro window has faded out (≈0.2 s)

@@ -155,6 +155,7 @@ try {
     if (await pr.count()) await pr.first().click();
   }
   await page.getByRole('button', { name: 'Играть матч', exact: true }).click();
+  await page.locator('[data-match-mode="watch"]').click();
   await page.getByRole('button', { name: 'Начать матч', exact: true }).click();
   // ×4 comes from the settings.
   const x4 = page.locator('button.bg-ice', { hasText: '×4' }).locator('visible=true').first();
