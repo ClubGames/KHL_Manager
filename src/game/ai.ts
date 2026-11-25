@@ -206,10 +206,24 @@ export function lineupConstraintsFor(state: GameState, teamId: string): LineupCo
   };
 }
 
+/** The starting goalie is too tired to play and the backup is clearly fresher (the user's automatic rotation). */
+export function restTiredStarter(L: Pick<Lineup, 'starterG' | 'backupG'>, P: Record<string, Player>): boolean {
+  if (!L.starterG || !L.backupG) return false;
+  const s = P[L.starterG], b = P[L.backupG];
+  if (!s || !b || b.injury) return false;
+  const sf = goalieFreshness(s), bf = goalieFreshness(b);
+  return sf < 60 && bf >= sf + 15 && b.overall >= s.overall - 12;
+}
+
 export function prepareLineup(state: GameState, teamId: string): Lineup {
   const t = state.teams[teamId];
   const opts = lineupConstraintsFor(state, teamId);
-  if (teamId === state.userTeamId) return sanitizeLineup(t.lineup, t.players, state.players, opts);
+  if (teamId === state.userTeamId) {
+    const L = sanitizeLineup(t.lineup, t.players, state.players, opts);
+    // Goalie rotation (on unless the manager turned it off): a worn-out starter sits this one game out.
+    if (t.tactics?.autoGoalie !== false && restTiredStarter(L, state.players)) return { ...L, starterG: L.backupG, backupG: L.starterG };
+    return L;
+  }
   const L = autoLineup(t.players, state.players, opts);
   if (L.starterG && L.backupG) {
     const s = state.players[L.starterG];

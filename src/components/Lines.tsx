@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import type { Lineup, Player } from '../types';
-import { autoLineup, lineupConstraintsFor } from '../game/ai';
+import { autoLineup, lineupConstraintsFor, restTiredStarter } from '../game/ai';
 import { attackRating, defenseRating, isDefense, isForward, isGoalie, POS_RU } from '../game/ratings';
 import { autoFillLineup, setUserLineup, setUserTactics, swapStarterBackup, useGame } from '../game/state';
 import { countLineupLegionnaires, isLegionnaire, teamForeignLimit } from '../game/legionnaires';
@@ -483,6 +483,9 @@ export function Lines() {
                         {Array.from({ length: isPP ? 5 : 4 }, (_, j) => {
                           const id = L[k][j] ?? null;
                           const fwd = j < nF;
+                          // The slot shows the player's real position (Ц / ЛК / ПК / З); an empty one its usual role.
+                          const role: 'C' | 'LW' | 'RW' | 'D' = fwd ? (isPP ? (['LW', 'C', 'RW'] as const)[j] : (['C', 'LW'] as const)[j]) : 'D';
+                          const slotLabel = id && P[id] ? POS_RU[P[id].position] : role === 'LW' && !isPP ? 'Н' : POS_RU[role];
                           const title = `${unitName(i)} · ${fwd ? 'Нападающий' : 'Защитник'}`;
                           const special = { unit: k, idx: j };
                           const setter = (c: Lineup, v: string | null) => assignSpecial(c, k, j, v);
@@ -491,7 +494,7 @@ export function Lines() {
                               <Slot
                                 id={id}
                                 pref={fwd ? 'LW' : 'D'}
-                                label={fwd ? 'Н' : 'З'}
+                                label={slotLabel}
                                 slotTitle={title}
                                 setFn={setter}
                                 special={special}
@@ -544,6 +547,20 @@ export function Lines() {
                   );
                 })}
               </div>
+              <label className="mt-3 flex items-start gap-2 text-xs text-muted cursor-pointer select-none" data-auto-goalie>
+                <input
+                  type="checkbox"
+                  className="mt-0.5 accent-[var(--color-gold)] shrink-0"
+                  checked={tactics.autoGoalie !== false}
+                  onChange={(e) => setUserTactics({ autoGoalie: e.target.checked })}
+                />
+                <span>
+                  <span className="text-text font-semibold">Автоматическая ротация вратарей.</span> Если стартовый вратарь устал (свежесть ниже 60%), а запасной заметно свежее, на матч выходит запасной.
+                  {tactics.autoGoalie !== false && restTiredStarter(L, P) && L.backupG && P[L.backupG] && (
+                    <span className="block mt-0.5 text-amber" data-auto-goalie-rest>Следующий матч сыграет {P[L.backupG].name}.</span>
+                  )}
+                </span>
+              </label>
             </Panel>
 
             <Panel title={`Лимитчики ${LG()} (молодые игроки до 20 лет · ЕАЭС)`} data-u20-limiters>

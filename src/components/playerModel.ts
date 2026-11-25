@@ -256,6 +256,9 @@ export class PlayerFigure {
     });
   }
 
+  /** World position of the middle of the stick blade (after the pose of this frame). */
+  bladeWorld(out: T.Vector3): T.Vector3 { return this.blade.getWorldPosition(out); }
+
   /** Places the stick (heel on/near the ice, shaft towards `top`) and returns the two grip points. */
   private stick(heel: T.Vector3, top: T.Vector3, toeSign = 1, xSign = toeSign) {
     const dir = top.clone().sub(heel).normalize(), L = this.stickLength;

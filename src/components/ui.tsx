@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
 import { cn } from '../utils/cn';
 import type { PosCode, Team } from '../types';
@@ -249,7 +249,41 @@ export function Stat({ label, value, sub, color }: { label: string; value: React
 /** Open modals, newest last: Escape closes only the top one (a player card opened from a club card). */
 const modalStack: object[] = [];
 
+/** Length of the closing animation of a window (`.fade-out` / `.pop-out` in index.css). */
+export const CLOSE_MS = 200;
+export const reducedMotion = () => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/**
+ * Plays the closing animation of a window, then runs `done` (which actually removes it). Returns the closing flag
+ * and the starter; a second call while closing does nothing.
+ */
+export function useClosing(): [boolean, (done: () => void) => void] {
+  const [closing, setClosing] = useState(false);
+  const busy = useRef(false);
+  const timer = useRef(0);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  const start = useCallback((done: () => void) => {
+    if (busy.current) return;
+    if (reducedMotion()) { done(); return; }
+    busy.current = true;
+    setClosing(true);
+    timer.current = window.setTimeout(() => { busy.current = false; setClosing(false); done(); }, CLOSE_MS);
+  }, []);
+  return [closing, start];
+}
+
 export function Modal({ open, onClose, title, children, width = 'max-w-2xl' }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode; width?: string }) {
+  // After `open` turns false the window stays a moment with its last content and plays the closing animation.
+  const [shown, setShown] = useState(open);
+  const last = useRef<{ title?: ReactNode; children: ReactNode }>({ title, children });
+  if (open) last.current = { title, children };
+  useEffect(() => {
+    if (open) { setShown(true); return; }
+    if (!shown) return;
+    if (reducedMotion()) { setShown(false); return; }
+    const id = window.setTimeout(() => setShown(false), CLOSE_MS);
+    return () => window.clearTimeout(id);
+  }, [open, shown]);
   useEffect(() => {
     if (!open) return;
     const token = {};
@@ -270,28 +304,35 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl' }: {
       window.removeEventListener('keydown', h);
     };
   }, [open, onClose]);
-  if (!open) return null;
+  if (!open && !shown) return null;
+  const closing = !open;
+  const view = closing ? last.current : { title, children };
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-[2px]" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={cn('w-full bg-panel border-t sm:border border-line rounded-t-xl sm:rounded-md shadow-2xl max-h-[92dvh] flex flex-col fade-in pb-[env(safe-area-inset-bottom)] sm:pb-0', width)}>
-        <div className="sm:hidden flex justify-center pt-2 pb-0.5">
+    <div
+      className={cn('fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-[2px]', closing && 'fade-out pointer-events-none')}
+      onMouseDown={(e) => !closing && e.target === e.currentTarget && onClose()}
+      data-modal-closing={closing || undefined}
+    >
+      <div className={cn('w-full bg-panel border-t sm:border border-line rounded-t-xl sm:rounded-md shadow-2xl max-h-[92dvh] flex flex-col pb-[env(safe-area-inset-bottom)] sm:pb-0', closing ? 'pop-out' : 'fade-in', width)}>
+        <div className="sm:hidden land:hidden flex justify-center pt-2 pb-0.5">
           <span className="w-10 h-1 rounded-full bg-line" />
         </div>
-        {title ? (
+        {view.title ? (
           <header className="flex items-center justify-between gap-3 px-4 py-2.5 sm:py-3 border-b border-line bg-panel2/60">
-            <div className="min-w-0 font-semibold">{title}</div>
+            <div className="min-w-0 font-semibold">{view.title}</div>
             <button onClick={onClose} className="w-9 h-9 -mr-1.5 inline-flex items-center justify-center rounded-sm text-muted hover:text-text hover:bg-panel2 text-2xl leading-none shrink-0" aria-label="Закрыть">
               ×
             </button>
           </header>
         ) : (
-          <div className="sm:hidden flex justify-end px-3 pt-1">
-            <button onClick={onClose} className="w-8 h-8 inline-flex items-center justify-center rounded-sm text-muted hover:text-text bg-panel2/70 text-xl leading-none" aria-label="Закрыть">
+          // A window without a title still gets its close button: on phones (also held sideways) and on desktop.
+          <div className="flex justify-end px-3 pt-1 sm:pt-2 sm:-mb-2">
+            <button onClick={onClose} className="w-8 h-8 inline-flex items-center justify-center rounded-sm text-muted hover:text-text bg-panel2/70 hover:bg-panel2 text-xl leading-none" aria-label="Закрыть" data-modal-close>
               ×
             </button>
           </div>
         )}
-        <div className="overflow-y-auto overscroll-contain p-3.5 sm:p-4">{children}</div>
+        <div className="overflow-y-auto overscroll-contain p-3.5 sm:p-4">{view.children}</div>
       </div>
     </div>
   );

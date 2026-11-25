@@ -2,7 +2,7 @@ import type { CoachingEffects } from './coaching';
 import type { AttackStyle, ForecheckStyle, GameEvent, GameResult, Lineup, Player, PlayerGameLine, PullGoaliePolicy, ScoringPlay, ShotPoint, ShotZone, Strength, TeamGameStats, TeamTactics } from '../types';
 import { clamp, goalieSavePct, isGoalie, lineAttack, lineDefense, pairAttack, pairDefense, unitAttack, unitDefense } from './ratings';
 import { defaultTactics } from './defaults';
-import { ATTACK_STYLE_INFO, calcDefenseChemistry, calcForwardChemistry, effectiveGoalieOvr, FORECHECK_INFO, PULL_GOALIE_INFO } from './chemistry';
+import { ATTACK_STYLE_INFO, calcDefenseChemistry, calcForwardChemistry, effectiveGoalieOvr, FORECHECK_INFO, goalieFreshness, PULL_GOALIE_INFO } from './chemistry';
 import type { DerbyInfo } from './derbies';
 
 export interface SimTeam {
@@ -62,6 +62,19 @@ export const skatersFor = (running: number) => 5 - Math.min(2, running);
 
 const SHIFT = 40;
 const F_SHARE = [0.33, 0.27, 0.22, 0.18];
+/**
+ * Does the extra forward / defenceman (the KHL's 13th forward and 7th defenceman) take this even-strength shift?
+ * Mostly with the bottom six and the third pair, about 5–7 minutes a game each. Bit 1: the 13th forward (bits 2–3:
+ * the line slot he takes, a winger or the centre), bit 2: the 7th defenceman (bit 4: left or right of the pair).
+ */
+function extraShift(li: number): number {
+  const f = li === 3 ? 0.5 : li === 2 ? 0.12 : 0;
+  const d = li === 2 ? 0.4 : li === 1 ? 0.06 : 0;
+  let code = 0;
+  if (Math.random() < f) code |= 1 | ((Math.random() < 0.2 ? 0 : Math.random() < 0.5 ? 1 : 2) << 2);
+  if (Math.random() < d) code |= 2 | ((Math.random() < 0.5 ? 0 : 1) << 4);
+  return code;
+}
 /** chance of a penalty per 40-second shift */
 const PENALTY_RATE = 0.062;
 const PP_SHOT = 1.6;
@@ -92,7 +105,8 @@ const MINOR = ['подножка', 'удар клюшкой', 'задержка'
 const MAJOR = ['удар в голову', 'атака сзади', 'толчок на борт', 'удар локтем'];
 export const INJURY_TYPES = ['ушиб', 'растяжение', 'повреждение связок', 'перелом', 'сотрясение мозга', 'повреждение плеча', 'травма колена', 'растяжение паха', 'травма кисти', 'ушиб ноги', 'повреждение спины'];
 
-const blockLen = (k: BlockKind) => (k === 'ot3' ? 300 : k === 'so' ? 0 : 1200);
+/** Length of a block on the game clock: a period 20:00, the regular-season 3-on-3 overtime 5:00. */
+export const blockLen = (k: BlockKind) => (k === 'ot3' ? 300 : k === 'so' ? 0 : 1200);
 export const fmtClock = (s: number) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
 export function periodName(period: number, kind: BlockKind): string {
   if (kind === 'so') return 'Буллиты';
@@ -107,12 +121,17 @@ export const shootoutSkill = (p: Player) => (p.skills.shooting ?? 65) * 0.55 + (
 const skatersOf = (ids: (string | null)[], P: Record<string, Player>): string[] =>
   ids.filter((id): id is string => !!id && !!P[id] && !isGoalie(P[id]));
 
+/**
+ * Danger of a shot by where it is taken (× the goalie's base goal rate). Calibrated on KHL/NHL shot maps: a clean
+ * look from the crease goes in ≈18 % of the time, the slot ≈12 %, the circles ≈7 %, while a shot from the blue line
+ * (≈3 %) or a sharp angle (≈2 %) only beats a goalie through traffic or a deflection.
+ */
 const ZONE_MULT: Record<ShotZone, number> = {
   crease: 2.04,
-  slot: 1.48,
-  circles: 0.96,
-  point: 0.54,
-  perimeter: 0.41,
+  slot: 1.46,
+  circles: 0.9,
+  point: 0.33,
+  perimeter: 0.26,
 };
 
 function generateShotGeometry(
@@ -351,9 +370,9 @@ export class GameSim {
   }
 
   /** The five (four, three) on the ice for a line and manpower situation, with its ratings. */
-  private unit(i: TI, li: number, mode: Mode, useU20 = false, n = 5) {
+  private unit(i: TI, li: number, mode: Mode, useU20 = 0, n = 5) {
     const special = mode === 'pp' || mode === 'pk';
-    const u20Tag = useU20 && mode === 'ev' && li === 3 ? '|u20' : '';
+    const u20Tag = useU20 && mode === 'ev' ? `|u20:${useU20}` : '';
     const key = `${i}|${mode}|${special ? `${this.unitIdx[i] % 2}|${n}` : mode === 'ot3' ? 0 : li}${u20Tag}`;
     let u = this.units.get(key);
     if (!u) {
@@ -414,7 +433,13 @@ export class GameSim {
   private boxNow(): [[number, number][], [number, number][]] {
     return [this.pens[0].map((x): [number, number] => [x.start, x.end]), this.pens[1].map((x): [number, number] => [x.start, x.end])];
   }
+  /** Minutes of goalies already replaced this game, and the second the goalie now in net came in. */
+  private gMin: Record<string, number> = {};
+  private gOn: [number, number] = [0, 0];
   setGoalie(i: TI, id: string | null) {
+    const prev = this.goalies[i];
+    if (prev && prev !== id) this.gMin[prev] = (this.gMin[prev] ?? 0) + Math.max(0, Math.round((this.sec - this.gOn[i]) / 60));
+    if (prev !== id) this.gOn[i] = this.sec;
     this.goalies[i] = id;
   }
   get tied() {
@@ -465,7 +490,7 @@ export class GameSim {
     return out;
   }
 
-  private onIce(i: TI, li: number, mode: Mode, useU20 = false, n = 5): (string | null)[] {
+  private onIce(i: TI, li: number, mode: Mode, useU20 = 0, n = 5): (string | null)[] {
     const L = this.team(i).lineup;
     const F = L.F[li] ?? [null, null, null];
     const D = L.D[li % 3] ?? [null, null];
@@ -488,9 +513,11 @@ export class GameSim {
         return [f0[0] ?? null, f0[1] ?? null, d0[0] ?? null];
       }
       default: {
-        const f2 = useU20 && li === 3 && L.u20F && this.P[L.u20F] ? L.u20F : (F[2] ?? null);
-        const d1 = useU20 && li === 3 && L.u20D && this.P[L.u20D] ? L.u20D : (D[1] ?? null);
-        return [F[0] ?? null, F[1] ?? null, f2, D[0] ?? null, d1];
+        // the extra skaters (13th forward, 7th defenceman) take a turn in place of one man of the line / pair
+        const out = [F[0] ?? null, F[1] ?? null, F[2] ?? null, D[0] ?? null, D[1] ?? null];
+        if (mode === 'ev' && useU20 & 1 && L.u20F && this.P[L.u20F] && !out.includes(L.u20F)) out[(useU20 >> 2) & 3] = L.u20F;
+        if (mode === 'ev' && useU20 & 2 && L.u20D && this.P[L.u20D] && !out.includes(L.u20D)) out[3 + ((useU20 >> 4) & 1)] = L.u20D;
+        return out;
       }
     }
   }
@@ -594,15 +621,30 @@ export class GameSim {
           continue;
         }
       }
+      // 2. A goalie change at the intermission: a bad night (too many goals on too few shots) or a worn-out goalie.
+      if (t === 0 && this.period >= 2 && !this.aiDone.has(tag('goalie'))) {
+        const gid = this.goalies[i], backup = this.team(i).lineup.backupG;
+        if (gid && backup && backup !== gid && this.P[backup] && !this.P[backup].injury) {
+          const gl = this.line(gid), sv = gl.shotsAgainst ? gl.saves / gl.shotsAgainst : 1;
+          const bad = gl.goalsAgainst >= 5 || (gl.goalsAgainst >= 4 && sv < 0.87) || (gl.goalsAgainst >= 3 && sv < 0.8);
+          const spent = this.period === 3 && goalieFreshness(this.P[gid]) < 40 && goalieFreshness(this.P[backup]) >= 70 && gl.shotsAgainst >= 18 && diff <= 0;
+          if (bad || spent) {
+            this.aiDone.add(tag('goalie'));
+            this.setGoalie(i, backup);
+            note(`🔄 «${this.label(i)}» меняет вратаря: в воротах ${this.P[backup].name} вместо ${this.P[gid]?.name ?? 'стартового'} (${bad ? `${gl.goalsAgainst} шайб после ${gl.shotsAgainst} бросков` : 'стартовый вратарь выдохся'}).`);
+            continue;
+          }
+        }
+      }
       if (this.period !== 3) continue;
-      // 2. Timeout before pulling the goalie in a close game.
+      // 3. Timeout before pulling the goalie in a close game.
       const pullSec = PULL_GOALIE_INFO[this.tactics[i].pullGoalie].secondsLeft;
       if (!this.timeoutUsed[i] && diff < 0 && diff >= -2 && pullSec > 0 && left <= pullSec + 40 && left > pullSec - 40) {
         this.useTeamTimeout(i, this.sec);
         note(`⏱ Тайм-аут «${this.label(i)}» перед концовкой — тренер готовит игру в большинстве с шестым полевым.`);
         continue;
       }
-      // 3. Late game shape.
+      // 4. Late game shape.
       if (left <= 420 && diff < 0 && diff >= -2 && !this.aiDone.has(tag('press'))) {
         this.aiDone.add(tag('press'));
         this.tactics[i] = { ...this.tactics[i], forecheck: 'aggressive', style: 'shoot' };
@@ -726,10 +768,7 @@ export class GameSim {
       this.sec = sec;
       if (kind === 'reg') this.aiBench(dur, t);
       const li: [number, number] = [this.pickLine(0, kind), this.pickLine(1, kind)];
-      const u20Shift: [boolean, boolean] = [
-        kind === 'reg' && li[0] === 3 && Math.random() < 0.25,
-        kind === 'reg' && li[1] === 3 && Math.random() < 0.25,
-      ];
+      const u20Shift: [number, number] = [kind === 'reg' ? extraShift(li[0]) : 0, kind === 'reg' ? extraShift(li[1]) : 0];
       const situation = (): { modes: [Mode, Mode]; ice: [(string | null)[], (string | null)[]]; men: [number, number] } => {
         // Overtime 3-on-3 ignores penalties; regulation and the playoff 5-on-5 overtime count every man in the box.
         const men: [number, number] = kind === 'ot3' ? [3, 3] : this.men();
@@ -821,7 +860,7 @@ export class GameSim {
     modes: [Mode, Mode],
     emptyNet: TI | -1,
     li: [number, number],
-    u20Shift: [boolean, boolean],
+    u20Shift: [number, number],
     men: [number, number] = [5, 5]
   ): 'none' | 'goal' | 'shot' {
     const mine = this.unit(i, li[i], modes[i], u20Shift[i], men[i]);
@@ -886,9 +925,9 @@ export class GameSim {
 
     const geo = generateShotGeometry(i, sp, onPP, mode, emptyNet === o, this.tactics[i].style);
     const avgSv = goalieSavePct(77);
-    const rawXg = emptyNet === o ? 0.32 : clamp((1 - avgSv) * q * geo.zMult, 0.015, 0.42);
+    const rawXg = emptyNet === o ? 0.32 : clamp((1 - avgSv) * q * geo.zMult, 0.006, 0.42);
     const xg = Math.round(rawXg * 1000) / 1000;
-    const pGoal = emptyNet === o ? 0.32 : clamp((1 - sv) * q * geo.zMult, 0.015, 0.42);
+    const pGoal = emptyNet === o ? 0.32 : clamp((1 - sv) * q * geo.zMult, 0.006, 0.42);
     const goal = Math.random() < pGoal;
     const strength: Strength = emptyNet === o ? 'EN' : onPP ? 'PP' : onSH ? 'SH' : mode === '4v4' || (mode === 'ot3' && kind !== 'ot3') ? '4v4' : 'EV';
     const teamId = this.team(i).id;
@@ -1154,9 +1193,10 @@ export class GameSim {
     const [h, a] = this.score;
     const winner: TI = h > a ? 0 : 1;
     const mins = this.hadSO ? 65 : Math.min(65, Math.round(this.sec / 60));
+    for (const [id, m] of Object.entries(this.gMin)) this.line(id).minutes = m;
     for (const i of [0, 1] as TI[]) {
       const gid = this.goalies[i];
-      if (gid) this.line(gid).minutes = mins;
+      if (gid) this.line(gid).minutes = (this.gMin[gid] ?? 0) + Math.max(0, mins - Math.round(this.gOn[i] / 60));
     }
     const dressed = (st: SimTeam) =>
       [...st.lineup.F.flat(), ...st.lineup.D.flat(), st.lineup.u20F, st.lineup.u20D, st.lineup.starterG, st.lineup.backupG].filter(

@@ -166,7 +166,7 @@ export function LiveScene3D(props: Props) {
       let motion: LiveMotion | null = null;
       const focus = { x: 0, z: 0, init: false };
       let lastTau = NaN, lastNow = performance.now(), lastCam = '', firstFrame = true;
-      const puckWorld = new T.Vector3(), local = new T.Vector3();
+      const puckWorld = new T.Vector3(), local = new T.Vector3(), puckOff = { x: 0, z: 0 };
       const aspect = () => camera.aspect;
       let settled = false;
 
@@ -205,7 +205,7 @@ export function LiveScene3D(props: Props) {
         const prevOf = new Map(fb.skaters.map(p => [p.id, p.pos])), prev2Of = new Map(fb2.skaters.map(p => [p.id, p.pos]));
         const alpha = 1 - Math.exp(-dTau * 9);
         let carrierW = 0;
-        const poses: { figure: PlayerFigure; args: Parameters<PlayerFigure['skate']> ; w: number }[] = [];
+        const poses: { figure: PlayerFigure; args: Parameters<PlayerFigure['skate']> ; w: number; carrier: boolean }[] = [];
         for (const p of shown) {
           const a = actorFor(p.id, p.side, !!p.goalie);
           const w = toWorld(p.pos), b = toWorld(prevOf.get(p.id) ?? p.pos), b2 = toWorld(prev2Of.get(p.id) ?? prevOf.get(p.id) ?? p.pos);
@@ -242,9 +242,11 @@ export function LiveScene3D(props: Props) {
             a.figure.goalie({ drop, lateral: clamp(lateral, -1, 1), save, saveWeight, poke: pl, pokeWeight, look: clamp(angleDiff(a.heading, facePuck), -1.2, 1.2) });
             continue;
           }
-          // Heading: along the motion when skating, toward the puck when standing; turned to the target in a release.
+          // Heading: the rink AI's own facing (forward along the motion, backwards facing the puck when he retreats,
+          // to the puck when standing — the blade, and the puck on it, are where the 2D rink has them); turned to the
+          // target in a release.
           const motionDir = Math.atan2(-(w.z - b.z), w.x - b.x);
-          let target = angleLerp(facePuck, motionDir, smooth01(moved / .35));
+          let target = p.dir ? Math.atan2(-p.dir.y, p.dir.x) : angleLerp(facePuck, motionDir, smooth01(moved / .35));
           const hand: 1 | -1 = players[p.id]?.hand === 'L' ? -1 : 1;
           const rel = motion.releaseAt(p.id, tau);
           let turnAway = 0;
@@ -271,11 +273,22 @@ export function LiveScene3D(props: Props) {
             carrierW = Math.max(carrierW, reachWeight);
             reach = local.clone();
           }
-          poses.push({ figure: a.figure, args: [a.phase, amp, shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind }], w: reachWeight });
+          poses.push({ figure: a.figure, args: [a.phase, amp, shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind }], w: reachWeight, carrier: f.carrier === p.id });
         }
-        for (const { figure, args, w } of poses) {
+        let blade: { x: number; z: number; w: number } | null = null;
+        for (const { figure, args, w, carrier } of poses) {
           const o = args[4]!;
           figure.skate(args[0], args[1], args[2], args[3], { ...o, reachWeight: w >= carrierW - 1e-6 ? w : w * .35 });
+          if (carrier && w > 0) { figure.bladeWorld(local); blade = { x: local.x, z: local.z, w }; }
+        }
+        // The carried puck sits on the blade of the 3D stick (the stick cups the rink AI's puck; what is left of the
+        // gap goes to the puck). A pass or a shot leaves from there and the offset fades out within a few frames.
+        const off = blade && Math.hypot(blade.x - pw.x, blade.z - pw.z) < 1 ? { x: (blade.x - pw.x) * smooth01(blade.w * 1.4), z: (blade.z - pw.z) * smooth01(blade.w * 1.4) } : { x: 0, z: 0 };
+        const kOff = blade ? 1 : 1 - Math.exp(-dTau * 14);
+        puckOff.x += (off.x - puckOff.x) * kOff; puckOff.z += (off.z - puckOff.z) * kOff;
+        if (Math.abs(puckOff.x) + Math.abs(puckOff.z) > 1e-4) {
+          puck.position.x = pw.x + puckOff.x; puck.position.z = pw.z + puckOff.z;
+          puckShadow.position.x = puck.position.x; puckShadow.position.z = puck.position.z;
         }
         firstFrame = false;
         // Camera: follows a smoothed point of play, slightly ahead of the puck, in real time (not rink time).

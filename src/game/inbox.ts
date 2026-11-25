@@ -1,5 +1,5 @@
 import type { GameState } from '../types';
-import { tradeWindow } from './ai';
+import { restTiredStarter, tradeWindow } from './ai';
 import { getCapSummary } from './cap';
 import { goalieFreshness } from './chemistry';
 import { formatInjuryDays } from './medical';
@@ -76,7 +76,8 @@ export function buildInbox(state: GameState, includeDismissed = false): InboxTas
     const fresh = goalieFreshness(g);
     if (gameToday && g && fresh < 62) {
       const b = L.backupG ? P[L.backupG] : null;
-      out.push({ id: `goalie-${state.day}`, severity: 'warn', kind: 'goalie', title: 'Вратарь устал', text: `${g.name}: свежесть ${fresh}%${b ? `. ${b.name} свеж на ${goalieFreshness(b)}% — может, дать ему матч?` : ''}`, view: 'lines', playerId: g.id });
+      const auto = U.tactics?.autoGoalie !== false && restTiredStarter(L, P);
+      if (!auto) out.push({ id: `goalie-${state.day}`, severity: 'warn', kind: 'goalie', title: 'Вратарь устал', text: `${g.name}: свежесть ${fresh}%${b ? `. ${b.name} свеж на ${goalieFreshness(b)}% — может, дать ему матч?` : ''}`, view: 'lines', playerId: g.id });
     }
   }
   for (const p of mine) {

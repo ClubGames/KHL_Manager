@@ -100,7 +100,8 @@ try {
   // (Playwright's stability check on top-layer fullscreen content is flaky under software WebGL load)
   await cont.click({ force: true });
   await waitFs(page, null);
-  assert.equal(await page.getByRole('dialog', { name: '3D-повтор гола' }).count(), 0);
+  // the replay fades out (≈0.2 s) before it leaves the page
+  await page.getByRole('dialog', { name: '3D-повтор гола' }).waitFor({ state: 'detached', timeout: 2000 });
   ok('replay fullscreen: fills the screen, canvas resizes, F toggles, closing exits fullscreen');
 
   // 3. Browser without element fullscreen (iPhone Safari): replay fills the viewport, game shows home-screen help
