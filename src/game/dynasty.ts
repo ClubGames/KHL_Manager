@@ -5,6 +5,7 @@ import { isLegionnaire } from './legionnaires';
 import { recommendYouthPlan } from './training';
 import { scoutingMaxSpread } from './medical';
 import { activeKhlCount, MAX_VHL_PLAYERS, vhlCount } from './khlRules';
+import { LG } from '../brand';
 
 /** KHL young-player extra match roster limit ("лимитчик" U20, domestic/EAEU skater). */
 export const U20_MAX_AGE = 20;
@@ -63,7 +64,7 @@ export function shouldVeteranRetire(p: Player): boolean {
 export function buildHallOfFameEntry(state: GameState, p: Player, forceJersey = false): HallOfFameEntry {
   const tot = careerTotals(p, state.league.season);
   const lastTeamId = p.teamId ?? ([...p.history].reverse().find((h) => h.teamId)?.teamId ?? null);
-  const teamName = lastTeamId && state.teams[lastTeamId] ? state.teams[lastTeamId].name : 'КХЛ';
+  const teamName = lastTeamId && state.teams[lastTeamId] ? state.teams[lastTeamId].name : LG();
   const jerseyRetired =
     forceJersey ||
     tot.peakOvr >= 82 ||

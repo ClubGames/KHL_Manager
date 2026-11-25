@@ -10,7 +10,7 @@ import type { GameEvent, GameState } from '../src/types';
 
 let failed = 0;
 const check = (name: string, ok: boolean, extra = '') => { if (!ok) failed++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`); };
-const r = parseRosterText(readFileSync('public/rostfdfer.json', 'utf8'));
+const r = parseRosterText(readFileSync('scripts/fixtures/test-roster.json', 'utf8'));
 
 const attemptsOf = (ev: GameEvent[]) => ev.filter((e) => e.type === 'so_goal' || e.type === 'so_miss');
 let n = 0, att = 0, goals = 0, early = 0, sudden = 0, bad: string[] = [];

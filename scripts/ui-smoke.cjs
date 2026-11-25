@@ -11,7 +11,7 @@ const html = fs
   .replace('<script type="module" crossorigin>', '<script>window.__app=function(){')
   .replace('</script>', '};document.addEventListener("DOMContentLoaded",window.__app);</script>')
   .replace(/import\.meta/g, '({url:"http://localhost/",env:{}})');
-const roster = fs.readFileSync('public/rostfdfer.json', 'utf8');
+const roster = fs.readFileSync('scripts/fixtures/test-roster.json', 'utf8');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const errors = [];
 let failed = 0;
@@ -30,7 +30,7 @@ function boot(seed, rosterText) {
     virtualConsole: vc,
     url: 'http://localhost/',
     beforeParse(window) {
-      window.fetch = (url) => (String(url).includes('roster.json') ? Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(rosterText || roster) }) : Promise.reject(new Error('no ' + url)));
+      window.fetch = (url) => (String(url).includes('mods/KHL_2627/roster.json') ? Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(rosterText || roster) }) : Promise.reject(new Error('no ' + url)));
       window.Element.prototype.scrollTo = window.Element.prototype.scrollTo || function () {};
       window.scrollTo = function () {}; // jsdom has no viewport scrolling implementation.
       if (USE_IDB) window.indexedDB = global.indexedDB;

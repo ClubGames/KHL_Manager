@@ -13,6 +13,7 @@ import type { CoachAnswer, ContractAnswer } from '../game/state';
 import type { PlayerPitch } from '../types';
 import { Button, Modal, OverallChip, PosBadge, Stat, Tag } from './ui';
 import { cn } from '../utils/cn';
+import { LG } from '../brand';
 
 const yearsWord = (n: number) => (n === 1 ? 'год' : n < 5 ? 'года' : 'лет');
 const seasonLabel = (s: string, plus: number) => {
@@ -267,7 +268,7 @@ export function NegotiationModal({ id, onClose }: { id: string; onClose: () => v
                 {value ? 'Двусторонний' : 'Односторонний'}
               </label>)}
             </div>
-            <p className="mt-2 text-xs text-muted">{!allowTwoWay ? 'Игрок не согласен на двусторонний контракт: доступен молодым и игрокам ротации (до 76 OVR).' : effectiveTwoWay ? `КХЛ / ВХЛ: свободные переводы, в ВХЛ оклад не учитывается в потолке${p.age > 22 ? ' · +6% к запросу' : ''}.` : 'КХЛ: перевод в ВХЛ по общим правилам.'}</p>
+            <p className="mt-2 text-xs text-muted">{!allowTwoWay ? 'Игрок не согласен на двусторонний контракт: доступен молодым и игрокам ротации (до 76 OVR).' : effectiveTwoWay ? `${LG()} / ВХЛ: свободные переводы, в ВХЛ оклад не учитывается в потолке${p.age > 22 ? ' · +6% к запросу' : ''}.` : `${LG()}: перевод в ВХЛ по общим правилам.`}</p>
           </fieldset>
           {allowNmc && (
             <label className="mt-3 flex items-center justify-between gap-2 rounded-sm border border-line bg-panel2/60 px-3 py-2 text-xs cursor-pointer">

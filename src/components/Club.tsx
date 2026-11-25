@@ -25,6 +25,7 @@ import {
 } from '../game/state';
 import { Bar, Button, OverallChip, Panel, PosBadge, Stat, Tag, useUI } from './ui';
 import { cn } from '../utils/cn';
+import { LG } from '../brand';
 
 export function Club() {
   const s = useGame()!;
@@ -170,7 +171,7 @@ export function Club() {
 
       {/* Medical Center: Calendar-Day Injuries, LTIR (ДСБТ) & Playoff «На уколах» */}
       <Panel
-        title="Медицинский бюллетень и список ДСБТ КХЛ"
+        title={`Медицинский бюллетень и список ДСБТ ${LG()}`}
         right={
           <span className="text-xs text-muted">
             Восстановление идёт каждый календарный день · ДСБТ (от {LTIR_MIN_DAYS} дн.) снимает 100% зарплаты с потолка
@@ -283,7 +284,7 @@ export function Club() {
 
       {/* KHL All-Star Weekend (Неделя Звёзд КХЛ) */}
       <Panel
-        title="★ Неделя Звёзд КХЛ (Запад vs Восток)"
+        title={`★ Неделя Звёзд ${LG()} (Запад vs Восток)`}
         right={
           s.allStar ? (
             <Tag color="#F2B544">
@@ -297,7 +298,7 @@ export function Club() {
         {!s.allStar ? (
           <div className="text-xs text-text/85 leading-relaxed">
             В середине регулярного чемпионата ({seasonDateOnly(targetAsgDay, regLen, s.league.season)}) лучшие бомбардиры и вратари{' '}
-            <b>Запада</b> и <b>Востока</b> встретятся в Матче Звёзд КХЛ и Мастер-шоу. Каждый вызванный игрок вашего клуба получит{' '}
+            <b>Запада</b> и <b>Востока</b> встретятся в Матче Звёзд {LG()} и Мастер-шоу. Каждый вызванный игрок вашего клуба получит{' '}
             <b className="text-ok">+8 к морали</b> и принесёт <b className="text-gold">+15,0 млн ₽</b> медиа-бонуса в бюджет клуба, а остальные вратари лиги дополнительно восстановят свежесть.
           </div>
         ) : (

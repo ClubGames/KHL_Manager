@@ -1,4 +1,4 @@
-// КХЛ ГМ for Windows: the same web build as the browser version, in its own window.
+// Hockey Simulator Manager for Windows: the same web build as the browser version, in its own window.
 // - served from a private app:// origin (careers live in the app's own storage, fetch() of roster.json works);
 // - GPU acceleration forced on (no blocklist fallback to software rendering) and no background throttling;
 // - files (videos, saves, roster) are written through the system «Save as» dialog;
@@ -59,7 +59,7 @@ function createWindow({ show = true } = {}) {
     minWidth: 800,
     minHeight: 500,
     show: false,
-    title: 'КХЛ ГМ',
+    title: 'Хоккейный Симулятор Менеджера – Hockey Simulator Manager',
     backgroundColor: '#0b1420',
     autoHideMenuBar: true,
     icon: path.join(WEB_ROOT, 'icon-512.png'),

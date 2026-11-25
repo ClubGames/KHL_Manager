@@ -30,8 +30,31 @@ function buildInfo() {
 const BUILD = buildInfo();
 
 /**
+ * Mod folders (`mods/<id>/` with a roster.json) in the order of `mods/index.json`, then the rest alphabetically.
+ * A static site can't list a directory, so the game reads this list from mods/index.json.
+ */
+function scanMods(modsDir: string): string[] {
+  if (!fs.existsSync(modsDir)) return [];
+  let listed: string[] = [];
+  try {
+    const idx = JSON.parse(fs.readFileSync(path.join(modsDir, "index.json"), "utf8"));
+    listed = (Array.isArray(idx) ? idx : idx?.mods ?? []).map((x: unknown) => (typeof x === "string" ? x : (x as { id?: string })?.id)).filter(Boolean);
+  } catch {
+    /* no index yet */
+  }
+  const found = fs
+    .readdirSync(modsDir, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && fs.existsSync(path.join(modsDir, d.name, "roster.json")))
+    .map((d) => d.name)
+    .sort();
+  return [...listed.filter((id) => found.includes(id)), ...found.filter((id) => !listed.includes(id))];
+}
+const modIndexText = (ids: string[]) => JSON.stringify({ mods: ids }, null, 2) + "\n";
+
+/**
  * Ensures `dist/` is a self-contained static bundle ready for GitHub Pages (`/KHL_Manager/` or any static path):
- * copies root `roster.json` alongside `dist/index.html`, removes internal test fixtures, and writes `.nojekyll`.
+ * lists the mod folders in `dist/mods/index.json` and writes `.nojekyll`.
+ * The dev server answers `mods/index.json` from the folders in `public/mods` the same way.
  */
 function githubPagesBundle(): Plugin {
   let outDir = path.resolve(__dirname, "dist");
@@ -40,17 +63,18 @@ function githubPagesBundle(): Plugin {
     configResolved(cfg) {
       outDir = path.resolve(cfg.root, cfg.build.outDir);
     },
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        if (!/\/mods\/index\.json(\?|$)/.test(req.url ?? "")) return next();
+        res.setHeader("Content-Type", "application/json; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store");
+        res.end(modIndexText(scanMods(path.resolve(__dirname, "public/mods"))));
+      });
+    },
     closeBundle() {
       if (!fs.existsSync(outDir)) return;
-      const rootRoster = path.resolve(__dirname, "roster.json");
-      const distRoster = path.join(outDir, "roster.json");
-      if (fs.existsSync(rootRoster)) {
-        fs.copyFileSync(rootRoster, distRoster);
-      }
-      const scratchRoster = path.join(outDir, "rostfdfer.json");
-      if (fs.existsSync(scratchRoster)) {
-        fs.rmSync(scratchRoster, { force: true });
-      }
+      const modsDir = path.join(outDir, "mods");
+      if (fs.existsSync(modsDir)) fs.writeFileSync(path.join(modsDir, "index.json"), modIndexText(scanMods(modsDir)));
       fs.writeFileSync(path.join(outDir, ".nojekyll"), "");
       fs.writeFileSync(path.join(outDir, "version.json"), JSON.stringify({ ...BUILD, date: new Date(BUILD.build * 1000).toISOString() }) + "\n");
     },

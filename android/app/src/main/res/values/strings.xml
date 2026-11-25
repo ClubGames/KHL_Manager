@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">КХЛ ГМ</string>
-    <string name="title_activity_main">КХЛ ГМ</string>
+    <string name="app_name">Hockey Simulator Manager</string>
+    <string name="title_activity_main">Хоккейный Симулятор Менеджера</string>
     <string name="package_name">com.clubgames.khlgm</string>
     <string name="custom_url_scheme">com.clubgames.khlgm</string>
 </resources>

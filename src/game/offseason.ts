@@ -15,6 +15,7 @@ import { ageScoutingReports } from './scouting';
 import { createPreseason } from './preseason';
 import { autoCompleteDraft, createJuniorDraft, processVeteranRetirements } from './dynasty';
 import { activeKhlCount, isRfaEligibleAge, maybeGenerateAiRfaOffer } from './khlRules';
+import { LG } from '../brand';
 
 export function toFreeAgency(state: GameState, id: string, keepRightsTeamId?: string | null) {
   const p = state.players[id];
@@ -123,7 +124,7 @@ export function startOffseason(state: GameState): OffseasonPlan {
   addNews(
     state,
     'info',
-    `Открыта Ярмарка юниоров КХЛ и выпуск академий МХЛ (${draft.rounds} раунда): выберите молодых игроков 17–19 лет в разделе «Межсезонье».`,
+    `Открыта Ярмарка юниоров ${LG()} и выпуск академий МХЛ (${draft.rounds} раунда): выберите молодых игроков 17–19 лет в разделе «Межсезонье».`,
     state.userTeamId
   );
 
@@ -148,7 +149,7 @@ export function qualifyUserRfa(state: GameState, id: string): string | null {
   addNews(
     state,
     'trade',
-    `«${state.teams[U].name}» сделала квалификационное предложение ${p.name} (ОСА) и закрепила спортивные права в КХЛ.`,
+    `«${state.teams[U].name}» сделала квалификационное предложение ${p.name} (ОСА) и закрепила спортивные права в ${LG()}.`,
     U
   );
   // Chance of an incoming AI offer sheet on qualified RFAs
@@ -162,7 +163,7 @@ export function qualifyUserRfa(state: GameState, id: string): string | null {
       addNews(
         state,
         'offer',
-        `ОФФЕРШИТ КХЛ: «${from.name}» предложил вашему ОСА ${state.players[sheet.playerId].name} контракт ${formatMoney(sheet.salary)} × ${sheet.years} г. Повторите предложение или получите компенсацию ${formatMoney(sheet.compensation)}!`,
+        `ОФФЕРШИТ ${LG()}: «${from.name}» предложил вашему ОСА ${state.players[sheet.playerId].name} контракт ${formatMoney(sheet.salary)} × ${sheet.years} г. Повторите предложение или получите компенсацию ${formatMoney(sheet.compensation)}!`,
         U
       );
     }

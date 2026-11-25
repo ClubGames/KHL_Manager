@@ -2,6 +2,7 @@ import type { ClubEvent, ClubEventKind, Game, GameResult, GameState, Lineup, Pla
 import { clamp, fairSalary, formatMoney, isDefense, isForward, isGoalie, points } from './ratings';
 import { isLegionnaire } from './legionnaires';
 import { assignTeamRole } from './chemistry';
+import { LG } from '../brand';
 
 /**
  * The dressing room: players come with wishes, get into conflicts, agents call, fans and the city want
@@ -322,7 +323,7 @@ const GENS: Gen[] = [
       return {
         title: `${p.name} просится в основу`,
         text: pick([
-          `${p.name} набирает очки в ВХЛ и звонит сам: «Я готов к КХЛ. Сколько ещё ждать?»`,
+          `${p.name} набирает очки в ВХЛ и звонит сам: «Я готов к ${LG()}. Сколько ещё ждать?»`,
           `Тренер фарм-клуба считает, что ${lastName(p)} перерос ВХЛ. Игрок ждёт вызова.`,
         ]),
         playerIds: [p.id],

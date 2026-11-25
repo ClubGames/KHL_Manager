@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { parseRosterText } from '../src/game/roster';
 import { GameSim } from '../src/game/engine';
 
-const r = parseRosterText(readFileSync('public/rostfdfer.json', 'utf8'));
+const r = parseRosterText(readFileSync('scripts/fixtures/test-roster.json', 'utf8'));
 const h = r.teams[0], a = r.teams[1];
 const res = new GameSim({ id: h.id, lineup: h.lineup }, { id: a.id, lineup: a.lineup }, r.players).runAll();
 const evs = res.events;

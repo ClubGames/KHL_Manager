@@ -1,6 +1,7 @@
 import type { GameState, Player, RfaOfferSheet, Team, WaiverItem } from '../types';
 import { clamp, fairSalary, formatMoney } from './ratings';
 import { countRosterLegionnaires, isLegionnaire, teamForeignLimit } from './legionnaires';
+import { LG } from '../brand';
 
 /** KHL Unrestricted Free Agent age threshold (28+ = НСА, < 28 = ОСА). */
 export const UFA_MIN_AGE = 28;
@@ -196,14 +197,14 @@ export function processDailyWaivers(
       p.inVhl = false;
       claimedBy.players.push(p.id);
       onNews(
-        `Драфт отказов КХЛ: «${claimedBy.name}» забрал ${p.name} (${formatMoney(p.contract.salary)}) из «${fromTeam.name}»!`,
+        `Драфт отказов ${LG()}: «${claimedBy.name}» забрал ${p.name} (${formatMoney(p.contract.salary)}) из «${fromTeam.name}»!`,
         w.fromTeamId === state.userTeamId ? state.userTeamId : claimedBy.id
       );
     } else {
       p.inVhl = true;
       if (w.fromTeamId === state.userTeamId) {
         onNews(
-          `${p.name} прошёл драфт отказов КХЛ без претензий и командирован в фарм-клуб ВХЛ (разгрузка ФОТ: ${formatMoney(vhlPlayerCapRelief(p))}).`,
+          `${p.name} прошёл драфт отказов ${LG()} без претензий и командирован в фарм-клуб ВХЛ (разгрузка ФОТ: ${formatMoney(vhlPlayerCapRelief(p))}).`,
           state.userTeamId
         );
       }

@@ -72,6 +72,7 @@ function SaveCard({ meta, current, busy, onAct, onRenamed }: { meta: SaveMeta; c
             {meta.teamName}
             {meta.city ? ` · ${meta.city}` : ''} · сезон {meta.season}
             {meta.seasonNumber > 1 ? ` (${meta.seasonNumber}-й сезон карьеры)` : ''}
+            {meta.mod ? <span data-save-mod> · мод «{meta.mod}»</span> : null}
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-sm mt-1.5 tabular">
             <span>{progress(meta)}</span>

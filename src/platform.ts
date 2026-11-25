@@ -1,4 +1,5 @@
 import { Capacitor } from '@capacitor/core';
+import { GAME_NAME_EN } from './brand';
 
 /**
  * Where the game runs: the browser, the Windows app (Electron, see `desktop/`) or the Android app
@@ -66,7 +67,7 @@ function browserDownload(blob: Blob, name: string) {
 /**
  * Saves a file the platform's way:
  * - Windows app: the system «Save as» dialog (videos start in «Видео», the rest in «Документы»);
- * - Android app: a copy in «Документы/КХЛ ГМ» plus the share sheet (Telegram, Drive, gallery…);
+ * - Android app: a copy in «Документы/Hockey Simulator Manager» plus the share sheet (Telegram, Drive, gallery…);
  * - browser: a normal download.
  */
 export async function saveFile(blob: Blob, name: string, kind: FileKind): Promise<SaveResult> {
@@ -80,8 +81,8 @@ export async function saveFile(blob: Blob, name: string, kind: FileKind): Promis
     const data = await blobToBase64(blob);
     let uri: string, where: string;
     try {
-      uri = (await Filesystem.writeFile({ path: `КХЛ ГМ/${name}`, data, directory: Directory.Documents, recursive: true })).uri;
-      where = `Документы/КХЛ ГМ/${name}`;
+      uri = (await Filesystem.writeFile({ path: `${GAME_NAME_EN}/${name}`, data, directory: Directory.Documents, recursive: true })).uri;
+      where = `Документы/${GAME_NAME_EN}/${name}`;
     } catch {
       // No access to the shared folder on this device: keep it in the app and hand it to the share sheet.
       uri = (await Filesystem.writeFile({ path: name, data, directory: Directory.Cache })).uri;

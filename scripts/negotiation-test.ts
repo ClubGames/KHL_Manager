@@ -9,7 +9,7 @@ import { bonusChance, bonusTargets, settleBonuses } from '../src/game/bonuses';
 
 let failed = 0;
 const check = (name: string, ok: boolean, extra = '') => { if (!ok) failed++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`); };
-const text = readFileSync('public/rostfdfer.json', 'utf8');
+const text = readFileSync('scripts/fixtures/test-roster.json', 'utf8');
 const st = () => G.store.get()!;
 G.store.set(G.createGameState(parseRosterText(text), 'ska'));
 G.store.update((s) => { s.teams.ska.budget = 5e9; s.league.salaryCap = 5e9; });

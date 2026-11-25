@@ -7,7 +7,7 @@ const html = fs.readFileSync('dist/index.html', 'utf8')
   .replace('<script type="module" crossorigin>', '<script>window.__app=function(){')
   .replace('</script>', '};document.addEventListener("DOMContentLoaded",window.__app);</script>')
   .replace(/import\.meta/g, '({url:"http://localhost/",env:{}})');
-const roster = fs.readFileSync('roster.json', 'utf8');
+const roster = fs.readFileSync('public/mods/KHL_2627/roster.json', 'utf8');
 const errors = [];
 const pause = (ms = 100) => new Promise((resolve) => setTimeout(resolve, ms));
 function boot(seed = {}) {

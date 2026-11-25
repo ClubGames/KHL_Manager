@@ -8,12 +8,12 @@
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black" />
-    <meta name="apple-mobile-web-app-title" content="КХЛ ГМ" />
+    <meta name="apple-mobile-web-app-title" content="Hockey Simulator Manager" />
     <link rel="manifest" href="./manifest.webmanifest" />
     <link rel="apple-touch-icon" href="./icon-180.png" />
-    <meta name="description" content="КХЛ Генеральный менеджер — хоккейный симулятор управления клубом: звенья, обмены, плей-офф Кубка Гагарина. Ростер загружается из roster.json." />
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230b1420'/%3E%3Cellipse cx='16' cy='12' rx='11' ry='5' fill='%23e5323e'/%3E%3Cpath d='M5 12v8c0 2.8 4.9 5 11 5s11-2.2 11-5v-8' fill='%23b8202c'/%3E%3Cellipse cx='16' cy='12' rx='7' ry='3' fill='%230b1420' opacity='.25'/%3E%3C/svg%3E" />
-    <title>КХЛ Генеральный менеджер — хоккейный симулятор</title>
+    <meta name="description" content="Хоккейный Симулятор Менеджера (Hockey Simulator Manager) — управление хоккейным клубом: звенья, обмены, контракты, плей-офф. Лиги подключаются модами." />
+    <link rel="icon" type="image/png" href="./favicon.png" />
+    <title>Хоккейный Симулятор Менеджера – Hockey Simulator Manager</title>
     <style>
       html, body { background: #0b1420; color: #e8eef5; margin: 0; padding: 0; }
       @keyframes khlBootHint { to { opacity: 1; } }
@@ -24,7 +24,9 @@
   <body>
     <div id="root">
       <div class="khl-boot-wrap">
-        <div style="font-weight:700;font-size:16px;letter-spacing:0.04em">КХЛ ГЕНЕРАЛЬНЫЙ МЕНЕДЖЕР</div>
+        <img src="./icon-game.png" alt="" width="96" height="96" style="width:96px;height:96px;object-fit:contain;margin-bottom:10px" />
+        <div style="font-weight:700;font-size:16px;letter-spacing:0.04em">ХОККЕЙНЫЙ СИМУЛЯТОР МЕНЕДЖЕРА</div>
+        <div style="color:#8fd8f0;font-size:12px;letter-spacing:0.18em;margin-top:2px">HOCKEY SIMULATOR MANAGER</div>
         <div style="color:#93a4bc;font-size:13px;margin-top:6px">Загрузка интерфейса…</div>
         <div class="khl-boot-hint">
           Если игра не запустилась: убедитесь, что на GitHub Pages выбран источник <b>GitHub Actions</b> (а не исходная ветка <code>main</code>), либо откройте ссылку в браузере Safari / Chrome (встроенный предпросмотр файлов Telegram/iOS блокирует скрипты).

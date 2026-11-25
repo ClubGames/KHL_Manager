@@ -39,7 +39,7 @@ jobs:
         run: |
           ./node_modules/.bin/tsc --noEmit
           npm run build
-          test -f dist/index.html && test -f dist/roster.json
+          test -f dist/index.html && test -f dist/mods/index.json && test -f dist/mods/KHL_2627/roster.json && test -f dist/mods/KHL_2627/schedule.json
       - uses: actions/upload-artifact@v4
         with:
           name: web
@@ -185,7 +185,7 @@ jobs:
           STAMP=$(node -e "const v=require('./web/version.json'); process.stdout.write([v.build, v.sha, v.version].join(' '))")
           test -n "$STAMP"
           cat > notes.md <<EOF
-          **КХЛ ГМ ${APP_VERSION}** — приложения для Windows и Android (сборка ${GITHUB_SHA::7}).
+          **Hockey Simulator Manager ${APP_VERSION}** — приложения для Windows и Android (сборка ${GITHUB_SHA::7}).
 
           | Файл | Что это |
           |---|---|
@@ -203,9 +203,9 @@ jobs:
           for f in $ASSETS; do test -f "$f" || { echo "::error::missing $f"; exit 1; }; done
           if gh release view app >/dev/null 2>&1; then
             gh release upload app $ASSETS --clobber
-            gh release edit app --title "Приложения КХЛ ГМ ${APP_VERSION}" --notes-file notes.md --latest
+            gh release edit app --title "Приложения Hockey Simulator Manager ${APP_VERSION}" --notes-file notes.md --latest
           else
-            gh release create app $ASSETS --target "$GITHUB_SHA" --title "Приложения КХЛ ГМ ${APP_VERSION}" --notes-file notes.md --latest
+            gh release create app $ASSETS --target "$GITHUB_SHA" --title "Приложения Hockey Simulator Manager ${APP_VERSION}" --notes-file notes.md --latest
           fi
           # Anything else attached to the release (left over from an earlier run) is removed.
           gh release view app --json assets --jq '.assets[].name' | while read -r name; do

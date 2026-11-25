@@ -52,7 +52,7 @@ function renderWithUI(el: React.ReactElement): string {
 }
 
 // Test against real 22-club KHL roster.json
-const realText = readFileSync('roster.json', 'utf8');
+const realText = readFileSync('public/mods/KHL_2627/roster.json', 'utf8');
 const realRoster = parseRosterText(realText);
 check('22 real KHL clubs loaded from roster.json', realRoster.teams.length === 22, `clubs=${realRoster.teams.length}`);
 
@@ -302,7 +302,7 @@ G.store.update((st) => {
 });
 const htmlOffseasonBefore = renderWithUI(React.createElement(Offseason));
 const htmlDashOffseason = renderWithUI(React.createElement(Dashboard, { onPlay: () => {} }));
-check('SSR Offseason renders Junior Draft board, Retired Veterans & RFA Offer Sheets', htmlOffseasonBefore.includes('data-junior-draft') && htmlOffseasonBefore.includes('Оффершиты КХЛ'));
+check('SSR Offseason renders Junior Draft board, Retired Veterans & RFA Offer Sheets', htmlOffseasonBefore.includes('data-junior-draft') && htmlOffseasonBefore.includes('Оффершиты ' + G.store.get()!.league.name));
 check('SSR Dashboard in offseason shows direct "Перейти в «Межсезонье»" button (no dead-end)', htmlDashOffseason.includes('data-offseason-cta') && htmlDashOffseason.includes('Перейти в «Межсезонье»'));
 
 const budgetBeforeComp = G.store.get()!.teams[S.userTeamId].budget;

@@ -12,7 +12,7 @@ import type { GameState } from '../src/types';
 let failed = 0;
 const check = (name: string, ok: boolean, extra = '') => { if (!ok) failed++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`); };
 const st = () => G.store.get()!;
-G.store.set(G.createGameState(parseRosterText(readFileSync('public/rostfdfer.json', 'utf8')), 'ska'));
+G.store.set(G.createGameState(parseRosterText(readFileSync('scripts/fixtures/test-roster.json', 'utf8')), 'ska'));
 
 /* ---------- a long stretch of the season: answer everything at random ---------- */
 const topics = new Map<string, number>(), reporters = new Set<string>(), eventKeys = new Map<string, number>();

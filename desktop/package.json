@@ -1,8 +1,8 @@
 {
   "name": "khl-gm-desktop",
-  "productName": "КХЛ ГМ",
+  "productName": "Hockey Simulator Manager",
   "version": "1.0.0",
-  "description": "КХЛ Генеральный менеджер — приложение для Windows",
+  "description": "Хоккейный Симулятор Менеджера – Hockey Simulator Manager, приложение для Windows",
   "author": "ClubGames",
   "private": true,
   "main": "main.cjs",
@@ -17,7 +17,7 @@
   },
   "build": {
     "appId": "com.clubgames.khlgm",
-    "productName": "КХЛ ГМ",
+    "productName": "Hockey Simulator Manager",
     "executableName": "KHL-GM",
     "copyright": "ClubGames",
     "directories": { "output": "release", "buildResources": "build" },
@@ -36,7 +36,7 @@
       "perMachine": false,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "КХЛ ГМ",
+      "shortcutName": "Хоккейный Симулятор Менеджера",
       "deleteAppDataOnUninstall": false,
       "artifactName": "KHL-GM-Setup.${ext}"
     },

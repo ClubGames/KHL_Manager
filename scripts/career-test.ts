@@ -11,7 +11,7 @@ import type { GameState, Player } from '../src/types';
 let failed = 0;
 const check = (name: string, ok: boolean, extra = '') => { if (!ok) failed++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`); };
 const st = () => G.store.get()!;
-G.store.set(G.createGameState(parseRosterText(readFileSync('public/rostfdfer.json', 'utf8')), 'ska'));
+G.store.set(G.createGameState(parseRosterText(readFileSync('scripts/fixtures/test-roster.json', 'utf8')), 'ska'));
 
 const splitsAddUp = (s: GameState) => Object.values(s.players).every((p) => {
   const sp = p.seasonSplits ?? [];

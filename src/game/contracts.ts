@@ -3,6 +3,7 @@ import { fairSalary, formatMoney, salaryDemand } from './ratings';
 import { canHaveNmc, canSignTwoWay } from './khlRules';
 import { scoutingDemandMult } from './medical';
 import { extrasError, extrasValue, interestDemandMult, playerInterest, priorityOf, roundUp, type OfferExtras } from './negotiation';
+import { LG } from '../brand';
 
 export interface ContractTerms {
   salary: number;
@@ -125,7 +126,7 @@ export function negotiate(state: GameState, p: Player, salary: number, years: nu
   const my = maxYears(p.age);
   if (years > my) return { accept: false, left, tone: 'low', text: `${p.name} (возраст ${p.age}) не подпишет контракт дольше ${my} ${my === 1 ? 'года' : 'лет'}.` };
   if (twoWay && !canSignTwoWay(p)) {
-    return { accept: false, left, tone: 'low', text: `${p.name} (ОВР ${p.overall}) согласен только на односторонний контракт КХЛ.` };
+    return { accept: false, left, tone: 'low', text: `${p.name} (ОВР ${p.overall}) согласен только на односторонний контракт ${LG()}.` };
   }
   const err = extrasError(salary, extras);
   if (err) return { accept: false, left, tone: 'low', text: err };

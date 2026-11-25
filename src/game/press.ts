@@ -3,6 +3,7 @@ import { clamp, isGoalie } from './ratings';
 import { getDerby } from './derbies';
 import { isLegionnaire } from './legionnaires';
 import { applyEffects, fx, lastName, promiseLabel, recalled, recalledAll, remember, roomMemory } from './dressingRoom';
+import { LG } from '../brand';
 
 /**
  * Press conferences. After every match (and before the big ones) two or three journalists ask about what
@@ -458,7 +459,7 @@ function contextTopics(c: Ctx): Topic[] {
         delete roomMemory(s).tags['press:refs'];
         return {
           topic: 'Слова о судьях',
-          question: 'Дисциплинарный комитет КХЛ изучает ваши слова о судействе. Готовы извиниться?',
+          question: `Дисциплинарный комитет ${LG()} изучает ваши слова о судействе. Готовы извиниться?`,
           options: [
             opt('fine', 'Заплачу штраф, но от слов не откажусь.', fx({ fans: 2, board: -2, budget: -1_000_000 })),
             opt('sorry', 'Сказал на эмоциях. Приношу извинения арбитрам.', fx({ fans: -1, board: 1, budget: -300_000 })),
@@ -582,7 +583,7 @@ function contextTopics(c: Ctx): Topic[] {
         key: 'young', main: false, w: 3, style: 'local',
         q: () => ({
           topic: 'Молодёжь',
-          question: pick([`${young.name} в ${young.age} забивает в КХЛ. Готовы давать ему больше игрового времени?`, `Гол ${lastName(young)} — праздник для школы клуба. Он уже основной игрок?`]),
+          question: pick([`${young.name} в ${young.age} забивает в ${LG()}. Готовы давать ему больше игрового времени?`, `Гол ${lastName(young)} — праздник для школы клуба. Он уже основной игрок?`]),
           options: [
             opt('more', 'Заслужил — будет играть больше.', fx({ fans: 2, playerId: young.id, playerMorale: 6, morale: -1 }), 'Молодой игрок будет ждать роли.'),
             opt('patience', 'Не будем перехваливать. Путь только начинается.', fx({ board: 1, playerId: young.id, playerMorale: 1 })),
@@ -612,7 +613,7 @@ function contextTopics(c: Ctx): Topic[] {
         key: 'legion', main: false, w: 1.2, style: 'analyst',
         q: () => ({
           topic: 'Легионер',
-          question: `${leg.name} забил сегодня. Как он адаптировался в КХЛ?`,
+          question: `${leg.name} забил сегодня. Как он адаптировался в ${LG()}?`,
           options: [
             opt('great', 'Отлично: он уже говорит по-русски лучше, чем я по-английски.', fx({ playerId: leg.id, playerMorale: 4, fans: 1 })),
             opt('more', 'Легионер должен решать матчи. От него ждём большего.', fx({ playerId: leg.id, playerMorale: -3, board: 1 })),
