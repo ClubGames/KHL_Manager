@@ -8,6 +8,7 @@ import type { PlayerFigure } from './playerModel';
 import { acquireRenderer, addStageLights, compileScene, loadModel, modelLoaded, onCacheRedraw, releaseRenderer, sharedProps, sharedReflector, takeArena, takeFigures } from './replayCache';
 import { cameraPose, toWorld, viewFor, ZOOM, type ReplayCamera, type ReplayView } from './replayCameras';
 import type { ReplayFrameSource } from './replayExport';
+import { carrierAt, dekeAt, planMotion, releaseAt, releaseHeading, type ReleaseKind } from './replayMotion';
 
 export { broadcastFocus, CAMERAS, autoCamera, viewFor, VIEW_LABEL, ZOOM, type ReplayCamera, type ReplayView } from './replayCameras';
 export { kitFor } from './replayCache';
@@ -250,6 +251,11 @@ export function ReplayScene(props: Props) {
       const dir = attackDir(clip);
       lamp.position.set(dir * 27.5, 3, 0);
 
+      // Passes, shots, dekes and saves of this clip (who releases the puck when and where to, what reaches the goalies).
+      const plan = planMotion(clip), dur = Math.max(.5, clip.duration);
+      const sideOf = new Map(clip.tracks.map(t => [t.id, t.side]));
+      // +1 the rig's own side (a right shot; a goalie catching left), −1 mirrored
+      const handOf = (track: { id: string; goalie?: boolean }): 1 | -1 => track.goalie ? (players[track.id]?.hand === 'R' ? -1 : 1) : (players[track.id]?.hand === 'L' ? -1 : 1);
       const puckWorld = new T.Vector3(), local = new T.Vector3(), vecUp = new T.Vector3(0, 1, 0), legacy = new T.Vector3();
       const ahead = .2 / Math.max(.5, clip.duration); // ±0.2 s window for headings and speeds
       let exporting = false;
@@ -257,12 +263,15 @@ export function ReplayScene(props: Props) {
         if (stopped || !renderer) return;
         const view = viewOverride ?? viewFor(live.current.camera, clip, time);
         const p = samplePath(clip.puck, time), pw = toWorld(p);
+        // Stickhandling: closing on a defender or the goalie, the carrier moves the puck forehand ↔ backhand.
+        const deke = dekeAt(clip, plan, time);
+        if (deke) { pw.x += deke.lx * deke.offset; pw.z += deke.lz * deke.offset; }
         puck.position.set(pw.x, Math.max(0, pw.y) + PUCK_H / 2, pw.z); puckShadow.position.set(pw.x, .012, pw.z);
         puckShadow.visible = pw.y > .03; puckWorld.copy(puck.position);
         // Who has the puck on his stick: the skater whose blade zone is closest to it cups it with the blade;
         // others close by only reach toward it (a poke), so two blades never sit on one puck.
         let carrierW = 0;
-        const poses: { figure: PlayerFigure; args: [number, number, number | undefined, number, number, T.Vector3 | null, number] }[] = [];
+        const poses: { figure: PlayerFigure; args: [number, number, number | undefined, number, number, T.Vector3 | null, number]; kind?: ReleaseKind; deke: number }[] = [];
         actors.forEach(({ track, group, legs, stick, torso, glove, distance }, index) => {
           const pos = sampleSmooth(track.keys, time), w = toWorld(pos);
           group.position.set(w.x, 0, w.z); group.rotation.set(0, 0, 0); group.scale.set(1, 1, 1);
@@ -270,10 +279,28 @@ export function ReplayScene(props: Props) {
           if (track.goalie) {
             // Faces out of his net, turned a little toward the puck.
             const out = w.x > 0 ? Math.PI : 0, toPuck = Math.atan2(-(pw.z - w.z), pw.x - w.x);
-            group.rotation.y = out + clamp(angleDiff(out, toPuck), -.6, .6);
+            const body = out + clamp(angleDiff(out, toPuck), -.6, .6);
+            group.rotation.y = body;
             if (figure) {
               group.updateMatrixWorld(true);
-              figure.goalie(clamp((time - clip.release + .05) / .10, 0, 1), clamp((pos.y - 50) / 12, -1, 1));
+              // Sideways speed along the crease (+ = his left): shuffle, T-push.
+              const ga = toWorld(sampleSmooth(track.keys, clamp(time - ahead, 0, 1))), gb = toWorld(sampleSmooth(track.keys, clamp(time + ahead, 0, 1)));
+              const gspan = Math.max(.001, (Math.min(1, time + ahead) - Math.max(0, time - ahead)) * dur);
+              const lateral = ((gb.x - ga.x) * -Math.sin(body) + (gb.z - ga.z) * -Math.cos(body)) / gspan / 2.2;
+              // The save: reaches for the point where the puck gets to him (a hair late on a goal, of course).
+              let save: T.Vector3 | null = null, saveWeight = 0;
+              for (const sv of plan.saves.get(track.id) ?? []) {
+                const sec = (time - sv.t) * dur;
+                if (sec < -.3 || sec > .8) continue;
+                const wgt = sec < 0 ? smooth01((sec + .24) / .2) : sec < .32 ? 1 : 1 - smooth01((sec - .32) / .45);
+                if (wgt > saveWeight) { saveWeight = wgt; save = figure.root.worldToLocal(new T.Vector3(sv.x, sv.y, sv.z)); }
+              }
+              // Puck in front of him: a poke check at an attacker's puck, the butterfly on a loose one in the crease.
+              const pl = figure.root.worldToLocal(local.copy(puckWorld)).clone(), pd = Math.hypot(pl.x, pl.z);
+              const c = carrierAt(plan, time), attacker = !!c && sideOf.get(c.id) !== track.side;
+              const pokeWeight = attacker && pw.y < .2 && pl.z > .4 && pd < 2.8 ? smooth01((2.8 - pd) / 1.0) * .85 : 0;
+              const drop = !attacker && pw.y < .3 && pl.z > -.3 && pd < 2.2 ? .6 * smooth01((2.2 - pd) / .8) : 0;
+              figure.goalie({ drop, lateral, save, saveWeight, poke: pl, pokeWeight, look: clamp(angleDiff(body, toPuck), -1.2, 1.2) });
               return;
             }
             const drop = clamp((time - clip.release + .05) / .10, 0, 1);
@@ -289,7 +316,15 @@ export function ReplayScene(props: Props) {
           const moved = Math.hypot(b.x - a.x, b.z - a.z), span = Math.max(.001, (Math.min(1, time + ahead) - Math.max(0, time - ahead)) * clip.duration);
           const speed = moved / span;
           const motion = Math.atan2(-(b.z - a.z), b.x - a.x), facePuck = Math.atan2(-(pw.z - w.z), pw.x - w.x);
-          const heading = angleLerp(facePuck, motion, smooth01(moved / .35));
+          let heading = angleLerp(facePuck, motion, smooth01(moved / .35));
+          // Passing or shooting: the body turns side-on to where the puck goes (never a shot with his back to the net).
+          const hand = handOf(track), rel = releaseAt(plan, track.id, time, dur);
+          let turnAway = 0;
+          if (rel) {
+            const target = releaseHeading(rel.rel, w.x, w.z, hand, rel.s > 0 ? clamp(rel.s / .5, 0, 1) : 0);
+            turnAway = rel.aim * smooth01(Math.abs(angleDiff(heading, target)) / 1.5);
+            heading = angleLerp(heading, target, rel.aim);
+          }
           group.rotation.y = heading;
           if (!clip.bodies) group.position.sub(legacy.set(1.0, 0, .52).applyAxisAngle(vecUp, heading));
           group.updateMatrixWorld(true);
@@ -298,21 +333,22 @@ export function ReplayScene(props: Props) {
             const h1 = Math.atan2(-(a.z - a2.z), a.x - a2.x), h2 = Math.atan2(-(b2.z - b.z), b2.x - b.x);
             const turn = moved > .3 ? angleDiff(h1, h2) / Math.max(.05, span * 1.5) : 0;
             const bank = clamp(turn * speed * .045, -.4, .4);
-            const amp = clamp(speed / 7, 0, 1) * (time > clip.goal + .08 ? .45 : 1);
+            // a skater turned away from his line of travel glides through the release instead of striding
+            const amp = clamp(speed / 7, 0, 1) * (time > clip.goal + .08 ? .45 : 1) * (1 - .4 * (rel?.aim ?? 0) - .45 * turnAway);
             const phase = (distance(time) / STRIDE) * Math.PI * 2 + index * 1.7;
             const scorer = track.id === clip.scorer;
-            const shot = scorer && time > clip.release - .12 && time < clip.release + .3 ? (time - clip.release) / .1 : undefined;
+            const shot = rel && rel.s >= -1 && rel.s <= 1.9 ? rel.s : undefined;
             const cheer = time > clip.goal && track.side === clip.attacking ? clamp((time - clip.goal) / .06, 0, 1) * (scorer ? 1 : .55) : 0;
             // Puck in character space: candidate for the blade if it is on the ice in front of him.
             local.copy(puckWorld); figure.root.worldToLocal(local);
-            const near = Math.hypot(local.x + .3, local.z - .85);
             let reach: T.Vector3 | null = null, reachWeight = 0;
-            if (pw.y < .25 && local.z > .1 && local.z < 1.8 && Math.abs(local.x) < 1.3 && near < 1.4 && !(shot !== undefined && time > clip.release)) {
+            const near = Math.hypot(local.x + .3 * hand, local.z - .85);
+            if (pw.y < .25 && local.z > .1 && local.z < 1.8 && Math.abs(local.x) < 1.3 && near < 1.4 && !(shot !== undefined && shot > 0)) {
               reachWeight = 1 - smooth01((near - .55) / .85);
               carrierW = Math.max(carrierW, reachWeight);
               reach = local.clone();
             }
-            poses.push({ figure, args: [phase, amp, shot, cheer, bank, reach, reachWeight] });
+            poses.push({ figure, args: [phase, amp, shot, cheer, bank, reach, reachWeight], kind: rel?.rel.kind, deke: deke && deke.id === track.id ? deke.offset : 0 });
             return;
           }
           group.position.y = Math.abs(Math.sin(time * 65 + index)) * .045 * (time < clip.goal ? 1 : .3);
@@ -324,8 +360,8 @@ export function ReplayScene(props: Props) {
             group.rotation.z = time > clip.goal ? Math.sin((time - clip.goal) * 10) * .08 : 0;
           }
         });
-        for (const { figure, args: [phase, amp, shot, cheer, bank, reach, w] } of poses) {
-          figure.skate(phase, amp, shot, cheer, { bank, reach, reachWeight: w >= carrierW - 1e-6 ? w : w * .35 });
+        for (const { figure, args: [phase, amp, shot, cheer, bank, reach, w], kind, deke: dk } of poses) {
+          figure.skate(phase, amp, shot, cheer, { bank, reach, reachWeight: w >= carrierW - 1e-6 ? w : w * .35, kind, deke: dk });
         }
         const attr = trailGeometry.getAttribute('position');
         for (let i = 0; i < 18; i++) { const v = toWorld(samplePath(clip.puck, Math.max(0, time - i * .0025))); attr.setXYZ(i, v.x, v.y + PUCK_H, v.z); } attr.needsUpdate = true;

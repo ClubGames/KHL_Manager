@@ -13,6 +13,8 @@ type DesktopBridge = {
   platform: string;
   info: () => Promise<{ version: string; electron: string; chrome: string; gpu: string; portable?: boolean }>;
   saveFile: (file: { name: string; data: Uint8Array; kind: FileKind }) => Promise<string | null>;
+  /** Opens Documents\\Hockey Simulator Manager\\mods in Explorer (apps built before it existed lack it). */
+  openModsFolder?: () => Promise<string | null>;
 };
 declare global {
   interface Window { khlDesktop?: DesktopBridge }
@@ -27,6 +29,15 @@ export function platform(): Platform {
   return 'web';
 }
 export const isApp = () => platform() !== 'web';
+
+/** Players send their mods (a .zip attached to a GitHub issue form, see .github/ISSUE_TEMPLATE/mod.yml). */
+export const MOD_SUBMIT_URL = 'https://github.com/ClubGames/KHL_Manager/issues/new?template=mod.yml';
+/** Where the Windows app looks for the player's own mods (outside the install folder: updates never touch it). */
+export const USER_MODS_DIR = 'Документы\\Hockey Simulator Manager\\mods';
+export const canOpenModsFolder = () => typeof window !== 'undefined' && typeof window.khlDesktop?.openModsFolder === 'function';
+export async function openModsFolder(): Promise<string | null> {
+  try { return (await window.khlDesktop?.openModsFolder?.()) ?? null; } catch { return null; }
+}
 
 export const APP_RELEASE = 'https://github.com/ClubGames/KHL_Manager/releases/tag/app';
 export const APP_DOWNLOADS = {

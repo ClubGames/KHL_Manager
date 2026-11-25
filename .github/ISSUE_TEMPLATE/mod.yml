@@ -1,0 +1,56 @@
+name: Предложить свой мод
+description: Отправьте мод (архив .zip с roster.json, календарём и эмблемами) — после проверки он может попасть в игру
+title: "[Мод] "
+labels: ["мод"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Спасибо, что делаете моды для «Хоккейного Симулятора Менеджера»!
+
+        **Что должно быть в архиве .zip** — одна папка мода:
+        ```
+        МойМод/
+          roster.json     клубы, игроки, тренеры (обязательно)
+          mod.json        название, описание, автор (желательно)
+          schedule.json   календарь регулярного чемпионата (необязательно)
+          logos/…         эмблемы клубов (необязательно)
+        ```
+        Шаблон ростера и календаря можно скачать в игре: экран новой карьеры → «Формат JSON». Проверить мод до отправки: положите папку в `Документы\Hockey Simulator Manager\mods` (версия для Windows) и начните карьеру.
+  - type: input
+    id: name
+    attributes:
+      label: Название мода
+      description: Как мод будет называться в списке «Мод (лига)»
+      placeholder: "Например: ВХЛ 2026/27"
+    validations:
+      required: true
+  - type: input
+    id: author
+    attributes:
+      label: Автор
+      description: Как подписать мод (ник или имя)
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Описание
+      description: Что за лига или сезон, сколько клубов, откуда данные, что изменено
+    validations:
+      required: true
+  - type: textarea
+    id: archive
+    attributes:
+      label: Архив мода (.zip)
+      description: Перетащите файл .zip в это поле (или нажмите на поле и вставьте). GitHub принимает архивы до 25 МБ. Если архив больше — дайте ссылку на облако.
+      placeholder: Перетащите сюда МойМод.zip
+    validations:
+      required: true
+  - type: checkboxes
+    id: rights
+    attributes:
+      label: Согласие
+      options:
+        - label: Я автор мода (или имею право им делиться) и разрешаю бесплатно включить его в игру с указанием авторства
+          required: true

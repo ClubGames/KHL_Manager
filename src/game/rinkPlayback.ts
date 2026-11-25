@@ -8,7 +8,9 @@ export type Key = Point & { t: number };
 export type Track = { id: string; side: 0 | 1; goalie?: boolean; keys: Key[] };
 /** `bodies`: track positions are skater bodies (agent simulation), not stick blades (legacy reconstruction).
  *  `dir`: the attacked net is at +x (1) or -x (-1); teams switch ends between periods. */
-export type ReplayClip = { label: string; duration: number; release: number; goal: number; tracks: Track[]; puck: Key[]; scorer: string; attacking: 0 | 1; bodies?: boolean; dir?: 1 | -1 };
+/** `touches`: who had the puck on his stick, when (clip time 0..1) — passes and shots are animated from them.
+ *  `shot`: the type of the goal shot (windup and follow-through of the scorer). */
+export type ReplayClip = { label: string; duration: number; release: number; goal: number; tracks: Track[]; puck: Key[]; scorer: string; attacking: 0 | 1; bodies?: boolean; dir?: 1 | -1; touches?: { id: string; t0: number; t1: number }[]; shot?: GameEvent['shotType'] };
 export const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 /** Direction of the attack in a clip: +1 toward the right-hand net (x = 100), -1 toward the left one. */
 export const attackDir = (clip: Pick<ReplayClip, 'attacking' | 'dir'>): 1 | -1 => clip.dir ?? (clip.attacking ? -1 : 1);
@@ -120,7 +122,7 @@ export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: R
   // Away attacks the left net in the 1st period; everybody switches ends every period.
   const flip = (side === 1) !== endsSwitched(e.period);
   const mirror = (p: Key) => flip ? { ...p, x: 100 - p.x } : p;
-  return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[shot], duration: 8, release, goal, tracks: tracks.map(tr => ({ ...tr, keys: tr.keys.map(mirror) })), puck: puck.map(mirror), scorer: e.player, attacking: side, dir: flip ? -1 : 1 };
+  return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[shot], duration: 8, release, goal, tracks: tracks.map(tr => ({ ...tr, keys: tr.keys.map(mirror) })), puck: puck.map(mirror), scorer: e.player, attacking: side, dir: flip ? -1 : 1, shot };
 }
 
 export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: Point; goalie?: boolean; box?: boolean }[]; faceoff?: boolean; stopped?: boolean; carrier?: string | null; caption?: string; official?: Point };

@@ -32,8 +32,15 @@
       ]
     },
     "nsis": {
-      "oneClick": true,
+      "oneClick": false,
       "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "license": "license.txt",
+      "language": "1049",
+      "installerLanguages": ["ru_RU"],
+      "multiLanguageInstaller": false,
+      "runAfterFinish": true,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
       "shortcutName": "Хоккейный Симулятор Менеджера",

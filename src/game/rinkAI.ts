@@ -267,10 +267,19 @@ export class RinkAI {
       return { id, side: this.sideOf(id), goalie: (at.flags[i] & 1) > 0 || undefined, keys } as Track;
     }).filter((t): t is Track => !!t);
     const puck: Key[] = frames.map(f => ({ t: norm(f.tau), x: this.px(f.px), y: f.py / 0.3, h: f.ph }));
+    // possession on the 2D rink, frame by frame: the 3D players pass and shoot exactly when the puck leaves them
+    const touches: { id: string; t0: number; t1: number }[] = [];
+    let held: string | null = null;
+    for (const f of frames) {
+      const id = f.carrier >= 0 ? f.ids[f.carrier] : null, t = norm(f.tau);
+      if (id && id === held) touches[touches.length - 1].t1 = t;
+      else if (id) touches.push({ id, t0: t, t1: t });
+      held = id;
+    }
     const release = this.releaseTau.get(e) ?? te - 0.4;
     const side: Side = e.team === this.teams[1].id ? 1 : 0;
     const labels = { wrist: 'Кистевой бросок', snap: 'Бросок с ходу', slap: 'Щелчок', tip: 'Подставление на пятаке', rebound: 'Добивание', backhand: 'Бросок с неудобной' };
-    return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[e.shotType ?? 'wrist'], duration, release: norm(release), goal: norm(te), tracks, puck, scorer: e.player, attacking: side, bodies: true, dir: ((side === 0) !== !!this.opts.flip ? 1 : -1) as 1 | -1 };
+    return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[e.shotType ?? 'wrist'], duration, release: norm(release), goal: norm(te), tracks, puck, scorer: e.player, attacking: side, bodies: true, dir: ((side === 0) !== !!this.opts.flip ? 1 : -1) as 1 | -1, touches, shot: e.shotType };
   }
 
   /* ---------------- internals ---------------- */

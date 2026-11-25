@@ -45,15 +45,25 @@ async function main() {
     assert.ok(!existsSync('roster.json') && !existsSync('public/roster.json') && !existsSync('public/logos'), 'nothing left at the old places');
   });
 
-  await ok('schedule.json is exactly the calendar the game generated before (days, ids, home/away)', () => {
+  await ok('schedule.json is a full league calendar: 68 games per club, nobody twice a day, round trip', () => {
+    // the real 2026/27 calendar (uploaded by the author), no longer the generator's output
     const r = parseRosterText(rosterText);
-    const gen = buildSchedule(r.teams, r.gamesPerTeam, 1, r.season);
-    const file = parseScheduleFile(scheduleJson, r.teams.map((t) => t.id), r.season, 1);
-    assert.deepEqual(file.days, gen.days);
-    assert.equal(file.nextId, gen.nextId);
+    const ids = r.teams.map((t) => t.id);
+    const file = parseScheduleFile(scheduleJson, ids, r.season, 1);
     assert.equal(file.gamesPerTeam, 68);
     assert.deepEqual(file.warnings, []);
-    assert.equal(scheduleFileText(scheduleToFile(gen.days, r.season)), readFileSync(`${dir}/schedule.json`, 'utf8'), 'file is up to date with the generator');
+    const games = file.days.flat();
+    assert.equal(games.length, (ids.length * 68) / 2);
+    for (const id of ids) {
+      assert.equal(games.filter((g) => g.home === id || g.away === id).length, 68, id);
+      const home = games.filter((g) => g.home === id).length;
+      assert.ok(home >= 32 && home <= 36, `${id}: ${home} home games`);
+    }
+    for (const day of file.days) assert.equal(new Set(day.flatMap((g) => [g.home, g.away])).size, day.length * 2);
+    assert.deepEqual(games.map((g) => g.id), games.map((_, i) => i + 1));
+    assert.equal(file.nextId, games.length + 1);
+    const again = parseScheduleFile(JSON.parse(scheduleFileText(scheduleToFile(file.days, r.season))), ids, r.season, 1);
+    assert.deepEqual(again.days, file.days, 'export → import keeps the calendar');
   });
 
   await ok('dates: day 0 = 1 September, round trip, leap years, bad dates', () => {
@@ -105,9 +115,9 @@ async function main() {
     const r = await loadMod(m);
     const s = createGameState(r, 'ska');
     const plain = parseRosterText(rosterText);
-    const before = createGameState(plain, 'ska'); // how careers were created before mods (generator)
-    assert.deepEqual(s.schedule, before.schedule, 'same first season as before');
-    assert.equal(s.nextGameId, before.nextGameId);
+    const days = parseScheduleFile(scheduleJson, plain.teams.map((t) => t.id), plain.season, 1);
+    assert.deepEqual(s.schedule.slice(0, days.days.length), days.days, 'the regular season is the mod calendar');
+    assert.equal(s.nextGameId, days.nextId);
     assert.deepEqual(s.mod, r.mod);
     s.schedule[1].length && (s.schedule.find((d) => d.length)![0].played = true);
     assert.ok(!r.schedule!.days.some((d) => d.some((g) => g.played)), 'career gets its own copy of the calendar');
