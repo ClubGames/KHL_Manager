@@ -2,6 +2,7 @@
 // folder), the new name and logo are shown, and a career saved before mods existed opens unchanged.
 // Start Vite first: BASE_URL=http://localhost:5173 CHROMIUM_PATH=/path/to/chromium [SHOTS=dir] node scripts/mods-ui-test.mjs
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:5173';
@@ -43,6 +44,11 @@ try {
   const logos = await page.evaluate(() => [...document.querySelectorAll('img')].filter((i) => i.src.includes('/mods/KHL_2627/logos/')).map((i) => i.complete && i.naturalWidth > 0));
   assert.ok(logos.length >= 22 && logos.every(Boolean), `club logos from the mod folder (${logos.length})`);
   ok(`mod picker: KHL_2627 loaded with its calendar and ${logos.length} logos`);
+  // «Предложить свой мод»: the GitHub issue form for a .zip; the mods folder button only in the Windows app
+  assert.equal(await page.locator('[data-mod-submit]').getAttribute('href'), 'https://github.com/ClubGames/KHL_Manager/issues/new?template=mod.yml');
+  assert.equal(await page.locator('[data-mod-submit]').getAttribute('target'), '_blank');
+  assert.equal(await page.locator('[data-mod-folder]').count(), 0, 'no mods folder in the browser');
+  ok('mod links: «Предложить свой мод» opens the GitHub form');
   await shot(page, 'menu-top', { clip: { x: 0, y: 0, width: 1400, height: 900 } });
   await page.locator('[data-mod-picker]').scrollIntoViewIfNeeded();
   await shot(page, 'menu-mods');
@@ -65,7 +71,9 @@ try {
   assert.deepEqual(st.mod, { id: 'KHL_2627', name: 'КХЛ 2026/27', base: './mods/KHL_2627', roster: './mods/KHL_2627/roster.json' });
   assert.equal(st.league, 'КХЛ');
   assert.equal(st.games, 748);
-  assert.deepEqual([st.first.home, st.first.away, st.first.day], ['sibir', 'cska', 4]);
+  const cal = JSON.parse(readFileSync('public/mods/KHL_2627/schedule.json', 'utf8'));
+  const g0 = cal.games[0], day0 = Math.round((Date.parse(g0.date) - Date.parse('2026-09-01')) / 864e5);
+  assert.deepEqual([st.first.home, st.first.away, st.first.day], [g0.home, g0.away, day0], 'the first game of schedule.json');
   ok('career started from the mod: 748 games of schedule.json, league name from the roster');
   await page.waitForTimeout(800);
   await shot(page, 'career');

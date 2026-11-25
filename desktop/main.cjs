@@ -2,7 +2,8 @@
 // - served from a private app:// origin (careers live in the app's own storage, fetch() of roster.json works);
 // - GPU acceleration forced on (no blocklist fallback to software rendering) and no background throttling;
 // - files (videos, saves, roster) are written through the system «Save as» dialog;
-// - external links open in the default browser.
+// - external links open in the default browser;
+// - the player's own mods live in Documents/Hockey Simulator Manager/mods (kept across updates).
 const { app, BrowserWindow, protocol, net, shell, ipcMain, dialog, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
@@ -36,11 +37,74 @@ if (!smokeArg && !app.requestSingleInstanceLock()) app.quit();
 /** @type {BrowserWindow | null} */
 let win = null;
 
+/**
+ * Player's own mods: Documents\Hockey Simulator Manager\mods\<id>\{mod.json, roster.json, schedule.json, logos}.
+ * Outside the install folder on purpose — the installer (and an update, which reinstalls the app) never touches it.
+ * The game sees these folders next to the bundled ones under app://khl/mods/; a user folder with the same name as a
+ * bundled mod takes priority file by file (so the bundled league can be edited without losing it on the next update).
+ */
+const USER_MODS = path.join(app.getPath('documents'), 'Hockey Simulator Manager', 'mods');
+const MODS_README = `Папка модов «Хоккейного Симулятора Менеджера» (Hockey Simulator Manager).
+
+Каждый мод — отдельная папка внутри этой:
+  mods\\МойМод\\roster.json     клубы, игроки, тренеры (обязательно)
+  mods\\МойМод\\mod.json        название и описание (необязательно)
+  mods\\МойМод\\schedule.json   календарь сезона (необязательно)
+  mods\\МойМод\\logos\\...      эмблемы клубов (необязательно)
+
+Если мод скачан архивом .zip — распакуйте его сюда, чтобы получилась папка с roster.json внутри.
+Обновление и переустановка игры эту папку не трогают: она лежит в «Документах», а не в папке с игрой.
+Мод появится в списке «Мод (лига)» на экране новой карьеры (если игра открыта — нажмите F5).
+`;
+
+async function ensureUserMods() {
+  try {
+    await fs.mkdir(USER_MODS, { recursive: true });
+    const readme = path.join(USER_MODS, 'README.txt');
+    await fs.access(readme).catch(() => fs.writeFile(readme, '\ufeff' + MODS_README.replace(/\n/g, '\r\n'), 'utf8'));
+  } catch { /* read-only Documents: bundled mods only */ }
+}
+
+/** Folders in the user mods directory that look like a mod (have roster.json or mod.json). */
+async function userModIds() {
+  try {
+    const dirs = (await fs.readdir(USER_MODS, { withFileTypes: true })).filter(d => d.isDirectory() && !d.name.startsWith('.'));
+    const ok = await Promise.all(dirs.map(async d => {
+      for (const f of ['mod.json', 'roster.json']) { try { await fs.access(path.join(USER_MODS, d.name, f)); return d.name; } catch { /* next */ } }
+      return null;
+    }));
+    return ok.filter(Boolean).sort((a, b) => a.localeCompare(b, 'ru'));
+  } catch { return []; }
+}
+
+/** mods/index.json = bundled mods + the player's folders. */
+async function modIndex() {
+  let bundled = [];
+  try {
+    const json = JSON.parse(await fs.readFile(path.join(WEB_ROOT, 'mods', 'index.json'), 'utf8'));
+    bundled = (Array.isArray(json) ? json : json.mods || []).map(x => typeof x === 'string' ? x : x && x.id).filter(Boolean);
+  } catch { /* no bundled index */ }
+  const mods = [...new Set([...bundled, ...await userModIds()])];
+  return new Response(JSON.stringify({ mods }), { headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
+}
+
+const TYPES = { '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.webp': 'image/webp', '.svg': 'image/svg+xml', '.gif': 'image/gif' };
+
 function serveApp() {
   protocol.handle(SCHEME, async (request) => {
     const { pathname } = new URL(request.url);
     let rel = decodeURIComponent(pathname);
     if (rel === '/' || rel === '') rel = '/index.html';
+    if (rel === '/mods/index.json') return modIndex();
+    if (rel.startsWith('/mods/')) {
+      const own = path.normalize(path.join(USER_MODS, rel.slice('/mods/'.length)));
+      if (own.startsWith(USER_MODS + path.sep)) {
+        try {
+          const data = await fs.readFile(own);
+          return new Response(data, { headers: { 'content-type': TYPES[path.extname(own).toLowerCase()] || 'application/octet-stream', 'cache-control': 'no-store' } });
+        } catch { /* not in the user folder: the bundled file */ }
+      }
+    }
     const file = path.normalize(path.join(WEB_ROOT, rel));
     if (!file.startsWith(WEB_ROOT)) return new Response('Forbidden', { status: 403 });
     try {
@@ -119,6 +183,12 @@ ipcMain.handle('khl:info', () => ({
   portable: !!(process.env.PORTABLE_EXECUTABLE_FILE || process.env.PORTABLE_EXECUTABLE_DIR),
 }));
 
+ipcMain.handle('khl:open-mods', async () => {
+  await ensureUserMods();
+  const err = await shell.openPath(USER_MODS);
+  return err ? null : USER_MODS;
+});
+
 ipcMain.handle('khl:save-file', async (event, { name, data, kind }) => {
   const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined;
   const folder = kind === 'video' ? app.getPath('videos') : app.getPath('documents');
@@ -180,6 +250,7 @@ app.on('second-instance', () => {
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
   serveApp();
+  void ensureUserMods();
   if (smokeArg) {
     const out = smokeArg.includes('=') ? smokeArg.split('=').slice(1).join('=') : path.join(process.cwd(), 'smoke-result.json');
     void smokeTest(out);

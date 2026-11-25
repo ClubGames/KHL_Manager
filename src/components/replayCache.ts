@@ -179,12 +179,12 @@ export function kitFor(team: Team, side: 0 | 1, goalie: boolean, player?: Player
     const trim2 = contrast(accent, primary) && accent.toLowerCase() !== secondary.toLowerCase() ? accent : contrast(primary, '#ffffff') ? '#ffffff' : '#141414';
     const fill = hexLuminance(primary) > 170 ? dark : '#ffffff';
     return { jersey: primary, trim: secondary, trim2, pants: dark, socks: primary, sockTrim: secondary, helmet: primary,
-      glove: dark === primary ? secondary : primary, number, name, numberFill: fill, numberStroke: contrast(secondary, fill) ? secondary : dark, goalie, pads: '#f4f6f8', crest };
+      glove: dark === primary ? secondary : primary, number, name, numberFill: fill, numberStroke: contrast(secondary, fill) ? secondary : dark, goalie, pads: '#f4f6f8', crest, hand: player?.hand };
   }
   const ink = hexLuminance(primary) < 200 ? primary : dark;
   const trim2 = hexLuminance(secondary) < 200 && secondary.toLowerCase() !== ink.toLowerCase() ? secondary : accent;
   return { jersey: '#f4f7fa', trim: ink, trim2, pants: dark, socks: '#f4f7fa', sockTrim: ink, helmet: '#f4f7fa', glove: ink,
-    number, name, numberFill: ink, numberStroke: '#ffffff', goalie, pads: '#f4f6f8', crest };
+    number, name, numberFill: ink, numberStroke: '#ffffff', goalie, pads: '#f4f6f8', crest, hand: player?.hand };
 }
 
 export type FigureRequest = { id: string; side: 0 | 1; goalie: boolean };
@@ -202,7 +202,7 @@ export function loadModel() {
   return model;
 }
 
-const figureKey = (r: FigureRequest) => `${r.id}|${r.side}|${r.goalie ? 'g' : 's'}`;
+const figureKey = (r: FigureRequest, hand?: string) => `${r.id}|${r.side}|${r.goalie ? 'g' : 's'}|${hand ?? 'L'}`;
 
 /**
  * Rigged figures for the tracks (cached per player). `fresh` lists the ones built just now (their shaders are
@@ -212,7 +212,7 @@ export function takeFigures(mod: Model, template: Awaited<ReturnType<Model['load
   const s = useMatch(home, away);
   const figures: PlayerFigure[] = [], fresh: PlayerFigure[] = [], taken: FigureEntry[] = [], owned: PlayerFigure[] = [];
   for (const r of requests) {
-    const key = figureKey(r);
+    const key = figureKey(r, players[r.id]?.hand);
     let entry = s.figures.get(key);
     if (entry && !entry.inUse) { entry.inUse = true; taken.push(entry); figures.push(entry.figure); continue; }
     const team = r.side === 0 ? home : away;

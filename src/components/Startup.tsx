@@ -1,4 +1,4 @@
-import { APP_RELEASE, platform } from '../platform';
+import { APP_RELEASE, canOpenModsFolder, MOD_SUBMIT_URL, openModsFolder, platform, USER_MODS_DIR } from '../platform';
 import { useEffect, useRef, useState } from 'react';
 // served next to index.html instead of being inlined into the script
 const arena = './arena.jpg';
@@ -35,7 +35,7 @@ export function FormatDoc({ compact }: { compact?: boolean }) {
     ['players[].position', 'string', 'Ц / ЛК / ПК / З / В (или C / LW / RW / D / G)'],
     ['players[].age', 'number', 'Возраст (18–45)'],
     ['players[].height / weight / number', 'number', 'Рост (см), вес (кг), игровой номер'],
-    ['players[].country / hand', 'string', 'Гражданство; хват клюшки L / R'],
+    ['players[].country / hand', 'string', 'Гражданство; хват клюшки L / R (у вратаря — рука с ловушкой; по умолчанию L). Хват виден в 3D-повторах'],
     ['players[].face', 'string', 'Необязательно: ссылка на фото игрока (http/https или путь внутри папки мода). Без фото показываются инициалы в цветах клуба. То же поле понимается у тренеров'],
     ['players[].overall', 'number', 'Общий рейтинг 1–99. Необязателен: считается из skills'],
     ['players[].potential', 'number', 'Потолок развития 1–99 (для игроков до 25 лет)'],
@@ -54,6 +54,8 @@ export function FormatDoc({ compact }: { compact?: boolean }) {
       {!compact && (
         <div className="rounded-md border border-ice/30 bg-ice/5 p-4 text-sm leading-relaxed">
           <b className="text-ice">Лиги подключаются модами: каждая папка в <code className="bg-panel2 px-1 rounded">mods/</code> рядом с <code className="bg-panel2 px-1 rounded">index.html</code> — отдельная лига.</b> Скопируйте папку <code className="bg-panel2 px-1 rounded">mods/KHL_2627</code> под новым именем, поменяйте файлы и добавьте имя папки в <code className="bg-panel2 px-1 rounded">mods/index.json</code> — мод появится в главном меню. Можно и просто выбрать файл ростера вручную на экране загрузки. Рекомендуемый состав клуба: 12–14 нападающих, 6–8 защитников, 2–3 вратаря. Игроки с любым количеством навыков будут дополнены средними значениями.
+          <br />
+          <b className="text-ice">Версия для Windows:</b> свои моды кладите в <code className="bg-panel2 px-1 rounded">{USER_MODS_DIR}</code> (кнопка «Папка моих модов» под списком модов) — index.json там не нужен, а обновления и переустановка игры эту папку не трогают. Готовым модом можно поделиться: «Предложить свой мод» — архив .zip через форму на GitHub.
         </div>
       )}
       {!compact && <ModFormatDoc />}
@@ -112,7 +114,7 @@ function ModFormatDoc() {
     ['roster.json', 'Лига, клубы, игроки и свободные тренеры — поля описаны ниже. Название лиги берётся из league.name'],
     ['schedule.json', 'Один календарь на всю лигу: games[] с датой (ГГГГ-ММ-ДД), id хозяев и гостей. Сезон начинается 1 сентября; days — длина регулярки в днях (с паузами). Клуб не может играть дважды в день. Нет файла — календарь составит игра. Плей-офф и следующие сезоны игра строит сама'],
     ['logos/', 'Эмблемы клубов (PNG с прозрачностью, лучше 160×160 и больше). Пути в roster.json — относительно папки мода'],
-    ['index.json', 'Список папок модов. Браузер не умеет читать содержимое папки, поэтому новый мод нужно вписать сюда (при сборке игры список обновляется сам)'],
+    ['index.json', 'Список папок модов. Браузер не умеет читать содержимое папки, поэтому новый мод нужно вписать сюда (при сборке игры список обновляется сам; в версии для Windows папки из «Документы\\Hockey Simulator Manager\\mods» находятся без него)'],
   ];
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-mod-format>
@@ -134,7 +136,8 @@ function ModFormatDoc() {
 }
 
 /** Mods found in mods/: pick the league to start a career in. */
-function ModPicker({ mods, current, busy, onPick, onFile }: { mods: ModEntry[]; current: string; busy: boolean; onPick: (m: ModEntry) => void; onFile: () => void }) {
+function ModPicker({ mods, current, busy, onPick, onFile, onReload }: { mods: ModEntry[]; current: string; busy: boolean; onPick: (m: ModEntry) => void; onFile: () => void; onReload: () => void }) {
+  const desktop = canOpenModsFolder();
   return (
     <div className="mb-4" data-mod-picker>
       <div className="text-[11px] uppercase tracking-wider text-muted mb-1.5">Мод (лига)</div>
@@ -180,6 +183,24 @@ function ModPicker({ mods, current, busy, onPick, onFile }: { mods: ModEntry[]; 
             <span className="block text-xs text-muted mt-0.5">roster.json с компьютера, без установки мода</span>
           </span>
         </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2 text-xs" data-mod-links>
+        <a href={MOD_SUBMIT_URL} target="_blank" rel="noopener" className="inline-flex items-center gap-1 text-ice hover:underline" data-mod-submit title="Форма на GitHub: прикрепите архив .zip с папкой мода — после проверки мод может войти в игру (нужен аккаунт GitHub)">
+          <Icon name="plus" /> Предложить свой мод ↗
+        </a>
+        {desktop && (
+          <>
+            <button type="button" className="inline-flex items-center gap-1 text-ice hover:underline" onClick={() => void openModsFolder()} data-mod-folder title={`Свои моды кладите в ${USER_MODS_DIR}: обновления игры эту папку не трогают`}>
+              <Icon name="folder" /> Папка моих модов
+            </button>
+            <button type="button" className="inline-flex items-center gap-1 text-muted hover:text-text hover:underline" onClick={onReload} disabled={busy} data-mod-reload>
+              Обновить список
+            </button>
+          </>
+        )}
+        <span className="text-muted/80">
+          {desktop ? <>Свои моды: <code className="font-mono">{USER_MODS_DIR}</code> — при обновлении игры не удаляются.</> : 'Архив .zip с папкой мода — разработчик проверит и добавит его в игру.'}
+        </span>
       </div>
     </div>
   );
@@ -420,7 +441,7 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
               </h2>
               <p className="text-sm text-muted mt-1.5">Выберите мод и клуб — новая карьера займёт отдельный слот и не затронет существующие сохранения.</p>
             </div>
-            {mods && <ModPicker mods={mods} current={modId ?? ''} busy={stage === 'loading'} onPick={openMod} onFile={() => fileRef.current?.click()} />}
+            {mods && <ModPicker mods={mods} current={modId ?? ''} busy={stage === 'loading'} onPick={openMod} onFile={() => fileRef.current?.click()} onReload={load} />}
             <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={(e) => { if (e.target.files?.[0]) void onFile(e.target.files[0]); e.target.value = ''; }} />
           </>
         )}

@@ -425,7 +425,9 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
             }
             right={<span className="text-xs text-muted hidden sm:inline">{activeMonth.label}</span>}
           >
-            <div className="grid grid-cols-7 gap-1 sm:gap-1.5 mb-1 sm:mb-1.5" data-weekday-headers>
+            {/* Compact month: the cells stop growing with the window (≈ 70–80 px squares on a monitor). */}
+            <div className="mx-auto max-w-[30rem] lg:max-w-[34rem]" data-calendar-month>
+            <div className="grid grid-cols-7 gap-1 mb-1" data-weekday-headers>
               {MONDAY_FIRST_HEADERS.map((wd, idx) => (
                 <div
                   key={wd}
@@ -439,7 +441,7 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
               ))}
             </div>
 
-            <div className="grid grid-cols-7 gap-1 sm:gap-1.5" data-calendar-grid>
+            <div className="grid grid-cols-7 gap-1" data-calendar-grid>
               {activeMonth.cells.map((cell, idx) => {
                 if (!cell) return <div key={`empty-${idx}`} className="aspect-square rounded-md bg-bg/20 border border-line/20" />;
                 const { date, dayIdx, games } = cell;
@@ -468,7 +470,7 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                     data-calendar-day={dayIdx ?? undefined}
                     onClick={() => dayIdx !== null && setSelectedDay(dayIdx)}
                     className={cn(
-                      'relative aspect-square rounded-md sm:rounded-lg border text-xs transition select-none overflow-hidden',
+                      'relative aspect-square rounded-md border text-xs transition select-none overflow-hidden',
                       dayIdx !== null ? 'cursor-pointer hover:border-accent/60' : 'opacity-45',
                       isToday
                         ? 'border-accent bg-accent/12 ring-1 ring-accent/50'
@@ -526,7 +528,7 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
 
                     {/* Trade window milestones */}
                     {(isDeadline || inFreeze || isWinterOpen) && (
-                      <div className={cn('hidden sm:block absolute left-1 right-1 top-6')}>
+                      <div className={cn('hidden sm:block absolute left-1 right-1 top-5')}>
                         {isDeadline && <span className="block text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-red/80 text-white truncate">Дедлайн {LG()}</span>}
                         {isWinterOpen && <span className="block text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-good/80 text-white truncate">Зимнее окно</span>}
                         {inFreeze && !isDeadline && <span className="block text-[9px] uppercase px-1 py-0.5 rounded bg-gold/25 text-gold truncate">Мораторий</span>}
@@ -535,6 +537,7 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                   </div>
                 );
               })}
+            </div>
             </div>
           </Panel>
 
