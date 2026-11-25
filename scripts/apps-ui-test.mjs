@@ -35,8 +35,8 @@ try {
     await openSettings(page);
     assert.equal(await page.locator('[data-app-platform]').getAttribute('data-app-platform'), 'web');
     const links = await page.locator('[data-app-downloads] a').evaluateAll((as) => as.map((a) => a.href));
-    assert.ok(links.some((h) => h.endsWith('/releases/download/app/KHL-GM-Setup.exe')), 'windows installer link');
-    assert.ok(links.some((h) => h.endsWith('/releases/download/app/KHL-GM.apk')), 'android apk link');
+    assert.ok(links.some((h) => h.endsWith('/releases/download/app/Hockey-Simulator-Manager-Setup.exe')), 'windows installer link');
+    assert.ok(links.some((h) => h.endsWith('/releases/download/app/Hockey-Simulator-Manager.apk')), 'android apk link');
     // swiftshader in CI = software rendering: the hint explains the lag and points to the app.
     assert.equal(await page.locator('[data-gpu]').getAttribute('data-gpu'), 'software');
     assert.match(await page.locator('[data-settings-section="Приложение и графика"]').innerText(), /без видеокарты/);

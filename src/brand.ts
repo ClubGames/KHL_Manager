@@ -1,6 +1,8 @@
 // Name of the game and of the league when a mod's roster doesn't name one.
-// Storage keys (khl.*), save files, IndexedDB names and app artifact names (KHL-GM-*) are deliberately left as
-// they were: renaming them would orphan existing careers and break updates of installed apps.
+// Storage keys (khl.*), the save format id, IndexedDB names, the Windows profile folder (%APPDATA%\KHL-GM) and the
+// Android package id are deliberately left as they were: renaming them would orphan existing careers and stop new
+// versions from installing over old ones. Everything the player sees (downloads, the .exe, shortcuts, exported
+// files) carries the game's name.
 
 export const GAME_NAME_RU = 'Хоккейный Симулятор Менеджера';
 export const GAME_NAME_EN = 'Hockey Simulator Manager';

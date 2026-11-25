@@ -1,4 +1,4 @@
-import { memo, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { MutableRefObject } from 'react';
 import type { AttackStyle, ForecheckStyle, Game, GameEvent, Lineup, PullGoaliePolicy } from '../types';
 import type { BlockKind } from '../game/engine';
@@ -143,6 +143,18 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     return prewarmReplays({ home: H, away: A, players: P, figures, detail: prewarmDetail });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prewarm, prewarmDetail]);
+  // Everyone who may step on the ice in the 3D match (figures are prepared up front, not when he jumps over the boards).
+  const roster3d = useMemo(() => {
+    const out: FigureRequest[] = [], seen = new Set<string>();
+    ([0, 1] as const).forEach((side) => {
+      const L = sim.team(side).lineup;
+      const add = (id: string | null | undefined, goalie: boolean) => { if (id && !seen.has(id)) { seen.add(id); out.push({ id, side, goalie }); } };
+      [...L.F.flat(), ...L.D.flat(), L.u20F, L.u20D].forEach((id) => add(id, false));
+      add(L.starterG, true); add(L.backupG, true);
+    });
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sim]);
   // Rink-based motion of every goal, kept after its period is over so the goals can be replayed after the match.
   const clips = useRef(new Map<string, ReplayClip>());
   const clipFor = (e: GameEvent): ReplayClip | undefined => {
@@ -202,14 +214,16 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   useEffect(() => {
     if (status !== 'playing' || paused || replayEvent) return;
     let raf = 0;
-    let last = performance.now();
+    let last = performance.now(), waited = 0;
     const loop = (t: number) => {
       const dt = Math.min(0.1, (t - last) / 1000);
       last = t;
+      // The match waits while the 3D picture is being prepared (at most a few seconds), so nothing is missed.
+      if (ticker.wait && waited < 8) { waited += dt; raf = requestAnimationFrame(loop); return; }
       const ai = rinkAI.current;
       if (ai) {
         // Highlights play near real time, routine skating is fast-forwarded; the change of pace is eased.
-        const want = ai.pace;
+        const want = ai.paceAt(tauRef.current);
         paceRef.current += (want - paceRef.current) * Math.min(1, dt * 5);
         tauRef.current = Math.min(tauRef.current + dt * speed * paceRef.current, ai.ended ? ai.lastTau : Infinity);
         ai.ensure(tauRef.current);
@@ -1047,7 +1061,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       {land ? (
         <div className="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)_minmax(270px,36%)] grid-rows-[minmax(0,1fr)] gap-2 py-1.5 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.375rem,env(safe-area-inset-bottom))]" data-match-land>
           <div className="min-h-0 flex flex-col">
-            {kind === 'so' && status !== 'intro' ? <ShootoutBoard events={soEvents} home={H} away={A} players={P} live className="flex-1 min-h-0 overflow-y-auto" /> : <LiveRink fill className="flex-1 min-h-0" ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} />}
+            {kind === 'so' && status !== 'intro' ? <ShootoutBoard events={soEvents} home={H} away={A} players={P} live className="flex-1 min-h-0 overflow-y-auto" /> : <LiveRink fill className="flex-1 min-h-0" ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} roster={roster3d} allow3d={!replayEvent} />}
           </div>
           {/* Only this side list scrolls; the rink, score and controls stay put. */}
           <div ref={mobileTab === 'live' ? feedRef : undefined} className="min-h-0 overflow-y-auto overscroll-contain rounded-md border border-line bg-panel" data-land-side data-feed={mobileTab === 'live' || undefined}>
@@ -1063,9 +1077,9 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       <div className="flex-1 max-w-7xl mx-auto w-full px-3 sm:px-4 py-3 sm:py-4 grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-4 pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="space-y-3 min-w-0">
           <div className={cn(mobileTab !== 'live' && 'hidden lg:block')}>
-            <button type="button" className="text-xs text-ice mb-2" aria-expanded={showRink} onClick={() => setShowRink(v => !v)}>{showRink ? 'Скрыть площадку 2D' : 'Показать площадку 2D'}</button>
+            <button type="button" className="text-xs text-ice mb-2" aria-expanded={showRink} onClick={() => setShowRink(v => !v)}>{showRink ? 'Скрыть площадку' : 'Показать площадку'}</button>
             {kind === 'so' && status !== 'intro' && <ShootoutBoard events={soEvents} home={H} away={A} players={P} live className="mb-2" />}
-            {showRink && kind !== 'so' && <LiveRink ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} />}
+            {showRink && kind !== 'so' && <LiveRink ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} roster={roster3d} allow3d={!replayEvent} />}
           </div>
           <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-2', mobileTab !== 'live' && 'hidden lg:grid')}>
             {renderOnIce(0)}
@@ -1445,6 +1459,8 @@ class Ticker {
   sec = 0;
   /** presentation time of the rink animation */
   tau = 0;
+  /** set by the 3D view while its first picture is not ready yet */
+  wait = false;
   private subs = new Set<() => void>();
   subscribe = (f: () => void) => {
     this.subs.add(f);

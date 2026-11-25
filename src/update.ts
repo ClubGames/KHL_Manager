@@ -64,19 +64,29 @@ export async function checkForUpdate(): Promise<UpdateInfo | null> {
   if (!current) return null;
   const p = platform();
   let latest: BuildStamp | null = null;
+  let assets: { name?: string; browser_download_url?: string }[] = [];
   if (p === 'web') {
     // The page's own folder: works for GitHub Pages and any copy of dist/ on another host (absent on the dev server).
     const j = (await getJson(`./version.json?t=${Date.now()}`)) as BuildStamp | null;
     if (j && typeof j.build === 'number') latest = { build: j.build, sha: String(j.sha ?? ''), version: String(j.version ?? '') };
   } else {
-    const rel = (await getJson(RELEASE_API)) as { body?: string } | null;
+    const rel = (await getJson(RELEASE_API)) as { body?: string; assets?: { name?: string; browser_download_url?: string }[] } | null;
+    assets = Array.isArray(rel?.assets) ? rel!.assets! : [];
     // Only the release itself is trusted: Pages is updated minutes before the new installers are uploaded.
     latest = parseReleaseStamp(rel?.body);
   }
   if (!latest || latest.build <= current.build) return null;
   if (p === 'web') return { current, latest, platform: p, action: 'reload' };
-  const url = p === 'android' ? APP_DOWNLOADS.android : (await windowsPortable()) ? APP_DOWNLOADS.windowsPortable : APP_DOWNLOADS.windowsSetup;
+  const url = downloadUrl(p, await windowsPortable(), assets);
   return { current, latest, platform: p, action: 'download', url };
+}
+
+/** The file this app updates from: picked from the release's own files (by kind, not by exact name), so a renamed
+ *  download never leaves an installed app with a dead link; the known address when the list is not available. */
+export function downloadUrl(p: Platform, portable: boolean, assets: { name?: string; browser_download_url?: string }[]): string {
+  const pattern = p === 'android' ? /\.apk$/i : portable ? /portable\.exe$/i : /setup\.exe$/i;
+  const hit = assets.find(a => typeof a.name === 'string' && pattern.test(a.name) && typeof a.browser_download_url === 'string' && a.browser_download_url.startsWith('https://'));
+  return hit?.browser_download_url ?? (p === 'android' ? APP_DOWNLOADS.android : portable ? APP_DOWNLOADS.windowsPortable : APP_DOWNLOADS.windowsSetup);
 }
 
 /** Do the update: reload the page (browser) or download the new installer / APK (apps). */

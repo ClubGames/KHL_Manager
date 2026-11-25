@@ -129,7 +129,7 @@ npm run preview    # или любой статический сервер на 
 
 | | Windows 10/11 (Electron, `desktop/`) | Android 7+ (Capacitor, `android/`) |
 |---|---|---|
-| Скачать | [KHL-GM-Setup.exe](https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM-Setup.exe) · [KHL-GM-Portable.exe](https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM-Portable.exe) | [KHL-GM.apk](https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM.apk) |
+| Скачать | [Hockey-Simulator-Manager-Setup.exe](https://github.com/ClubGames/KHL_Manager/releases/download/app/Hockey-Simulator-Manager-Setup.exe) · [Hockey-Simulator-Manager-Portable.exe](https://github.com/ClubGames/KHL_Manager/releases/download/app/Hockey-Simulator-Manager-Portable.exe) | [Hockey-Simulator-Manager.apk](https://github.com/ClubGames/KHL_Manager/releases/download/app/Hockey-Simulator-Manager.apk) |
 | Графика | видеокарта включена принудительно (без «чёрного списка» драйверов), предпочтение дискретной; матч не замедляется в фоне | аппаратное ускорение WebView |
 | Окно | развёрнуто на весь экран, F11 — полный экран, Ctrl ± — масштаб | всегда полный экран, альбомная ориентация, экран не гаснет |
 | Файлы | видео, сохранения и ростер — через системное окно «Сохранить как» | копия в «Документы/Hockey Simulator Manager» + меню «Поделиться» |
@@ -142,7 +142,7 @@ npm run preview    # или любой статический сервер на 
 - APK подписан ключом из репозитория (`android/app/khl-release.p12`), поэтому новые версии ставятся поверх старых
   с сохранением карьер. Свой ключ можно задать секретами `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`,
   `ANDROID_KEY_ALIAS` — но после смены ключа приложение придётся один раз переустановить.
-- Установщик Windows (`KHL-GM-Setup.exe`) показывает лицензионное соглашение (`desktop/license.txt`) и даёт выбрать
+- Установщик Windows (`Hockey-Simulator-Manager-Setup.exe`) показывает лицензионное соглашение (`desktop/license.txt`) и даёт выбрать
   папку установки (для себя — без прав администратора, для всех пользователей — с ними). Обновление — установка
   новой версии поверх: карьеры (`%APPDATA%\KHL-GM`) и свои моды (папка `mods` рядом с игрой) не трогаются —
   деинсталлятор при обновлении обходит папку `mods` (`desktop/installer.nsh`, макрос `customRemoveFiles`).
@@ -183,7 +183,7 @@ mods/
   Сохранения, сделанные до появления модов, продолжают работать как прежде и следуют моду `KHL_2627`.
 - **Windows-приложение** ищет моды ещё и в папке `mods` рядом с игрой: `<папка установки>\mods\<папка мода>`
   (по умолчанию `%LOCALAPPDATA%\Programs\Hockey Simulator Manager\mods`), у портативной версии — рядом с
-  `KHL-GM-Portable.exe`. Если в папку игры нельзя писать (установка в Program Files), используется
+  `Hockey-Simulator-Manager-Portable.exe`. Если в папку игры нельзя писать (установка в Program Files), используется
   `Документы\Hockey Simulator Manager\mods`. Моды из этой старой папки при первом запуске копируются в новую.
   Обновление игры папку `mods` не удаляет. Кнопка «Установить мод…» (или перетаскивание архива на список модов)
   распаковывает `.zip` в эту папку: архив с папкой мода, без папки (тогда папка называется по имени архива) или

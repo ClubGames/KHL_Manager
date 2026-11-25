@@ -3,7 +3,7 @@
 // - GPU acceleration forced on (no blocklist fallback to software rendering) and no background throttling;
 // - files (videos, saves, roster) are written through the system «Save as» dialog;
 // - external links open in the default browser;
-// - the player's own mods live in the «mods» folder next to KHL-GM.exe (kept across updates, see installer.nsh);
+// - the player's own mods live in the «mods» folder next to «Hockey Simulator Manager.exe» (kept across updates, see installer.nsh);
 //   «Установить мод» unpacks a .zip archive there.
 const { app, BrowserWindow, protocol, net, shell, ipcMain, dialog, Menu } = require('electron');
 const path = require('node:path');
@@ -41,9 +41,9 @@ let win = null;
 
 /**
  * Player's own mods: <game folder>\mods\<id>\{mod.json, roster.json, schedule.json, logos}.
- * - installed app: next to KHL-GM.exe (%LOCALAPPDATA%\Programs\Hockey Simulator Manager\mods by default); the
+ * - installed app: next to «Hockey Simulator Manager.exe» (%LOCALAPPDATA%\Programs\Hockey Simulator Manager\mods by default); the
  *   uninstaller of an update keeps this folder (desktop/installer.nsh → customRemoveFiles);
- * - portable exe: next to KHL-GM-Portable.exe (PORTABLE_EXECUTABLE_DIR — the exe itself runs from a temp folder);
+ * - portable exe: next to Hockey-Simulator-Manager-Portable.exe (PORTABLE_EXECUTABLE_DIR — the exe itself runs from a temp folder);
  * - a game folder without write access (e.g. installed into Program Files): Documents\Hockey Simulator Manager\mods.
  * Older versions kept mods in Documents: they are copied over once (never overwriting).
  * The game sees these folders next to the bundled ones under app://khl/mods/; a user folder with the same name as a
@@ -281,7 +281,7 @@ ipcMain.handle('khl:save-file', async (event, { name, data, kind }) => {
 });
 
 /**
- * CI check of the packaged app (`KHL-GM.exe --smoke-test=result.json`): the game starts from app://, the
+ * CI check of the packaged app (`"Hockey Simulator Manager.exe" --smoke-test=result.json`): the game starts from app://, the
  * roster loads (club list on the start screen), storage works and WebGL is there. Writes JSON, exits 0/1.
  */
 async function smokeTest(outFile) {

@@ -113,3 +113,39 @@ export function cameraPose(clip: ReplayClip, time: number, view: ReplayView, zoo
     }
   }
 }
+
+/* ---------------- the live 3D match ---------------- */
+
+export type LiveCamera = 'broadcast' | 'high' | 'ice' | 'end';
+export const LIVE_CAMERAS: [LiveCamera, string][] = [['broadcast', 'ТВ'], ['high', 'Сверху'], ['ice', 'Со льда'], ['end', 'Из-за ворот']];
+
+/** Camera of the live picture around the (smoothed) point of play. Pure: tests check it in Node. */
+export function liveCameraPose(mode: LiveCamera, focus: { x: number; z: number }, zoom: number, aspect: number): { pos: V3; look: V3; fov: number } {
+  const wide = clamp(1.65 / Math.max(.4, aspect), 1, 2.1); // portrait screens pull back
+  const z = clamp(zoom, ZOOM.min, ZOOM.max);
+  const fx = clamp(focus.x, -21, 21), fz = clamp(focus.z * .55, -6, 6);
+  switch (mode) {
+    case 'broadcast': {
+      // The TV camera high in the stands opposite the benches: pans with the play, as on a hockey broadcast.
+      // (portrait screens and a wide zoom-out widen the lens instead of leaving the building)
+      // Far enough to keep both boards in the picture, like an NHL broadcast.
+      const k = wide * z, d = 25 * Math.min(k, 1.5), lz = fz * .45;
+      return { pos: { x: fx * .9, y: d * .5, z: lz + d * .86 }, look: { x: fx, y: .3, z: lz - 1.2 }, fov: clamp(38 * Math.max(1, k / 1.5), 28, 72) };
+    }
+    case 'high': {
+      const k = wide * z, h = 27 * Math.min(k, 1.5);
+      return { pos: { x: fx * .7, y: h, z: fz + h * .42 }, look: { x: fx * .7, y: 0, z: fz * .5 }, fov: clamp(42 * Math.max(1, k / 1.5), 30, 75) };
+    }
+    case 'ice': {
+      // Low behind the glass, panning with the play.
+      return { pos: { x: clamp(fx * .85, -24, 24), y: 2.4, z: RINK.width / 2 + 2.8 }, look: { x: fx, y: .7, z: fz }, fov: clamp(46 * z * Math.min(1.3, wide), 18, 78) };
+    }
+    case 'end': {
+      // High behind the net of the zone the puck is in, looking down the ice.
+      const dir = focus.x >= 0 ? 1 : -1;
+      const look = { x: dir * 12 + (fx - dir * 12) * .35, y: 0, z: fz * .6 }, base = { x: dir * 37, y: 11, z: 0 };
+      const k = Math.min(z, 1.15);
+      return { pos: { x: look.x + (base.x - look.x) * k, y: base.y * Math.sqrt(k), z: look.z + (base.z - look.z) * k }, look, fov: clamp(44 * Math.max(1, z / 1.15) * Math.min(1.3, wide), 30, 72) };
+    }
+  }
+}

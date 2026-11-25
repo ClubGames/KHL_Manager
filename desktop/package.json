@@ -18,7 +18,7 @@
   "build": {
     "appId": "com.clubgames.khlgm",
     "productName": "Hockey Simulator Manager",
-    "executableName": "KHL-GM",
+    "executableName": "Hockey Simulator Manager",
     "copyright": "ClubGames",
     "directories": { "output": "release", "buildResources": "build" },
     "files": ["main.cjs", "preload.cjs", "modInstall.cjs", "app/**/*", "package.json"],
@@ -46,8 +46,8 @@
       "shortcutName": "Хоккейный Симулятор Менеджера",
       "deleteAppDataOnUninstall": false,
       "include": "installer.nsh",
-      "artifactName": "KHL-GM-Setup.${ext}"
+      "artifactName": "Hockey-Simulator-Manager-Setup.${ext}"
     },
-    "portable": { "artifactName": "KHL-GM-Portable.${ext}" }
+    "portable": { "artifactName": "Hockey-Simulator-Manager-Portable.${ext}" }
   }
 }

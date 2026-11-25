@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { APP_DOWNLOADS, APP_RELEASE, appVersion, gpuInfo, platform } from '../platform';
 import { UpdateCheckRow } from './UpdateBanner';
-import { CAMERAS } from './replayCameras';
+import { CAMERAS, LIVE_CAMERAS } from './replayCameras';
 import { Button } from './ui';
 import { REPLAY_SPEEDS, resetSettings, setSettings, useSettings, type Settings } from '../game/settings';
 import { cn } from '../utils/cn';
@@ -107,8 +107,17 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
         <Row label="Скорость матча при старте">
           <Choice id="matchSpeed" value={s.matchSpeed} onChange={(v) => set({ matchSpeed: v })} options={[[1, '×1'], [2, '×2'], [4, '×4']]} />
         </Row>
-        <Row label="Площадка 2D под матч-центром" hint="На широком экране, под картой бросков.">
+        <Row label="Площадка под матч-центром" hint="На широком экране, под картой бросков.">
           <Toggle id="matchRink2d" value={s.matchRink2d} onChange={(v) => set({ matchRink2d: v })} />
+        </Row>
+        <Row label="Матч в 3D" hint="Весь матч в 3D: те же игроки, шайба, смены и вбрасывания, что на 2D-площадке, кадр в кадр. Если устройство не тянет 3D, показывается 2D. Переключается и прямо на площадке.">
+          <Choice id="matchView" value={s.matchView} onChange={(v) => set({ matchView: v })} options={[['3d', '3D'], ['2d', '2D']]} />
+        </Row>
+        <Row label="Камера 3D-матча">
+          <Choice id="matchCamera" value={s.matchCamera} onChange={(v) => set({ matchCamera: v })} options={LIVE_CAMERAS} />
+        </Row>
+        <Row label="Мини-карта 2D поверх 3D" hint="Маленькая площадка сверху в углу 3D-картинки.">
+          <Toggle id="matchMinimap" value={s.matchMinimap} onChange={(v) => set({ matchMinimap: v })} />
         </Row>
         <Row label="Подсказки тренерского штаба на остановках" hint="Когда нужен тайм-аут, замена вратаря или игра без вратаря, матч встаёт на паузу при свистке и предлагает решение, а потом продолжается сам.">
           <Toggle id="matchAdvice" value={s.matchAdvice} onChange={(v) => set({ matchAdvice: v })} />

@@ -13,7 +13,7 @@ type DesktopBridge = {
   platform: string;
   info: () => Promise<{ version: string; electron: string; chrome: string; gpu: string; portable?: boolean; modsDir?: string }>;
   saveFile: (file: { name: string; data: Uint8Array; kind: FileKind }) => Promise<string | null>;
-  /** Opens the mods folder (next to KHL-GM.exe) in Explorer (apps built before it existed lack it). */
+  /** Opens the mods folder (next to «Hockey Simulator Manager.exe») in Explorer (apps built before it existed lack it). */
   openModsFolder?: () => Promise<string | null>;
   /** Unpacks a mod archive (.zip) into the mods folder: a dropped file, or the «Open» dialog without one. */
   installMod?: (file?: { name: string; data: Uint8Array }) => Promise<ModInstallResult | null>;
@@ -36,7 +36,7 @@ export const isApp = () => platform() !== 'web';
 /** Players send their mods (a .zip attached to a GitHub issue form, see .github/ISSUE_TEMPLATE/mod.yml). */
 export const MOD_SUBMIT_URL = 'https://github.com/ClubGames/KHL_Manager/issues/new?template=mod.yml';
 /**
- * Where the Windows app looks for the player's own mods: the «mods» folder next to the game (KHL-GM.exe or the
+ * Where the Windows app looks for the player's own mods: the «mods» folder next to the game («Hockey Simulator Manager.exe» or the
  * portable exe; Documents\\Hockey Simulator Manager\\mods when the game folder is read-only). Updates keep it.
  * The exact path comes from the app (`userModsDir()`); this is the label until it answers.
  */
@@ -65,9 +65,9 @@ export async function installModArchive(file?: File): Promise<ModInstallResult |
 
 export const APP_RELEASE = 'https://github.com/ClubGames/KHL_Manager/releases/tag/app';
 export const APP_DOWNLOADS = {
-  windowsSetup: 'https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM-Setup.exe',
-  windowsPortable: 'https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM-Portable.exe',
-  android: 'https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM.apk',
+  windowsSetup: 'https://github.com/ClubGames/KHL_Manager/releases/download/app/Hockey-Simulator-Manager-Setup.exe',
+  windowsPortable: 'https://github.com/ClubGames/KHL_Manager/releases/download/app/Hockey-Simulator-Manager-Portable.exe',
+  android: 'https://github.com/ClubGames/KHL_Manager/releases/download/app/Hockey-Simulator-Manager.apk',
 } as const;
 
 /** App version (shown in the settings); null in the browser. */

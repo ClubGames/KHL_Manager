@@ -5,6 +5,11 @@ import type { RinkAI } from '../game/rinkAI';
 import { FACEOFF_SPOTS, RINK } from '../game/rinkGeometry';
 import { cn } from '../utils/cn';
 import { LG } from '../brand';
+import { setSettings, useSettings } from '../game/settings';
+import { LIVE_CAMERAS } from './replayCameras';
+import type { FigureRequest } from './replayCache';
+import { resolveReplayQuality } from './ReplayScene';
+import { LiveScene3D } from './LiveScene3D';
 
 export { clipFrame };
 /** Static ice markings in real IIHF/KHL proportions (viewBox 100 × 50 = 60 × 30 m, 1 m = 5/3 units). */
@@ -56,10 +61,19 @@ export function RinkSvg({ frame, home, away, players }: { frame: LiveFrame; home
   </svg>;
 }
 
-export function LiveRink({ ticker, ids, goalies, event, home, away, players, running, ai = null, className, fill = false }: {
+export function LiveRink({ ticker, ids, goalies, event, home, away, players, running, ai = null, className, fill = false, roster, allow3d = true }: {
   ticker: { sec: number; tau?: number }; ids: [string[], string[]]; goalies: [string | null, string | null]; event: GameEvent | null;
   home: Team; away: Team; players: Record<string, Player>; running: boolean; ai?: RinkAI | null; className?: string; fill?: boolean;
+  /** everyone who may come on the ice: the 3D view prepares their figures up front */
+  roster?: FigureRequest[];
+  /** false while something else uses the 3D renderer (a goal replay is open) */
+  allow3d?: boolean;
 }) {
+  const settings = useSettings();
+  const [failed3d, setFailed3d] = useState(false);
+  // The 3D match reads the same rink frames as the 2D picture; without the agent rink (or WebGL) it is 2D.
+  const can3d = !!ai && !failed3d;
+  const show3d = can3d && settings.matchView === '3d' && allow3d;
   const read = () => (ai ? ticker.tau ?? 0 : ticker.sec);
   const [t, setT] = useState(read);
   const last = useRef(0);
@@ -86,6 +100,11 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
   }
   const flipped = !!ai?.flipped;
   const state = frame.faceoff ? 'Вбрасывание · время стоит' : frame.stopped ? 'Свисток · время стоит' : running ? 'В игре' : 'Пауза';
+  const svg = <RinkSvg frame={frame} home={home} away={away} players={players} />;
+  const viewToggle = can3d && <span className="flex rounded-sm border border-line overflow-hidden shrink-0" role="radiogroup" aria-label="Вид площадки" data-rink-view={show3d ? '3d' : '2d'}>
+    {(['2d', '3d'] as const).map(v => <button key={v} type="button" role="radio" aria-checked={settings.matchView === v} onClick={() => setSettings({ matchView: v })}
+      className={cn('px-1.5 py-0.5 text-[10px] font-bold uppercase', settings.matchView === v ? 'bg-ice text-bg' : 'text-muted hover:text-text')} data-rink-view-button={v}>{v}</button>)}
+  </span>;
   return <section className={cn('rounded-md border border-line bg-panel overflow-hidden flex flex-col', className)} data-live-rink data-faceoff={frame.faceoff || undefined} data-stopped={frame.stopped || undefined}>
     <div className="flex items-center justify-between gap-2 px-2.5 py-1 text-[11px] border-b border-line min-h-[26px]">
       <span className="flex items-center gap-2 min-w-0">
@@ -94,8 +113,25 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
         <span className="flex items-center gap-1 shrink-0">{flipped ? `${away.short} →` : `← ${away.short}`}<i style={{ background: '#f7fafc', borderColor: away.primaryColor }} className="inline-block w-2 h-2 rounded-full border-2" /></span>
         <span className="truncate text-muted" data-rink-caption>{frame.caption ?? ''}</span>
       </span>
-      <span className={cn('shrink-0 font-semibold', frame.stopped ? 'text-gold' : running ? 'text-ok' : 'text-muted')} data-rink-state>{state}</span>
+      <span className="flex items-center gap-2 shrink-0">
+        <span className={cn('font-semibold', frame.stopped ? 'text-gold' : running ? 'text-ok' : 'text-muted')} data-rink-state>{state}</span>
+        {viewToggle}
+      </span>
     </div>
-    <div className="bg-[#0a1828] p-1 flex-1 min-h-0 flex items-center justify-center"><div className={fill ? 'w-full h-full' : 'w-full max-w-[560px]'} style={fill ? undefined : { aspectRatio: '2 / 1' }}><RinkSvg frame={frame} home={home} away={away} players={players} /></div></div>
+    {show3d ? (
+      <div className={cn('relative bg-[#081421] overflow-hidden', fill ? 'flex-1 min-h-0' : 'w-full')} style={fill ? undefined : { aspectRatio: '16 / 9' }} data-rink-3d>
+        <LiveScene3D ai={ai!} ticker={ticker} home={home} away={away} players={players} roster={roster ?? []} camera={settings.matchCamera} quality={resolveReplayQuality(settings.replayQuality)} onFail={() => setFailed3d(true)} />
+        <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1" role="radiogroup" aria-label="Камера">
+          {LIVE_CAMERAS.map(([c, label]) => <button key={c} type="button" role="radio" aria-checked={settings.matchCamera === c} onClick={() => setSettings({ matchCamera: c })}
+            className={cn('rounded-sm px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur-sm', settings.matchCamera === c ? 'bg-white/85 text-[#0b1726]' : 'bg-black/35 text-white/85 hover:bg-black/55')} data-live-camera={c}>{label}</button>)}
+          <button type="button" aria-pressed={settings.matchMinimap} onClick={() => setSettings({ matchMinimap: !settings.matchMinimap })}
+            className={cn('rounded-sm px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur-sm', settings.matchMinimap ? 'bg-white/85 text-[#0b1726]' : 'bg-black/35 text-white/85 hover:bg-black/55')} data-live-minimap-toggle>Карта</button>
+        </div>
+        {/* The same frame on the 2D rink: both pictures are one simulation. */}
+        {settings.matchMinimap && <div className="absolute right-1.5 bottom-1.5 w-[28%] min-w-[120px] max-w-[240px] rounded-sm border border-white/25 bg-[#0a1828]/75 p-0.5 pointer-events-none" style={{ aspectRatio: '2 / 1' }} data-rink-minimap>{svg}</div>}
+      </div>
+    ) : (
+      <div className="bg-[#0a1828] p-1 flex-1 min-h-0 flex items-center justify-center"><div className={fill ? 'w-full h-full' : 'w-full max-w-[560px]'} style={fill ? undefined : { aspectRatio: '2 / 1' }}>{svg}</div></div>
+    )}
   </section>;
 }
