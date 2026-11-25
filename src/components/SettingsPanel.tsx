@@ -124,6 +124,21 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
         </Row>
       </Section>
 
+      <Section title="Игра за хоккеиста">
+        <Row label="Длина периода" hint="Сколько реальных минут длится 20-минутный период, когда вы играете сами. Игровые часы идут быстрее и стоят при свистках.">
+          <Choice id="playPeriod" value={s.playPeriod} onChange={(v) => set({ playPeriod: v })} options={[[3, '3 мин'], [5, '5 мин'], [8, '8 мин'], [12, '12 мин'], [20, '20 мин']]} />
+        </Row>
+        <Row label="Сложность" hint="Насколько сильны соперники: как быстро они читают игру, точность их бросков и передач, игра вратарей.">
+          <Choice id="playDifficulty" value={s.playDifficulty} onChange={(v) => set({ playDifficulty: v })} options={[['rookie', 'Новичок'], ['pro', 'Профи'], ['star', 'Звезда']]} />
+        </Row>
+        <Row label="Автосмена игрока" hint="Управление само переходит к игроку с шайбой, а в обороне — к ближайшему к шайбе защитнику. Вручную — кнопкой «Смена».">
+          <Toggle id="playAutoSwitch" value={s.playAutoSwitch} onChange={(v) => set({ playAutoSwitch: v })} />
+        </Row>
+        <Row label="Экранное управление" hint="Виртуальный стик и кнопки на сенсорном экране. «Авто»: на телефонах и планшетах.">
+          <Choice id="playTouch" value={s.playTouch} onChange={(v) => set({ playTouch: v })} options={[['auto', 'Авто'], ['on', 'Вкл'], ['off', 'Выкл']]} />
+        </Row>
+      </Section>
+
       <Section title="Симуляция">
         <Row label="Открывать протокол после симуляции матча" hint="Если симуляция сыграла один матч вашей команды, сразу открывается его протокол с повторами голов.">
           <Toggle id="simOpenReport" value={s.simOpenReport} onChange={(v) => set({ simOpenReport: v })} />

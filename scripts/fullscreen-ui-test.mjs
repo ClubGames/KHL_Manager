@@ -2,11 +2,13 @@
 // Start Vite first: BASE_URL=http://localhost:5173 CHROMIUM_PATH=/path/to/chromium node scripts/fullscreen-ui-test.mjs
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
+import { serveTestMod } from './testMod.mjs';
 
 const browser = await chromium.launch({
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
   args: ['--no-sandbox', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
+serveTestMod(browser);
 const errors = [];
 const ok = (m) => console.log('ok', m);
 const fsEl = (page) => page.evaluate(() => (document.fullscreenElement ? (document.fullscreenElement === document.documentElement ? 'page' : document.fullscreenElement.getAttribute('data-replay-box') !== null ? 'replay' : 'other') : null));
@@ -27,7 +29,7 @@ async function mountReplay(page) {
     const DOM = await import('/node_modules/.vite/deps/react-dom_client.js');
     const { GoalReplay } = await import('/src/components/GoalReplay.tsx');
     const { parseRosterText } = await import('/src/game/roster.ts');
-    const r = parseRosterText(await (await fetch('/mods/KHL_2627/roster.json')).text());
+    const r = parseRosterText(await (async () => { for (const u of ['/mods/KHL_2627/roster.json', '/scripts/fixtures/test-roster.json']) { const t = (await (await fetch(u)).text()).trim(); if (t.startsWith('{')) return t; } return ''; })());
     const home = r.teams.find((t) => t.id === 'ska'), away = r.teams.find((t) => t.id === 'avangard');
     const ids = (t) => [...t.lineup.F[0], ...t.lineup.D[0]].filter(Boolean);
     const h = ids(home), a = ids(away);

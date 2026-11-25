@@ -1,4 +1,4 @@
-import type { RinkAI } from '../game/rinkAI';
+import type { RinkPlay } from '../game/rinkAI';
 import type { LiveFrame } from '../game/rinkPlayback';
 import { toWorld } from './replayCameras';
 import { FOLLOW, NET_X, releaseAt, WINDUP, type MotionPlan, type Release, type ReleaseKind } from './replayMotion';
@@ -14,14 +14,31 @@ export const LOOKAHEAD = 1.2;
 /** World units: metres around centre ice, the replay's convention (toWorld). */
 export type LiveRelease = Release & { side: 0 | 1 };
 
+/** What the 3D match reads: the rink AI of a watched match or the playable rink (which brings its own motion). */
+export interface LiveSource {
+  readonly flipped: boolean;
+  readonly frames: readonly { tau: number; carrier: number; ids: string[] }[];
+  readonly plays: readonly RinkPlay[];
+  frameAt(tau: number): LiveFrame;
+  ensure(tau: number): void;
+  /** releases known as they happen (the played match): used instead of reading them back from the frames */
+  readonly motion?: LiveMotionLike;
+}
+export interface LiveMotionLike {
+  update(): void;
+  prune(tau: number): void;
+  releaseAt(id: string, tau: number): { rel: Release; s: number; aim: number } | null;
+  goalAt(tau: number): { side: 0 | 1; tau: number; netX: number } | null;
+}
+
 const HOLD_BACK = 1.5;
 
-export class LiveMotion {
+export class LiveMotion implements LiveMotionLike {
   readonly releases: LiveRelease[] = [];
   private scanned = 1;
   private pending: { id: string; k: number }[] = [];
   private plan: MotionPlan = { touches: [], releases: [], saves: new Map() };
-  constructor(readonly ai: RinkAI) {}
+  constructor(readonly ai: LiveSource) {}
 
   /** World x of the net side `side` attacks (teams switch ends between periods). */
   netX(side: 0 | 1): number {
@@ -98,7 +115,7 @@ export class LiveMotion {
 }
 
 /** World velocity (m/s along the ice) of the puck at `tau`, from the frames around it. */
-export function puckVelocity(ai: RinkAI, tau: number, dt = 0.06): { x: number; z: number } {
+export function puckVelocity(ai: LiveSource, tau: number, dt = 0.06): { x: number; z: number } {
   const a = toWorld(ai.frameAt(tau - dt).puck), b = toWorld(ai.frameAt(tau).puck);
   return { x: (b.x - a.x) / dt, z: (b.z - a.z) / dt };
 }

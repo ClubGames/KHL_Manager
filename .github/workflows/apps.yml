@@ -39,7 +39,7 @@ jobs:
         run: |
           ./node_modules/.bin/tsc --noEmit
           npm run build
-          test -f dist/index.html && test -f dist/mods/index.json && test -f dist/mods/KHL_2627/roster.json && test -f dist/mods/KHL_2627/schedule.json
+          test -f dist/index.html && test -f dist/mods/index.json
       - uses: actions/upload-artifact@v4
         with:
           name: web
@@ -76,7 +76,7 @@ jobs:
           npm run dist:win
           ls -la release
           test -f release/Hockey-Simulator-Manager-Setup.exe && test -f release/Hockey-Simulator-Manager-Portable.exe
-      - name: Smoke test (the packaged app starts, loads the game and the roster)
+      - name: Smoke test (the packaged app starts, shows the mod list, installs a mod and serves its roster)
         working-directory: desktop
         run: |
           out="$(pwd -W)/smoke.json"

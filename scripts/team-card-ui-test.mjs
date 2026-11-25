@@ -3,6 +3,12 @@
 // to check the initials fallback.
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
+import { HAS_REAL_MOD } from './testMod.mjs';
+// player photos come from the KHL_2627 mod, which is not in the repository (the game ships without a league)
+if (!HAS_REAL_MOD) {
+  console.log('SKIP: put the KHL_2627 mod into public/mods to run this test');
+  process.exit(0);
+}
 
 const browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--no-sandbox'] });
 const errors = [];

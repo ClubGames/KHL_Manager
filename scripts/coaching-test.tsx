@@ -1,6 +1,6 @@
 // npx tsx scripts/coaching-test.tsx — deterministic staff, crisis, engine and save integration checks.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { GameState } from '../src/types';
@@ -14,6 +14,11 @@ import { getCapSummary } from '../src/game/cap';
 import { Coaching, StaffSummary } from '../src/components/Coaching';
 import { Dashboard } from '../src/components/Dashboard';
 import { UIContext } from '../src/components/ui';
+// checks the real data of the KHL_2627 mod, which is not in the repository (the game ships without a league)
+if (!existsSync('public/mods/KHL_2627/roster.json')) {
+  console.log('SKIP: put the KHL_2627 mod into public/mods to run this test');
+  process.exit(0);
+}
 
 const rosterText = readFileSync('public/mods/KHL_2627/roster.json', 'utf8');
 const fresh = () => G.createGameState(parseRosterText(rosterText), 'ska');

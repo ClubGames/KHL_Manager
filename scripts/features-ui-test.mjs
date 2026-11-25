@@ -2,8 +2,10 @@
 // coaching tools. Start Vite first; same CHROMIUM_PATH / BASE_URL options as rink-ui-test.mjs.
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
+import { serveTestMod } from './testMod.mjs';
 
 const browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--no-sandbox', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
+serveTestMod(browser);
 const errors = [];
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
 page.on('pageerror', (e) => errors.push(e.message));
@@ -127,6 +129,7 @@ try {
     }
   }
   await page.getByRole('button', { name: 'Играть матч', exact: true }).click();
+  await page.locator('[data-match-mode="watch"]').click();
   await page.getByRole('button', { name: 'Начать матч', exact: true }).click();
   const qd = page.locator('[data-quick-decisions]').first();
   await qd.waitFor();

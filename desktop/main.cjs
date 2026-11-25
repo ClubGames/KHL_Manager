@@ -281,8 +281,9 @@ ipcMain.handle('khl:save-file', async (event, { name, data, kind }) => {
 });
 
 /**
- * CI check of the packaged app (`"Hockey Simulator Manager.exe" --smoke-test=result.json`): the game starts from app://, the
- * roster loads (club list on the start screen), storage works and WebGL is there. Writes JSON, exits 0/1.
+ * CI check of the packaged app (`"Hockey Simulator Manager.exe" --smoke-test=result.json`): the game starts from app://
+ * (the start screen with the mod list — the game ships without a league), a mod installed from a .zip is listed and its
+ * roster is served, storage works and WebGL is there. Writes JSON, exits 0/1.
  */
 async function smokeTest(outFile) {
   const result = { ok: false, steps: [] };
@@ -297,12 +298,12 @@ async function smokeTest(outFile) {
     const started = Date.now();
     let text = '';
     while (Date.now() - started < 60000) {
-      text = await evalJs('document.body.innerText');
-      if (text.includes('Начать карьеру') && text.includes('СКА')) break;
+      text = await evalJs('document.body.textContent'); // not innerText: headings are CSS-uppercased
+      if (text.includes('Новая карьера') && await evalJs('!!document.querySelector("[data-mod-picker]")')) break;
       await new Promise(r => setTimeout(r, 250));
     }
-    result.startScreen = text.includes('Начать карьеру');
-    result.roster = text.includes('СКА');
+    result.startScreen = text.includes('Новая карьера');
+    result.modPicker = await evalJs('!!document.querySelector("[data-mod-picker]")');
     result.storage = await evalJs(`(() => { localStorage.setItem('khl.smoke', '1'); return localStorage.getItem('khl.smoke') === '1'; })()`);
     result.desktopBridge = await evalJs('typeof window.khlDesktop?.saveFile === "function" && typeof window.khlDesktop?.installMod === "function"');
     // Mods folder next to the exe; a .zip installs into it and shows up in mods/index.json.
@@ -312,11 +313,12 @@ async function smokeTest(outFile) {
     const inst = await installMods([{ name: `${smokeMod}.zip`, data: writeZip({ 'roster.json': JSON.stringify({ league: { name: 'Smoke' }, teams: [] }), 'mod.json': JSON.stringify({ name: 'Smoke' }) }) }]);
     const listed = await evalJs(`fetch('/mods/index.json').then(r => r.json()).then(j => j.mods)`);
     result.modInstall = inst.errors.length === 0 && inst.installed[0]?.id === smokeMod && listed.includes(smokeMod);
+    result.roster = await evalJs(`fetch('/mods/${smokeMod}/roster.json').then(r => r.json()).then(j => j.league && j.league.name === 'Smoke').catch(() => false)`);
     await fs.rm(path.join(result.modsDir, smokeMod), { recursive: true, force: true });
     result.webgl = await evalJs(`(() => { const c = document.createElement('canvas'); const gl = c.getContext('webgl2') || c.getContext('webgl'); if (!gl) return null; const e = gl.getExtension('WEBGL_debug_renderer_info'); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); })()`);
     result.gpu = gpuSummary();
     result.version = app.getVersion();
-    result.ok = result.startScreen && result.roster && result.storage && result.desktopBridge && result.modsInGameFolder && result.modInstall;
+    result.ok = result.startScreen && result.modPicker && result.roster && result.storage && result.desktopBridge && result.modsInGameFolder && result.modInstall;
   } catch (e) {
     result.error = String(e && e.stack || e);
   }

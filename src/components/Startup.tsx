@@ -54,7 +54,7 @@ export function FormatDoc({ compact }: { compact?: boolean }) {
     <div className="space-y-4">
       {!compact && (
         <div className="rounded-md border border-ice/30 bg-ice/5 p-4 text-sm leading-relaxed">
-          <b className="text-ice">Лиги подключаются модами: каждая папка в <code className="bg-panel2 px-1 rounded">mods/</code> рядом с <code className="bg-panel2 px-1 rounded">index.html</code> — отдельная лига.</b> Скопируйте папку <code className="bg-panel2 px-1 rounded">mods/KHL_2627</code> под новым именем, поменяйте файлы и добавьте имя папки в <code className="bg-panel2 px-1 rounded">mods/index.json</code> — мод появится в главном меню. Можно и просто выбрать файл ростера вручную на экране загрузки. Рекомендуемый состав клуба: 12–14 нападающих, 6–8 защитников, 2–3 вратаря. Игроки с любым количеством навыков будут дополнены средними значениями.
+          <b className="text-ice">Лиги подключаются модами: каждая папка в <code className="bg-panel2 px-1 rounded">mods/</code> рядом с <code className="bg-panel2 px-1 rounded">index.html</code> — отдельная лига.</b> Встроенной лиги в игре нет: создайте папку мода (например, <code className="bg-panel2 px-1 rounded">mods/MyLeague</code>) с файлом roster.json или скопируйте папку готового мода под новым именем, поменяйте файлы и добавьте имя папки в <code className="bg-panel2 px-1 rounded">mods/index.json</code> — мод появится в главном меню. Можно и просто выбрать файл ростера вручную на экране загрузки. Рекомендуемый состав клуба: 12–14 нападающих, 6–8 защитников, 2–3 вратаря. Игроки с любым количеством навыков будут дополнены средними значениями.
           <br />
           <b className="text-ice">Версия для Windows:</b> свои моды кладите в <code className="bg-panel2 px-1 rounded">{USER_MODS_DIR}</code> (кнопка «Папка моих модов» под списком модов) — index.json там не нужен, а обновления и переустановка игры эту папку не трогают. Готовым модом можно поделиться: «Предложить свой мод» — архив .zip через форму на GitHub.
         </div>
@@ -92,13 +92,13 @@ export function FormatDoc({ compact }: { compact?: boolean }) {
 }
 
 const MOD_TREE = `mods/
-├─ index.json          { "mods": ["KHL_2627", "MyLeague"] }
-├─ KHL_2627/
+├─ index.json          { "mods": ["MyLeague", "OtherLeague"] }
+├─ MyLeague/
 │  ├─ mod.json         название и описание мода
 │  ├─ roster.json      лига, клубы, игроки, тренеры
 │  ├─ schedule.json    общий календарь регулярного чемпионата
 │  └─ logos/           эмблемы клубов (teams[].logo = "logos/ska.png")
-└─ MyLeague/ …`;
+└─ OtherLeague/ …`;
 const SCHEDULE_EXAMPLE = `{
   "season": "2026/27",
   "days": 201,
@@ -395,7 +395,7 @@ function TeamSelect({ roster, onStart }: { roster: NormalizedRoster; onStart: (t
 export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: string) => void }) {
   const ui = useUI();
   const [saveCount, setSaveCount] = useState<number | null>(null);
-  const [stage, setStage] = useState<'loading' | 'error' | 'select' | 'format'>('loading');
+  const [stage, setStage] = useState<'loading' | 'error' | 'empty' | 'select' | 'format'>('loading');
   const [roster, setRoster] = useState<NormalizedRoster | null>(null);
   const [err, setErr] = useState('');
   const [fileErr, setFileErr] = useState('');
@@ -448,8 +448,10 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
         const m = list.find((x) => x.id === want) ?? list[0];
         if (m) openMod(m);
         else {
-          setErr('в папке mods не найдено ни одного мода');
-          setStage('error');
+          // no league ships with the game: nothing is wrong, the player installs a mod or picks a roster file
+          setModId(null);
+          setRoster(null);
+          setStage('empty');
         }
       })
       .catch((e: Error) => {
@@ -525,7 +527,7 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
               </h2>
               <p className="text-sm text-muted mt-1.5">Выберите мод и клуб — новая карьера займёт отдельный слот и не затронет существующие сохранения.</p>
             </div>
-            {mods && <ModPicker mods={mods} current={modId ?? ''} busy={stage === 'loading'} onPick={openMod} onFile={() => fileRef.current?.click()} onReload={load} onInstalled={afterInstall} />}
+            {mods && <ModPicker mods={mods} current={modId ?? '\u0000'} busy={stage === 'loading'} onPick={openMod} onFile={() => fileRef.current?.click()} onReload={load} onInstalled={afterInstall} />}
             <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={(e) => { if (e.target.files?.[0]) void onFile(e.target.files[0]); e.target.value = ''; }} />
           </>
         )}
@@ -567,9 +569,41 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
           </Panel>
         )}
 
+        {stage === 'empty' && (
+          <Panel title="Лига не выбрана: моды не установлены" className="border-ice/40">
+            <div className="space-y-4 text-sm" data-mods-empty>
+              <p className="text-text/90 m-0">Игра поставляется без встроенной лиги — клубы, игроки и календарь приходят из модов. Чтобы начать карьеру:</p>
+              <ol className="list-decimal pl-5 space-y-1.5 text-text/90">
+                {canInstallMods() ? (
+                  <li>
+                    Нажмите «Установить мод…» выше и выберите архив .zip с модом (или перетащите архив на список) — мод распакуется в папку <code className="bg-panel2 px-1.5 py-0.5 rounded text-ice">mods</code> рядом с игрой и сразу откроется.
+                  </li>
+                ) : (
+                  <li>
+                    Положите папку мода в <code className="bg-panel2 px-1.5 py-0.5 rounded text-ice">mods</code> рядом с <code className="bg-panel2 px-1.5 py-0.5 rounded text-ice">index.html</code>, впишите её имя в <code className="bg-panel2 px-1.5 py-0.5 rounded text-ice">mods/index.json</code> и нажмите «Обновить список».
+                  </li>
+                )}
+                <li>Или выберите файл ростера (roster.json) с устройства — он загрузится прямо в игре, без установки мода.</li>
+                <li>Своя лига: устройство мода и полей файла — на вкладке «Формат JSON», там же пример ростера.</li>
+              </ol>
+              {fileErr && <div className="text-accent text-xs">{fileErr}</div>}
+              <div className="flex flex-wrap gap-2">
+                <Button variant="primary" onClick={() => fileRef.current?.click()} data-mods-empty-file>
+                  Выбрать файл ростера…
+                </Button>
+                <Button onClick={load}>Обновить список</Button>
+                <Button onClick={() => setStage('format')}>Формат JSON</Button>
+                <Button variant="ghost" onClick={downloadExampleRoster}>
+                  Скачать пример
+                </Button>
+              </div>
+            </div>
+          </Panel>
+        )}
+
         {stage === 'format' && (
           <div className="space-y-3">
-            <Button onClick={() => setStage(roster ? 'select' : 'error')}>← Назад</Button>
+            <Button onClick={() => setStage(roster ? 'select' : mods && !mods.length ? 'empty' : 'error')}>← Назад</Button>
             <FormatDoc />
           </div>
         )}

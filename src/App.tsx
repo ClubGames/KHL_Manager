@@ -11,6 +11,9 @@ import { Lines } from './components/Lines';
 import { Standings } from './components/Standings';
 import { GameBox, Schedule } from './components/Schedule';
 import { Match } from './components/Match';
+import { PlayMatch } from './components/PlayMatch';
+import { MatchModeModal, type MatchMode } from './components/MatchModes';
+import { getSettings } from './game/settings';
 import { Trades } from './components/Trades';
 import { Market } from './components/Market';
 import { Offseason } from './components/Offseason';
@@ -20,10 +23,10 @@ import { Coaching } from './components/Coaching';
 import { Club } from './components/Club';
 import { Inbox } from './components/Inbox';
 import { FullscreenButton } from './components/FullscreenButton';
-import { buildInbox } from './game/inbox';
+import { blockingTasks, buildInbox } from './game/inbox';
 import { SaveIndicator, SavesList } from './components/Saves';
 import { SettingsPanel } from './components/SettingsPanel';
-import { exitToMenu, exportCareer, roundName, saveNow, startNewGame, syncCoachMarketFromRoster, syncPlayersFromRoster, useGame, useSaveStatus } from './game/state';
+import { simulateDay, exitToMenu, exportCareer, roundName, saveNow, startNewGame, syncCoachMarketFromRoster, syncPlayersFromRoster, useGame, useSaveStatus } from './game/state';
 import { regularSeasonLength, seasonDate } from './game/schedule';
 import { effectivePayroll } from './game/cap';
 import { countRosterLegionnaires, teamForeignLimit } from './game/legionnaires';
@@ -62,6 +65,10 @@ export default function App() {
   const saveStatus = useSaveStatus();
   const [view, setView] = useState<View>('dashboard');
   const [matchGame, setMatchGame] = useState<Game | null>(null);
+  /** how the open match is taken: played by the manager or watched from the bench */
+  const [matchMode, setMatchMode] = useState<'play' | 'watch'>('watch');
+  /** «Играть матч» was pressed: the choice of play / watch / quick simulation is open */
+  const [chooseGame, setChooseGame] = useState<Game | null>(null);
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [teamCardId, setTeamCardId] = useState<string | null>(null);
   const [boxId, setBoxId] = useState<number | null>(null);
@@ -128,6 +135,17 @@ export default function App() {
     }),
     []
   );
+
+  /** The choice after «Играть матч»: play it, watch it, or the result at once (the dashboard's fast simulation). */
+  const pickMode = (mode: MatchMode, g: Game) => {
+    setChooseGame(null);
+    if (mode !== 'quick') { setMatchMode(mode); setMatchGame(g); return; }
+    const run = () => { simulateDay(true); if (getSettings().simOpenReport) setBoxId(g.id); };
+    const open = s ? blockingTasks(s) : [];
+    if (open.length && getSettings().simConfirm) {
+      setConfirmState({ title: 'Есть нерешённые задачи', text: `Во входящих: ${open.slice(0, 3).map((t) => t.title).join('; ')}${open.length > 3 ? '…' : ''}. Симулировать матч по текущим звеньям?`, confirmLabel: 'Всё равно продолжить', onYes: run });
+    } else run();
+  };
 
   const confirmModal = confirmState && (
     <Modal open onClose={() => setConfirmState(null)} title={<span className="font-display uppercase tracking-wide">{confirmState.title}</span>} width="max-w-md">
@@ -224,7 +242,7 @@ export default function App() {
       case 'lines':
         return <Lines />;
       case 'schedule':
-        return <Schedule onPlay={(g) => setMatchGame(g)} />;
+        return <Schedule onPlay={(g) => setChooseGame(g)} />;
       case 'standings':
         return <Standings />;
       case 'stats':
@@ -245,14 +263,18 @@ export default function App() {
       case 'inbox':
         return <Inbox />;
       default:
-        return <Dashboard onPlay={(g) => setMatchGame(g)} />;
+        return <Dashboard onPlay={(g) => setChooseGame(g)} />;
     }
   })();
 
   return (
     <UIContext.Provider value={api}>
       {matchGame ? (
-        <Match key={matchGame.id} game={matchGame} onFinished={() => { setMatchGame(null); setView(s.phase === 'offseason' ? 'offseason' : 'dashboard'); }} />
+        matchMode === 'play' ? (
+          <PlayMatch key={matchGame.id} game={matchGame} onFinished={() => { setMatchGame(null); setView(s.phase === 'offseason' ? 'offseason' : 'dashboard'); }} />
+        ) : (
+          <Match key={matchGame.id} game={matchGame} onFinished={() => { setMatchGame(null); setView(s.phase === 'offseason' ? 'offseason' : 'dashboard'); }} />
+        )
       ) : (
         <div className="min-h-screen flex land:h-[100dvh] land:min-h-0 land:overflow-hidden">
           {/* Landscape phones: a slim scrollable rail instead of the bottom bar, so the content gets the full height. */}
@@ -421,6 +443,7 @@ export default function App() {
       {teamCardId && <TeamModal key={teamCardId} id={teamCardId} onClose={() => setTeamCardId(null)} />}
       {playerId && <PlayerModal id={playerId} onClose={() => setPlayerId(null)} />}
       {boxId != null && <GameBox gameId={boxId} onClose={() => setBoxId(null)} />}
+      <MatchModeModal game={chooseGame} onClose={() => setChooseGame(null)} onPick={pickMode} />
       {negId && <NegotiationModal key={negId} id={negId} onClose={() => setNegId(null)} />}
       {savesOpen && (
         <Modal open onClose={() => setSavesOpen(false)} width="max-w-4xl" title={<span className="font-display uppercase tracking-wide">Сохранения</span>}>

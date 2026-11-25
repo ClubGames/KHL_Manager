@@ -1,9 +1,14 @@
 // npx tsx scripts/schedule-test.ts — realistic KHL calendar: format, home/away runs, rest, pauses and dates.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { parseRosterText } from '../src/game/roster';
 import { buildSchedule, seasonLayout, seasonDateObj } from '../src/game/schedule';
 import { allStarTargetDay } from '../src/game/medical';
+// checks the real data of the KHL_2627 mod, which is not in the repository (the game ships without a league)
+if (!existsSync('public/mods/KHL_2627/roster.json')) {
+  console.log('SKIP: put the KHL_2627 mod into public/mods to run this test');
+  process.exit(0);
+}
 
 const r = parseRosterText(readFileSync('public/mods/KHL_2627/roster.json', 'utf8'));
 const verbose = process.argv.includes('-v');

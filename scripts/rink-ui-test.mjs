@@ -2,10 +2,12 @@
 // BASE_URL=http://localhost:5173 CHROMIUM_PATH=/path/to/chromium node scripts/rink-ui-test.mjs
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
+import { serveTestMod } from './testMod.mjs';
 const browser = await chromium.launch({
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
   args: ['--no-sandbox', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
+serveTestMod(browser);
 const errors = [];
 async function open(options = {}, settings = null) {
   const page = await browser.newPage(options);
@@ -21,7 +23,7 @@ async function mount(page, change = {}) {
     const DOM = await import('/node_modules/.vite/deps/react-dom_client.js');
     const { GoalReplay } = await import('/src/components/GoalReplay.tsx');
     const { parseRosterText } = await import('/src/game/roster.ts');
-    const r = parseRosterText(await (await fetch('/mods/KHL_2627/roster.json')).text());
+    const r = parseRosterText(await (async () => { for (const u of ['/mods/KHL_2627/roster.json', '/scripts/fixtures/test-roster.json']) { const t = (await (await fetch(u)).text()).trim(); if (t.startsWith('{')) return t; } return ''; })());
     const home = r.teams.find(t => t.id === 'ska'), away = r.teams.find(t => t.id === 'avangard');
     const ids = t => [...t.lineup.F[0], ...t.lineup.D[0]].filter(Boolean);
     const h = ids(home), a = ids(away);
@@ -99,7 +101,7 @@ try {
     const X = await import('/src/components/replayExport.ts');
     const { buildReplayClip } = await import('/src/game/rinkPlayback.ts');
     const { parseRosterText } = await import('/src/game/roster.ts');
-    const r = parseRosterText(await (await fetch('/mods/KHL_2627/roster.json')).text());
+    const r = parseRosterText(await (async () => { for (const u of ['/mods/KHL_2627/roster.json', '/scripts/fixtures/test-roster.json']) { const t = (await (await fetch(u)).text()).trim(); if (t.startsWith('{')) return t; } return ''; })());
     const home = r.teams.find(t => t.id === 'ska'), away = r.teams.find(t => t.id === 'avangard');
     const ids = t => [...t.lineup.F[0], ...t.lineup.D[0]].filter(Boolean);
     const e = { sec: 481, period: 1, time: '11:59', type: 'goal', team: home.id, player: ids(home)[0], players: [], goalie: away.lineup.starterG, ice: [ids(home), ids(away)], x: 82, y: 34, shotType: 'wrist', strength: 'EV', score: [1, 0], text: '' };
@@ -164,6 +166,7 @@ try {
   // Fast sim pauses when a new inbox task appears; press again until match day.
   for (let k = 0; k < 8 && await toMatch.count(); k++) { await toMatch.click(); await match.waitForTimeout(150); const go = match.getByRole('button', { name: 'Всё равно продолжить', exact: true }); if (await go.count()) { await go.click(); await match.waitForTimeout(150); } }
   await match.getByRole('button', { name: 'Играть матч', exact: true }).click();
+  await match.locator('[data-match-mode="watch"]').click();
   await match.getByRole('button', { name: 'Начать матч', exact: true }).click();
   await match.locator('[data-live-rink]').waitFor();
   for (let i = 0; i < 4; i++) { await match.waitForTimeout(200); const close = match.getByRole('button', { name: 'Закрыть повтор', exact: true }); if (await close.count()) await close.click(); }
@@ -212,6 +215,7 @@ try {
   // Fast sim pauses when a new inbox task appears; press again until match day.
   for (let k = 0; k < 8 && await toMatch2.count(); k++) { await toMatch2.click(); await land.waitForTimeout(150); const go = land.getByRole('button', { name: 'Всё равно продолжить', exact: true }); if (await go.count()) { await go.click(); await land.waitForTimeout(150); } }
   await land.getByRole('button', { name: 'Играть матч', exact: true }).click();
+  await land.locator('[data-match-mode="watch"]').click();
   await land.getByRole('button', { name: 'Начать матч', exact: true }).click();
   await land.locator('[data-match-land]').waitFor();
   // the period starts once the intro window has faded out (≈0.2 s)

@@ -30,7 +30,9 @@ function boot(seed, rosterText) {
     virtualConsole: vc,
     url: 'http://localhost/',
     beforeParse(window) {
-      window.fetch = (url) => (String(url).includes('mods/KHL_2627/roster.json') ? Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(rosterText || roster) }) : Promise.reject(new Error('no ' + url)));
+      // the game ships without a league: the test serves one mod (index + roster) from the fixture
+      const reply = (text) => Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(text) });
+      window.fetch = (url) => (String(url).includes('mods/KHL_2627/roster.json') ? reply(rosterText || roster) : String(url).includes('mods/index.json') ? reply('{"mods":["KHL_2627"]}') : Promise.reject(new Error('no ' + url)));
       window.Element.prototype.scrollTo = window.Element.prototype.scrollTo || function () {};
       window.scrollTo = function () {}; // jsdom has no viewport scrolling implementation.
       if (USE_IDB) window.indexedDB = global.indexedDB;
@@ -81,6 +83,8 @@ function boot(seed, rosterText) {
     }
   }
   a.click(a.find('Играть матч'));
+  await sleep(300);
+  a.click(a.document.querySelector('[data-match-mode="watch"]'));
   await sleep(300);
   a.click(a.find('Начать матч'));
   await sleep(250);

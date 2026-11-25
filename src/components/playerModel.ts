@@ -296,15 +296,18 @@ export class PlayerFigure {
    * opts.bank: lean into a turn (rad, + = toward the player's left); opts.reach: a puck point in character
    * space the blade should cup (weight opts.reachWeight 0..1), so a carried puck sits on the blade;
    * opts.deke: sideways stickhandling offset of the puck (m, + = his left) — shoulders and head sell the fake.
+   * opts.check 0..1: a body check — low, the lead shoulder driven forward, stick down and tight;
+   * opts.poke 0..1: a poke check — lunge with the stick shot out along the ice at arm's length.
    * Everything is solved for a right shot and mirrored for a left one.
    */
-  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number } = {}) {
+  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number; check?: number; poke?: number } = {}) {
     this.reset();
     const m = this.hand, kind = opts.kind ?? 'wrist';
+    const chk = smooth(clamp01(opts.check ?? 0)), poke = smooth(clamp01(opts.poke ?? 0));
     const bank = clamp01(Math.abs(opts.bank ?? 0) / .4) * .4 * Math.sign(opts.bank ?? 0) * (1 - cheer);
     const deke = (opts.deke ?? 0) * m; // in the right-shot frame
     // Deeper knee bend on a hard stride, a little bob with every push.
-    const crouch = lerp(.1 + .07 * amp + .012 * amp * Math.cos(phase * 2), .02, cheer) + Math.abs(bank) * .08 + Math.abs(deke) * .06;
+    const crouch = lerp(.1 + .07 * amp + .012 * amp * Math.cos(phase * 2), .02, cheer) + Math.abs(bank) * .08 + Math.abs(deke) * .06 + chk * .1 + poke * .07;
     this.rig.position.set(.035 * Math.sin(phase) * amp * (1 - cheer) + bank * .1 + (opts.deke ?? 0) * .12, LIFT - crouch, 0);
     // Shot profile: load (stick back, shoulders closed), whip through the puck, follow through.
     const s = shot === undefined ? -9 : shot;
@@ -312,8 +315,9 @@ export class PlayerFigure {
     const follow = s < 0 ? 0 : s < .5 ? smooth(s / .5) : 1 - smooth((s - 1.1) / .8);
     const size = kind === 'pass' ? .55 : kind === 'tip' ? .3 : kind === 'slap' ? 1.25 : 1;
     const back = kind === 'backhand';
-    const twist = ((back ? .45 : -.55) * load + (back ? -.4 : .4) * follow) * size + deke * .5;
-    const lean = lerp(.2 + .14 * amp + .1 * load * size, -.05, cheer);
+    // a body check turns the lead shoulder (the one away from the stick) into the man; a poke reaches with the top hand
+    const twist = ((back ? .45 : -.55) * load + (back ? -.4 : .4) * follow) * size + deke * .5 + chk * .5 - poke * .3;
+    const lean = lerp(.2 + .14 * amp + .1 * load * size, -.05, cheer) + chk * .22 + poke * .28;
     // Shoulders counter-rotate the stride a little (real skaters swing the upper body against the legs).
     const swing = .07 * amp * Math.sin(phase) * (1 - load) * (1 - follow) * (1 - cheer);
     this.turn('Abdomen', _t1.setFromAxisAngle(Z, -bank * .45 - (opts.deke ?? 0) * .25).multiply(_t2.setFromAxisAngle(X, lean * .55)));
@@ -343,6 +347,8 @@ export class PlayerFigure {
       carry = mixV(carry, target, smooth(reachW));
       carryTop = mixV(carryTop, vec(.1 + target.x * .25, 1.02 - crouch, .22 + target.z * .1), smooth(reachW) * .6);
     }
+    if (chk > 0) { carry = mixV(carry, vec(-.38, 0, .62), chk); carryTop = mixV(carryTop, vec(.05, .95 - crouch, .28), chk); }
+    if (poke > 0) { carry = mixV(carry, vec(-.25, 0, 1.85), poke); carryTop = mixV(carryTop, vec(.05, .98 - crouch, .78), poke); }
     let heel = carry, top = carryTop;
     if (load > 0) {
       let wind: T.Vector3, windTop: T.Vector3;

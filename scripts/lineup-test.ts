@@ -1,7 +1,7 @@
 // Run with: npx tsx scripts/lineup-test.ts
 // Lineup editor rules: special-team slots are copies of dressed skaters and never touch the 5-on-5 lines.
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { parseRosterText } from '../src/game/roster';
 import { autoLineup, sanitizeLineup } from '../src/game/ai';
 import { assignSpecial, autoSpecialTeams, cloneLineup, dedupeLineup, dressedSkaters, evenStrengthSpot, findSpecial } from '../src/game/lineupEdit';
@@ -13,7 +13,7 @@ const ok = (name: string, fn: () => void) => {
   console.log('PASS', name);
 };
 
-const r = parseRosterText(readFileSync('public/mods/KHL_2627/roster.json', 'utf8'));
+const r = parseRosterText(readFileSync((existsSync('public/mods/KHL_2627/roster.json') ? 'public/mods/KHL_2627/roster.json' : 'scripts/fixtures/test-roster.json'), 'utf8'));
 const P = r.players;
 const team = r.teams[0];
 const base = autoLineup(team.players, P);

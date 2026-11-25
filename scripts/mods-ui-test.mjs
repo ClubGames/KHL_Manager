@@ -2,7 +2,7 @@
 // folder), the new name and logo are shown, and a career saved before mods existed opens unchanged.
 // Start Vite first: BASE_URL=http://localhost:5173 CHROMIUM_PATH=/path/to/chromium [SHOTS=dir] node scripts/mods-ui-test.mjs
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:5173';
@@ -21,6 +21,36 @@ const page = await context.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
 const fetched = [];
 page.on('request', (r) => fetched.push(new URL(r.url()).pathname));
+
+// The game ships without a league: with no mod in public/mods the start screen explains how to get one and a roster
+// file picked by hand starts a career. The checks of the KHL_2627 mod itself run when that mod is put into public/mods.
+if (!existsSync('public/mods/KHL_2627/roster.json')) {
+  try {
+    await page.goto(BASE);
+    const empty = page.locator('[data-mods-empty]');
+    await empty.waitFor({ timeout: 60000 });
+    const text = await empty.innerText();
+    assert.ok(text.includes('без встроенной лиги') && text.includes('roster.json'), 'the empty state explains what to do');
+    assert.equal(await page.locator('[data-mod-picker] [data-mod]').count(), 1, 'only «Свой файл ростера…» in the picker');
+    assert.equal(await page.getByText('не загрузился').count(), 0, 'no error panel for a missing built-in mod');
+    await shot(page, 'mods-empty');
+    const chooser = page.waitForEvent('filechooser');
+    await page.locator('[data-mods-empty-file]').click();
+    await (await chooser).setFiles('scripts/fixtures/test-roster.json');
+    await page.getByRole('button', { name: 'Начать карьеру', exact: true }).waitFor({ timeout: 30000 });
+    assert.equal(await page.locator('[data-mods-empty]').count(), 0);
+    ok('no mods: the start screen explains how to install one, a roster file starts a career');
+    assert.deepEqual(errors, [], 'no page errors');
+    console.log('PASS: mods browser flow without a bundled league (KHL_2627 checks skipped: the mod is not in public/mods)');
+    await browser.close();
+    process.exit(0);
+  } catch (e) {
+    console.error('FAIL', e);
+    await shot(page, 'mods-empty-fail');
+    await browser.close();
+    process.exit(1);
+  }
+}
 
 try {
   await page.goto(BASE);
