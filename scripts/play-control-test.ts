@@ -142,6 +142,53 @@ test('the manager controls a skater: the stick moves him, a held shot charges an
   assert.ok(swaps > 0, 'control follows the play (the puck carrier, the nearest defender)');
 });
 
+test('the skill stick (right stick / touch): pull back and flick — slap or snap, a flick — wrist shot, sideways — dekes, a circle — spin-o-rama, a flick on defence — a poke', () => {
+  const k = make(61, { userSide: 0 }), p = priv(k);
+  const proto = k as unknown as { shoot: (...a: unknown[]) => void; deke: (...a: unknown[]) => void; startPoke: (...a: unknown[]) => void };
+  const shots: Record<string, number> = {}, dekes: Record<string, number> = {};
+  let pokes = 0;
+  const shoot = proto.shoot.bind(k), deke = proto.deke.bind(k), startPoke = proto.startPoke.bind(k);
+  proto.shoot = (a: unknown, ...x: unknown[]) => { if ((a as { id: string }).id === k.ctl) { const kd = String(x[3] ?? 'button'); shots[kd] = (shots[kd] ?? 0) + 1; } return shoot(a, ...x); };
+  proto.deke = (a: unknown, ...x: unknown[]) => { if ((a as { id: string }).id === k.ctl) { const kd = String(x[3] ?? 'side'); dekes[kd] = (dekes[kd] ?? 0) + 1; } return deke(a, ...x); };
+  proto.startPoke = (a: unknown) => { if ((a as { id: string }).id === k.ctl) pokes++; return startPoke(a); };
+  let f = 0, gesture = 0;
+  // one gesture every 90 frames, cycling: slap (held back 40 frames), wrist flick, side flick, side then back the other way, circle, back then sideways, fake
+  const script = (t: number): [number, number] => {
+    const g = gesture % 7;
+    if (g === 0) return t < 10 ? [0, 0] : t < 50 ? [-1, 0] : t < 56 ? [1, 0] : [0, 0];
+    if (g === 1) return t < 10 ? [0, 0] : t < 15 ? [1, 0.1] : [0, 0];
+    if (g === 2) return t < 10 ? [0, 0] : t < 15 ? [0, 1] : [0, 0];
+    if (g === 3) return t < 10 ? [0, 0] : t < 14 ? [0, 1] : t < 17 ? [0, 0] : t < 21 ? [0, -1] : [0, 0];
+    if (g === 4) { if (t < 10 || t > 40) return [0, 0]; const a = ((t - 10) / 26) * Math.PI * 2.3; return [Math.cos(a), Math.sin(a)]; }
+    if (g === 5) return t < 10 ? [0, 0] : t < 30 ? [-1, 0] : t < 36 ? [0, 1] : [0, 0];
+    return t < 10 ? [0, 0] : t < 40 ? [-1, 0] : [0, 0];
+  };
+  const pad = (k: PlayRink): PadState => {
+    f++;
+    const me = k.ctl ? p.skaters(0).find(a => a.id === k.ctl) : undefined;
+    if (!me) return NO_PAD;
+    const h = k.hud();
+    if (h.context === 'carry') {
+      const tx = 44, ty = 15, dx = tx - me.x, dy = ty - me.y, d = Math.hypot(dx, dy);
+      const t = f % 90; if (t === 0) gesture++;
+      const [sx, sy] = script(t);
+      return { ...NO_PAD, mx: d > 2 ? dx / d * 0.6 : 0, my: d > 2 ? dy / d * 0.6 : 0, sx, sy };
+    }
+    if (h.context === 'defend') {
+      const pk = p.puck, dx = pk.x - me.x, dy = pk.y - me.y, d = Math.hypot(dx, dy) || 1;
+      const t = f % 30;
+      return { ...NO_PAD, mx: dx / d, my: dy / d, sprint: true, sx: d < 2.5 && t > 10 && t < 15 ? dx / d : 0, sy: d < 2.5 && t > 10 && t < 15 ? dy / d : 0 };
+    }
+    return { ...NO_PAD, mx: 0.6, my: 0 };
+  };
+  run(k, pad, undefined, 600);
+  console.log('   shots', JSON.stringify(shots), 'dekes', JSON.stringify(dekes), 'pokes', pokes);
+  assert.ok((shots.slap ?? 0) + (shots.snap ?? 0) > 0, 'pull back and flick: a slap / snap shot');
+  assert.ok((shots.wrist ?? 0) > 0, 'a forward flick: a wrist shot');
+  for (const kd of ['side', 'between', 'spin', 'toe', 'fake']) assert.ok((dekes[kd] ?? 0) > 0, `skill-stick deke ${kd}`);
+  assert.ok(pokes > 0, 'a flick on defence pokes');
+});
+
 test('difficulty changes only the opponents: a star AI beats a rookie AI more often', () => {
   let rookieGoals = 0, starGoals = 0;
   for (let g = 0; g < 4; g++) {

@@ -1,4 +1,5 @@
-import { APP_RELEASE, canInstallMods, canOpenModsFolder, installModArchive, MOD_SUBMIT_URL, openModsFolder, platform, USER_MODS_DIR, userModsDir } from '../platform';
+import { APP_RELEASE, canInstallMods, canOpenModsFolder, desktopModInstall, installModArchive, MOD_SUBMIT_URL, modInstallPlace, openModsFolder, platform, USER_MODS_DIR, userModsDir } from '../platform';
+import { removeStoredMod } from '../game/modStore';
 import type { ModInstallResult } from '../platform';
 import { useEffect, useRef, useState } from 'react';
 // served next to index.html instead of being inlined into the script
@@ -136,7 +137,7 @@ function ModFormatDoc() {
   );
 }
 
-/** Mods found in mods/: pick the league to start a career in. Windows app: install a mod from a .zip (button or drag-and-drop). */
+/** Mods found in mods/: pick the league to start a career in. Install a mod from a .zip (button or drag-and-drop): into the mods folder in the Windows app, into the game's storage in the browser and on Android. */
 function ModPicker({ mods, current, busy, onPick, onFile, onReload, onInstalled }: { mods: ModEntry[]; current: string; busy: boolean; onPick: (m: ModEntry) => void; onFile: () => void; onReload: () => void; onInstalled: (id: string) => void }) {
   const desktop = canOpenModsFolder();
   const installer = canInstallMods();
@@ -144,6 +145,15 @@ function ModPicker({ mods, current, busy, onPick, onFile, onReload, onInstalled 
   const [drag, setDrag] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [result, setResult] = useState<ModInstallResult | null>(null);
+  const place = modInstallPlace();
+  // the browser / Android pick the archive with a file input (the Windows app opens its own dialog)
+  const zipRef = useRef<HTMLInputElement>(null);
+  const viaInput = installer && !desktopModInstall();
+  const remove = async (m: ModEntry) => {
+    if (!window.confirm(`Удалить мод «${m.name}» с этого устройства? Карьеры на нём останутся, но без логотипов и фото, пока мод не будет установлен снова.`)) return;
+    try { await removeStoredMod(m.id); } catch (e) { setResult({ installed: [], errors: [String((e as Error)?.message ?? e)], dir: '' }); }
+    onReload();
+  };
   useEffect(() => {
     if (desktop) void userModsDir().then((d) => d && setDir(d));
   }, [desktop]);
@@ -152,7 +162,7 @@ function ModPicker({ mods, current, busy, onPick, onFile, onReload, onInstalled 
     setInstalling(true);
     setResult(null);
     try {
-      const all: ModInstallResult = { installed: [], errors: [], dir };
+      const all: ModInstallResult = { installed: [], errors: [], dir: viaInput ? '' : dir };
       for (const f of files?.length ? files : [undefined]) {
         const r = await installModArchive(f);
         if (!r) continue;
@@ -179,19 +189,19 @@ function ModPicker({ mods, current, busy, onPick, onFile, onReload, onInstalled 
       {drag && (
         <div className="absolute inset-0 z-10 rounded-md bg-bg/85 border-2 border-dashed border-ice flex flex-col items-center justify-center gap-1 pointer-events-none" data-mod-dropzone>
           <span className="text-3xl text-ice">⤓</span>
-          <b className="text-ice">Отпустите архив .zip — мод установится в папку mods</b>
+          <b className="text-ice">Отпустите архив .zip — мод установится {place}</b>
         </div>
       )}
       <div className="text-[11px] uppercase tracking-wider text-muted mb-1.5">Мод (лига)</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         {mods.map((m) => (
+          <div key={m.id} className="relative flex">
           <button
-            key={m.id}
             type="button"
             disabled={busy}
             onClick={() => onPick(m)}
             data-mod={m.id}
-            className={cn('flex items-start gap-3 p-3 rounded-md border text-left transition-all duration-150 hover:bg-panel2 disabled:opacity-60', current === m.id ? 'border-accent bg-accent/10 ring-1 ring-accent/50' : 'border-line bg-panel2/40')}
+            className={cn('flex-1 min-w-0 flex items-start gap-3 p-3 rounded-md border text-left transition-all duration-150 hover:bg-panel2 disabled:opacity-60', m.stored && 'pr-9', current === m.id ? 'border-accent bg-accent/10 ring-1 ring-accent/50' : 'border-line bg-panel2/40')}
           >
             {m.cover ? (
               <img src={m.cover} alt="" className="w-10 h-10 object-contain shrink-0" />
@@ -205,12 +215,18 @@ function ModPicker({ mods, current, busy, onPick, onFile, onReload, onInstalled 
               </span>
               {m.description && <span className="block text-xs text-muted mt-0.5">{m.description}</span>}
               <span className="block text-[10.5px] text-muted/80 mt-1 font-mono truncate">
-                {m.legacy ? 'roster.json' : `mods/${m.id}`}
+                {m.legacy ? 'roster.json' : m.stored ? `${platform() === 'android' ? 'в приложении' : 'в браузере'} · ${m.id}` : `mods/${m.id}`}
                 {m.author ? ` · ${m.author}` : ''}
                 {m.version ? ` · v${m.version}` : ''}
               </span>
             </span>
           </button>
+          {m.stored && (
+            <button type="button" disabled={busy} onClick={() => void remove(m)} className="absolute top-1.5 right-1.5 w-7 h-7 rounded-sm text-muted hover:text-red hover:bg-red/10 disabled:opacity-50 flex items-center justify-center" title="Удалить мод с этого устройства" aria-label={`Удалить мод ${m.name}`} data-mod-remove={m.id}>
+              ✕
+            </button>
+          )}
+          </div>
         ))}
         <button
           type="button"
@@ -229,25 +245,26 @@ function ModPicker({ mods, current, busy, onPick, onFile, onReload, onInstalled 
           <button
             type="button"
             disabled={busy || installing}
-            onClick={() => void install()}
+            onClick={() => (viaInput ? zipRef.current?.click() : void install())}
             data-mod-install
-            title="Выберите архив .zip с модом (или перетащите его сюда) — игра распакует его в папку mods рядом с игрой"
+            title={`Выберите архив .zip с модом (или перетащите его сюда) — игра распакует его ${place}`}
             className="flex items-center gap-3 p-3 rounded-md border border-dashed border-ice/50 text-left transition-all duration-150 hover:bg-panel2 hover:border-ice disabled:opacity-60"
           >
             <span className="w-10 h-10 shrink-0 rounded-sm border border-ice/50 flex items-center justify-center text-ice text-lg">{installing ? <Spinner /> : '⤓'}</span>
             <span className="min-w-0">
               <b>{installing ? 'Устанавливаю мод…' : 'Установить мод…'}</b>
-              <span className="block text-xs text-muted mt-0.5">архив .zip — кнопкой или перетащите на этот список</span>
+              <span className="block text-xs text-muted mt-0.5">{platform() === 'android' ? 'архив .zip из «Загрузок» или любой папки телефона' : 'архив .zip — кнопкой или перетащите на этот список'}</span>
             </span>
           </button>
         )}
       </div>
+      {viaInput && <input ref={zipRef} type="file" accept={platform() === 'android' ? undefined : '.zip,application/zip,application/x-zip-compressed'} className="hidden" data-mod-install-file onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) void install([f]); }} />}
       {result && (
         <div className={cn('mt-2 rounded-sm border px-3 py-2 text-xs flex items-start justify-between gap-2', result.errors.length ? 'border-red/50 bg-red/10' : 'border-ok/50 bg-ok/10')} data-mod-install-result>
           <div className="space-y-0.5 min-w-0">
             {result.installed.map((m) => (
               <div key={m.id}>
-                ✓ {m.replaced ? 'Обновлён' : 'Установлен'} мод <b className="text-text">{m.name}</b> → <code className="font-mono break-all">{`mods\\${m.id}`}</code>
+                ✓ {m.replaced ? 'Обновлён' : 'Установлен'} мод <b className="text-text">{m.name}</b> → {result.dir ? <code className="font-mono break-all">{`mods\\${m.id}`}</code> : place}
               </div>
             ))}
             {result.errors.map((e, i) => (
@@ -576,7 +593,7 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
               <ol className="list-decimal pl-5 space-y-1.5 text-text/90">
                 {canInstallMods() ? (
                   <li>
-                    Нажмите «Установить мод…» выше и выберите архив .zip с модом (или перетащите архив на список) — мод распакуется в папку <code className="bg-panel2 px-1.5 py-0.5 rounded text-ice">mods</code> рядом с игрой и сразу откроется.
+                    Нажмите «Установить мод…» выше и выберите архив .zip с модом (или перетащите архив на список) — мод распакуется {modInstallPlace()} и сразу откроется.
                   </li>
                 ) : (
                   <li>

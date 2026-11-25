@@ -78,7 +78,7 @@ try {
   assert.equal(await page.locator('[data-mod-submit]').getAttribute('href'), 'https://github.com/ClubGames/KHL_Manager/issues/new?template=mod.yml');
   assert.equal(await page.locator('[data-mod-submit]').getAttribute('target'), '_blank');
   assert.equal(await page.locator('[data-mod-folder]').count(), 0, 'no mods folder in the browser');
-  assert.equal(await page.locator('[data-mod-install]').count(), 0, 'no «Установить мод» in the browser (nowhere to unpack)');
+  assert.equal(await page.locator('[data-mod-install]').count(), 1, '«Установить мод» in the browser too (into the browser storage)');
   ok('mod links: «Предложить свой мод» opens the GitHub form');
   await shot(page, 'menu-top', { clip: { x: 0, y: 0, width: 1400, height: 900 } });
   await page.locator('[data-mod-picker]').scrollIntoViewIfNeeded();

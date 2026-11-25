@@ -125,9 +125,13 @@ export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: R
   return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[shot], duration: 8, release, goal, tracks: tracks.map(tr => ({ ...tr, keys: tr.keys.map(mirror) })), puck: puck.map(mirror), scorer: e.player, attacking: side, dir: flip ? -1 : 1, shot };
 }
 
+/** Moves of the played match the 3D figures act out: dekes (side, toe drag, between the legs, spin-o-rama, shot fake), body checks (shoulder, hip, board pin) and a stick lift. */
+export type LiveMove = 'side' | 'toe' | 'between' | 'spin' | 'fake' | 'shoulder' | 'hip' | 'pin' | 'lift';
 export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: Point; goalie?: boolean; box?: boolean; /** facing (unit vector, metres: x along the rink, y across) when the rink AI knows it */ dir?: { x: number; y: number };
   /** the played match: the skater the manager controls; body language 0…1 (a fall, a body check, a poke check) and a deke (−1…1) */
-  ctrl?: boolean; fall?: number; check?: number; poke?: number; deke?: number }[]; faceoff?: boolean; stopped?: boolean; carrier?: string | null; caption?: string; official?: Point };
+  ctrl?: boolean; fall?: number; check?: number; poke?: number; deke?: number;
+  /** the played match: a named move being acted out (deke kinds, body-check kinds, a stick lift) and its progress 0…1; a stagger after a hit 0…1 */
+  move?: LiveMove; moveT?: number; stagger?: number }[]; faceoff?: boolean; stopped?: boolean; carrier?: string | null; caption?: string; official?: Point };
 export function clipFrame(clip: ReplayClip, time: number): LiveFrame {
   return { puck: samplePath(clip.puck, time), skaters: clip.tracks.map(tr => ({ id: tr.id, side: tr.side, goalie: tr.goalie, pos: samplePath(tr.keys, time) })) };
 }
