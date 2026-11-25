@@ -12,7 +12,7 @@ import { answerPressConference, createPrePressConference, createPressConference,
 import { answerClubEvent, stepDressingRoom, trackPromises } from './dressingRoom';
 import { autoFinishPreseason, createPreseason, playPreseasonRound, preseasonTable } from './preseason';
 import { blockingTasks, dismissInboxTask } from './inbox';
-import { autoLineup, clubSideProblem, ensureTradeBlock, evaluateTrade, shopTradeBlock, executeTrade, groupOf, lineupConstraintsFor, MAX_ROSTER, maybeAiTrade, maybeIncomingOffer, prepareLineup, sanitizeLineup, tradeWindow, userSideProblem } from './ai';
+import { autoLineup, clubSideProblem, ensureTradeBlock, evaluateTrade, formatTradeCash, shopTradeBlock, executeTrade, tradeShapeProblem, groupOf, lineupConstraintsFor, MAX_ROSTER, maybeAiTrade, maybeIncomingOffer, prepareLineup, sanitizeLineup, tradeWindow, userSideProblem } from './ai';
 import { buyoutCost, commitments, negotiate, talksKey, talksLeft, type Verdict } from './contracts';
 import { bonusKindsFor, bonusText, sanitizeBonuses, settleBonuses } from './bonuses';
 import { checkPromises, coachContractFrom, coachTalks, evaluateCoachOffer, pitchCoach, pitchPlayer, type CoachTerms, type CoachVerdict, type OfferExtras } from './negotiation';
@@ -1545,7 +1545,8 @@ export function ensurePlayoffDay(state: GameState) {
 /* ---------------- trades ---------------- */
 const names = (state: GameState, ids: string[]) => ids.map((id) => state.players[id]?.name).join(', ');
 
-export function proposeTrade(partnerId: string, give: string[], get: string[]): { ok: boolean; reason: string } {
+/** `cash` — rubles the manager adds to the offer (negative: he asks the partner to pay). */
+export function proposeTrade(partnerId: string, give: string[], get: string[], cash = 0): { ok: boolean; reason: string } {
   let out: { ok: boolean; reason: string } = { ok: false, reason: '' };
   store.update((state) => {
     const U = state.userTeamId;
@@ -1555,8 +1556,13 @@ export function proposeTrade(partnerId: string, give: string[], get: string[]): 
       out = { ok: false, reason: w.text };
       return;
     }
-    if (!give.length || !get.length) {
-      out = { ok: false, reason: 'Добавьте игроков с обеих сторон' };
+    const shape = tradeShapeProblem(give, get, cash);
+    if (shape) {
+      out = { ok: false, reason: shape };
+      return;
+    }
+    if (cash > 0 && user.budget < cash) {
+      out = { ok: false, reason: `В бюджете клуба нет ${formatTradeCash(cash)} на доплату` };
       return;
     }
     if (give.some((id) => get.includes(id))) {
@@ -1568,13 +1574,16 @@ export function proposeTrade(partnerId: string, give: string[], get: string[]): 
       out = { ok: false, reason: `Обмен невозможен: ${problem}` };
       return;
     }
-    const ev = evaluateTrade(state, partnerId, give, get);
+    const ev = evaluateTrade(state, partnerId, give, get, cash);
     if (!ev.ok) {
       out = ev;
       return;
     }
-    executeTrade(state, U, partnerId, give, get);
-    addNews(state, 'trade', `Обмен с ${state.teams[partnerId].name}: в ${user.name} — ${names(state, get)}, в ${state.teams[partnerId].short} — ${names(state, give)}`, U);
+    executeTrade(state, U, partnerId, give, get, cash);
+    const money = formatTradeCash(cash);
+    const toUser = [get.length ? names(state, get) : '', cash < 0 ? money : ''].filter(Boolean).join(' и ');
+    const toPartner = [give.length ? names(state, give) : '', cash > 0 ? money : ''].filter(Boolean).join(' и ');
+    addNews(state, 'trade', `${give.length && get.length ? 'Обмен' : 'Сделка'} с ${state.teams[partnerId].name}: в ${user.name} — ${toUser}, в ${state.teams[partnerId].short} — ${toPartner}`, U);
     out = ev;
   });
   return out;

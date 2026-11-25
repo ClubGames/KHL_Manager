@@ -9,8 +9,10 @@ const surname = (name?: string) => (name ? name.split(' ').slice(-1)[0] : '—')
  * Shootout scoreboard: three rounds for each team, then sudden-death rounds; ✓ scored, ✗ missed, ○ still to shoot.
  * `live` highlights the latest attempt and keeps the empty slots of the first three rounds visible.
  */
-export function ShootoutBoard({ events, home, away, players, live = false, className }: {
+export function ShootoutBoard({ events, home, away, players, live = false, className, tally: tally0 }: {
   events: GameEvent[]; home: Team; away: Team; players: Record<string, Player>; live?: boolean; className?: string;
+  /** series score from the box score, for a game whose attempts were not kept */
+  tally?: [number, number];
 }) {
   const attempts = events.filter(isAttempt);
   const rounds = Math.max(3, ...attempts.map((e) => e.round ?? 0));
@@ -22,6 +24,15 @@ export function ShootoutBoard({ events, home, away, players, live = false, class
   const finished = !live || events.some((e) => e.type === 'period_end' && e.so);
   const winner = finished && tally[0] !== tally[1] ? (tally[0] > tally[1] ? home : away) : null;
   const decisive = winner ? [...attempts].reverse().find((e) => e.type === 'so_goal' && e.team === winner.id) : null;
+  // A game saved before the attempts were kept: only the series score is known.
+  if (!attempts.length && !live && tally0) {
+    return (
+      <div className={cn('rounded-md border border-line bg-panel p-3 text-left flex items-center justify-between gap-2', className)} data-shootout data-shootout-attempts={0}>
+        <div className="text-[11px] uppercase tracking-widest text-muted">Серия буллитов</div>
+        <div className="font-display text-xl tabular" data-shootout-score>{tally0[0]} : {tally0[1]}</div>
+      </div>
+    );
+  }
 
   return (
     <div className={cn('rounded-md border border-line bg-panel p-3 text-left', className)} data-shootout data-shootout-attempts={attempts.length}>

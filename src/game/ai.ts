@@ -519,8 +519,25 @@ export const userSideProblem = (state: GameState, gives: string[], gets: string[
 /** Roster and salary-cap check for an AI club. */
 export const clubSideProblem = (state: GameState, teamId: string, gives: string[], gets: string[]) => sideProblem(state, teamId, gives, gets, MIN_ROSTER);
 
-/** Would this AI club agree to give `out` for `inc`? */
-function clubAccepts(state: GameState, teamId: string, out: string[], inc: string[], margin: number): { ok: boolean; ratio: number; franchise: boolean; problem: string | null } {
+/** Rubles of compensation worth one unit of trade value (a prime 80-rated player ≈ 120 M ₽). */
+export const CASH_PER_VALUE = 6_000_000;
+/** Most money that can change hands in one trade. */
+export const MAX_TRADE_CASH = 200_000_000;
+/** A club keeps this much in its budget after paying a transfer fee. */
+const CASH_RESERVE = 100_000_000;
+/** How much a club values one ruble of compensation: rebuilding and poorer clubs like cash more. */
+export function cashFactor(state: GameState, teamId: string): number {
+  const ctx = teamContext(state, teamId);
+  const t = state.teams[teamId];
+  const mode = ctx.mode === 'rebuild' ? 1.15 : ctx.mode === 'contend' ? 0.85 : 1;
+  const purse = t.budget < 600_000_000 ? 1.15 : t.budget > 2_000_000_000 ? 0.9 : 1;
+  return mode * purse;
+}
+/** Trade value of `rub` rubles to club `teamId`. */
+export const cashValueFor = (state: GameState, teamId: string, rub: number) => (Math.max(0, rub) / CASH_PER_VALUE) * cashFactor(state, teamId);
+
+/** Would this AI club agree to give `out` for `inc`? `cashIn` — rubles it receives with the deal (negative: it pays). */
+function clubAccepts(state: GameState, teamId: string, out: string[], inc: string[], margin: number, cashIn = 0): { ok: boolean; ratio: number; franchise: boolean; problem: string | null } {
   const P = state.players;
   const ctx = teamContext(state, teamId);
   const problem = sideProblem(state, teamId, out, inc, MIN_ROSTER);
@@ -531,34 +548,70 @@ function clubAccepts(state: GameState, teamId: string, out: string[], inc: strin
     franchise = franchise || f;
     vOut += valueFor(ctx, P[id]) * (f ? 1.3 : 1);
   }
-  const vInc = inc.reduce((a, id) => a + valueFor(ctx, P[id]), 0);
+  const vInc = inc.reduce((a, id) => a + valueFor(ctx, P[id]), 0) + cashValueFor(state, teamId, cashIn);
+  vOut += cashValueFor(state, teamId, -cashIn);
   const ratio = vInc / Math.max(0.01, vOut);
-  return { ok: !problem && ratio >= margin, ratio, franchise, problem };
+  const broke = cashIn < 0 && state.teams[teamId].budget - -cashIn < CASH_RESERVE ? `у клуба «${state.teams[teamId].name}» нет таких денег на доплату` : null;
+  return { ok: !problem && !broke && ratio >= margin, ratio, franchise, problem: problem ?? broke };
 }
 
-/** The manager offers `give` for the partner's `get`. */
-export function evaluateTrade(state: GameState, partnerId: string, give: string[], get: string[]): { ok: boolean; reason: string; ratio: number } {
+/** Rubles: the user's side of a deal is described as money paid (positive) or asked for (negative). */
+export function formatTradeCash(cash: number): string {
+  const m = Math.round(Math.abs(cash) / 1_000_000);
+  return `${m} млн ₽`;
+}
+
+/**
+ * The manager offers `give` (plus `cash` rubles of compensation; negative — he asks the partner to pay) for the
+ * partner's `get`. A player may also be bought for money alone, or sold for money alone.
+ */
+export function evaluateTrade(state: GameState, partnerId: string, give: string[], get: string[], cash = 0): { ok: boolean; reason: string; ratio: number } {
   const partner = state.teams[partnerId];
-  if (!give.length || !get.length) return { ok: false, reason: 'Добавьте игроков с обеих сторон', ratio: 0 };
-  const r = clubAccepts(state, partnerId, get, give, 1.03);
+  const bad = tradeShapeProblem(give, get, cash);
+  if (bad) return { ok: false, reason: bad, ratio: 0 };
+  // money-only deals: clubs prefer hockey value and want a little extra for it
+  const margin = (give.length === 0 || get.length === 0) ? 1.1 : 1.03;
+  const r = clubAccepts(state, partnerId, get, give, margin, cash);
   if (r.ok) return { ok: true, reason: `${partner.name} принимает предложение`, ratio: r.ratio };
   if (r.problem) return { ok: false, reason: `${partner.name} отклоняет: ${r.problem}`, ratio: r.ratio };
   const ctx = teamContext(state, partnerId);
   const P = state.players;
-  const gap = Math.round((1.03 / Math.max(0.01, r.ratio) - 1) * 100);
+  const gap = Math.round((margin / Math.max(0.01, r.ratio) - 1) * 100);
   const notes: string[] = [];
+  // the same gap in money: what the partner would want on top (or ask for less)
+  {
+    const ctx0 = teamContext(state, partnerId);
+    let vOut = 0;
+    for (const id of get) vOut += valueFor(ctx0, P[id]) * (ctx0.franchise.has(id) ? 1.3 : 1);
+    vOut += cashValueFor(state, partnerId, -cash);
+    const vInc = give.reduce((a, id) => a + valueFor(ctx0, P[id]), 0) + cashValueFor(state, partnerId, cash);
+    const extra = Math.ceil(((margin * vOut - vInc) / cashFactor(state, partnerId)) * CASH_PER_VALUE / 5_000_000) * 5_000_000;
+    if (extra > 0 && extra + Math.max(0, cash) <= MAX_TRADE_CASH && cash >= 0) notes.push(`сделку закрыла бы доплата ≈ ${formatTradeCash(extra + cash)}`);
+    else if (extra > 0 && cash < 0 && extra <= -cash) notes.push(`запросите не больше ${formatTradeCash(-cash - extra)}`);
+  }
   if (r.franchise) notes.push('лидеров команды отдают только с серьёзной доплатой');
   if (ctx.mode === 'rebuild' && give.some((id) => P[id].age >= 30)) notes.push('клуб перестраивается и не ценит возрастных игроков');
   if (ctx.mode === 'contend' && give.some((id) => P[id].age <= 22 && P[id].overall < 72)) notes.push('клуб борется за кубок, проспекты ему сейчас не нужны');
   const unwanted = give.map((id) => groupOf(P[id])).find((g) => ctx.need[g] < -1.5);
-  if (unwanted) notes.push(`у них и так сильная линия: ${GROUP_MANY[unwanted]} им не нужны`);
+  if (unwanted) notes.push(`у них и так хватает ${GROUP_MANY[unwanted]}`);
   return { ok: false, reason: `${partner.name} отклоняет: по их оценке не хватает ~${gap}% ценности${notes.length ? ' (' + notes.join('; ') + ')' : ''}`, ratio: r.ratio };
 }
 
-export function executeTrade(state: GameState, aId: string, bId: string, aGives: string[], bGives: string[]) {
+/** Shape of a deal: at least one player moves, and money goes one way only, within the limit. */
+export function tradeShapeProblem(give: string[], get: string[], cash: number): string | null {
+  if (Math.abs(cash) > MAX_TRADE_CASH) return `Доплата не может превышать ${formatTradeCash(MAX_TRADE_CASH)}`;
+  if (!give.length && !get.length) return 'Добавьте игроков в обмен';
+  if (!get.length && cash >= 0) return 'Выберите игрока партнёра или попросите за своих деньги';
+  if (!give.length && cash <= 0) return 'Добавьте своих игроков или предложите деньги';
+  return null;
+}
+
+/** `aPays` — rubles club A pays club B with the deal (negative: B pays A). */
+export function executeTrade(state: GameState, aId: string, bId: string, aGives: string[], bGives: string[], aPays = 0) {
   const P = state.players;
   const A = state.teams[aId];
   const B = state.teams[bId];
+  if (aPays) { A.budget -= aPays; B.budget += aPays; }
   const move = (id: string, from: Team, to: Team) => {
     const p = P[id];
     if (!p || p.teamId !== from.id) return;

@@ -75,9 +75,13 @@ const userGames = s.schedule.flat().filter((x) => x.played && (x.home === 'ska' 
 const withGoals = userGames.filter((g) => g.result!.scorers.length);
 check("simulated games of the manager have a goal event for every goal (3D replay)", withGoals.length > 0 && withGoals.every((g) => g.result!.scorers.every((sc) => goalEventFor(g.result!.events, sc)?.ice)), `${withGoals.length} games`);
 const other = s.schedule.flat().find((x) => x.played && x.home !== 'ska' && x.away !== 'ska');
-check('other clubs keep no play-by-play', !!other && other.result!.events.length === 0);
+check('other clubs keep no play-by-play beyond their shootout attempts', !!other && s.schedule.flat().filter((x) => x.played && x.home !== 'ska' && x.away !== 'ska').every((g) => g.result!.events.every((e) => e.type === 'so_goal' || e.type === 'so_miss' || (e.type === 'period_end' && !!e.so))));
+const otherSO = s.schedule.flat().filter((x) => x.played && x.home !== 'ska' && x.away !== 'ska' && x.result!.so);
+check("other clubs' shootouts are recorded attempt by attempt", otherSO.length > 0 && otherSO.every((g) => { const a = g.result!.events.filter((e) => e.type === 'so_goal' || e.type === 'so_miss'); const last = g.result!.periodScores[g.result!.periodScores.length - 1]; return a.length >= 2 && a.filter((e) => e.type === 'so_goal' && e.team === g.home).length === last[0] && a.filter((e) => e.type === 'so_goal' && e.team === g.away).length === last[1]; }), `${otherSO.length} games`);
 const saved = JSON.parse(JSON.stringify(compactState(s))) as GameState;
 const sg = saved.schedule.flat().filter((x) => x.played && (x.home === 'ska' || x.away === 'ska'));
+const savedOtherSO = saved.schedule.flat().filter((x) => x.played && x.home !== 'ska' && x.away !== 'ska' && x.result!.so);
+check("a save keeps other clubs' shootout attempts", savedOtherSO.length > 0 && savedOtherSO.every((g) => g.result!.events.length >= 2 && g.result!.events.every((e) => e.type === 'so_goal' || e.type === 'so_miss')));
 check('a save keeps only goal and shootout events of the manager’s games, with the replay geometry', sg.every((g) => g.result!.events.every((e) => ['goal', 'so_goal', 'so_miss'].includes(e.type))) && sg.filter((g) => g.result!.scorers.length).every((g) => g.result!.scorers.every((sc) => { const e = goalEventFor(g.result!.events, sc); return !!e && !!e.ice && e.x !== undefined; })));
 const size = JSON.stringify(saved).length, bare = JSON.stringify({ ...saved, schedule: saved.schedule.map((d) => d.map((g) => (g.result ? { ...g, result: { ...g.result, events: [] } } : g))) }).length;
 check('kept events add little to the save', size - bare < 4000 * Math.max(1, sg.length), `${((size - bare) / 1024).toFixed(1)} KB for ${sg.length} games`);

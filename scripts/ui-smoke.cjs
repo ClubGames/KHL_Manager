@@ -120,7 +120,7 @@ function boot(seed, rosterText) {
   check('MATCH: final stats after instant finish are complete', s9.shots >= 35 && s9.shots === s9.feedShots && s9.periods.split(' ').length >= 3, JSON.stringify({ shots: s9.shots, periods: s9.periods }));
   a.click(a.find('Продолжить сезон'));
   await sleep(500);
-  for (const v of ['Состав', 'Звенья', 'Календарь', 'Таблица', 'Статистика', 'Обмены', 'Рынок', 'Контракты', 'Формат JSON', 'Обзор']) {
+  for (const v of ['Состав', 'Звенья', 'Календарь', 'Таблица', 'Статистика', 'Обмены', 'Рынок', 'Контракты', 'Обзор']) {
     a.click(a.find(v));
     await sleep(150);
   }

@@ -109,7 +109,10 @@ export function compactState(state: GameState): GameState {
         if (!g.result) return g;
         const mine = g.home === U || g.away === U;
         // The tally on the last shootout attempt is enough for the report; the shot geometry of goals stays for replays.
-        const events = mine ? g.result.events.filter((e) => KEPT_EVENTS.has(e.type)).map(({ penUntil: _p, box: _b, lines: _l, ...e }) => e) : [];
+        // Other clubs' games keep only their shootout attempts (who shot, in which round, scored or not).
+        const events = mine
+          ? g.result.events.filter((e) => KEPT_EVENTS.has(e.type)).map(({ penUntil: _p, box: _b, lines: _l, ...e }) => e)
+          : g.result.events.filter((e) => e.type === 'so_goal' || e.type === 'so_miss').map((e) => ({ sec: e.sec, period: e.period, time: e.time, team: e.team, type: e.type, player: e.player, round: e.round, so: e.so, text: '' }));
         return { ...g, result: { ...g.result, events, lines: {} } };
       })
     ),

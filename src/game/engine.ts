@@ -28,6 +28,7 @@ interface SimSnap {
   shotMapLen: number;
   lines: Record<string, PlayerGameLine>;
   pens: [Pen[], Pen[]];
+  misconducts: [Pen[], Pen[]];
   boxShown: boolean;
   unitIdx: [number, number];
   unansweredGoals: [number, number];
@@ -230,6 +231,8 @@ export class GameSim {
    * until one of them ends; a power-play goal frees one minor.
    */
   pens: [Pen[], Pen[]] = [[], []];
+  /** 10-minute misconducts: the player sits, the team stays at full strength */
+  misconducts: [Pen[], Pen[]] = [[], []];
   /** the last event carried the penalty box (so an empty box is reported once when it clears) */
   private boxShown = false;
   period = 0;
@@ -311,6 +314,7 @@ export class GameSim {
       shotMapLen: this.shotMap.length,
       lines: cloneLines(this.lines),
       pens: [this.pens[0].map((x) => ({ ...x })), this.pens[1].map((x) => ({ ...x }))],
+      misconducts: [this.misconducts[0].map((x) => ({ ...x })), this.misconducts[1].map((x) => ({ ...x }))],
       boxShown: this.boxShown,
       unitIdx: [this.unitIdx[0], this.unitIdx[1]],
       unansweredGoals: [this.unansweredGoals[0], this.unansweredGoals[1]],
@@ -332,6 +336,7 @@ export class GameSim {
     this.shotMap.length = s.shotMapLen;
     this.lines = cloneLines(s.lines);
     this.pens = [s.pens[0].map((x) => ({ ...x })), s.pens[1].map((x) => ({ ...x }))];
+    this.misconducts = [s.misconducts[0].map((x) => ({ ...x })), s.misconducts[1].map((x) => ({ ...x }))];
     this.boxShown = s.boxShown;
     this.unitIdx = [s.unitIdx[0], s.unitIdx[1]];
     this.unansweredGoals = [s.unansweredGoals[0], s.unansweredGoals[1]];
@@ -427,8 +432,9 @@ export class GameSim {
     const rem = blockLen(this.blockKind) - (this.sec - this.blockStart);
     return fmtClock(Math.max(0, rem));
   }
-  private push(e: Partial<GameEvent> & { type: GameEvent['type']; text: string }) {
-    if (this.quiet) return;
+  /** `always`: recorded even in a quiet game (the shootout series is shown in every match report). */
+  private push(e: Partial<GameEvent> & { type: GameEvent['type']; text: string }, always = false) {
+    if (this.quiet && !always) return;
     const ev: GameEvent = { sec: this.sec, period: this.period, time: this.clock(), team: null, ...e };
     for (const i of [0, 1] as TI[]) this.pens[i] = this.pens[i].filter((x) => x.end > this.sec);
     if (this.pens[0].length || this.pens[1].length) {
@@ -487,6 +493,37 @@ export class GameSim {
         return [F[0] ?? null, F[1] ?? null, f2, D[0] ?? null, d1];
       }
     }
+  }
+
+  /** Players of team i sitting in the penalty box right now (waiting penalties and misconducts included). */
+  private inBox(i: TI, t = this.sec): Set<string> {
+    const out = new Set<string>();
+    for (const x of this.pens[i]) if (x.end > t) out.add(x.player);
+    for (const x of this.misconducts[i]) if (x.end > t) out.add(x.player);
+    return out;
+  }
+  /**
+   * The unit as it can actually take the ice: a man in the penalty box (or an empty lineup slot) is replaced
+   * by a dressed skater of the same kind — a defenceman for a defenceman — who is not out there already.
+   */
+  private seat(i: TI, ids: (string | null)[]): (string | null)[] {
+    const box = this.inBox(i);
+    const ok = (id: string | null | undefined): id is string => !!id && !!this.P[id] && !isGoalie(this.P[id]) && !box.has(id);
+    if (ids.every((id) => ok(id))) return ids;
+    const L = this.team(i).lineup;
+    const out = ids.map((id) => (ok(id) ? id : null));
+    const used = new Set(out.filter((id): id is string => !!id));
+    const dPool = [...L.D.flat(), L.u20D ?? null];
+    const fPool = [...L.F.flat(), L.u20F ?? null];
+    const n = ids.length;
+    ids.forEach((id, k) => {
+      if (out[k]) return;
+      const wasD = id && this.P[id] ? this.P[id].position === 'D' : n >= 4 ? k >= n - 2 : k === n - 1;
+      const pool = wasD ? [...dPool, ...fPool] : [...fPool, ...dPool];
+      const sub = pool.find((c) => ok(c) && !used.has(c));
+      if (sub) { out[k] = sub; used.add(sub); }
+    });
+    return out;
   }
 
   private lineChemBonus(i: TI, li: number): number {
@@ -705,8 +742,8 @@ export class GameSim {
         };
         const modes: [Mode, Mode] = [modeOf(0), modeOf(1)];
         const ice: [(string | null)[], (string | null)[]] = [
-          this.unit(0, li[0], modes[0], u20Shift[0], men[0]).ids,
-          this.unit(1, li[1], modes[1], u20Shift[1], men[1]).ids,
+          this.seat(0, this.unit(0, li[0], modes[0], u20Shift[0], men[0]).ids),
+          this.seat(1, this.unit(1, li[1], modes[1], u20Shift[1], men[1]).ids),
         ];
         return { modes, ice, men };
       };
@@ -997,7 +1034,8 @@ export class GameSim {
     const teamId = this.team(i).id;
     let boxUntil = this.sec + min * 60;
     let note = '';
-    if (!misconduct) {
+    if (misconduct) this.misconducts[i] = [...this.misconducts[i].filter((x) => x.end > this.sec), { player: p, min, start: this.sec, end: boxUntil }];
+    else {
       this.pens[i] = this.pens[i].filter((x) => x.end > this.sec);
       const start = this.penSlot(i);
       boxUntil = start + min * 60;
@@ -1062,7 +1100,7 @@ export class GameSim {
         type: ok ? 'so_goal' : 'so_miss', team: this.team(i).id, player: sh, goalie: gid ?? null, round,
         time: `${round}-й раунд`, so: [so[0], so[1]],
         text: `Буллит, ${round}-й раунд: ${sp.name} — ${how}${g ? ` (${g.name})` : ''}. Серия ${so[0]}:${so[1]}`,
-      });
+      }, true);
       return ok;
     };
     // The first three rounds, ended early once the result cannot change.
@@ -1081,7 +1119,7 @@ export class GameSim {
     const w: TI = so[0] > so[1] ? 0 : 1;
     this.score[w]++;
     this.periodScores.push([so[0], so[1]]);
-    this.push({ type: 'period_end', text: `Буллиты ${so[0]}:${so[1]}. Победа ${this.label(w)} — ${this.score[0]}:${this.score[1]}`, score: [this.score[0], this.score[1]], so: [so[0], so[1]] });
+    this.push({ type: 'period_end', text: `Буллиты ${so[0]}:${so[1]}. Победа ${this.label(w)} — ${this.score[0]}:${this.score[1]}`, score: [this.score[0], this.score[1]], so: [so[0], so[1]] }, true);
     return this.events.slice(start);
   }
 
