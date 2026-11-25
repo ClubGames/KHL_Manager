@@ -2,10 +2,10 @@ import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore } from
 import type { MutableRefObject } from 'react';
 import type { AttackStyle, ForecheckStyle, Game, GameEvent, Lineup, PullGoaliePolicy } from '../types';
 import type { BlockKind } from '../game/engine';
-import { fmtClock } from '../game/engine';
+import { blockLen, fmtClock } from '../game/engine';
 import { commitUserResult, makeUserSim, useGame } from '../game/state';
-import { applyEvent, emptyLive, foldEvents, manpower } from '../game/live';
-import { Button, Icon, Panel, PlayerFace, PosBadge, shortName, TeamLogo, useUI } from './ui';
+import { applyEvent, emptyLive, foldEvents, manpower, type LiveStats } from '../game/live';
+import { Button, Icon, Panel, PlayerFace, PosBadge, shortName, TeamLogo, useClosing, useUI } from './ui';
 import { autoReplayFor, getSettings, useSettings } from '../game/settings';
 import { prewarmReplays, type FigureRequest } from './replayCache';
 import { arenaDetail, resolveReplayQuality } from './ReplayScene';
@@ -121,7 +121,10 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const idx = useRef(0);
   const clockRef = useRef(0);
   const blockStart = useRef(0);
+  /** where the game clock of the block reads 0:00 (a full period / overtime, also when a sudden-death goal ends it early) */
   const blockEnd = useRef(0);
+  /** the game second the play of the block stops: the end of the period or the overtime winner */
+  const playEnd = useRef(0);
   const feedRef = useRef<HTMLDivElement>(null);
   // Shootout: attempts are revealed one by one (soAcc counts revealed steps).
   const soMode = useRef(false);
@@ -185,9 +188,10 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     periodEvs.current = evs;
     idx.current = 0;
     blockStart.current = evs[0]?.sec ?? sim.sec;
-    blockEnd.current = sim.sec;
-    rinkAI.current = k === 'so' ? null : new RinkAI(evs, H, A, P, blockStart.current, blockEnd.current, {
-      suddenDeath: k !== 'reg',
+    blockEnd.current = blockStart.current + blockLen(k);
+    playEnd.current = sim.sec;
+    rinkAI.current = k === 'so' ? null : new RinkAI(evs, H, A, P, blockStart.current, playEnd.current, {
+      suddenDeath: k !== 'reg', threeOnThree: k === 'ot3',
       // Teams switch ends every period (and for the overtime).
       flip: endsSwitched(sim.period),
       goalies: [sim.team(0).lineup.starterG || null, sim.team(1).lineup.starterG || null],
@@ -229,11 +233,11 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         ai.ensure(tauRef.current);
         // The game clock comes from the rink: it stands still from every whistle until the puck is dropped.
         clockRef.current = Math.max(clockRef.current, ai.clockAt(tauRef.current));
-        if (ai.ended && tauRef.current >= ai.lastTau) clockRef.current = blockEnd.current;
+        if (ai.ended && tauRef.current >= ai.lastTau) clockRef.current = playEnd.current;
       } else if (soMode.current) soAcc.current += dt / SO_STEP[speed];
       else clockRef.current += dt * RATE[speed];
       const evs = periodEvs.current;
-      let c = Math.min(clockRef.current, blockEnd.current);
+      let c = Math.min(clockRef.current, playEnd.current);
       const soShown = 1 + Math.floor(soAcc.current);
       let hitGoal = false;
       const newly: FeedItem[] = [];
@@ -296,13 +300,13 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       }
       if (hitGoal) return; // Freeze exactly on the revealed goal; no extra frame leaks past it.
       // A whistle has just gone: if the bench should act, the match pauses with a recommendation.
-      if (ai && stoppedNow && !wasStopped.current && c < blockEnd.current - 1) {
+      if (ai && stoppedNow && !wasStopped.current && c < playEnd.current - 1) {
         wasStopped.current = true;
         if (getSettings().matchAdvice && adviceCheck.current(c)) return;
       }
       wasStopped.current = stoppedNow;
       // The shootout ends one step after its last attempt is shown.
-      if (soMode.current ? idx.current >= evs.length && soAcc.current >= evs.length : c >= blockEnd.current) {
+      if (soMode.current ? idx.current >= evs.length && soAcc.current >= evs.length : c >= playEnd.current) {
         // The countdown is set together with the status: a value left at 0 by the previous intermission must
         // never start the next period at once (that used to skip the «period over» window).
         if (sim.status !== 'done') { setCountdown(sim.status === 'playing' ? BREAK_SECONDS : 10); setBreakHold(false); }
@@ -339,7 +343,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     return () => window.clearInterval(id);
   }, [status, breakHold]);
   useEffect(() => {
-    if (status === 'break' && !breakHold && countdown <= 0) startBlock();
+    if (status === 'break' && !breakHold && countdown <= 0) startClosing(startBlock);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [countdown, status, breakHold]);
 
@@ -382,7 +386,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         // The players keep skating from where they are; only the future of the period changes.
         rinkAI.current?.setEvents(updated, sim.sec);
         periodEvs.current = updated;
-        blockEnd.current = sim.sec;
+        playEnd.current = sim.sec;
         // Immediately reveal the coaching info event on the feed if present
         if (idx.current < updated.length && updated[idx.current].type === 'info') {
           const infoEv = updated[idx.current++];
@@ -564,6 +568,19 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     }
     return false;
   };
+  // Windows of the match close with an animation; the clock stays stopped until they are gone (the period starts,
+  // the advice is answered, the replay hands the game back only afterwards).
+  const [closingWin, startClosing] = useClosing();
+  const closeThen = (fn: () => void) => () => startClosing(fn);
+  const closeAdvice = (key: BenchAdviceKey | null) => startClosing(() => answerAdvice(key));
+  const closeReplay = () => {
+    setReplayEvent(null);
+    // back to the top of the match screen (the score and the clock), wherever the replay was opened from
+    requestAnimationFrame(() => {
+      window.scrollTo?.({ top: 0, left: 0, behavior: 'instant' as ScrollBehavior });
+      document.querySelector<HTMLElement>('[data-view-scroll]')?.scrollTo?.({ top: 0 });
+    });
+  };
   const answerAdvice = (key: BenchAdviceKey | null) => {
     if (key === 'timeout' || key === 'timeout_pull') callTimeoutNow();
     if (key === 'pull' || key === 'timeout_pull' || key === 'return') toggleManualPullGoalie();
@@ -577,7 +594,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     return () => window.clearInterval(id);
   }, [advice]);
   useEffect(() => {
-    if (advice && adviceLeft <= 0) answerAdvice(null);
+    if (advice && adviceLeft <= 0) closeAdvice(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adviceLeft, advice]);
 
@@ -599,6 +616,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const mpState: 0 | 1 | 'even' | null = mpOn ? (mpStateKey === '0' ? 0 : mpStateKey === '1' ? 1 : mpStateKey === 'even' ? 'even' : null) : null;
   const mpMen: [number, number] = mpState === null ? [5, 5] : [Number(mpMenKey[0]) || 5, Number(mpMenKey[1]) || 5];
   const mp = { state: mpState, men: mpMen };
+  // The penalty clock next to the badge runs with the game clock (its own subscription: no re-render of the screen).
+  const penClock = mpState === null ? null : <PenaltyClock ticker={ticker} live={live} />;
   const iceLabel = (ti: 0 | 1, li: number) => {
     if (kind === 'ot3') return 'овертайм · 3 на 3';
     if (mp.state === 'even') return `${mp.men[0]} на ${mp.men[1]}`;
@@ -953,14 +972,14 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
                   <span className="sm:hidden">{H.short}</span>
                   <span className="hidden sm:inline">{H.name}</span>
                 </div>
-                <span className="hidden sm:inline-flex"><ManpowerBadge state={mp.state} men={mp.men} ti={0} /></span>
+                <span className="hidden sm:inline-flex"><ManpowerBadge state={mp.state} men={mp.men} ti={0} clock={penClock} /></span>
               </div>
               <div className="text-[10px] sm:text-[11px] text-muted truncate">дома · {H.record.points} очк.</div>
             </div>
             <span className="font-display text-3xl sm:text-5xl tabular leading-none ml-auto score-tick" key={`h${score[0]}`}>
               {score[0]}
             </span>
-            {mp.state !== null && <div className="basis-full sm:hidden"><ManpowerBadge state={mp.state} men={mp.men} ti={0} compact /></div>}
+            {mp.state !== null && <div className="basis-full sm:hidden"><ManpowerBadge state={mp.state} men={mp.men} ti={0} compact clock={penClock} /></div>}
           </div>
           <div className="text-center px-1.5 sm:px-4 min-w-[82px] sm:min-w-[120px]">
             <ClockFace ticker={ticker} end={blockEnd} shootout={kind === 'so'} />
@@ -974,14 +993,14 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
                   <span className="sm:hidden">{A.short}</span>
                   <span className="hidden sm:inline">{A.name}</span>
                 </div>
-                <span className="hidden sm:inline-flex"><ManpowerBadge state={mp.state} men={mp.men} ti={1} /></span>
+                <span className="hidden sm:inline-flex"><ManpowerBadge state={mp.state} men={mp.men} ti={1} clock={penClock} /></span>
               </div>
               <div className="text-[10px] sm:text-[11px] text-muted truncate">гости · {A.record.points} очк.</div>
             </div>
             <span className="font-display text-3xl sm:text-5xl tabular leading-none mr-auto score-tick" key={`a${score[1]}`}>
               {score[1]}
             </span>
-            {mp.state !== null && <div className="basis-full sm:hidden text-right"><ManpowerBadge state={mp.state} men={mp.men} ti={1} compact /></div>}
+            {mp.state !== null && <div className="basis-full sm:hidden text-right"><ManpowerBadge state={mp.state} men={mp.men} ti={1} compact clock={penClock} /></div>}
           </div>
         </div>
 
@@ -1136,13 +1155,13 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       )}
 
       {replayEvent && (
-        <GoalReplay motionClip={clipFor(replayEvent)} closeLabel={status === 'done' ? 'Назад к итогам' : undefined} event={replayEvent} home={H} away={A} players={P} onClose={() => setReplayEvent(null)} />
+        <GoalReplay motionClip={clipFor(replayEvent)} closeLabel={status === 'done' ? 'Назад к итогам' : undefined} event={replayEvent} events={sim.events} home={H} away={A} players={P} onClose={closeReplay} />
       )}
       {status === 'intro' && (() => {
         const oppId = game.home === s.userTeamId ? game.away : game.home;
         const [pp1, pp2] = previewPowerPlay(s, s.userTeamId, oppId, userL);
         return (
-          <Overlay wide={showPreLineup}>
+          <Overlay wide={showPreLineup} closing={closingWin}>
             <div className="font-display text-3xl uppercase">
               {sim.derby ? `🔥 ${sim.derby.title}` : 'Матч начинается'}
             </div>
@@ -1200,10 +1219,10 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
             )}
 
             <div className="flex gap-2 mt-4 flex-wrap justify-center">
-              <Button variant="primary" size="lg" onClick={startBlock}>
+              <Button variant="primary" size="lg" onClick={closeThen(startBlock)}>
                 <Icon name="play" /> Начать матч
               </Button>
-              <Button size="lg" onClick={finishNow}>
+              <Button size="lg" onClick={closeThen(finishNow)}>
                 <Icon name="fast" /> Симулировать
               </Button>
               <Button variant="secondary" size="lg" onClick={() => setShowPreLineup((v) => !v)}>
@@ -1214,8 +1233,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         );
       })()}
       {advice && status === 'playing' && !replayEvent && (
-        <div className="fixed inset-x-0 bottom-0 sm:inset-0 z-40 flex items-end sm:items-center justify-center sm:bg-bg/60 sm:backdrop-blur-[2px] p-0 sm:p-4 pointer-events-none" data-bench-advice={advice.id.split(':')[0]}>
-          <div className="pointer-events-auto w-full sm:max-w-md bg-panel border-t sm:border border-amber/50 rounded-t-xl sm:rounded-md shadow-2xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-4 fade-in" role="dialog" aria-label="Совет тренерского штаба">
+        <div className={cn('fixed inset-x-0 bottom-0 sm:inset-0 z-40 flex items-end sm:items-center justify-center sm:bg-bg/60 sm:backdrop-blur-[2px] p-0 sm:p-4 pointer-events-none', closingWin && 'fade-out')} data-bench-advice={advice.id.split(':')[0]}>
+          <div className={cn('pointer-events-auto w-full sm:max-w-md bg-panel border-t sm:border border-amber/50 rounded-t-xl sm:rounded-md shadow-2xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-4', closingWin ? 'pop-out pointer-events-none' : 'fade-in')} role="dialog" aria-label="Совет тренерского штаба">
             <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-amber">
               <span className="w-2 h-2 rounded-full bg-amber" /> Свисток · игра на паузе
             </div>
@@ -1223,16 +1242,16 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
             <p className="text-sm text-text/85 mt-1">{advice.text}</p>
             <div className="flex flex-wrap gap-2 mt-3">
               {advice.actions.map((a) => (
-                <Button key={a.key} size="sm" variant={a.primary ? 'primary' : 'secondary'} onClick={() => answerAdvice(a.key)} data-advice-action={a.key}>{a.label}</Button>
+                <Button key={a.key} size="sm" variant={a.primary ? 'primary' : 'secondary'} onClick={() => closeAdvice(a.key)} data-advice-action={a.key}>{a.label}</Button>
               ))}
-              <Button size="sm" variant="ghost" onClick={() => answerAdvice(null)} data-advice-skip>Не сейчас · {Math.max(0, adviceLeft)} с</Button>
+              <Button size="sm" variant="ghost" onClick={() => closeAdvice(null)} data-advice-skip>Не сейчас · {Math.max(0, adviceLeft)} с</Button>
             </div>
             <div className="text-[10px] text-muted mt-2">После решения матч продолжится сам. Подсказки можно выключить в настройках.</div>
           </div>
         </div>
       )}
       {status === 'break' && (
-        <Overlay>
+        <Overlay closing={closingWin}>
           <div className="contents" onPointerDownCapture={(e) => { if (!(e.target as HTMLElement).closest('[data-break-continue]')) setBreakHold(true); }}>
           <div className="text-[11px] uppercase tracking-widest text-muted">{periodNameOf(period, kind)} завершён</div>
           <div className="font-display text-4xl tabular">
@@ -1298,7 +1317,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
             </>
           )}
           <div className="flex gap-2 mt-4 flex-wrap justify-center items-center">
-            <Button variant="primary" size="lg" onClick={startBlock} data-break-continue>
+            <Button variant="primary" size="lg" onClick={closeThen(startBlock)} data-break-continue>
               {sim.status === 'so' ? 'К буллитам' : 'Продолжить'}
             </Button>
             {breakHold ? (
@@ -1309,7 +1328,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
                 <button type="button" className="underline hover:text-text" onClick={() => setBreakHold(true)} data-break-wait>подождать</button>
               </span>
             )}
-            <Button size="lg" onClick={finishNow} data-break-continue>
+            <Button size="lg" onClick={closeThen(finishNow)} data-break-continue>
               <Icon name="fast" /> Завершить мгновенно
             </Button>
           </div>
@@ -1383,7 +1402,17 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
 }
 
 /** «в большинстве / в меньшинстве» next to a team's name while a penalty is running. */
-function ManpowerBadge({ state, men, ti, compact = false }: { state: 0 | 1 | 'even' | null; men: [number, number]; ti: 0 | 1; compact?: boolean }) {
+/** Time left of the current special-teams situation (the next penalty to expire), e.g. «1:24». */
+function PenaltyClock({ ticker, live }: { ticker: Ticker; live: MutableRefObject<LiveStats> }) {
+  const get = () => {
+    const r = manpower(live.current, ticker.sec).remaining;
+    return r > 0 ? fmtClock(Math.ceil(r - 1e-6)) : '';
+  };
+  const text = useSyncExternalStore(ticker.subscribe, get, get);
+  return text ? <span className="tabular" data-pen-clock>{text}</span> : null;
+}
+
+function ManpowerBadge({ state, men, ti, compact = false, clock = null }: { state: 0 | 1 | 'even' | null; men: [number, number]; ti: 0 | 1; compact?: boolean; clock?: React.ReactNode }) {
   if (state === null) return null;
   const kind = state === 'even' ? 'even' : state === ti ? 'pp' : 'pk';
   const text = kind === 'even' ? `${men[0]} на ${men[1]}` : kind === 'pp' ? 'в большинстве' : 'в меньшинстве';
@@ -1400,6 +1429,7 @@ function ManpowerBadge({ state, men, ti, compact = false }: { state: 0 | 1 | 'ev
     >
       {text}
       {count && (!compact || Math.abs(men[0] - men[1]) >= 2) && <span className="tabular opacity-80">{count}</span>}
+      {clock && <span className="tabular font-bold pl-1 ml-0.5 border-l border-current/30">{clock}</span>}
     </span>
   );
 }
@@ -1419,10 +1449,10 @@ const ADVICE_SECONDS = 15;
 /** Seconds of the intermission window before the next period starts by itself. */
 const BREAK_SECONDS = 20;
 
-function Overlay({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
+function Overlay({ children, wide = false, closing = false }: { children: React.ReactNode; wide?: boolean; closing?: boolean }) {
   return (
-    <div className="fixed inset-0 z-40 bg-bg/85 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
-      <div className={cn('bg-panel border-t sm:border border-line rounded-t-xl sm:rounded-md p-4 sm:p-5 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-5 w-full text-center shadow-2xl fade-in flex flex-col items-center max-h-[92dvh] overflow-y-auto overscroll-contain', wide ? 'max-w-4xl' : 'max-w-xl')}>
+    <div className={cn('fixed inset-0 z-40 bg-bg/85 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto', closing && 'fade-out pointer-events-none')} data-overlay-closing={closing || undefined}>
+      <div className={cn('bg-panel border-t sm:border border-line rounded-t-xl sm:rounded-md p-4 sm:p-5 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-5 w-full text-center shadow-2xl flex flex-col items-center max-h-[92dvh] overflow-y-auto overscroll-contain', closing ? 'pop-out' : 'fade-in', wide ? 'max-w-4xl' : 'max-w-xl')}>
         {children}
       </div>
     </div>

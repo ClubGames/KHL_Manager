@@ -79,7 +79,10 @@ try {
   await page.getByLabel('Скорость повтора').selectOption('0.25');
   await page.getByRole('button', { name: '↻ Повторить', exact: true }).click();
   await page.waitForTimeout(300); assert.ok(Number(await slider.inputValue()) < 200);
-  await page.keyboard.press('Escape'); assert.equal(await page.getByRole('dialog', { name: '3D-повтор гола' }).count(), 0);
+  // Escape closes it: the replay fades out (≈0.2 s) and only then leaves the page.
+  await page.keyboard.press('Escape');
+  assert.equal(await page.locator('[data-goal-replay][data-closing]').count(), 1, 'the replay plays its closing animation');
+  await page.getByRole('dialog', { name: '3D-повтор гола' }).waitFor({ state: 'detached', timeout: 2000 });
   console.log('ok real WebGL, rigged club-kit models, 7 cameras + auto director, zoom, seek, pause, slow motion, restart, goal timing and Escape');
 
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -153,7 +156,8 @@ try {
   await fallback.keyboard.press('Escape'); await fallback.close();
   console.log('ok WebGL-unavailable fallback uses same timeline and stays dismissible');
 
-  const match = await open();
+  // goals do not open their replay by themselves here: a replay popping up during the long 3D checks would cover the rink
+  const match = await open({}, { autoReplay: 'off' });
   await match.getByRole('button', { name: /^СКА/ }).click();
   await match.getByRole('button', { name: 'Начать карьеру', exact: true }).click();
   const toMatch = match.getByRole('button', { name: 'Симулировать до матча', exact: true });
@@ -210,6 +214,8 @@ try {
   await land.getByRole('button', { name: 'Играть матч', exact: true }).click();
   await land.getByRole('button', { name: 'Начать матч', exact: true }).click();
   await land.locator('[data-match-land]').waitFor();
+  // the period starts once the intro window has faded out (≈0.2 s)
+  await land.locator('[data-live-rink][data-faceoff]').waitFor({ timeout: 3000 }).catch(() => {});
   assert.equal(await land.locator('[data-live-rink][data-faceoff]').count(), 1, 'opening faceoff is shown');
   assert.equal(await land.locator('[data-clock]').innerText(), '20:00', 'clock does not run before the drop');
   const fit = await land.evaluate(() => ({ sh: document.documentElement.scrollHeight, ih: innerHeight, rink: document.querySelector('[data-rink-svg]').getBoundingClientRect().bottom }));

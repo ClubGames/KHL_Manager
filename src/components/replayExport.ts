@@ -2,7 +2,7 @@ import { isApp, saveFile } from '../platform';
 import { ArrayBufferTarget, Muxer } from 'mp4-muxer';
 import type { ReplayClip } from '../game/rinkPlayback';
 import { viewFor, type ReplayCamera, type ReplayView } from './replayCameras';
-import { clockAt, fmtGameClock, STRENGTH_TEXT, type Broadcast } from './replayBroadcast';
+import { clockAt, fmtGameClock, ppClockAt, STRENGTH_TEXT, type Broadcast } from './replayBroadcast';
 import { LG } from '../brand';
 
 /**
@@ -122,7 +122,7 @@ export function drawGraphics(ctx: CanvasRenderingContext2D, w: number, h: number
   // KHL-style score bug, top left: [КХЛ | ▌HOME (БОЛ) score | ▌AWAY score | period clock].
   const x = 40 * u, y = 36 * u, bh = 58 * u, b = g.broadcast;
   const seg = (text: string, px: number) => { ctx.font = font(px); return ctx.measureText(text).width; };
-  const st = (ti: 0 | 1) => { const v = b?.strength[ti]; return v ? STRENGTH_TEXT[v] : ''; };
+  const st = (ti: 0 | 1) => { const v = b?.strength[ti]; if (!v || !b) return ''; const pc = v !== 'en' ? ppClockAt(b, clip, shot.time) : ''; return pc ? `${STRENGTH_TEXT[v]} ${pc}` : STRENGTH_TEXT[v]; };
   const logoW = seg(LG(), 26) + 28 * u, numW = 54 * u, barW = 9 * u;
   const teamW = (ti: 0 | 1) => barW + seg((ti ? g.away : g.home).short, 32) + 30 * u + (st(ti) ? seg(st(ti), 18) + 18 * u : 0) + numW;
   const period = b ? (b.period === 'ОТ' ? 'ОТ' : `${b.period}-й`) : '';

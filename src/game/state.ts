@@ -777,6 +777,7 @@ export function autoAssignYouthPlans() {
 function runGame(state: GameState, g: Game): GameResult {
   const home = prepareLineup(state, g.home);
   const away = prepareLineup(state, g.away);
+  noteGoalieRotation(state, g, home, away);
   const derby = getDerby(state.teams[g.home], state.teams[g.away]);
   const sim = new GameSim(buildSimTeam(state, g.home, home), buildSimTeam(state, g.away, away), state.players, g.kind === 'playoff', derby);
   // Other clubs' simulated games need no play-by-play; the manager's own simulated games keep it, so their goals can
@@ -785,6 +786,14 @@ function runGame(state: GameState, g: Game): GameResult {
   sim.quiet = !mine;
   sim.keepShotMap = mine;
   return sim.runAll();
+}
+
+/** The manager's tired starter sat the game out (automatic rotation): a line in the news says who played. */
+function noteGoalieRotation(state: GameState, g: Game, home: Lineup, away: Lineup) {
+  const U = state.userTeamId, L = g.home === U ? home : g.away === U ? away : null, own = state.teams[U]?.lineup;
+  if (!L || !own?.starterG || L.starterG === own.starterG || L.starterG !== own.backupG) return;
+  const s = state.players[own.starterG], b = L.starterG ? state.players[L.starterG] : null;
+  if (s && b) addNews(state, 'info', `Ротация вратарей: ${s.name} устал (свежесть ${goalieFreshness(s)}%) — в воротах ${b.name}.`, U);
 }
 
 export function makeUserSim(state: GameState, g: Game): { sim: GameSim; home: Lineup; away: Lineup } {
@@ -900,7 +909,8 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
     creditGame(p, ti, g.kind === 'playoff' ? 'playoff' : 'regular', { line: l, goalie: isGoalie(p), won, beyond });
     if (isGoalie(p)) {
       const load = 19 + (l.shotsAgainst >= 34 ? 5 : l.shotsAgainst >= 28 ? 2 : 0) + (ti === g.away && isFarEastClub(H) ? 4 : 0);
-      p.fatigue = clamp((p.fatigue ?? 0) + load, 0, 96);
+      // a goalie who came in (or was pulled) during the game carries part of the load
+      p.fatigue = clamp((p.fatigue ?? 0) + Math.round(load * clamp(l.minutes / 60, 0.35, 1)), 0, 96);
     }
     const hasSteadyCap = !!(club?.captainId && P[club.captainId] && !P[club.captainId].injury && P[club.captainId].morale >= 70);
     const rawSwing = won ? 3 : beyond ? -1 : hasSteadyCap ? -2 : -3;

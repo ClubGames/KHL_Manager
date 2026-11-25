@@ -228,7 +228,7 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
           </div>
         </>
       )}
-      {replay && <GoalReplay event={replay} home={H} away={A} players={P} onClose={() => setReplay(null)} closeLabel="Закрыть повтор" />}
+      {replay && <GoalReplay event={replay} events={r?.events} home={H} away={A} players={P} onClose={() => setReplay(null)} closeLabel="Закрыть повтор" />}
     </Modal>
   );
 }

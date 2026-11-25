@@ -58,6 +58,8 @@ export interface TeamTactics {
   forecheck: ForecheckStyle;
   style: AttackStyle;
   pullGoalie: PullGoaliePolicy;
+  /** a tired starting goalie sits the game out and the fresh backup starts (undefined = on) */
+  autoGoalie?: boolean;
 }
 
 export interface Skills {
