@@ -109,6 +109,9 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
         <Row label="Площадка 2D под матч-центром" hint="На широком экране, под картой бросков.">
           <Toggle id="matchRink2d" value={s.matchRink2d} onChange={(v) => set({ matchRink2d: v })} />
         </Row>
+        <Row label="Подсказки тренерского штаба на остановках" hint="Когда нужен тайм-аут, замена вратаря или игра без вратаря, матч встаёт на паузу при свистке и предлагает решение, а потом продолжается сам.">
+          <Toggle id="matchAdvice" value={s.matchAdvice} onChange={(v) => set({ matchAdvice: v })} />
+        </Row>
       </Section>
 
       <Section title="Симуляция">

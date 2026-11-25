@@ -122,13 +122,26 @@ try {
   // Goal replays pause the match; close them while waiting for the first intermission.
   const brk = page.getByText('1-й период завершён', { exact: true });
   const t0 = Date.now();
+  let advice = 0;
   for (let t = 0; t < 1200 && !(await brk.count()); t++) {
     const cont = page.getByRole('button', { name: 'Продолжить матч', exact: true });
     if (await cont.count()) await cont.first().click().catch(() => {});
+    // bench advice at a stoppage: decline it, the match resumes by itself
+    const skip = page.locator('[data-advice-skip]');
+    if (await skip.count()) { advice++; await skip.first().click().catch(() => {}); }
     await page.waitForTimeout(500);
   }
   console.log(`  first period took ${Math.round((Date.now() - t0) / 1000)} s of wall time`);
   await brk.waitFor({ timeout: 5000 });
+  if (advice) ok(`bench advice offered ${advice} time(s) and declined`);
+  // The intermission overlay: period and match statistics; touching it holds the countdown.
+  await page.locator('[data-break-tab="period"]').waitFor({ timeout: 5000 });
+  assert.ok((await page.locator('[data-break-row]').count()) >= 7, 'period stat rows');
+  await page.locator('[data-break-tab="match"]').click();
+  assert.ok(await page.locator('[data-break-hold]').count(), 'a tap holds the intermission countdown');
+  const goalsRow = await page.locator('[data-break-row]').first().innerText();
+  ok(`intermission statistics: period and match tabs (${goalsRow.replace(/\s+/g, ' ').trim()})`);
+  await page.locator('[data-break-tab="period"]').click();
   const hints = page.locator('[data-intermission-hints]');
   await page.screenshot({ path: '.arena/intermission.png', timeout: 10000 }).catch(() => {}); // can stall while software WebGL renders
   if (await hints.count()) {

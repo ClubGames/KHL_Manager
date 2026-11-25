@@ -194,4 +194,36 @@ test('pulled goalie at the end: six skaters at most, never a full bench on the i
   assert.ok(pulledFrames > 1000, `the extra attacker is actually used (${pulledFrames} frames)`);
 });
 
+test('special teams: the power play sets up and holds the zone, the penalty killers box the slot and clear', () => {
+  let ppF = 0, ppOz = 0, evF = 0, evOz = 0, poss = 0, own = 0, pkD = 0, pkN = 0, evD = 0, evN = 0;
+  const games = [...periods];
+  for (let g = 0; g < 4; g++) {
+    const sim = new GameSim(H, A, r.players);
+    for (let k = 0; k < 3; k++) { const start = sim.sec, evs = sim.simPeriod(); games.push({ evs, start, end: sim.sec, ai: new RinkAI(evs, H, A, r.players, start, sim.sec).runToEnd() }); }
+  }
+  for (const { ai } of games) for (const f of ai.frames) {
+    if (f.stop) continue;
+    const sk: { s: number; x: number; y: number }[] = []; let gk = 0;
+    f.ids.forEach((id, i) => { if (f.flags[i] & 2) return; if (f.flags[i] & 1) gk++; else sk.push({ s: sideOf(id), x: f.pos[i * 2], y: f.pos[i * 2 + 1] }); });
+    if (gk < 2) continue;
+    const n0 = sk.filter(p => p.s === 0).length, n1 = sk.length - n0;
+    // distance of the defenders to their own net while the puck is in their zone
+    const def = (s: number, acc: (d: number) => void) => { if (lx(1 - s, f.px) > 37.14) for (const p of sk) if (p.s === s) acc(Math.hypot(lx(s, p.x) - 4.5, p.y - 15)); };
+    if (n0 === n1) {
+      evF += 2; evOz += +(lx(0, f.px) > 37.14) + +(lx(1, f.px) > 37.14);
+      def(0, d => { evD += d; evN++; }); def(1, d => { evD += d; evN++; });
+      continue;
+    }
+    const pp = n0 > n1 ? 0 : 1;
+    ppF++; if (lx(pp, f.px) > 37.14) ppOz++;
+    if (f.carrier >= 0) { poss++; if (sideOf(f.ids[f.carrier]) === pp) own++; }
+    def(1 - pp, d => { pkD += d; pkN++; });
+  }
+  assert.ok(ppF > 5000, `power-play frames ${ppF}`);
+  const ozPP = ppOz / ppF, ozEV = evOz / evF;
+  assert.ok(ozPP > ozEV + 0.08, `the power play lives in the zone (${ozPP.toFixed(2)} vs ${ozEV.toFixed(2)} at even strength)`);
+  assert.ok(own / poss > 0.68, `the power play owns the puck (${(own / poss).toFixed(2)})`);
+  assert.ok(pkD / pkN < evD / evN - 0.3, `penalty killers stay tighter to the net (${(pkD / pkN).toFixed(1)} m vs ${(evD / evN).toFixed(1)} m)`);
+});
+
 console.log(`\n${pass} rink AI tests passed`);

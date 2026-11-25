@@ -24,6 +24,7 @@ import { previewPowerPlay } from '../game/lineupCompare';
 import { ATTACK_STYLE_INFO, FORECHECK_INFO, freshnessTone, goalieFreshness, PULL_GOALIE_INFO } from '../game/chemistry';
 import { formatMoney } from '../game/ratings';
 import { intermissionHints, promoteToPP1, swapInLineup, type CoachHint } from '../game/assistant';
+import { BreakStats } from './BreakStats';
 
 const RATE: Record<1 | 2 | 4, number> = { 1: 30, 2: 60, 4: 120 };
 /** Seconds between shootout attempts at each speed: one shooter at a time, with a moment to see the result. */
@@ -85,6 +86,16 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const [goalFlash, setGoalFlash] = useState<string | null>(null);
   const [replayEvent, setReplayEvent] = useState<GameEvent | null>(null);
   const [countdown, setCountdown] = useState(8);
+  // The viewer is reading the intermission window (stats tabs, lines): it waits for «Продолжить».
+  const [breakHold, setBreakHold] = useState(false);
+  // Bench advice at a whistle (timeout, goalie change, pulling/returning the goalie): the match waits for the answer.
+  const [advice, setAdvice] = useState<BenchAdvice | null>(null);
+  const [adviceLeft, setAdviceLeft] = useState(0);
+  const adviceDone = useRef(new Set<string>());
+  const adviceCheck = useRef<(c: number) => boolean>(() => false);
+  const wasStopped = useRef(true);
+  const goalsSeen = useRef<GameEvent[]>([]);
+  const goalieSwitched = useRef(false);
   const [swapSel, setSwapSel] = useState<number | null>(null);
   const [showPreLineup, setShowPreLineup] = useState(false);
   const [showPostMap, setShowPostMap] = useState(true);
@@ -175,6 +186,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       ],
     });
     tauRef.current = 0;
+    wasStopped.current = true;
     playIdx.current = 0;
     iceSig.current = '';
     paceRef.current = RinkAI.PACE.cold;
@@ -198,7 +210,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       const ai = rinkAI.current;
       if (ai) {
         // Highlights play near real time, routine skating is fast-forwarded; the change of pace is eased.
-        const want = ai.hot ? RinkAI.PACE.hot : RinkAI.PACE.cold;
+        const want = ai.pace;
         paceRef.current += (want - paceRef.current) * Math.min(1, dt * 5);
         tauRef.current = Math.min(tauRef.current + dt * speed * paceRef.current, ai.ended ? ai.lastTau : Infinity);
         ai.ensure(tauRef.current);
@@ -232,6 +244,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           setVisibleGoalies(previous => { const next: [string | null, string | null] = [...previous]; next[defending] = e.goalie ?? null; return next; });
         }
         if (e.type === 'goal') {
+          goalsSeen.current.push(e);
           setGoalFlash(e.team);
           window.setTimeout(() => setGoalFlash(null), 900);
           c = e.sec; clockRef.current = c;
@@ -241,9 +254,12 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           break;
         }
       }
+      let stoppedNow = false;
       if (ai) {
         // The on-ice panels follow the rink itself: line changes on the fly are visible the moment they happen.
-        const onIce = ai.frameAt(tauRef.current).skaters.filter(p => !p.goalie && !p.box);
+        const frame = ai.frameAt(tauRef.current);
+        stoppedNow = !!frame.stopped;
+        const onIce = frame.skaters.filter(p => !p.goalie && !p.box);
         const ice: [string[], string[]] = [onIce.filter(p => p.side === 0).map(p => p.id), onIce.filter(p => p.side === 1).map(p => p.id)];
         const sig = ice.map(x => [...x].sort().join(',')).join('|');
         if (sig !== iceSig.current) {
@@ -265,8 +281,17 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         setMpKey(mpNow);
       }
       if (hitGoal) return; // Freeze exactly on the revealed goal; no extra frame leaks past it.
+      // A whistle has just gone: if the bench should act, the match pauses with a recommendation.
+      if (ai && stoppedNow && !wasStopped.current && c < blockEnd.current - 1) {
+        wasStopped.current = true;
+        if (getSettings().matchAdvice && adviceCheck.current(c)) return;
+      }
+      wasStopped.current = stoppedNow;
       // The shootout ends one step after its last attempt is shown.
       if (soMode.current ? idx.current >= evs.length && soAcc.current >= evs.length : c >= blockEnd.current) {
+        // The countdown is set together with the status: a value left at 0 by the previous intermission must
+        // never start the next period at once (that used to skip the «period over» window).
+        if (sim.status !== 'done') { setCountdown(sim.status === 'playing' ? BREAK_SECONDS : 10); setBreakHold(false); }
         setStatus(sim.status === 'done' ? 'done' : 'break');
         return;
       }
@@ -295,15 +320,14 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   }, [status]);
 
   useEffect(() => {
-    if (status !== 'break') return;
-    setCountdown(kind === 'reg' && period >= 3 ? 4 : 8);
+    if (status !== 'break' || breakHold) return;
     const id = window.setInterval(() => setCountdown((c) => c - 1), 1000);
     return () => window.clearInterval(id);
-  }, [status, kind, period]);
+  }, [status, breakHold]);
   useEffect(() => {
-    if (status === 'break' && countdown <= 0) startBlock();
+    if (status === 'break' && !breakHold && countdown <= 0) startBlock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [countdown, status]);
+  }, [countdown, status, breakHold]);
 
   useEffect(() => {
     (feedRef.current as unknown as { scrollTo?: (o: object) => void } | null)?.scrollTo?.({ top: 0, behavior: 'smooth' });
@@ -468,6 +492,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   };
   const switchGoalie = () => {
     if (!userL.backupG) return;
+    goalieSwitched.current = true;
     const c = cloneL(userL);
     const g = c.starterG;
     c.starterG = c.backupG;
@@ -481,6 +506,66 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       return `🔄 Замена вратаря «${s.teams[s.userTeamId].short}»: в игру вступает ${newName}!`;
     });
   };
+
+  // Bench advice at a whistle. Assigned on every render, so the playback loop always sees the current state.
+  adviceCheck.current = (c: number) => {
+    if (kind === 'so' || status !== 'playing') return false;
+    const L = live.current, me = userIdx, op = (1 - userIdx) as 0 | 1;
+    const diff = L.score[me] - L.score[op];
+    const left = blockEnd.current - c;
+    const scoreKey = `${L.score[0]}:${L.score[1]}`;
+    const my = s.teams[s.userTeamId];
+    const ask = (a: BenchAdvice) => {
+      if (adviceDone.current.has(a.id)) return false;
+      adviceDone.current.add(a.id);
+      setAdvice(a); setAdviceLeft(ADVICE_SECONDS); setPaused(true);
+      return true;
+    };
+    // 1. The goalie is out but the team is no longer behind: back into the net.
+    if (pulledNow && diff >= 0) {
+      return ask({ id: `return:${scoreKey}`, title: 'Верните вратаря', text: diff > 0 ? `«${my.short}» впереди — пустые ворота больше не нужны.` : `Счёт сравнялся (${scoreKey}) — вратарь может вернуться в ворота.`, actions: [{ key: 'return', label: 'Вернуть вратаря', primary: true }] });
+    }
+    // 2. Late in the third, one or two goals down: the six-on-five (with a timeout to set it up).
+    if (kind === 'reg' && period === 3 && !pulledNow && diff < 0 && diff >= -2) {
+      const want = diff === -1 ? 150 : 210, auto = PULL_GOALIE_INFO[pullPolicy].secondsLeft;
+      if (left <= want && left > 25 && left > auto + 5) {
+        const actions: BenchAdvice['actions'] = [];
+        if (!timeoutUsed) actions.push({ key: 'timeout_pull', label: 'Тайм-аут и снять вратаря', primary: true });
+        actions.push({ key: 'pull', label: 'Снять вратаря', primary: timeoutUsed });
+        if (!timeoutUsed) actions.push({ key: 'timeout', label: 'Только тайм-аут' });
+        return ask({ id: `pull:${scoreKey}`, title: 'Время для шестого полевого', text: `До конца ${fmtClock(left)}, «${my.short}» ${diff === -1 ? 'проигрывает в одну шайбу' : 'проигрывает две шайбы'}. Штаб предлагает снять вратаря${timeoutUsed ? '' : ' и взять тайм-аут, чтобы выпустить лучших'}.`, actions });
+      }
+    }
+    // 3. The goalie is having a bad night: put the backup in.
+    const gid = sim.goalies[me], g = gid ? L.goalies[gid] : undefined;
+    if (gid && userL.backupG && !goalieSwitched.current && g && !(period >= 3 && left < 300) && (g.goalsAgainst >= 4 || (g.goalsAgainst >= 3 && g.shotsAgainst > 0 && g.saves / g.shotsAgainst < 0.86))) {
+      const backup = userL.starterG === gid ? userL.backupG : userL.starterG;
+      return ask({ id: `goalie:${gid}`, title: 'Замена вратаря?', text: `${P[gid]?.name ?? 'Вратарь'}: ${g.goalsAgainst} пропущенных, ${g.saves}/${g.shotsAgainst} (${g.shotsAgainst ? ((g.saves / g.shotsAgainst) * 100).toFixed(1) : '—'}%). Свежий вратарь может переломить игру.`, actions: [{ key: 'goalie', label: `Выпустить: ${P[backup ?? '']?.name ?? 'запасной'}`, primary: true }] });
+    }
+    // 4. The opponent has scored twice in a row in a few minutes: a timeout breaks the run.
+    const last = goalsSeen.current.slice(-2);
+    const oppId = me === 0 ? game.away : game.home;
+    if (!timeoutUsed && last.length === 2 && last.every((e) => e.team === oppId) && last[1].sec - last[0].sec <= 300 && c - last[1].sec <= 60 && diff <= 0) {
+      return ask({ id: `timeout:${scoreKey}`, title: 'Соперник на кураже', text: `Две шайбы подряд за ${Math.max(1, Math.round((last[1].sec - last[0].sec) / 60))} мин. Тайм-аут даст передохнуть и сбить темп «${s.teams[oppId].short}».`, actions: [{ key: 'timeout', label: 'Взять тайм-аут', primary: true }] });
+    }
+    return false;
+  };
+  const answerAdvice = (key: BenchAdviceKey | null) => {
+    if (key === 'timeout' || key === 'timeout_pull') callTimeoutNow();
+    if (key === 'pull' || key === 'timeout_pull' || key === 'return') toggleManualPullGoalie();
+    if (key === 'goalie') { goalieSwitched.current = true; switchGoalie(); }
+    setAdvice(null);
+    setPaused(false);
+  };
+  useEffect(() => {
+    if (!advice) return;
+    const id = window.setInterval(() => setAdviceLeft((x) => x - 1), 1000);
+    return () => window.clearInterval(id);
+  }, [advice]);
+  useEffect(() => {
+    if (advice && adviceLeft <= 0) answerAdvice(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adviceLeft, advice]);
 
   const soNow = kind === 'so' ? feed.find((it) => !it.play && it.e.so)?.e.so : undefined;
   const periodLabel = period === 0 ? '' : kind === 'so' ? `серия ${soNow ? `${soNow[0]}:${soNow[1]}` : '0:0'}` : `${periodNameOf(period, kind)}`;
@@ -1117,8 +1202,27 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           </Overlay>
         );
       })()}
+      {advice && status === 'playing' && !replayEvent && (
+        <div className="fixed inset-x-0 bottom-0 sm:inset-0 z-40 flex items-end sm:items-center justify-center sm:bg-bg/60 sm:backdrop-blur-[2px] p-0 sm:p-4 pointer-events-none" data-bench-advice={advice.id.split(':')[0]}>
+          <div className="pointer-events-auto w-full sm:max-w-md bg-panel border-t sm:border border-amber/50 rounded-t-xl sm:rounded-md shadow-2xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-4 fade-in" role="dialog" aria-label="Совет тренерского штаба">
+            <div className="flex items-center gap-2 text-[11px] uppercase tracking-widest text-amber">
+              <span className="w-2 h-2 rounded-full bg-amber" /> Свисток · игра на паузе
+            </div>
+            <div className="font-display text-xl uppercase mt-1">{advice.title}</div>
+            <p className="text-sm text-text/85 mt-1">{advice.text}</p>
+            <div className="flex flex-wrap gap-2 mt-3">
+              {advice.actions.map((a) => (
+                <Button key={a.key} size="sm" variant={a.primary ? 'primary' : 'secondary'} onClick={() => answerAdvice(a.key)} data-advice-action={a.key}>{a.label}</Button>
+              ))}
+              <Button size="sm" variant="ghost" onClick={() => answerAdvice(null)} data-advice-skip>Не сейчас · {Math.max(0, adviceLeft)} с</Button>
+            </div>
+            <div className="text-[10px] text-muted mt-2">После решения матч продолжится сам. Подсказки можно выключить в настройках.</div>
+          </div>
+        </div>
+      )}
       {status === 'break' && (
         <Overlay>
+          <div className="contents" onPointerDownCapture={(e) => { if (!(e.target as HTMLElement).closest('[data-break-continue]')) setBreakHold(true); }}>
           <div className="text-[11px] uppercase tracking-widest text-muted">{periodNameOf(period, kind)} завершён</div>
           <div className="font-display text-4xl tabular">
             {score[0]} : {score[1]}
@@ -1126,6 +1230,14 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           <div className="text-xs text-muted mb-3">
             {H.short} {sim.periodScores.map((p) => p[0]).join(' ')} · {A.short} {sim.periodScores.map((p) => p[1]).join(' ')}
           </div>
+          <BreakStats
+            periodNo={period}
+            home={H}
+            away={A}
+            players={P}
+            period={{ live: foldEvents(periodEvs.current, game.home), tally: rinkAI.current?.tally(Infinity) ?? null, events: periodEvs.current }}
+            match={{ live: stats, tally: rinkTally, events: feed.filter((it) => !it.play).map((it) => it.e).reverse() }}
+          />
           {sim.status !== 'so' && hints.length > 0 && (
             <div className="text-left w-full max-w-md mb-3 rounded-md border border-ice/30 bg-ice/5 p-2" data-intermission-hints>
               <div className="text-[11px] uppercase tracking-wider text-ice mb-1.5">Помощник тренера</div>
@@ -1175,13 +1287,21 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
             </>
           )}
           <div className="flex gap-2 mt-4 flex-wrap justify-center items-center">
-            <Button variant="primary" size="lg" onClick={startBlock}>
+            <Button variant="primary" size="lg" onClick={startBlock} data-break-continue>
               {sim.status === 'so' ? 'К буллитам' : 'Продолжить'}
             </Button>
-            <span className="text-xs text-muted">автоматически через {Math.max(0, countdown)} с</span>
-            <Button size="lg" onClick={finishNow}>
+            {breakHold ? (
+              <span className="text-xs text-muted" data-break-hold>перерыв — продолжите, когда будете готовы</span>
+            ) : (
+              <span className="text-xs text-muted">
+                автоматически через {Math.max(0, countdown)} с ·{' '}
+                <button type="button" className="underline hover:text-text" onClick={() => setBreakHold(true)} data-break-wait>подождать</button>
+              </span>
+            )}
+            <Button size="lg" onClick={finishNow} data-break-continue>
               <Icon name="fast" /> Завершить мгновенно
             </Button>
+          </div>
           </div>
         </Overlay>
       )}
@@ -1278,6 +1398,14 @@ function periodNameOf(period: number, kind: BlockKind): string {
   if (kind === 'ot3') return 'Овертайм';
   return period === 4 ? 'Овертайм' : `${period - 3}-й овертайм`;
 }
+
+type BenchAdviceKey = 'timeout' | 'pull' | 'return' | 'goalie' | 'timeout_pull';
+interface BenchAdvice { id: string; title: string; text: string; actions: { key: BenchAdviceKey; label: string; primary?: boolean }[] }
+/** Seconds the bench advice waits before the match goes on unchanged. */
+const ADVICE_SECONDS = 15;
+
+/** Seconds of the intermission window before the next period starts by itself. */
+const BREAK_SECONDS = 20;
 
 function Overlay({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (

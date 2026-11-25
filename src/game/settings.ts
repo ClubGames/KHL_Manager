@@ -29,6 +29,8 @@ export type Settings = {
   matchSpeed: 1 | 2 | 4;
   /** the 2D rink below the match centre on wide screens */
   matchRink2d: boolean;
+  /** at a whistle the match pauses when the bench should act: timeout, goalie change, pulling the goalie */
+  matchAdvice: boolean;
   /** a fast simulation that played one of the club's games opens its report */
   simOpenReport: boolean;
   /** confirm before a fast simulation (open inbox tasks, simulating a game without watching it) */
@@ -42,7 +44,7 @@ export function defaultSettings(): Settings {
   return {
     replay3d: true, autoReplay: 'all', replayQuality: 'auto', replaySpeed: 1, replayCamera: 'auto', replayPrewarm: true,
     videoHeight: coarse() ? 720 : 1080, videoFps: 30, videoSlowmo: true, videoGraphics: true, videoQuality: 'view',
-    matchSpeed: 2, matchRink2d: true, simOpenReport: true, simConfirm: true,
+    matchSpeed: 2, matchRink2d: true, matchAdvice: true, simOpenReport: true, simConfirm: true,
   };
 }
 
@@ -62,7 +64,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     replayCamera: one('replayCamera', CAMS), replayPrewarm: bool('replayPrewarm'),
     videoHeight: one('videoHeight', [720, 1080] as const), videoFps: one('videoFps', [30, 60] as const),
     videoSlowmo: bool('videoSlowmo'), videoGraphics: bool('videoGraphics'), videoQuality: one('videoQuality', ['fast', 'view'] as const),
-    matchSpeed: one('matchSpeed', [1, 2, 4] as const), matchRink2d: bool('matchRink2d'), simOpenReport: bool('simOpenReport'), simConfirm: bool('simConfirm'),
+    matchSpeed: one('matchSpeed', [1, 2, 4] as const), matchRink2d: bool('matchRink2d'), matchAdvice: bool('matchAdvice'), simOpenReport: bool('simOpenReport'), simConfirm: bool('simConfirm'),
   };
 }
 

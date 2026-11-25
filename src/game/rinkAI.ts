@@ -13,6 +13,11 @@ import { RINK } from './rinkGeometry';
  * puck is dropped at the neutral-zone dot outside that blue line. The game clock stops at every whistle
  * until the puck is dropped. The rink has real IIHF/KHL proportions (see rinkGeometry.ts).
  *
+ * Special teams: on the power play the team sets up in the zone (1-3-1, or the umbrella for a shooting team)
+ * and moves the puck around the perimeter to keep it in the zone; the penalty killers hold a box (a triangle
+ * when two men down), pressure only a puck they can reach, ice it whenever they get it and wait passively
+ * in the neutral zone instead of forechecking.
+ *
  * The statistical engine remains authoritative: shots, saves, goals, scorers, assists, penalties and hits
  * happen exactly at their game second. A director steers the free play so that the right team owns the
  * puck, the right players pass and the right player shoots from the recorded location.
@@ -60,6 +65,8 @@ interface Agent {
   max: number; acc: number; pass: number; shoot: number; hands: number; check: number;
   tx: number; ty: number; urg: number; arrive: number; scripted: boolean;
 }
+/** Power-play spots: Q quarterback at the top, P1/P2 umbrella points, F1/F2 half-wall flanks, B bumper in the slot, LOW goal line, NET net-front. */
+type PPRole = 'Q' | 'P1' | 'P2' | 'F1' | 'F2' | 'B' | 'LOW' | 'NET';
 type LegKind = 'pass' | 'giveaway' | 'shot' | 'dump' | 'chip' | 'wide' | 'block' | 'clear' | 'deflect';
 interface Leg { via?: Agent; tv?: number; kind: LegKind; t0: number; t1: number; from: V2; to: V2 | Agent; h0: number; h1: number; arc: number; by: Agent | null; protect: boolean; exitSpeed: number; event?: GameEvent; icing?: Side | null }
 interface Puck { x: number; y: number; h: number; vx: number; vy: number; carrier: Agent | null; leg: Leg | null; next: Leg | null; last: Side | null; noTouch: Agent | null; noTouchUntil: number; icing: Side | null; reserved: Agent | null; dead: boolean }
@@ -114,6 +121,13 @@ export class RinkAI {
   private early: { a: Agent; until: number } | null = null;
   /** Game second before which no new offside is staged (keeps them at a realistic few per period). */
   private offsideQuiet = 0;
+  /** side on the power play (more skaters, both goalies in the net), null at even strength */
+  private pp: Side | null = null;
+  /** power-play formation spots of the skaters (stable while the same unit is out there) */
+  private ppMap = new Map<string, PPRole>();
+  private ppKey = '';
+  /** puck side of the overload (with hysteresis, so the umbrella does not flip at every pass through the middle) */
+  private ppLow = true;
   private readonly teams: [Team, Team];
 
   constructor(events: GameEvent[], home: Team, away: Team, private readonly players: Record<string, Player>, readonly start: number, public end: number, private readonly opts: RinkAIOptions = {}) {
@@ -177,7 +191,14 @@ export class RinkAI {
   }
   /** Presentation seconds per real second: highlights near real time, routine skating fast-forwarded,
    *  so a period lasts about as long as before (≈4–5 min at ×1, ≈2.3 at ×2, ≈1.2 at ×4). */
-  static readonly PACE = { hot: 1.5, cold: 6.5 } as const;
+  static readonly PACE = { hot: 1.5, setup: 3.2, cold: 6.5 } as const;
+  /** Pace of the moment: a power play working the puck in the zone is shown slower than routine skating. */
+  get pace(): number {
+    if (this.hot) return RinkAI.PACE.hot;
+    const pp = this.pp, p = this.puck;
+    if (this.mode === 'play' && pp !== null && this.zoneIn[pp] && (p.carrier?.side ?? p.leg?.by?.side) === pp) return RinkAI.PACE.setup;
+    return RinkAI.PACE.cold;
+  }
   get lastTau() { return this.frames.at(-1)?.tau ?? 0; }
   /** Simulate until presentation time `tau` (lazy; keeps the live match cheap). */
   ensure(tau: number) {
@@ -405,7 +426,7 @@ export class RinkAI {
     const allowed = this.baseSkaters[s] + (pulled ? 1 : 0);
     let excess = this.skaters(s).length - allowed;
     if (excess <= 0) return;
-    const out = this.skaters(s).filter(b => b !== keep && b !== this.puck.carrier).sort((p, q) => dist(p, BENCH[s]) - dist(q, BENCH[s]));
+    const out = this.skaters(s).filter(b => b !== keep && b !== this.puck.carrier && !this.plan?.chain.includes(b)).sort((p, q) => dist(p, BENCH[s]) - dist(q, BENCH[s]));
     while (excess-- > 0 && out.length) out.shift()!.leave = 'bench';
     this.assignRoles(s);
   }
@@ -518,6 +539,7 @@ export class RinkAI {
       this.tau += dt; this.g += dt;
       if (Math.abs(this.g - target) < 2e-3) this.g = target;
       this.updateRoster();
+      this.pp = this.powerPlay();
       this.direct();
       this.targets();
       for (const a of this.onIce()) this.move(a, dt);
@@ -607,6 +629,10 @@ export class RinkAI {
     if (n.type === 'goal') helpers = (n.players ?? []).filter(id => this.valid(id) && this.sideOf(id) === T).slice(0, 2).map(ensure);
     else { const mates = this.skaters(T).filter(a => a !== S); if (mates.length && this.rand() < 0.7) helpers = [mates[Math.floor(this.rand() * mates.length)]]; }
     const chain = [...helpers].reverse().concat(S);
+    // The engine's players jump on if they are not out there yet: as many teammates head for the bench, never too many men.
+    const allowed = this.baseSkaters[T] + (this.lastGoalie[T] === null ? 1 : 0);
+    const spare = this.skaters(T).filter(a => !chain.includes(a) && a !== this.puck.carrier).sort((p, q) => dist(p, BENCH[T]) - dist(q, BENCH[T]));
+    for (let excess = this.skaters(T).length - allowed; excess > 0 && spare.length; excess--) spare.shift()!.leave = 'bench';
     const type = n.shotType ?? 'wrist';
     const sl = loc(T, { x: (n.x ?? (T ? 19 : 81)) * 0.6, y: (n.y ?? 50) * 0.3 });
     sl.x = clamp(sl.x, OPP_BLUE + 1, 53.6); sl.y = clamp(sl.y, 2, 28);
@@ -712,9 +738,10 @@ export class RinkAI {
     if (n && (n.type === 'goal' || n.type === 'shot' || n.type === 'miss') && n.sec - this.g < 18) return n.team === this.teams[1].id ? 1 : 0;
     if (this.g >= this.poss.until) {
       let side: Side = this.rand() < 0.65 ? ((1 - this.poss.side) as Side) : this.poss.side;
-      const n0 = this.skaters(0).length, n1 = this.skaters(1).length;
-      if (n0 !== n1 && this.rand() < 0.4) side = n0 > n1 ? 0 : 1;
-      this.poss = { side, until: this.g + 5 + this.rand() * 9 };
+      // The power play owns the puck most of the time and keeps it longer.
+      const pp = this.pp;
+      if (pp !== null && this.rand() < 0.72) side = pp;
+      this.poss = { side, until: this.g + (pp !== null && side === pp ? 9 + this.rand() * 12 : 5 + this.rand() * 9) };
     }
     return this.poss.side;
   }
@@ -799,8 +826,14 @@ export class RinkAI {
   }
   private defendSpot(a: Agent): { p: V2; urg: number } {
     const P = this.puckLocal(a.side), s = a.side;
-    const style = this.opts.tactics?.()[s].forecheck ?? 'balanced';
+    // Penalty killers do not forecheck: one man angles the carrier, the rest wait at their own blue line.
+    const style = this.pp === 1 - s ? 'trap' : this.opts.tactics?.()[s].forecheck ?? 'balanced';
     let t: V2;
+    if (this.pp === s && P.x > OPP_BLUE - 1) {
+      // Power play without the puck in the zone: the points hold the blue line, the forwards hunt the puck.
+      t = ({ LD: { x: OPP_BLUE + 0.9, y: 7.5 }, RD: { x: OPP_BLUE + 0.9, y: 22.5 }, C: { x: P.x - 1, y: P.y }, LW: { x: P.x - 3.5, y: clamp(P.y - 5.5, 2, 28) }, RW: { x: P.x - 3.5, y: clamp(P.y + 5.5, 2, 28) }, X: { x: OPP_BLUE + 3, y: MID } } as Record<Role, V2>)[a.role];
+      return { p: loc(s, t), urg: 0.85 };
+    }
     if (P.x <= BLUE) {
       const puckSideD = (a.role === 'LD' && P.y < MID) || (a.role === 'RD' && P.y >= MID);
       t = ({
@@ -873,7 +906,10 @@ export class RinkAI {
       const style = this.opts.tactics?.()[presser.side].forecheck ?? 'balanced';
       // gap control: tight in the own zone, a stick-length further out higher up the ice
       const gap = loc(presser.side, carrier).x < BLUE + 2 ? 0.9 : 1.6;
-      if (!(style === 'trap' && loc(presser.side, carrier).x > RED + 4)) { this.setT(presser, { x: carrier.x + (dx / d) * gap, y: carrier.y + (dy / d) * gap }, 0.95); pressing = true; }
+      const cl = loc(presser.side, carrier);
+      // A penalty killer leaves the box only for a puck he can reach, or one low on the wall / behind the net.
+      const pkHold = this.pp === carrier.side && cl.x <= BLUE + 1.5 && dist(presser, carrier) > 4.2 && !(cl.x < GOAL + 1.5 || (cl.x < GOAL + 8 && Math.abs(cl.y - MID) > 10));
+      if (!(style === 'trap' && cl.x > RED + 4) && !pkHold) { this.setT(presser, { x: carrier.x + (dx / d) * gap, y: carrier.y + (dy / d) * gap }, 0.95); pressing = true; }
     }
     for (const side of [0, 1] as Side[]) {
       const free = this.skaters(side).filter(a => !a.scripted && a !== carrier && !(pressing && a === presser));
@@ -907,6 +943,14 @@ export class RinkAI {
       const d = this.drift(a, amp);
       this.setT(a, this.onsideClamp(a, loc(s, { x: t.x + d.x, y: t.y + d.y })), urg);
     };
+    if ((this.zoneIn[s] || P.x >= OPP_BLUE) && this.pp === s) {
+      // Power play set up in the zone: everybody to his spot of the formation.
+      for (const a of free) {
+        const t = this.ppSpot(a, P), d = this.drift(a, 0.45);
+        this.setT(a, this.onsideClamp(a, loc(s, { x: t.x + d.x, y: t.y + d.y })), 0.72);
+      }
+      return;
+    }
     if (this.zoneIn[s] || P.x >= OPP_BLUE) {
       const style = this.opts.tactics?.()[s].style ?? 'balanced', sl = style === 'cycle' ? 1.2 : style === 'shoot' ? -1 : 0;
       for (const a of free.filter(x => this.isD(x))) {
@@ -946,6 +990,7 @@ export class RinkAI {
   private defendShape(s: Side, free: Agent[], pressed: Agent | null) {
     if (!free.length) return;
     const P = this.puckLocal(s), net: V2 = { x: GOAL + 0.5, y: MID };
+    if (this.pp === 1 - s && P.x <= BLUE + 1.5) { this.pkShape(s, free, pressed); return; }
     if (P.x > BLUE + 1.5) {
       for (const a of free) { const spot = this.defendSpot(a), d = this.drift(a, 0.5); this.setT(a, { x: spot.p.x + d.x, y: spot.p.y + d.y }, spot.urg); }
       return;
@@ -980,8 +1025,10 @@ export class RinkAI {
       this.decideAt.set(a.id, this.g + (pressure > 4.5 ? 0.85 + this.rand() * 0.7 : 0.45 + this.rand() * 0.45));
       const r = this.rand();
       const allOnside = mates.every(m => loc(s, m).x <= OPP_BLUE);
+      // Penalty killers get rid of the puck (no icing for them) unless the engine has a short-handed chance coming.
+      const pkClear = sh && this.pp !== null && !this.plan && this.shotSoon() !== s && this.rand() < 0.85;
       if (me.x < BLUE) {
-        if (!keep && r < 0.5) {
+        if ((!keep && r < 0.5) || pkClear) {
           const long = sh || r < 0.12;
           this.startLeg(long ? 'clear' : 'chip', loc(s, long ? { x: 57.1, y: me.y < MID ? 4 : 26 } : { x: 31.1, y: me.y < MID ? 1.5 : 28.5 }), this.g + (long ? 2.2 : 1.1), { exitSpeed: long ? 9 : 5, icing: long && !sh ? s : null });
           this.play(long ? 'clear' : 'dump', s, long ? `${a.name} выбрасывает шайбу из зоны` : `${a.name} выводит шайбу по борту`, a);
@@ -993,19 +1040,21 @@ export class RinkAI {
         this.maybeJumpEarly(a);
         if (this.early?.a.side === s) { /* the cheating winger is already gone: carry it in */ }
         else if (!allOnside) this.carryTarget.set(a.id, loc(s, { x: Math.min(me.x + 2, OPP_BLUE - 1), y: me.y }));
-        else if (!keep && r < 0.55) {
+        else if ((!keep && r < 0.55) || pkClear) {
           const fromOwnHalf = me.x < RED;
           this.startLeg('dump', loc(s, { x: 57.6, y: me.y < MID ? 3 : 27 }), this.g + 1.5, { exitSpeed: 8, icing: fromOwnHalf && !sh ? s : null, arc: 0.4 });
           this.play('dump', s, `${a.name} вбрасывает шайбу в зону`, a);
           return;
-        } else if (pressure < 3.5 && r < 0.6 && this.passBest(a, keep)) return;
+        } else if (keep && pressure < 2.6 && r < 0.3 && me.x > BLUE + 3 && this.regroup(a)) return;
+        else if (pressure < 3.5 && r < 0.6 && this.passBest(a, keep)) return;
         else this.carryTarget.set(a.id, loc(s, { x: me.x + 10, y: clamp(me.y + (this.rand() - 0.5) * 6, 4, 26) }));
       } else {
         if (!keep) {
           if (r < 0.45) { this.freeShot(a); return; }
           if (r < 0.75 && this.passBest(a, false)) return;
           this.carryTarget.set(a.id, loc(s, { x: 47.4, y: MID }));
-        } else this.ozKeep(a, me, pressure, r);
+        } else if (this.pp === s) this.ppKeep(a, me, pressure, r);
+        else this.ozKeep(a, me, pressure, r);
       }
     }
     const t = this.carryTarget.get(a.id) ?? loc(s, { x: me.x + 6, y: me.y });
@@ -1034,6 +1083,152 @@ export class RinkAI {
     if (pressure < 2.2) { const o = this.nearest(this.skaters((1 - s) as Side), a); if (o) { const ol = loc(s, o), dx = me.x - ol.x, dy = me.y - ol.y, d = Math.hypot(dx, dy) || 1; t = { x: me.x + (dx / d) * 4 + (t.x - me.x) * 0.3, y: me.y + (dy / d) * 4 + (t.y - me.y) * 0.3 }; } }
     this.carryTarget.set(a.id, loc(s, { x: clamp(t.x, OPP_BLUE + 1, 58), y: clamp(t.y, 1.5, 28.5) }));
   }
+  /* --- special teams --- */
+  /** Side of the engine's next shot if it comes within 18 s. */
+  private shotSoon(): Side | null {
+    const n = this.next();
+    return n && (n.type === 'goal' || n.type === 'shot' || n.type === 'miss') && n.sec - this.g < 18 ? (n.team === this.teams[1].id ? 1 : 0) : null;
+  }
+  /** The side on the power play: more skaters by the unit sizes and on the ice, both goalies in the net. */
+  private powerPlay(): Side | null {
+    if (this.lastGoalie[0] === null || this.lastGoalie[1] === null) return null;
+    const [b0, b1] = this.baseSkaters, n0 = this.skaters(0).length, n1 = this.skaters(1).length;
+    if (b0 === b1 || n0 === n1 || (b0 > b1) !== (n0 > n1)) return null;
+    return b0 > b1 ? 0 : 1;
+  }
+  /** Formation of side s: 1-3-1 by default, the umbrella for a shooting team; its spots in attacking-local metres. */
+  private ppFormation(s: Side): { roles: PPRole[]; at: (r: PPRole, P: V2) => V2 } {
+    const style = this.opts.tactics?.()[s].style ?? 'balanced';
+    const n = this.skaters(s).length;
+    const low = this.ppLow, sideY = (k: number) => (low ? k : W - k);
+    if (style === 'shoot' && n >= 5) return {
+      roles: ['P1', 'P2', 'F1', 'LOW', 'NET'],
+      at: (r, P) => ({
+        P1: { x: OPP_BLUE + 2.4, y: 9.5 + (P.y - MID) * 0.12 }, P2: { x: OPP_BLUE + 2.4, y: 20.5 + (P.y - MID) * 0.12 },
+        F1: { x: 47.5, y: sideY(3.6) }, LOW: { x: OPP_GOAL - 0.6, y: sideY(7.5) },
+        NET: { x: OPP_GOAL - 1.7, y: MID + (low ? 0.9 : -0.9) },
+      } as Record<PPRole, V2>)[r],
+    };
+    const roles: PPRole[] = (['Q', 'F1', 'F2', 'NET', 'B'] as PPRole[]).slice(0, Math.max(2, Math.min(5, n)));
+    return {
+      roles,
+      at: (r, P) => {
+        const lean = (P.y - MID) * 0.22;
+        // the flank with the puck steps down the wall, the far one cheats up for the one-timer
+        const near = (top: boolean) => (P.x > 44 && (P.y < MID) === top ? 2.2 : 0);
+        return ({
+          Q: { x: OPP_BLUE + 2.4, y: MID + lean }, F1: { x: 47.2 + near(true), y: 3.8 }, F2: { x: 47.2 + near(false), y: W - 3.8 },
+          B: { x: 46.6, y: MID + lean * 0.8 }, NET: { x: OPP_GOAL - (P.x < 43 ? 1.3 : 1.8), y: MID + (P.y < MID ? 0.9 : -0.9) },
+        } as Record<PPRole, V2>)[r] ?? { x: 47, y: MID };
+      },
+    };
+  }
+  /** Spots of the unit: defencemen at the top, forwards on the flanks and in front; kept while the unit is unchanged. */
+  private ppRole(a: Agent): PPRole {
+    const s = a.side, list = this.skaters(s), f = this.ppFormation(s);
+    const P = this.puckLocal(s);
+    if (Math.abs(P.y - MID) > 3) this.ppLow = P.y < MID;
+    const key = f.roles.join() + '|' + list.map(m => m.id).sort().join();
+    if (key !== this.ppKey) {
+      this.ppKey = key; this.ppMap.clear();
+      const cost = (m: Agent, r: PPRole) => {
+        const d = this.isD(m), at = f.at(r, P);
+        const top = r === 'Q' || r === 'P1' || r === 'P2';
+        return dist(loc(s, m), at) / 2.5 + (top ? (d ? -6 : 4) : d ? 5 : 0) + (r === 'NET' ? -m.check / 40 : 0) + (r === 'F1' || r === 'F2' ? -m.shoot / 30 : 0);
+      };
+      // at most 5×5: try every assignment
+      const roles = f.roles.slice(0, list.length);
+      let best: PPRole[] = roles, bc = Infinity;
+      const perm = (left: PPRole[], acc: PPRole[]) => {
+        if (acc.length === list.length || !left.length) {
+          const c = acc.reduce((sum, r, i) => sum + cost(list[i], r), 0);
+          if (c < bc) { bc = c; best = acc; }
+          return;
+        }
+        left.forEach((r, i) => perm([...left.slice(0, i), ...left.slice(i + 1)], [...acc, r]));
+      };
+      perm(roles, []);
+      list.forEach((m, i) => this.ppMap.set(m.id, best[i] ?? 'B'));
+    }
+    return this.ppMap.get(a.id) ?? 'B';
+  }
+  private ppSpot(a: Agent, P = this.puckLocal(a.side)): V2 { return this.ppFormation(a.side).at(this.ppRole(a), P); }
+  /** Power-play carrier: hold the spot, walk it a little, move the puck around the outside, shoot now and then. */
+  private ppKeep(a: Agent, me: V2, pressure: number, r: number) {
+    const s = a.side, oz = this.oz;
+    if (oz.side !== s) { oz.side = s; oz.t0 = this.g; oz.passes = 0; oz.lastPasser = ''; }
+    const age = this.g - oz.t0, role = this.ppRole(a), spot = this.ppSpot(a);
+    this.decideAt.set(a.id, this.g + 0.55 + this.rand() * 0.65);
+    const top = role === 'Q' || role === 'P1' || role === 'P2';
+    const shootP = top ? (age > 9 ? 0.2 : 0.07) : role === 'F1' || role === 'F2' ? (age > 9 ? 0.15 : 0.06) : 0.1;
+    if (r < shootP && dist(me, spot) < 3.5 && oz.passes >= 2) { this.freeShot(a); return; }
+    if (this.rand() < (pressure < 2.5 ? 0.9 : 0.6) && this.passPP(a)) return;
+    let t: V2 = spot;
+    const wave = Math.sin(this.g * 0.9 + a.id.length * 1.3);
+    if (top) t = { x: spot.x + 0.4, y: clamp(spot.y + wave * 3.2, 5, 25) }; // walking the line
+    else if (role === 'F1' || role === 'F2') t = { x: spot.x + 1.2 + wave * 1.8, y: spot.y + (spot.y < MID ? 1.2 : -1.2) }; // up and down the half-wall
+    else if (role === 'LOW') t = { x: spot.x, y: spot.y + wave * 2 };
+    if (pressure < 2.2) {
+      const o = this.nearest(this.skaters((1 - s) as Side), a);
+      if (o) { const ol = loc(s, o), dx = me.x - ol.x, dy = me.y - ol.y, d = Math.hypot(dx, dy) || 1; t = { x: me.x + (dx / d) * 3 + (t.x - me.x) * 0.4, y: me.y + (dy / d) * 3 + (t.y - me.y) * 0.4 }; }
+    }
+    this.carryTarget.set(a.id, loc(s, { x: clamp(t.x, OPP_BLUE + 1, 58), y: clamp(t.y, 1.5, 28.5) }));
+  }
+  /** Power-play pass: around the perimeter through open lanes; the net-front man and the passer back are rare options. */
+  private passPP(a: Agent): boolean {
+    const s = a.side, opps = this.skaters((1 - s) as Side);
+    let best: Agent | null = null, score = -1e9, bestLane = 0;
+    for (const m of this.skaters(s)) {
+      if (m === a || m.stun > 0 || !this.onsideOk(a, m)) continue;
+      const d = dist(a, m);
+      if (d < 2.5 || d > 32) continue;
+      const lane = Math.min(9, ...opps.map(o => segDist(o, a, m))), open = Math.min(9, ...opps.map(o => dist(o, m)));
+      let sc = lane * 1.6 + open * 0.6 - d * 0.04 + this.rand() * 2.2;
+      if (this.ppRole(m) === 'NET') sc -= 5;
+      if (m.id === this.oz.lastPasser) sc -= 2.5;
+      if (lane < 1) sc -= 6; // the lane is covered by a stick
+      if (sc > score) { score = sc; best = m; bestLane = lane; }
+    }
+    if (!best || score < -2) return false;
+    this.oz.passes++; this.oz.lastPasser = a.id;
+    // a pass through a tight lane can be picked off (then the killers ice it)
+    this.startLeg('pass', best, this.g + clamp(dist(a, best) / 19, 0.22, 1.5), { exitSpeed: 5, protect: bestLane > 1.6 || this.rand() < 0.6 });
+    return true;
+  }
+  /** Penalty kill in the own zone: a box (a triangle two men down) leaning to the puck; D men take the low spots. */
+  private pkShape(s: Side, free: Agent[], pressed: Agent | null) {
+    const P = this.puckLocal(s), shift = clamp((P.y - MID) * 0.22, -2.6, 2.6);
+    const highX = clamp(GOAL + 10.5 + (P.x - (GOAL + 12)) * 0.12, GOAL + 9, GOAL + 13), lowX = GOAL + 3.4;
+    const n = this.skaters(s).length;
+    let spots: { p: V2; low: boolean }[] = n >= 4
+      ? [{ p: { x: lowX, y: MID - 3.3 + shift }, low: true }, { p: { x: lowX, y: MID + 3.3 + shift }, low: true }, { p: { x: highX, y: MID - 5.4 + shift * 1.4 }, low: false }, { p: { x: highX, y: MID + 5.4 + shift * 1.4 }, low: false }]
+      : [{ p: { x: lowX - 0.3, y: MID + shift * 0.5 }, low: true }, { p: { x: highX - 1, y: MID - 4.6 + shift }, low: false }, { p: { x: highX - 1, y: MID + 4.6 + shift }, low: false }];
+    // the man pressuring the puck has left his spot: the one nearest the puck stays empty
+    if (pressed && spots.length > free.length) {
+      const pl = loc(s, pressed);
+      spots = spots.sort((u, v) => dist(u.p, pl) - dist(v.p, pl)).slice(1);
+    }
+    const left = new Set(free);
+    for (const sp of spots) {
+      let best: Agent | null = null, bc = Infinity;
+      for (const a of left) { const c = dist(loc(s, a), sp.p) + (this.isD(a) ? (sp.low ? -3 : 2) : sp.low ? 1.5 : 0); if (c < bc) { bc = c; best = a; } }
+      if (!best) break;
+      const d = this.drift(best, 0.25);
+      this.setT(best, loc(s, { x: sp.p.x + d.x, y: sp.p.y + d.y }), 0.85);
+      left.delete(best);
+    }
+    for (const a of left) this.setT(a, loc(s, { x: GOAL + 2.5, y: MID }), 0.85);
+  }
+  /** Even strength, neutral zone, no room: a drop pass back to a defenceman to regroup. */
+  private regroup(a: Agent): boolean {
+    const s = a.side, me = loc(s, a), opps = this.skaters((1 - s) as Side);
+    const back = this.skaters(s).filter(m => m !== a && this.isD(m) && m.stun <= 0 && loc(s, m).x < me.x - 4 && dist(m, a) < 22)
+      .map(m => ({ m, lane: Math.min(9, ...opps.map(o => segDist(o, a, m))) })).filter(x => x.lane > 1.8).sort((u, v) => v.lane - u.lane)[0];
+    if (!back) return false;
+    this.startLeg('pass', back.m, this.g + clamp(dist(a, back.m) / 17, 0.3, 1.4), { exitSpeed: 4, protect: true });
+    return true;
+  }
+
   private passBest(a: Agent, safe: boolean): boolean {
     const s = a.side, opps = this.skaters((1 - s) as Side);
     let best: Agent | null = null, score = -1e9;
@@ -1213,6 +1408,14 @@ export class RinkAI {
     }
     if (p.leg) {
       const leg = p.leg;
+      // A clearing attempt along the ice against the power play: a point man on the blue line keeps it in.
+      if (this.pp !== null && leg.by && leg.by.side !== this.pp && (leg.kind === 'clear' || leg.kind === 'chip' || leg.kind === 'dump') && p.h < 0.5) {
+        for (const o of this.skaters(this.pp)) {
+          const l = loc(o.side, o);
+          if (!free(o) || !this.isD(o) || l.x < OPP_BLUE - 0.5 || l.x > OPP_BLUE + 4.5 || dist(this.blade(o), p) > 1.6) continue;
+          if (this.rand() < (want === o.side ? 0.35 : 0.08)) { this.take(o, null); this.play('interception', o.side, `${o.name} удерживает шайбу в зоне`, o); return; }
+        }
+      }
       if (leg.protect || leg.kind === 'shot' || leg.kind === 'block' || p.h > 0.6) return;
       for (const o of this.onIce()) {
         if (o.goalie || !free(o) || (leg.by && o.side === leg.by.side) || dist(o, p) > 0.9) continue;
