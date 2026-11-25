@@ -9,7 +9,7 @@ import { clubLeaders, clubProfile, clubStrength } from '../src/game/teamInfo';
 import { ClubOverview, TeamModal } from '../src/components/TeamInfo';
 import { PlayerFace, UIContext } from '../src/components/ui';
 
-const text = readFileSync('roster.json', 'utf8');
+const text = readFileSync('public/mods/KHL_2627/roster.json', 'utf8');
 const raw = JSON.parse(text);
 const r = parseRosterText(text);
 let n = 0;
@@ -113,6 +113,20 @@ ok(`old save: ${parsed.length} photos adopted by id, renamed player follows the 
   assert.equal(before.skills, save.players[renumbered].skills, 'ratings, contract and stats stay the career\'s own');
   assert.equal(G.adoptRosterUpdates(save, edited), 0);
 
+  // stick hands: a career started before roster.json had them (everyone «L») takes them from the file…
+  const rights = Object.values(r.players).filter((p) => p.hand === 'R').map((p) => p.id);
+  const lefty = G.createGameState(parseRosterText(text), 'ska');
+  for (const p of Object.values(lefty.players)) p.hand = 'L';
+  assert.ok(rights.length > 100, `the bundled roster has right shots: ${rights.length}`);
+  assert.ok(G.adoptRosterUpdates(lefty, r) >= rights.length);
+  for (const id of rights) assert.equal(lefty.players[id].hand, 'R', id);
+  assert.equal(G.adoptRosterUpdates(lefty, r), 0, 'hand sync is idempotent');
+  // …but a file without hands (all «L» after loading) does not flatten them
+  const noHands = JSON.parse(JSON.stringify(r)) as typeof r;
+  for (const p of Object.values(noHands.players)) p.hand = 'L';
+  assert.equal(G.adoptRosterUpdates(lefty, noHands), 0, 'a file without hands changes nothing');
+  assert.equal(lefty.players[rights[0]].hand, 'R');
+
   // the real loader: fetches roster.json on every open and re-saves only when something changed
   const raw = JSON.parse(text);
   const target = raw.teams.find((t: { id: string }) => t.id === 'ska').players.find((p: { face?: string }) => p.face);
@@ -124,17 +138,17 @@ ok(`old save: ${parsed.length} photos adopted by id, renamed player follows the 
   let served = JSON.stringify(raw);
   (globalThis as { fetch: unknown }).fetch = async () => ({ ok: true, status: 200, text: async () => served });
   G.store.set(old);
-  let n = await G.syncPlayersFromRoster(old.saveId);
+  let n = await G.syncPlayersFromRoster(old.saveId, 'roster.json');
   assert.equal(n, 4);
   const p = G.store.get()!.players[target.id];
   assert.deepEqual([p.name, p.number, p.country, p.face], ['Исправленное Имя', 77, 'Беларусь', 'https://www.khl.ru/img/teamplayers_db/15542/updated.jpg']);
   const ref = G.store.get();
-  n = await G.syncPlayersFromRoster(old.saveId);
+  n = await G.syncPlayersFromRoster(old.saveId, 'roster.json');
   assert.equal(n, 0);
   assert.equal(G.store.get(), ref, 'unchanged roster does not touch the state');
   served = '<html>';
-  assert.equal(await G.syncPlayersFromRoster(old.saveId), 0, 'broken roster.json keeps the saved data');
-  ok('roster edits reach old saves by id: name, number, nationality, photo (changed/removed/added); no-op when unchanged');
+  assert.equal(await G.syncPlayersFromRoster(old.saveId, 'roster.json'), 0, 'broken roster.json keeps the saved data');
+  ok('roster edits reach old saves by id: name, number, nationality, photo (changed/removed/added), stick hand; no-op when unchanged');
 }
 
 // 3. Club profile

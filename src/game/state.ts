@@ -406,21 +406,25 @@ export async function syncCoachMarketFromRoster(saveId: string, url?: string) {
 }
 
 /** Player fields that follow roster.json in an existing career (matched by player id). */
-export const ROSTER_SYNC_FIELDS = ['name', 'number', 'country', 'face'] as const;
+export const ROSTER_SYNC_FIELDS = ['name', 'number', 'country', 'face', 'hand'] as const;
 export type RosterSyncField = (typeof ROSTER_SYNC_FIELDS)[number];
 
 /**
  * Bring a saved career in line with roster.json, player by player **by id**: if the file has a different name,
  * jersey number, nationality or photo for that id, the save takes the file's value (a photo removed from the file is
  * removed from the save). Players the file does not know (draft picks, generated juniors) are left alone.
+ * The stick hand follows too, but only from a file that really lists hands (at least one «R»): a file without
+ * `hand` reads as all-«L», and that must not flatten the hands a career already has.
  * Coach photos follow the file by coach name (case, extra spaces and ё/е are ignored). Returns how many fields changed.
  */
 export function adoptRosterUpdates(s: GameState, r: Pick<NormalizedRoster, 'players' | 'teams' | 'freeCoaches'>): number {
   let n = 0;
+  const fileHasHands = Object.values(r.players).some((p) => p.hand === 'R');
   for (const p of Object.values(s.players)) {
     const src = r.players[p.id];
     if (!src) continue;
     if (src.name && src.name !== p.name) { p.name = src.name; n++; }
+    if (fileHasHands && (src.hand === 'L' || src.hand === 'R') && src.hand !== p.hand) { p.hand = src.hand; n++; }
     if (Number.isFinite(src.number) && src.number !== p.number) { p.number = src.number; n++; }
     if (src.country && src.country !== p.country) { p.country = src.country; n++; }
     if ((src.face ?? '') !== (p.face ?? '')) {
@@ -449,7 +453,7 @@ export function adoptRosterUpdates(s: GameState, r: Pick<NormalizedRoster, 'play
 export const adoptRosterFaces = adoptRosterUpdates;
 
 /**
- * Re-read roster.json every time a career is opened, so edits to names, numbers, nationality and photos reach
+ * Re-read roster.json every time a career is opened, so edits to names, numbers, nationality, photos and hands reach
  * existing saves. The state is only touched (and re-saved) when something actually changed.
  */
 export async function syncPlayersFromRoster(saveId: string, url?: string): Promise<number> {
