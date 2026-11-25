@@ -323,6 +323,10 @@ export interface GameEvent {
   pp?: boolean;
   /** absolute game second until which each team [home, away] is short-handed, as of this event */
   penUntil?: [number, number];
+  /** penalty box after this event: [start, end] (absolute seconds) of every pending penalty per team */
+  box?: [[number, number][], [number, number][]];
+  /** penalty events: absolute second at which this player's penalty ends */
+  boxUntil?: number;
   /** skaters on the ice [home, away] at the moment of a shot */
   ice?: [(string | null)[], (string | null)[]];
   /** shootout tally [home, away] after this attempt (and the final one on the event that ends the shootout) */

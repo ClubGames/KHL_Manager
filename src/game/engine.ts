@@ -27,8 +27,8 @@ interface SimSnap {
   scorersLen: number;
   shotMapLen: number;
   lines: Record<string, PlayerGameLine>;
-  penEnd: [number, number];
-  penMinor: [boolean, boolean];
+  pens: [Pen[], Pen[]];
+  boxShown: boolean;
   unitIdx: [number, number];
   unansweredGoals: [number, number];
   timeoutUsed: [boolean, boolean];
@@ -47,6 +47,17 @@ interface ActiveBlockMeta {
   s0: [number, number];
   blockStart: number;
 }
+
+/** One penalty being served (or waiting: a third penalty starts only when one of the first two ends). */
+export interface Pen {
+  player: string;
+  /** 2, 4 (double minor) or 5 (major) */
+  min: number;
+  start: number;
+  end: number;
+}
+/** Skaters a team has with `n` penalties running: never fewer than three. */
+export const skatersFor = (running: number) => 5 - Math.min(2, running);
 
 const SHIFT = 40;
 const F_SHARE = [0.33, 0.27, 0.22, 0.18];
@@ -214,10 +225,13 @@ export class GameSim {
   private aiDone = new Set<string>();
   /** an automatic empty net has been announced in the play-by-play */
   private enShown: [boolean, boolean] = [false, false];
-  /** absolute game second until which each team is short-handed */
-  penEnd: [number, number] = [0, 0];
-  /** true while the running penalty is a single minor: it ends early if the opponent scores on the power play */
-  private penMinor: [boolean, boolean] = [false, false];
+  /**
+   * Penalties of each team, each with its own clock (IIHF/KHL): two at once make it 3-on-5, a third waits
+   * until one of them ends; a power-play goal frees one minor.
+   */
+  pens: [Pen[], Pen[]] = [[], []];
+  /** the last event carried the penalty box (so an empty box is reported once when it clears) */
+  private boxShown = false;
   period = 0;
   sec = 0;
   status: 'playing' | 'ot' | 'so' | 'done' = 'playing';
@@ -296,8 +310,8 @@ export class GameSim {
       scorersLen: this.scorers.length,
       shotMapLen: this.shotMap.length,
       lines: cloneLines(this.lines),
-      penEnd: [this.penEnd[0], this.penEnd[1]],
-      penMinor: [this.penMinor[0], this.penMinor[1]],
+      pens: [this.pens[0].map((x) => ({ ...x })), this.pens[1].map((x) => ({ ...x }))],
+      boxShown: this.boxShown,
       unitIdx: [this.unitIdx[0], this.unitIdx[1]],
       unansweredGoals: [this.unansweredGoals[0], this.unansweredGoals[1]],
       timeoutUsed: [this.timeoutUsed[0], this.timeoutUsed[1]],
@@ -317,8 +331,8 @@ export class GameSim {
     this.scorers.length = s.scorersLen;
     this.shotMap.length = s.shotMapLen;
     this.lines = cloneLines(s.lines);
-    this.penEnd = [s.penEnd[0], s.penEnd[1]];
-    this.penMinor = [s.penMinor[0], s.penMinor[1]];
+    this.pens = [s.pens[0].map((x) => ({ ...x })), s.pens[1].map((x) => ({ ...x }))];
+    this.boxShown = s.boxShown;
     this.unitIdx = [s.unitIdx[0], s.unitIdx[1]];
     this.unansweredGoals = [s.unansweredGoals[0], s.unansweredGoals[1]];
     this.timeoutUsed = [s.timeoutUsed[0], s.timeoutUsed[1]];
@@ -332,13 +346,13 @@ export class GameSim {
   }
 
   /** The five (four, three) on the ice for a line and manpower situation, with its ratings. */
-  private unit(i: TI, li: number, mode: Mode, useU20 = false) {
+  private unit(i: TI, li: number, mode: Mode, useU20 = false, n = 5) {
     const special = mode === 'pp' || mode === 'pk';
     const u20Tag = useU20 && mode === 'ev' && li === 3 ? '|u20' : '';
-    const key = `${i}|${mode}|${special ? this.unitIdx[i] % 2 : mode === 'ot3' ? 0 : li}${u20Tag}`;
+    const key = `${i}|${mode}|${special ? `${this.unitIdx[i] % 2}|${n}` : mode === 'ot3' ? 0 : li}${u20Tag}`;
     let u = this.units.get(key);
     if (!u) {
-      const ids = this.onIce(i, li, mode, useU20);
+      const ids = this.onIce(i, li, mode, useU20, n);
       const skaters = skatersOf(ids, this.P);
       for (const id of skaters) this.teamOf[id] = i;
       u = { ids, skaters, att: this.attackOf(i, li, mode, ids) + (this.team(i).coaching?.attack ?? 0), def: this.defenseOf(i, li, mode, ids) + (this.team(i).coaching?.defense ?? 0) };
@@ -350,8 +364,50 @@ export class GameSim {
     const t = this.team(i);
     return t.name ?? t.id;
   }
+  /** Absolute second at which each team is back at full strength (queued penalties included). */
   private penUntil(): [number, number] {
-    return [this.penEnd[0], this.penEnd[1]];
+    const last = (i: TI) => this.pens[i].reduce((m, x) => Math.max(m, x.end), 0);
+    return [last(0), last(1)];
+  }
+  /** Penalties running at second `t`. */
+  private running(i: TI, t = this.sec): Pen[] {
+    return this.pens[i].filter((x) => x.start <= t && t < x.end);
+  }
+  /** Skaters on the ice for each team right now (5, 4 or 3). */
+  men(t = this.sec): [number, number] {
+    return [skatersFor(this.running(0, t).length), skatersFor(this.running(1, t).length)];
+  }
+  /** Earliest moment ≥ now with fewer than two penalties running: a third penalty waits for it. */
+  private penSlot(i: TI): number {
+    const list = this.pens[i];
+    const cands = [this.sec, ...list.map((x) => x.end).filter((t) => t > this.sec)].sort((a, b) => a - b);
+    for (const t of cands) if (list.filter((x) => x.start <= t && t < x.end).length < 2) return t;
+    return cands[cands.length - 1];
+  }
+  /** Queued penalties move up when a running one ends early. */
+  private reschedule(i: TI) {
+    const waiting = this.pens[i].filter((x) => x.start > this.sec).sort((a, b) => a.start - b.start);
+    this.pens[i] = this.pens[i].filter((x) => x.start <= this.sec);
+    for (const w of waiting) {
+      const start = this.penSlot(i);
+      this.pens[i].push({ ...w, start, end: start + w.min * 60 });
+    }
+  }
+  /**
+   * A power-play goal ends one minor of the short-handed team — the one closest to its end. A double minor in its
+   * first half restarts as a fresh two minutes; majors are served in full.
+   */
+  private releaseOnPPGoal(o: TI) {
+    const run = this.running(o).filter((x) => x.min === 2 || x.min === 4).sort((a, b) => a.end - b.end)[0];
+    if (!run) return;
+    run.end = run.min === 4 && run.end - this.sec > 120 ? this.sec + 120 : this.sec;
+    if (run.end > this.sec) run.min = 2;
+    this.pens[o] = this.pens[o].filter((x) => x.end > this.sec);
+    this.reschedule(o);
+  }
+  /** The penalty box as [start, end] pairs per team, for the live scoreboard and the rink. */
+  private boxNow(): [[number, number][], [number, number][]] {
+    return [this.pens[0].map((x): [number, number] => [x.start, x.end]), this.pens[1].map((x): [number, number] => [x.start, x.end])];
   }
   setGoalie(i: TI, id: string | null) {
     this.goalies[i] = id;
@@ -374,6 +430,14 @@ export class GameSim {
   private push(e: Partial<GameEvent> & { type: GameEvent['type']; text: string }) {
     if (this.quiet) return;
     const ev: GameEvent = { sec: this.sec, period: this.period, time: this.clock(), team: null, ...e };
+    for (const i of [0, 1] as TI[]) this.pens[i] = this.pens[i].filter((x) => x.end > this.sec);
+    if (this.pens[0].length || this.pens[1].length) {
+      ev.box = this.boxNow();
+      this.boxShown = true;
+    } else if (this.boxShown) {
+      ev.box = [[], []];
+      this.boxShown = false;
+    }
     this.events.push(ev);
     this.snaps.set(ev, this.captureSnap());
   }
@@ -395,15 +459,21 @@ export class GameSim {
     return out;
   }
 
-  private onIce(i: TI, li: number, mode: Mode, useU20 = false): (string | null)[] {
+  private onIce(i: TI, li: number, mode: Mode, useU20 = false, n = 5): (string | null)[] {
     const L = this.team(i).lineup;
     const F = L.F[li] ?? [null, null, null];
     const D = L.D[li % 3] ?? [null, null];
     switch (mode) {
-      case 'pp':
-        return this.unitIds(i, 'pp');
-      case 'pk':
-        return this.unitIds(i, 'pk');
+      case 'pp': {
+        // 5 on 4 / 5 on 3: the whole unit; 4 on 3: three forwards and the first defenceman
+        const u = this.unitIds(i, 'pp');
+        return n >= 5 ? u : u.slice(0, n);
+      }
+      case 'pk': {
+        // 4 on 5: two forwards and a pair; 3 on 5 / 3 on 4: one forward in front of the pair
+        const u = this.unitIds(i, 'pk');
+        return n >= 4 ? u : [u[0], u[2], u[3]];
+      }
       case '4v4':
         return [F[0] ?? null, F[1] ?? null, D[0] ?? null, D[1] ?? null];
       case 'ot3': {
@@ -430,15 +500,15 @@ export class GameSim {
   private attackOf(i: TI, li: number, mode: Mode, ids: (string | null)[]): number {
     const P = this.P;
     if (mode === 'ot3') return unitAttack(ids, 3, P);
-    if (mode === 'pp') return unitAttack(ids, 5, P);
-    if (mode === 'pk') return unitAttack(ids, 4, P) + 3;
+    if (mode === 'pp') return unitAttack(ids, ids.length, P);
+    if (mode === 'pk') return unitAttack(ids, ids.length, P) + 3;
     return 0.6 * lineAttack(ids.slice(0, 3), P) + 0.4 * pairAttack(ids.slice(3, 5), P) + this.lineChemBonus(i, li);
   }
   private defenseOf(o: TI, lo: number, modeO: Mode, ids: (string | null)[]): number {
     const P = this.P;
     if (modeO === 'ot3') return unitDefense(ids, 3, P);
-    if (modeO === 'pk') return unitDefense(ids, 4, P) + 4;
-    if (modeO === 'pp') return unitDefense(ids, 5, P) - 10;
+    if (modeO === 'pk') return unitDefense(ids, ids.length, P) + 4;
+    if (modeO === 'pp') return unitDefense(ids, ids.length, P) - 10;
     return 0.5 * lineDefense(ids.slice(0, 3), P) + 0.5 * pairDefense(ids.slice(3, 5), P) + this.lineChemBonus(o, lo) * 0.35;
   }
 
@@ -623,21 +693,24 @@ export class GameSim {
         kind === 'reg' && li[0] === 3 && Math.random() < 0.25,
         kind === 'reg' && li[1] === 3 && Math.random() < 0.25,
       ];
-      const situation = (): { modes: [Mode, Mode]; ice: [(string | null)[], (string | null)[]] } => {
-        const short0 = this.penEnd[0] > this.sec;
-        const short1 = this.penEnd[1] > this.sec;
-        const homePP = short1 && !short0;
-        const awayPP = short0 && !short1;
-        const four = short0 && short1;
-        const modeOf = (i: TI): Mode => (kind === 'ot3' ? 'ot3' : kind === 'ot5' ? 'ot5' : four ? '4v4' : (i === 0 ? homePP : awayPP) ? 'pp' : (i === 0 ? awayPP : homePP) ? 'pk' : 'ev');
+      const situation = (): { modes: [Mode, Mode]; ice: [(string | null)[], (string | null)[]]; men: [number, number] } => {
+        // Overtime 3-on-3 ignores penalties; regulation and the playoff 5-on-5 overtime count every man in the box.
+        const men: [number, number] = kind === 'ot3' ? [3, 3] : this.men();
+        const modeOf = (i: TI): Mode => {
+          if (kind === 'ot3') return 'ot3';
+          const me = men[i], them = men[1 - i];
+          if (me > them) return 'pp';
+          if (me < them) return 'pk';
+          return me === 5 ? (kind === 'ot5' ? 'ot5' : 'ev') : me === 4 ? '4v4' : 'ot3';
+        };
         const modes: [Mode, Mode] = [modeOf(0), modeOf(1)];
         const ice: [(string | null)[], (string | null)[]] = [
-          this.unit(0, li[0], modes[0], u20Shift[0]).ids,
-          this.unit(1, li[1], modes[1], u20Shift[1]).ids,
+          this.unit(0, li[0], modes[0], u20Shift[0], men[0]).ids,
+          this.unit(1, li[1], modes[1], u20Shift[1], men[1]).ids,
         ];
-        return { modes, ice };
+        return { modes, ice, men };
       };
-      let { modes, ice } = situation();
+      let { modes, ice, men } = situation();
       let emptyNet: TI | -1 = -1;
       if (this.forceEmptyNet[0]) emptyNet = 0;
       else if (this.forceEmptyNet[1]) emptyNet = 1;
@@ -664,8 +737,8 @@ export class GameSim {
       for (let k = 0; k < order.length; k++) {
         const i = order[k];
         this.sec = sec + (k === 0 ? 1 + Math.floor(Math.random() * 14) : 16 + Math.floor(Math.random() * 12));
-        ({ modes, ice } = situation());
-        const r = this.tryShot(i, (1 - i) as TI, kind, ice, modes, emptyNet, li, u20Shift);
+        ({ modes, ice, men } = situation());
+        const r = this.tryShot(i, (1 - i) as TI, kind, ice, modes, emptyNet, li, u20Shift, men);
         if (kind !== 'reg' && r === 'goal') {
           ended = true;
           break;
@@ -682,7 +755,7 @@ export class GameSim {
       if (kind === 'reg' && Math.random() < penChance) {
         const pi: TI = Math.random() < 0.5 * (fc0.penMult / ((fc0.penMult + fc1.penMult) * 0.5)) ? 0 : 1;
         this.sec = sec + 29 + Math.floor(Math.random() * 5);
-        ({ modes, ice } = situation());
+        ({ modes, ice, men } = situation());
         this.takePenalty(pi, ice[pi]);
       }
 
@@ -711,10 +784,13 @@ export class GameSim {
     modes: [Mode, Mode],
     emptyNet: TI | -1,
     li: [number, number],
-    u20Shift: [boolean, boolean]
+    u20Shift: [boolean, boolean],
+    men: [number, number] = [5, 5]
   ): 'none' | 'goal' | 'shot' {
-    const mine = this.unit(i, li[i], modes[i], u20Shift[i]);
-    const theirs = this.unit(o, li[o], modes[o], u20Shift[o]);
+    const mine = this.unit(i, li[i], modes[i], u20Shift[i], men[i]);
+    const theirs = this.unit(o, li[o], modes[o], u20Shift[o], men[o]);
+    /** +2 = five on three, −2 = three on five */
+    const adv = men[i] - men[o];
     const skaters = mine.skaters;
     const oppSkaters = theirs.skaters;
     if (!skaters.length) return 'none';
@@ -735,8 +811,8 @@ export class GameSim {
     pShot *= fcI.shotMult * fcO.oppShotMult * stI.shotMult;
     if (this.focusUntil[i] > this.sec) pShot *= 1.07;
     if (this.unansweredGoals[i] >= 2) pShot *= 1.04;
-    if (onPP) pShot *= PP_SHOT;
-    if (onSH) pShot *= 0.6;
+    if (onPP) pShot *= PP_SHOT * (adv >= 2 ? 1.22 : 1);
+    if (onSH) pShot *= adv <= -2 ? 0.42 : 0.6;
     if (mode === '4v4') pShot *= 1.1;
     if (mode === 'ot3') pShot *= 1.3;
     if (emptyNet === i) pShot *= 1.18;
@@ -767,8 +843,8 @@ export class GameSim {
     let q = 1 + ((sp.skills.shooting ?? 65) - 70) * 0.006;
     q *= fcI.xgMult * fcO.oppXgMult * stI.xgMult;
     if (this.focusUntil[i] > this.sec) q *= 1.05;
-    if (onPP) q *= PP_QUALITY * (1 + (this.team(i).coaching?.special ?? 0)) / (1 + (this.team(o).coaching?.special ?? 0));
-    if (onSH) q *= 0.75;
+    if (onPP) q *= PP_QUALITY * (adv >= 2 ? 1.3 : 1) * (1 + (this.team(i).coaching?.special ?? 0)) / (1 + (this.team(o).coaching?.special ?? 0));
+    if (onSH) q *= adv <= -2 ? 0.7 : 0.75;
     if (mode === '4v4' || mode === 'ot3') q *= 1.1;
 
     const geo = generateShotGeometry(i, sp, onPP, mode, emptyNet === o, this.tactics[i].style);
@@ -777,7 +853,7 @@ export class GameSim {
     const xg = Math.round(rawXg * 1000) / 1000;
     const pGoal = emptyNet === o ? 0.32 : clamp((1 - sv) * q * geo.zMult, 0.015, 0.42);
     const goal = Math.random() < pGoal;
-    const strength: Strength = emptyNet === o ? 'EN' : onPP ? 'PP' : onSH ? 'SH' : mode === '4v4' ? '4v4' : 'EV';
+    const strength: Strength = emptyNet === o ? 'EN' : onPP ? 'PP' : onSH ? 'SH' : mode === '4v4' || (mode === 'ot3' && kind !== 'ot3') ? '4v4' : 'EV';
     const teamId = this.team(i).id;
     const liTuple: [number, number] = [li[0], li[1]];
     const time = this.clock();
@@ -809,10 +885,7 @@ export class GameSim {
       if (this.forceEmptyNet[i] && this.score[i] >= this.score[o]) this.forceEmptyNet[i] = false;
       if (onPP) {
         this.stats[i].ppGoals++;
-        if (this.penMinor[o]) {
-          this.penEnd[o] = this.sec;
-          this.penMinor[o] = false;
-        }
+        this.releaseOnPPGoal(o);
       }
       this.line(shooter).goals++;
       const others = skaters.filter((id) => id !== shooter);
@@ -922,14 +995,20 @@ export class GameSim {
     this.line(p).pim += min;
     this.stats[i].pim += min;
     const teamId = this.team(i).id;
+    let boxUntil = this.sec + min * 60;
+    let note = '';
     if (!misconduct) {
-      const serving = this.penEnd[i] > this.sec;
-      this.penMinor[i] = min === 2 && !serving;
-      this.penEnd[i] = (serving ? this.penEnd[i] : this.sec) + min * 60;
+      this.pens[i] = this.pens[i].filter((x) => x.end > this.sec);
+      const start = this.penSlot(i);
+      boxUntil = start + min * 60;
+      this.pens[i].push({ player: p, min, start, end: boxUntil });
       this.stats[1 - i].ppChances++;
       this.unitIdx[1 - i]++;
+      const m = this.men();
+      if (start > this.sec) note = ` Штраф начнётся, когда закончится одно из удалений — «${this.label(i)}» до тех пор втроём.`;
+      else if (m[i] === 3) note = ` «${this.label(i)}» остаётся втроём: ${m[1 - i]} на 3!`;
     }
-    this.push({ type: 'penalty', team: teamId, player: p, pim: min, pp: !misconduct, penUntil: this.penUntil(), text: `Штраф ${min} мин: ${this.P[p].name} (${this.label(i)}) — ${type}` });
+    this.push({ type: 'penalty', team: teamId, player: p, pim: min, pp: !misconduct, penUntil: this.penUntil(), boxUntil, text: `Штраф ${min} мин: ${this.P[p].name} (${this.label(i)}) — ${type}${note ? `.${note}` : ''}` });
   }
 
   private takeHit(i: TI, iceI: (string | null)[], iceO: (string | null)[]) {

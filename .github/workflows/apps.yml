@@ -170,12 +170,20 @@ jobs:
         with:
           name: android
           path: files
+      # the build stamp of these files (dist/version.json): the apps compare it with their own to offer an update
+      - uses: actions/download-artifact@v4
+        with:
+          name: web
+          path: web
       - name: Upload
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
           ls -la files
+          cat web/version.json
+          STAMP=$(node -e "const v=require('./web/version.json'); process.stdout.write([v.build, v.sha, v.version].join(' '))")
+          test -n "$STAMP"
           cat > notes.md <<EOF
           **КХЛ ГМ ${APP_VERSION}** — приложения для Windows и Android (сборка ${GITHUB_SHA::7}).
 
@@ -188,6 +196,8 @@ jobs:
           Windows может показать «Система Windows защитила ваш компьютер» — приложение не подписано сертификатом:
           «Подробнее» → «Выполнить в любом случае». Обновление: просто установите новую версию поверх — карьеры сохранятся.
           Браузерная версия: https://clubgames.github.io/KHL_Manager/
+
+          <!-- khl-build: ${STAMP} -->
           EOF
           ASSETS="files/KHL-GM-Setup.exe files/KHL-GM-Portable.exe files/KHL-GM.apk"
           for f in $ASSETS; do test -f "$f" || { echo "::error::missing $f"; exit 1; }; done

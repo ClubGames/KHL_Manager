@@ -1,4 +1,5 @@
 import './fonts.css';
+import { UpdateBanner } from './components/UpdateBanner';
 import { useEffect, useMemo, useState } from 'react';
 import type { Game } from './types';
 import { Button, Icon, Modal, Tag, TeamLogo, UIContext, money, type UIApi, type View } from './components/ui';
@@ -156,6 +157,7 @@ export default function App() {
         </Modal>
       )}
         {confirmModal}
+        <UpdateBanner />
       </UIContext.Provider>
     );
   }
@@ -479,6 +481,7 @@ export default function App() {
         </Modal>
       )}
       {confirmModal}
+      <UpdateBanner />
     </UIContext.Provider>
   );
 }

@@ -10,7 +10,7 @@ export type Platform = 'web' | 'windows' | 'android';
 /** Bridge exposed by `desktop/preload.cjs`. */
 type DesktopBridge = {
   platform: string;
-  info: () => Promise<{ version: string; electron: string; chrome: string; gpu: string }>;
+  info: () => Promise<{ version: string; electron: string; chrome: string; gpu: string; portable?: boolean }>;
   saveFile: (file: { name: string; data: Uint8Array; kind: FileKind }) => Promise<string | null>;
 };
 declare global {

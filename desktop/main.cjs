@@ -115,6 +115,8 @@ ipcMain.handle('khl:info', () => ({
   electron: process.versions.electron,
   chrome: process.versions.chrome,
   gpu: gpuSummary(),
+  // electron-builder's portable exe sets these: its update is the portable file, not the installer
+  portable: !!(process.env.PORTABLE_EXECUTABLE_FILE || process.env.PORTABLE_EXECUTABLE_DIR),
 }));
 
 ipcMain.handle('khl:save-file', async (event, { name, data, kind }) => {

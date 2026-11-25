@@ -117,6 +117,7 @@ check('morale stays within bounds', badMorale === 0);
     if (key === 'wish-starts') { const b = s.players[T.lineup.backupG!]; b.overall = s.players[T.lineup.starterG!].overall; }
     if (key === 'conflict-captain') { T.record.streakType = 'L'; T.record.streak = 4; }
     if (key === 'fans-meeting') s.fans = 30;
+    if (key === 'wish-pp') { const best = mine.filter((x) => x.position !== 'G').sort((a, b) => b.overall - a.overall)[0]; best.skills.shooting = 82; best.skills.passing = 80; T.lineup.pp1 = T.lineup.pp1.map((id) => (id === best.id ? null : id)); T.lineup.pp2 = T.lineup.pp2.map((id) => (id === best.id ? null : id)); }
     if (key === 'wish-extend') { const p = mine.find((x) => x.overall >= 70)!; p.contract.years = 1; delete p.contract.next; }
     if (key === 'wish-captain') { const p = mine.filter((x) => x.position !== 'G' && x.age >= 27).sort((a, b) => b.overall - a.overall).find((x) => x.id !== T.captainId && !(T.assistantIds ?? []).includes(x.id)); if (p) { p.morale = 80; p.overall = 99; } }
     if (key === 'wish-dress') { const y = mine.find((x) => x.position !== 'G' && x.age <= 23); if (y) for (const l of [...T.lineup.F, ...T.lineup.D]) { const i = l.indexOf(y.id); if (i >= 0) l[i] = null; } }
