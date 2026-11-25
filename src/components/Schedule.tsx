@@ -440,7 +440,7 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
 
             <div className="grid grid-cols-7 gap-1 sm:gap-1.5" data-calendar-grid>
               {activeMonth.cells.map((cell, idx) => {
-                if (!cell) return <div key={`empty-${idx}`} className="min-h-[54px] sm:min-h-[78px] rounded-md bg-bg/20 border border-line/20" />;
+                if (!cell) return <div key={`empty-${idx}`} className="aspect-square rounded-md bg-bg/20 border border-line/20" />;
                 const { date, dayIdx, games } = cell;
                 const isToday = dayIdx !== null && dayIdx === s.day;
                 const isSelected = dayIdx !== null && dayIdx === inspectedDay;
@@ -451,99 +451,84 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                 const isHome = userGame ? userGame.home === U : false;
                 const ur = userGame?.result;
                 const userWon = ur ? (isHome ? ur.homeScore > ur.awayScore : ur.awayScore > ur.homeScore) : null;
+                // our goals first, like everywhere else in the game
+                const scoreText = ur ? (isHome ? `${ur.homeScore}:${ur.awayScore}` : `${ur.awayScore}:${ur.homeScore}`) : '';
+                const scoreTail = ur?.so ? ' Б' : ur?.ot ? ' ОТ' : '';
+                const derby = userGame ? getDerby(s.teams[userGame.home], s.teams[userGame.away]) : null;
 
                 const isDeadline = dayIdx === deadlineDay;
                 const inFreeze = freeze !== null && dayIdx !== null && dayIdx >= freeze[0] && dayIdx < freeze[1];
                 const isWinterOpen = freeze !== null && dayIdx === freeze[1];
+                const dateCls = cn('font-display text-xs sm:text-sm font-bold tabular-nums leading-none', isToday ? 'text-accent' : weekend ? 'text-gold' : 'text-ice');
 
                 return (
                   <div
                     key={date.toISOString()}
+                    data-calendar-day={dayIdx ?? undefined}
                     onClick={() => dayIdx !== null && setSelectedDay(dayIdx)}
                     className={cn(
-                      'min-h-[54px] sm:min-h-[82px] rounded-md sm:rounded-lg border p-1 sm:p-1.5 flex flex-col justify-between text-xs transition select-none overflow-hidden',
+                      'relative aspect-square rounded-md sm:rounded-lg border text-xs transition select-none overflow-hidden',
                       dayIdx !== null ? 'cursor-pointer hover:border-accent/60' : 'opacity-45',
                       isToday
                         ? 'border-accent bg-accent/12 ring-1 ring-accent/50'
                         : isSelected
                           ? 'border-ice/60 bg-panel2/80'
                           : userGame
-                            ? 'border-line bg-panel2/45'
+                            ? ur
+                              ? userWon
+                                ? 'border-good/50 bg-panel2/45'
+                                : 'border-bad/50 bg-panel2/45'
+                              : 'border-line bg-panel2/45'
                             : 'border-line/50 bg-bg/40'
                     )}
                   >
-                    <div className="flex items-center justify-between gap-0.5">
-                      <span className={cn('font-display text-xs sm:text-sm font-bold tabular-nums leading-none', isToday ? 'text-accent' : weekend ? 'text-gold' : 'text-ice')}>
-                        {date.getDate()}
-                      </span>
-                      {isToday && <span className="hidden sm:inline text-[9px] uppercase font-bold px-1 rounded bg-accent text-white">сегодня</span>}
-                      {isToday && <span className="sm:hidden w-1.5 h-1.5 rounded-full bg-accent shrink-0" />}
-                      {!isToday && games.length > 0 && <span className="hidden sm:inline text-[10px] text-muted tabular-nums">{games.length} м.</span>}
-                    </div>
-
-                    {/* Trade window milestone badges */}
-                    {(isDeadline || inFreeze || isWinterOpen) && (
-                      <div className="hidden sm:block my-0.5">
-                        {isDeadline && <span className="block text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-red/25 text-red truncate">Дедлайн КХЛ</span>}
-                        {isWinterOpen && <span className="block text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-good/20 text-good truncate">Зимнее окно</span>}
-                        {inFreeze && !isDeadline && <span className="block text-[9px] uppercase px-1 py-0.5 rounded bg-gold/15 text-gold truncate">Мораторий</span>}
-                      </div>
-                    )}
-
-                    {/* User match pill inside calendar cell */}
                     {userGame && opp ? (
                       <>
-                        {/* Compact mobile pill (fits 42px cell width cleanly) */}
-                        <div
-                          className={cn(
-                            'sm:hidden mt-0.5 rounded px-0.5 py-0.5 text-center border text-[9px] leading-tight font-semibold truncate',
-                            ur
-                              ? userWon
-                                ? 'bg-good/20 border-good/40 text-good'
-                                : 'bg-bad/20 border-bad/40 text-bad'
-                              : 'bg-bg/85 border-line text-ice'
-                          )}
-                        >
-                          <div className="truncate">{opp.short}</div>
-                          <div className="tabular-nums text-[8.5px]">
-                            {ur ? `${ur.awayScore}:${ur.homeScore}` : isHome ? 'дом' : 'выезд'}
+                        {/* The opponent's logo: a square over the whole cell */}
+                        <div data-calendar-logo={opp.id} className={cn('absolute inset-0 p-[9%] pb-[19%] sm:pb-[17%] flex items-center justify-center', ur && 'opacity-80')}>
+                          <div className="h-full aspect-square max-w-full">
+                            <TeamLogo team={opp} size={64} fill />
                           </div>
                         </div>
-                        {/* Full sm+ pill */}
+                        <span className={cn('absolute top-0.5 left-0.5 sm:top-1 sm:left-1 px-1 py-0.5 rounded bg-bg/70', dateCls)}>{date.getDate()}</span>
+                        {derby && <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 text-[10px] sm:text-xs leading-none" title={derby.title}>🔥</span>}
+                        {isToday && <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-accent" />}
                         <div
                           onClick={(e) => {
+                            if (window.innerWidth < 640) return; // on a phone the cell picks the day; the list below opens the game
                             e.stopPropagation();
                             ui.openGame(userGame.id);
                           }}
+                          title={`${isHome ? 'Дома' : 'В гостях'}: ${opp.name}${ur ? ` — ${scoreText}${scoreTail}` : ''}`}
                           className={cn(
-                            'hidden sm:flex mt-1 rounded px-1.5 py-1 items-center justify-between gap-1 border text-[11px]',
-                            ur
-                              ? userWon
-                                ? 'bg-good/15 border-good/40 text-ice'
-                                : 'bg-bad/15 border-bad/40 text-ice'
-                              : 'bg-bg/80 border-line hover:border-accent/60'
+                            'absolute inset-x-0 bottom-0 flex items-center justify-center sm:justify-between gap-1 px-1 sm:px-1.5 py-[2px] sm:py-0.5 text-[9px] sm:text-[11px] leading-tight font-semibold sm:hover:brightness-125',
+                            ur ? (userWon ? 'bg-good/85 text-white' : 'bg-bad/85 text-white') : 'bg-bg/85 text-ice'
                           )}
                         >
-                          <span className="flex items-center gap-1 min-w-0 truncate font-semibold">
-                            <span className="text-[9px] text-muted">{isHome ? 'Д' : 'Г'}</span>
-                            <TeamLogo team={opp} size={15} />
-                            <span className="truncate">{opp.short}</span>
-                            {getDerby(s.teams[userGame.home], s.teams[userGame.away]) && (
-                              <span title={getDerby(s.teams[userGame.home], s.teams[userGame.away])!.title}>🔥</span>
-                            )}
-                          </span>
-                          {ur ? (
-                            <span className={cn('font-display font-bold tabular-nums shrink-0', userWon ? 'text-good' : 'text-bad')}>
-                              {ur.awayScore}:{ur.homeScore}
-                            </span>
-                          ) : (
-                            <span className="text-[9px] text-accent shrink-0">разбор</span>
-                          )}
+                          <span className="hidden sm:inline opacity-80">{isHome ? 'Д' : 'Г'}</span>
+                          <span className="font-display tabular-nums truncate">{ur ? <>{scoreText}<span className="hidden sm:inline">{scoreTail}</span></> : <><span className="sm:hidden">{isHome ? 'дом' : 'выезд'}</span><span className="hidden sm:inline">{opp.short}</span></>}</span>
                         </div>
                       </>
                     ) : (
-                      <div className="hidden sm:block text-[10px] text-muted/60 mt-auto">
-                        {dayIdx === null ? '' : dayIdx < regLen && games.length === 0 ? (dayIdx === asgDay ? 'Матч звёзд' : dayIdx < firstMatchDay ? 'до старта' : 'пауза КХЛ') : 'выходной клуба'}
+                      <div className="absolute inset-0 p-1 sm:p-1.5 flex flex-col justify-between">
+                        <div className="flex items-center justify-between gap-0.5">
+                          <span className={dateCls}>{date.getDate()}</span>
+                          {isToday && <span className="hidden sm:inline text-[9px] uppercase font-bold px-1 rounded bg-accent text-white">сегодня</span>}
+                          {isToday && <span className="sm:hidden w-1.5 h-1.5 rounded-full bg-accent shrink-0" />}
+                          {!isToday && games.length > 0 && <span className="hidden sm:inline text-[10px] text-muted tabular-nums">{games.length} м.</span>}
+                        </div>
+                        <div className="hidden sm:block text-[10px] text-muted/60 leading-tight">
+                          {dayIdx === null ? '' : dayIdx < regLen && games.length === 0 ? (dayIdx === asgDay ? 'Матч звёзд' : dayIdx < firstMatchDay ? 'до старта' : 'пауза КХЛ') : 'выходной клуба'}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Trade window milestones */}
+                    {(isDeadline || inFreeze || isWinterOpen) && (
+                      <div className={cn('hidden sm:block absolute left-1 right-1 top-6')}>
+                        {isDeadline && <span className="block text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-red/80 text-white truncate">Дедлайн КХЛ</span>}
+                        {isWinterOpen && <span className="block text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-good/80 text-white truncate">Зимнее окно</span>}
+                        {inFreeze && !isDeadline && <span className="block text-[9px] uppercase px-1 py-0.5 rounded bg-gold/25 text-gold truncate">Мораторий</span>}
                       </div>
                     )}
                   </div>

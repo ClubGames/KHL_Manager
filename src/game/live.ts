@@ -20,6 +20,8 @@ export interface LiveStats {
   goalies: Record<string, { saves: number; shotsAgainst: number; goalsAgainst: number }>;
   /** absolute game second until which [home, away] is short-handed */
   penUntil: [number, number];
+  /** pending penalties per team as [start, end] (absolute seconds); null until the engine reported the box */
+  box: [[number, number][], [number, number][]] | null;
 }
 
 export const emptyLive = (): LiveStats => ({
@@ -35,6 +37,7 @@ export const emptyLive = (): LiveStats => ({
   periods: [],
   goalies: {},
   penUntil: [0, 0],
+  box: null,
 });
 
 function goalie(L: LiveStats, id: string) {
@@ -69,6 +72,7 @@ function recordShot(L: LiveStats, ti: 0 | 1, e: GameEvent, outcome: ShotPoint['o
 export function applyEvent(L: LiveStats, e: GameEvent, homeId: string): LiveStats {
   const ti: 0 | 1 | null = e.team == null ? null : e.team === homeId ? 0 : 1;
   if (e.penUntil) L.penUntil = [e.penUntil[0], e.penUntil[1]];
+  if (e.box) L.box = [e.box[0].map((x): [number, number] => [x[0], x[1]]), e.box[1].map((x): [number, number] => [x[0], x[1]])];
   switch (e.type) {
     case 'period_start':
       row(L, e.period);
@@ -128,14 +132,38 @@ export function foldEvents(events: GameEvent[], homeId: string): LiveStats {
   return L;
 }
 
-/** Who is on the power play at the given absolute game second: 0 = home, 1 = away, 'even' = 4-on-4, null = full strength. */
-export function manpower(L: LiveStats, sec: number): { state: 0 | 1 | 'even' | null; remaining: number } {
-  const h = Math.max(0, L.penUntil[0] - sec);
-  const a = Math.max(0, L.penUntil[1] - sec);
-  if (h > 0 && a > 0) return { state: 'even', remaining: Math.min(h, a) };
-  if (h > 0) return { state: 1, remaining: h };
-  if (a > 0) return { state: 0, remaining: a };
-  return { state: null, remaining: 0 };
+export interface Manpower {
+  /** who is on the power play: 0 = home, 1 = away, 'even' = short-handed on both sides (4-on-4, 3-on-3), null = full strength */
+  state: 0 | 1 | 'even' | null;
+  /** skaters [home, away]: 5, 4 or 3 */
+  men: [number, number];
+  /** seconds until the manpower changes next */
+  remaining: number;
+}
+
+const menAt = (box: [[number, number][], [number, number][]], t: number): [number, number] =>
+  [0, 1].map((i) => 5 - Math.min(2, box[i].filter(([a, b]) => a <= t && t < b).length)) as [number, number];
+
+/** Manpower at the given absolute game second: two penalties at once make it 5-on-3, a third one waits its turn. */
+export function manpower(L: LiveStats, sec: number): Manpower {
+  let men: [number, number];
+  let remaining = 0;
+  if (L.box) {
+    men = menAt(L.box, sec);
+    // the next moment the numbers change (a penalty ends — a waiting one may start at once and keep it 3-on-5)
+    const marks = [...L.box[0], ...L.box[1]].flat().filter((t) => t > sec).sort((a, b) => a - b);
+    for (const t of marks) {
+      const m = menAt(L.box, t);
+      if (m[0] !== men[0] || m[1] !== men[1]) { remaining = t - sec; break; }
+    }
+  } else {
+    // older events without the box: one clock per team
+    const h = Math.max(0, L.penUntil[0] - sec), a = Math.max(0, L.penUntil[1] - sec);
+    men = [h > 0 ? 4 : 5, a > 0 ? 4 : 5];
+    remaining = h > 0 && a > 0 ? Math.min(h, a) : Math.max(h, a);
+  }
+  const state = men[0] === men[1] ? (men[0] === 5 ? null : 'even') : men[0] > men[1] ? 0 : 1;
+  return { state, men, remaining: state === null ? 0 : remaining };
 }
 
 /** The play-by-play event of a goal from the scoring summary (null when the log was not kept, e.g. after a reload). */

@@ -5,7 +5,6 @@ import type { BlockKind } from '../game/engine';
 import { fmtClock } from '../game/engine';
 import { commitUserResult, makeUserSim, useGame } from '../game/state';
 import { applyEvent, emptyLive, foldEvents, manpower } from '../game/live';
-import type { LiveStats } from '../game/live';
 import { Button, Icon, Panel, PlayerFace, PosBadge, shortName, TeamLogo, useUI } from './ui';
 import { autoReplayFor, getSettings, useSettings } from '../game/settings';
 import { prewarmReplays, type FigureRequest } from './replayCache';
@@ -71,8 +70,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   // The game clock ticks every frame; only the two tiny clock components listen to it, the screen itself
   // re-renders when something actually happens (an event, a change of manpower, pause, end of period).
   const ticker = useRef(new Ticker()).current;
-  const [mpKey, setMpKey] = useState('null');
-  const mpRef = useRef('null');
+  const [mpKey, setMpKey] = useState('null|55');
+  const mpRef = useRef('null|55');
   const [period, setPeriod] = useState(0);
   const [kind, setKind] = useState<BlockKind>('reg');
   const [status, setStatus] = useState<'intro' | 'playing' | 'break' | 'done'>('intro');
@@ -275,7 +274,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       }
       if (newly.length) setFeed((f) => [...newly.reverse(), ...f]);
       ticker.set(c, tauRef.current);
-      const mpNow = String(manpower(live.current, c).state);
+      const mpCur = manpower(live.current, c);
+      const mpNow = `${mpCur.state}|${mpCur.men[0]}${mpCur.men[1]}`;
       if (mpNow !== mpRef.current) {
         mpRef.current = mpNow;
         setMpKey(mpNow);
@@ -580,11 +580,14 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
     const gid = sim.goalies[ti];
     return gid ? stats.goalies[gid] ?? { saves: 0, shotsAgainst: 0, goalsAgainst: 0 } : undefined;
   };
-  const mpState: 0 | 1 | 'even' | null = status === 'playing' && kind === 'reg' ? (mpKey === '0' ? 0 : mpKey === '1' ? 1 : mpKey === 'even' ? 'even' : null) : null;
-  const mp = { state: mpState };
+  const [mpStateKey, mpMenKey = '55'] = mpKey.split('|');
+  const mpOn = status === 'playing' && (kind === 'reg' || kind === 'ot5');
+  const mpState: 0 | 1 | 'even' | null = mpOn ? (mpStateKey === '0' ? 0 : mpStateKey === '1' ? 1 : mpStateKey === 'even' ? 'even' : null) : null;
+  const mpMen: [number, number] = mpState === null ? [5, 5] : [Number(mpMenKey[0]) || 5, Number(mpMenKey[1]) || 5];
+  const mp = { state: mpState, men: mpMen };
   const iceLabel = (ti: 0 | 1, li: number) => {
     if (kind === 'ot3') return 'овертайм · 3 на 3';
-    if (mp.state === 'even') return '4 на 4';
+    if (mp.state === 'even') return `${mp.men[0]} на ${mp.men[1]}`;
     if (mp.state === ti) return 'большинство';
     if (mp.state !== null) return 'меньшинство';
     return `звено ${li + 1}`;
@@ -593,7 +596,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const rinkIds = ([0, 1] as const).map(ti => {
     const L = ti === 0 ? homeL : awayL;
     const base = curIce?.[ti] ?? [...(L.F[curLines[ti]] ?? []), ...(L.D[curLines[ti] % 3] ?? [])];
-    const count = kind === 'so' ? 0 : kind === 'ot3' ? 3 : mpState === 'even' || (mpState !== null && mpState !== ti) ? 4 : 6;
+    // the unit's skaters (5, 4 or 3), plus room for an extra attacker when not short-handed
+    const count = kind === 'so' ? 0 : kind === 'ot3' ? 3 : mpMen[ti] + (mpMen[ti] >= mpMen[1 - ti] ? 1 : 0);
     return [...new Set(base)].filter((id): id is string => !!id && !!P[id] && P[id].position !== 'G').slice(0, count);
   }) as [string[], string[]];
   // Outcomes and lineup/goalie UI use only revealed state; private motion paths share this clock.
@@ -935,25 +939,18 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
                   <span className="sm:hidden">{H.short}</span>
                   <span className="hidden sm:inline">{H.name}</span>
                 </div>
-                <span className="hidden sm:inline-flex"><ManpowerBadge state={mp.state} ti={0} /></span>
+                <span className="hidden sm:inline-flex"><ManpowerBadge state={mp.state} men={mp.men} ti={0} /></span>
               </div>
               <div className="text-[10px] sm:text-[11px] text-muted truncate">дома · {H.record.points} очк.</div>
             </div>
             <span className="font-display text-3xl sm:text-5xl tabular leading-none ml-auto score-tick" key={`h${score[0]}`}>
               {score[0]}
             </span>
-            {mp.state !== null && <div className="basis-full sm:hidden"><ManpowerBadge state={mp.state} ti={0} compact /></div>}
+            {mp.state !== null && <div className="basis-full sm:hidden"><ManpowerBadge state={mp.state} men={mp.men} ti={0} compact /></div>}
           </div>
           <div className="text-center px-1.5 sm:px-4 min-w-[82px] sm:min-w-[120px]">
             <ClockFace ticker={ticker} end={blockEnd} shootout={kind === 'so'} />
             <div className={cn('text-[10px] sm:text-[11px] uppercase tracking-widest mt-0.5 sm:mt-1', paused ? 'text-amber' : 'text-muted')}>{paused ? 'Пауза' : periodLabel || 'Старт'}</div>
-            <div className="min-h-[18px] land:min-h-0 mt-0.5 flex items-center justify-center">
-              {mp.state !== null && (
-                <span data-manpower className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wide px-1.5 sm:px-2 py-0.5 rounded-sm bg-amber/15 text-amber tabular whitespace-nowrap">
-                  {mp.state === 'even' ? '4×4' : `ЧБ ${mp.state === 0 ? H.short : A.short}`} · <PenaltyTimer ticker={ticker} live={live} />
-                </span>
-              )}
-            </div>
           </div>
           <div className="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-1 sm:gap-3 min-w-0 flex-row-reverse">
             <TeamLogo team={A} size={32} className="sm:w-10 sm:h-10" />
@@ -963,14 +960,14 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
                   <span className="sm:hidden">{A.short}</span>
                   <span className="hidden sm:inline">{A.name}</span>
                 </div>
-                <span className="hidden sm:inline-flex"><ManpowerBadge state={mp.state} ti={1} /></span>
+                <span className="hidden sm:inline-flex"><ManpowerBadge state={mp.state} men={mp.men} ti={1} /></span>
               </div>
               <div className="text-[10px] sm:text-[11px] text-muted truncate">гости · {A.record.points} очк.</div>
             </div>
             <span className="font-display text-3xl sm:text-5xl tabular leading-none mr-auto score-tick" key={`a${score[1]}`}>
               {score[1]}
             </span>
-            {mp.state !== null && <div className="basis-full sm:hidden text-right"><ManpowerBadge state={mp.state} ti={1} compact /></div>}
+            {mp.state !== null && <div className="basis-full sm:hidden text-right"><ManpowerBadge state={mp.state} men={mp.men} ti={1} compact /></div>}
           </div>
         </div>
 
@@ -1372,14 +1369,15 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
 }
 
 /** «в большинстве / в меньшинстве» next to a team's name while a penalty is running. */
-function ManpowerBadge({ state, ti, compact = false }: { state: 0 | 1 | 'even' | null; ti: 0 | 1; compact?: boolean }) {
+function ManpowerBadge({ state, men, ti, compact = false }: { state: 0 | 1 | 'even' | null; men: [number, number]; ti: 0 | 1; compact?: boolean }) {
   if (state === null) return null;
   const kind = state === 'even' ? 'even' : state === ti ? 'pp' : 'pk';
-  const text = kind === 'even' ? '4 на 4' : kind === 'pp' ? 'в большинстве' : 'в меньшинстве';
-  const count = kind === 'even' ? '' : kind === 'pp' ? '5×4' : '4×5';
+  const text = kind === 'even' ? `${men[0]} на ${men[1]}` : kind === 'pp' ? 'в большинстве' : 'в меньшинстве';
+  const count = kind === 'even' ? '' : `${men[ti]}×${men[1 - ti]}`;
   return (
     <span
       data-team-manpower={kind}
+      data-men={`${men[ti]}x${men[1 - ti]}`}
       className={cn(
         'inline-flex items-center gap-1 rounded-sm font-semibold whitespace-nowrap leading-none border',
         compact ? 'text-[10px] px-1.5 py-[3px]' : 'text-xs px-1.5 py-1',
@@ -1387,7 +1385,7 @@ function ManpowerBadge({ state, ti, compact = false }: { state: 0 | 1 | 'even' |
       )}
     >
       {text}
-      {count && !compact && <span className="tabular opacity-80">{count}</span>}
+      {count && (!compact || Math.abs(men[0] - men[1]) >= 2) && <span className="tabular opacity-80">{count}</span>}
     </span>
   );
 }
@@ -1469,12 +1467,6 @@ function ClockFace({ ticker, end, shootout }: { ticker: Ticker; end: MutableRefO
       {text}
     </div>
   );
-}
-
-function PenaltyTimer({ ticker, live }: { ticker: Ticker; live: MutableRefObject<LiveStats> }) {
-  const get = () => fmtClock(Math.ceil(manpower(live.current, ticker.sec).remaining));
-  const text = useSyncExternalStore(ticker.subscribe, get, get);
-  return <>{text}</>;
 }
 
 const FeedRow = memo(function FeedRow({ e, onReplay }: { e: GameEvent; onReplay: (event: GameEvent) => void }) {

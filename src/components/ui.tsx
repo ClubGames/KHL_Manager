@@ -162,11 +162,15 @@ export function TeamLogo({
   team,
   size = 32,
   className,
+  fill = false,
 }: {
   team: Pick<Team, 'short' | 'primaryColor' | 'secondaryColor'> & Partial<Pick<Team, 'id' | 'name' | 'logo'>>;
   size?: number;
   className?: string;
+  /** stretch to the parent box (100% × 100%); `size` then only scales the lettering of the fallback badge */
+  fill?: boolean;
 }) {
+  const box = fill ? { width: '100%', height: '100%' } : { width: size, height: size };
   const [failedUrls, setFailedUrls] = useState<Record<string, true>>({});
   const sources = getClubLogoSources(team);
   const activeSrc = sources.find((u) => !failedUrls[u]);
@@ -175,7 +179,7 @@ export function TeamLogo({
     return (
       <span
         className={cn('inline-flex items-center justify-center shrink-0 select-none', className)}
-        style={{ width: size, height: size }}
+        style={box}
         title={team.name ?? team.short}
       >
         <img
@@ -205,8 +209,7 @@ export function TeamLogo({
     <span
       className={cn('inline-flex items-center justify-center font-display font-bold uppercase shrink-0 rounded-sm slash select-none', className)}
       style={{
-        width: size,
-        height: size,
+        ...box,
         background: team.primaryColor,
         color: team.secondaryColor,
         fontSize,

@@ -1,5 +1,6 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { APP_DOWNLOADS, APP_RELEASE, appVersion, gpuInfo, platform } from '../platform';
+import { UpdateCheckRow } from './UpdateBanner';
 import { CAMERAS } from './replayCameras';
 import { Button } from './ui';
 import { REPLAY_SPEEDS, resetSettings, setSettings, useSettings, type Settings } from '../game/settings';
@@ -147,6 +148,9 @@ function AppSection() {
     <Section title="Приложение и графика" hint="Игра одинаково работает в браузере и в приложениях. Сохранения у каждого варианта свои; перенести карьеру можно через «Сохранения» → экспорт/импорт файла.">
       <Row label="Версия игры">
         <span className="text-sm tabular" data-app-platform={p}>{PLATFORM_NAME[p]}{version ? ` · ${version}` : ''}</span>
+      </Row>
+      <Row label="Обновления" hint={p === 'web' ? 'Игра сама проверяет обновления при запуске и предлагает перезагрузить страницу.' : 'Игра сама проверяет обновления при запуске и предлагает скачать новую версию — она ставится поверх старой, карьеры сохраняются.'}>
+        <UpdateCheckRow />
       </Row>
       <Row label="Графика" hint={gpu.software
         ? (p === 'web'

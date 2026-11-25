@@ -379,8 +379,10 @@ export class RinkAI {
       for (const a of this.agents.values()) if (a.side === s && a.on === 'box' && this.g >= a.boxUntil - 1e-9) {
         const before = this.skaters(s).length;
         a.on = 'ice'; a.x = BOX[s].x; a.y = BOX[s].y - 0.6; a.vx = 0; a.vy = 0; a.leave = null; this.play('change', s, `${a.name} возвращается после удаления`, a);
-        // The team gets its man back — but never a sixth skater (seventh with a pulled goalie): someone heads for the bench.
-        this.baseSkaters[s] = Math.min(5, Math.max(this.baseSkaters[s], before + 1));
+        // The team gets its man back — unless a waiting penalty starts now and keeps it three (5-on-3 → still 3) —
+        // and never a sixth skater (seventh with a pulled goalie): someone heads for the bench.
+        const serving = [...this.agents.values()].filter(b => b.side === s && b !== a && (b.on === 'box' || b.leave === 'box') && b.pim < 10 && b.boxUntil > this.g + 1e-9 && b.boxUntil - b.pim * 60 <= this.g + 1e-6).length;
+        this.baseSkaters[s] = Math.min(5 - Math.min(2, serving), Math.max(this.baseSkaters[s], before + 1));
         this.trimSkaters(s, this.lastGoalie[s] === null, a);
       }
       const gWant = goalies[s];
@@ -590,7 +592,7 @@ export class RinkAI {
     const a = this.agent(id, s);
     const pim = e.pim ?? 2;
     a.pim = pim;
-    a.boxUntil = pim >= 10 ? e.sec + pim * 60 : Math.max(e.sec + 1, e.penUntil?.[s] ?? e.sec + pim * 60);
+    a.boxUntil = pim >= 10 ? e.sec + pim * 60 : Math.max(e.sec + 1, e.boxUntil ?? e.penUntil?.[s] ?? e.sec + pim * 60);
     if (a.on === 'ice') { a.leave = 'box'; if (this.puck.carrier === a) this.loosePuck(0, 0); }
     else { a.on = 'box'; const seat = this.boxSeat(a); a.x = seat.x; a.y = seat.y; }
     this.play('penalty', s, `Удаление: ${a.name}, ${pim} мин`, a);
@@ -1364,8 +1366,9 @@ export class RinkAI {
       p.x = inNet.x; p.y = inNet.y; p.h = Math.min(p.h, 0.9);
       this.play('goal', T, `ГОЛ! ${shooter?.name ?? ''}`, shooter);
       if (e.strength === 'PP') {
-        const boxed = [...this.agents.values()].filter(a => a.side === D && (a.on === 'box' || a.leave === 'box') && a.pim === 2).sort((x, y) => x.boxUntil - y.boxUntil)[0];
-        if (boxed) boxed.boxUntil = this.g;
+        // One minor ends (the one closest to its end); a double minor in its first half restarts as two minutes.
+        const boxed = [...this.agents.values()].filter(a => a.side === D && (a.on === 'box' || a.leave === 'box') && (a.pim === 2 || a.pim === 4) && a.boxUntil > this.g && a.boxUntil - a.pim * 60 <= this.g + 1e-6).sort((x, y) => x.boxUntil - y.boxUntil)[0];
+        if (boxed) { if (boxed.pim === 4 && boxed.boxUntil - this.g > 120) { boxed.boxUntil = this.g + 120; boxed.pim = 2; } else boxed.boxUntil = this.g; }
       }
       this.startStop('goal', FACEOFF_DOTS.center, shooter);
       p.dead = true;
