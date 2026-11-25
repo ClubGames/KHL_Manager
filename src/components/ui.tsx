@@ -379,6 +379,7 @@ const ICONS: Record<string, ReactNode> = {
   alert: <><path d="M12 3l10 18H2z" /><path d="M12 10v5M12 18h.01" /></>,
   expand: <><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></>,
   settings: <><circle cx="12" cy="12" r="3" /><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1" /></>,
+  info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v6M12 7.5h.01" strokeWidth={2.4} /></>,
   shrink: <><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /></>,
 };
 export function Icon({ name, className }: { name: keyof typeof ICONS | string; className?: string }) {

@@ -76,6 +76,9 @@ export function ReplayScene(props: Props) {
   const controller = useRef<((time: number) => void) | null>(null);
   const [failed, setFailed] = useState(false);
   const [rigged, setRigged] = useState(false);
+  // Position of the 2D picture (no WebGL / 2D mode). The 3D scene reads the clock from `live` every frame; the
+  // SVG rink is React, so playback has to push the time into state (it used to show only the seek position).
+  const [flatTime, setFlatTime] = useState(props.time);
   const { clip, home, away, players } = props;
   const quality = props.quality ?? 'standard';
   // Live values read by the render loop (no React re-render per frame).
@@ -408,7 +411,7 @@ export function ReplayScene(props: Props) {
   // Seek / restart from the parent.
   useEffect(() => {
     if ((props.seek ?? 0) !== live.current.seek) { live.current.seek = props.seek ?? 0; live.current.time = props.time; }
-    if (!props.playing) requestDraw();
+    if (!props.playing) { requestDraw(); setFlatTime(live.current.time); } else if (live.current.failed) setFlatTime(live.current.time);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.seek, props.time, props.playing]);
   useEffect(() => { requestDraw(); /* camera switch */ }, [props.camera]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -422,6 +425,7 @@ export function ReplayScene(props: Props) {
     const report = (t: number, now: number, force = false) => {
       if (!force && now - lastReport < (live.current.failed ? 33 : 100)) return;
       lastReport = now; callbacks.current.onTime?.(t, live.current.seek);
+      if (live.current.failed) setFlatTime(t);
     };
     const tick = (now: number) => {
       const dt = Math.min(.1, (now - last) / 1000); last = now;
@@ -440,6 +444,6 @@ export function ReplayScene(props: Props) {
   return <div className="absolute inset-0" data-replay-renderer={failed ? 'svg' : 'webgl'} data-replay-models={rigged && !failed ? 'rigged' : 'simple'}>
     <div ref={host} className={failed ? 'hidden' : 'w-full h-full'} />
     {!failed && props.overlay}
-    {failed && <div className="w-full h-full p-3 bg-[#102335]" data-replay-flat={props.flat || undefined}><RinkSvg frame={clipFrame(clip, props.time)} home={home} away={away} players={players} /><span className="absolute bottom-2 left-3 text-[10px] text-white/70">{props.flat ? '2D-повтор · 3D можно включить в настройках' : 'WebGL недоступен — показан тот же эпизод сверху.'}</span></div>}
+    {failed && <div className="w-full h-full p-3 bg-[#102335]" data-replay-flat={props.flat || undefined}><RinkSvg frame={clipFrame(clip, flatTime)} home={home} away={away} players={players} /><span className="absolute bottom-2 left-3 text-[10px] text-white/70">{props.flat ? '2D-повтор · 3D можно включить в настройках' : 'WebGL недоступен — показан тот же эпизод сверху.'}</span></div>}
   </div>;
 }

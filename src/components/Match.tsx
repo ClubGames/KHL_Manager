@@ -842,18 +842,22 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           </div>
         )}
         <div className="max-w-7xl mx-auto px-3 sm:px-4 py-2 sm:py-3 land:py-1 land:px-[max(0.75rem,env(safe-area-inset-left))] grid grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-3">
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-1 sm:gap-3 min-w-0">
             <TeamLogo team={H} size={32} className="sm:w-10 sm:h-10" />
-            <div className="min-w-0">
-              <div className="font-display text-sm sm:text-xl uppercase leading-none truncate">
-                <span className="sm:hidden">{H.short}</span>
-                <span className="hidden sm:inline">{H.name}</span>
+            <div className="min-w-0 flex-1 basis-0 sm:flex-initial sm:basis-auto">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="font-display text-sm sm:text-xl uppercase leading-none truncate">
+                  <span className="sm:hidden">{H.short}</span>
+                  <span className="hidden sm:inline">{H.name}</span>
+                </div>
+                <span className="hidden sm:inline-flex"><ManpowerBadge state={mp.state} ti={0} /></span>
               </div>
               <div className="text-[10px] sm:text-[11px] text-muted truncate">дома · {H.record.points} очк.</div>
             </div>
             <span className="font-display text-3xl sm:text-5xl tabular leading-none ml-auto score-tick" key={`h${score[0]}`}>
               {score[0]}
             </span>
+            {mp.state !== null && <div className="basis-full sm:hidden"><ManpowerBadge state={mp.state} ti={0} compact /></div>}
           </div>
           <div className="text-center px-1.5 sm:px-4 min-w-[82px] sm:min-w-[120px]">
             <ClockFace ticker={ticker} end={blockEnd} shootout={kind === 'so'} />
@@ -866,18 +870,22 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               )}
             </div>
           </div>
-          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-row-reverse">
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-x-2 gap-y-1 sm:gap-3 min-w-0 flex-row-reverse">
             <TeamLogo team={A} size={32} className="sm:w-10 sm:h-10" />
-            <div className="min-w-0 text-right">
-              <div className="font-display text-sm sm:text-xl uppercase leading-none truncate">
-                <span className="sm:hidden">{A.short}</span>
-                <span className="hidden sm:inline">{A.name}</span>
+            <div className="min-w-0 text-right flex-1 basis-0 sm:flex-initial sm:basis-auto">
+              <div className="flex items-center gap-2 sm:flex-row-reverse min-w-0">
+                <div className="font-display text-sm sm:text-xl uppercase leading-none truncate">
+                  <span className="sm:hidden">{A.short}</span>
+                  <span className="hidden sm:inline">{A.name}</span>
+                </div>
+                <span className="hidden sm:inline-flex"><ManpowerBadge state={mp.state} ti={1} /></span>
               </div>
               <div className="text-[10px] sm:text-[11px] text-muted truncate">гости · {A.record.points} очк.</div>
             </div>
             <span className="font-display text-3xl sm:text-5xl tabular leading-none mr-auto score-tick" key={`a${score[1]}`}>
               {score[1]}
             </span>
+            {mp.state !== null && <div className="basis-full sm:hidden text-right"><ManpowerBadge state={mp.state} ti={1} compact /></div>}
           </div>
         </div>
 
@@ -1240,6 +1248,27 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         </Overlay>
       )}
     </div>
+  );
+}
+
+/** «в большинстве / в меньшинстве» next to a team's name while a penalty is running. */
+function ManpowerBadge({ state, ti, compact = false }: { state: 0 | 1 | 'even' | null; ti: 0 | 1; compact?: boolean }) {
+  if (state === null) return null;
+  const kind = state === 'even' ? 'even' : state === ti ? 'pp' : 'pk';
+  const text = kind === 'even' ? '4 на 4' : kind === 'pp' ? 'в большинстве' : 'в меньшинстве';
+  const count = kind === 'even' ? '' : kind === 'pp' ? '5×4' : '4×5';
+  return (
+    <span
+      data-team-manpower={kind}
+      className={cn(
+        'inline-flex items-center gap-1 rounded-sm font-semibold whitespace-nowrap leading-none border',
+        compact ? 'text-[10px] px-1.5 py-[3px]' : 'text-xs px-1.5 py-1',
+        kind === 'pp' ? 'bg-ok/15 text-ok border-ok/40' : kind === 'pk' ? 'bg-accent/15 text-accent border-accent/40' : 'bg-amber/15 text-amber border-amber/40'
+      )}
+    >
+      {text}
+      {count && !compact && <span className="tabular opacity-80">{count}</span>}
+    </span>
   );
 }
 

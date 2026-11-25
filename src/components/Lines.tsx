@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import type { Lineup, Player } from '../types';
 import { autoLineup, lineupConstraintsFor } from '../game/ai';
 import { attackRating, defenseRating, isDefense, isForward, isGoalie, POS_RU } from '../game/ratings';
@@ -9,7 +9,9 @@ import { nextUserGame } from '../game/schedule';
 import { ATTACK_STYLE_INFO, calcDefenseChemistry, calcForwardChemistry, FORECHECK_INFO, freshnessTone, getArchetype, getTeamTactics, goalieFreshness, playerCaptainRole, PULL_GOALIE_INFO } from '../game/chemistry';
 import { isU20DefenseLimiter, isU20ForwardLimiter, isU20Limiter } from '../game/dynasty';
 import { formatInjuryDays, isPlayingHurt, isUnavailable } from '../game/medical';
-import { Bar, Button, Empty, Modal, Panel, OverallChip, PlayerFace, PosBadge, shortName, Tag, useUI } from './ui';
+import { Bar, Button, Empty, Icon, Modal, Panel, OverallChip, PlayerFace, PosBadge, shortName, Tag, useUI } from './ui';
+
+const POS_COLOR_TEXT: Record<string, string> = { C: '#8FD8F0', LW: '#8FD8F0', RW: '#8FD8F0', D: '#F2B544', G: '#3FCF8E' };
 import { LineupPreview } from './LineupPreview';
 import { cn } from '../utils/cn';
 
@@ -218,33 +220,32 @@ export function Lines() {
     const p = skater(id ?? null);
     const capRole = p ? playerCaptainRole(U, p.id) : null;
     const arch = p ? getArchetype(p) : null;
+    // Two rows so the name always gets the full card width (the cards are narrow on desktop and on a phone in
+    // landscape): name on top, position / role / status badges and the rating below.
     return (
-      <div className={slotCls(id ?? null, pref)}>
+      <div className={slotCls(id ?? null, pref)} data-slot={pref}>
         <button
           type="button"
           onClick={onClick}
-          className="flex items-center gap-1.5 px-2 py-1.5 flex-1 min-w-0 text-left h-full"
+          className="flex items-center gap-2 px-2 py-1.5 flex-1 min-w-0 text-left h-full"
           title={p ? `${p.name} · ${arch?.label ?? ''} · OVR ${p.overall} · ${p.country}` : 'Нажмите, чтобы выбрать игрока'}
         >
-          <span className="text-[10px] uppercase text-muted w-5 shrink-0 font-semibold">{label ?? POS_RU[pref]}</span>
+          <span className="text-[11px] uppercase text-muted w-5 shrink-0 font-semibold text-center">{label ?? POS_RU[pref]}</span>
           {p ? (
             <>
-              <PlayerFace face={p.face} name={p.name} number={p.number} size={22} className="hidden md:inline-flex" />
-              <span className="font-medium truncate flex-1 sm:hidden">{p.name}</span>
-              <span className="font-medium truncate flex-1 hidden sm:inline xl:hidden">{shortName(p.name)}</span>
-              <span className="font-medium truncate flex-1 hidden xl:inline">{p.name}</span>
-              {capRole && (
-                <span className={cn('text-[9px] font-bold px-1 rounded shrink-0', capRole === 'C' ? 'bg-gold/25 text-gold' : 'bg-ice/20 text-ice')}>
-                  {capRole === 'C' ? 'К' : 'А'}
+              <PlayerFace face={p.face} name={p.name} number={p.number} size={30} className="hidden 2xl:inline-flex" />
+              <span className="@container flex-1 min-w-0">
+                <span className="block font-semibold leading-tight truncate text-[15px] sm:text-sm" data-slot-name>
+                  <span className="@min-[132px]:hidden">{shortName(p.name)}</span>
+                  <span className="hidden @min-[132px]:inline">{p.name}</span>
                 </span>
-              )}
-              {arch && !isGoalie(p) && (
-                <span className="text-[9px] px-1 rounded bg-bg/70 text-muted shrink-0 sm:hidden lg:inline" style={{ color: arch.color }}>
-                  {arch.short}
+                <span className="mt-0.5 flex items-center gap-1 text-[10px] leading-none font-semibold min-w-0 overflow-hidden">
+                  <span className="shrink-0" style={{ color: POS_COLOR_TEXT[p.position] }}>{POS_RU[p.position]}</span>
+                  {arch && !isGoalie(p) && <span className="shrink-0 px-1 py-0.5 rounded bg-bg/70" style={{ color: arch.color }}>{arch.short}</span>}
+                  {capRole && <span className={cn('shrink-0 px-1 py-0.5 rounded', capRole === 'C' ? 'bg-gold/25 text-gold' : 'bg-ice/20 text-ice')}>{capRole === 'C' ? 'К' : 'А'}</span>}
+                  {isLegionnaire(p) && <span className="shrink-0 px-1 py-0.5 rounded bg-gold/20 text-gold">ЛЕГ</span>}
                 </span>
-              )}
-              {isLegionnaire(p) && <span className="text-[9px] font-bold px-1 rounded bg-gold/20 text-gold shrink-0">ЛЕГ</span>}
-              <PosBadge pos={p.position} />
+              </span>
               <OverallChip value={p.overall} size="sm" />
             </>
           ) : (
@@ -252,14 +253,14 @@ export function Lines() {
           )}
         </button>
         {p && (
-          <div className="flex items-center border-l border-line/60 shrink-0">
+          <div className="flex flex-col sm:flex-row items-stretch justify-center border-l border-line/60 shrink-0">
             <button
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
                 setPicker({ title: slotTitle, pref: pickerPref ?? pref, curId: p.id, set: setFn });
               }}
-              className="px-2 py-2 text-xs text-muted hover:text-ice"
+              className="px-2 py-1.5 text-sm text-muted hover:text-ice flex items-center justify-center"
               title="Быстрая замена из состава / запаса"
               aria-label="Быстрая замена"
             >
@@ -271,17 +272,28 @@ export function Lines() {
                 e.stopPropagation();
                 ui.openPlayer(p.id);
               }}
-              className="sm:hidden pr-2 pl-1 py-2 text-xs text-muted hover:text-text"
+              className="sm:hidden px-2 py-1.5 text-muted hover:text-text flex items-center justify-center"
               title="Карточка игрока"
               aria-label="Карточка игрока"
             >
-              ⓘ
+              <Icon name="info" />
             </button>
           </div>
         )}
       </div>
     );
   };
+
+  /** A line / pair / unit: title and its ratings on top, the player cards below at full width. */
+  const Block = ({ title, tone, ids, chemKind, cols, children }: { title: string; tone: 'ice' | 'amber'; ids: (string | null)[]; chemKind?: 'F' | 'D'; cols: string; children: ReactNode }) => (
+    <div className="rounded-md border border-line/60 bg-bg/35 p-2 sm:p-2.5" data-line-block={title}>
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
+        <span className={cn('font-display text-sm sm:text-base uppercase tracking-wide', tone === 'ice' ? 'text-ice' : 'text-amber')}>{title}</span>
+        <Info ids={ids} chemKind={chemKind} />
+      </div>
+      <div className={cn('grid grid-cols-1 gap-1.5 sm:gap-2', cols)}>{children}</div>
+    </div>
+  );
 
   const lineStats = (ids: (string | null)[]) => {
     const ps = ids.map(skater).filter((p): p is Player => !!p);
@@ -383,7 +395,7 @@ export function Lines() {
         {([
           ['5v5', '5×5 Звенья'],
           ['special', 'ЧБ и ЧМ'],
-          ['goalies', 'Вратари/U20'],
+          ['goalies', 'Вратари U20'],
           ['tactics', `Тактика (${bench.length})`],
         ] as const).map(([id, lbl]) => (
           <button
@@ -391,7 +403,7 @@ export function Lines() {
             type="button"
             onClick={() => setMobileSec(id)}
             className={cn(
-              'py-2 px-1 rounded-sm text-[11px] font-semibold text-center transition-colors truncate',
+              'py-1.5 px-1 rounded-sm text-xs leading-tight font-semibold text-center transition-colors min-h-[36px]',
               mobileSec === id ? 'bg-accent text-white' : 'text-muted hover:text-text bg-panel2/50'
             )}
           >
@@ -438,65 +450,37 @@ export function Lines() {
         <div className="space-y-4">
           <div className={cn('space-y-4', mobileSec !== '5v5' && 'hidden md:block')}>
             <Panel title="Звенья нападения">
-              <div className="space-y-3.5 sm:space-y-3">
+              <div className="space-y-2.5">
                 {L.F.map((line, i) => (
-                  <div key={i} className="space-y-1.5 sm:space-y-0 sm:grid sm:grid-cols-[28px_1fr_auto] sm:items-center sm:gap-2 rounded-md border border-line/60 sm:border-0 bg-bg/35 sm:bg-transparent p-2 sm:p-0">
-                    <div className="flex items-center justify-between sm:block">
-                      <span className="font-display text-sm sm:text-lg text-ice sm:text-muted uppercase">{i + 1}<span className="sm:hidden">-е звено</span></span>
-                      <span className="sm:hidden">
-                        <Info ids={line} chemKind="F" />
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 sm:gap-2">
-                      <Slot id={line[0]} pref="C" slotTitle={`${i + 1}-е звено · Центр`} setFn={(c, v) => (c.F[i][0] = v)} onClick={() => slotClick((c) => c.F[i][0], (c, v) => (c.F[i][0] = v), { title: `${i + 1}-е звено · Центр`, pref: 'C' })} />
-                      <Slot id={line[1]} pref="LW" slotTitle={`${i + 1}-е звено · Левый край`} setFn={(c, v) => (c.F[i][1] = v)} onClick={() => slotClick((c) => c.F[i][1], (c, v) => (c.F[i][1] = v), { title: `${i + 1}-е звено · Левый край`, pref: 'LW' })} />
-                      <Slot id={line[2]} pref="RW" slotTitle={`${i + 1}-е звено · Правый край`} setFn={(c, v) => (c.F[i][2] = v)} onClick={() => slotClick((c) => c.F[i][2], (c, v) => (c.F[i][2] = v), { title: `${i + 1}-е звено · Правый край`, pref: 'RW' })} />
-                    </div>
-                    <div className="hidden sm:block">
-                      <Info ids={line} chemKind="F" />
-                    </div>
-                  </div>
+                  <Block key={i} title={`${i + 1}-е звено`} tone="ice" ids={line} chemKind="F" cols="sm:grid-cols-3">
+                    <Slot id={line[0]} pref="C" slotTitle={`${i + 1}-е звено · Центр`} setFn={(c, v) => (c.F[i][0] = v)} onClick={() => slotClick((c) => c.F[i][0], (c, v) => (c.F[i][0] = v), { title: `${i + 1}-е звено · Центр`, pref: 'C' })} />
+                    <Slot id={line[1]} pref="LW" slotTitle={`${i + 1}-е звено · Левый край`} setFn={(c, v) => (c.F[i][1] = v)} onClick={() => slotClick((c) => c.F[i][1], (c, v) => (c.F[i][1] = v), { title: `${i + 1}-е звено · Левый край`, pref: 'LW' })} />
+                    <Slot id={line[2]} pref="RW" slotTitle={`${i + 1}-е звено · Правый край`} setFn={(c, v) => (c.F[i][2] = v)} onClick={() => slotClick((c) => c.F[i][2], (c, v) => (c.F[i][2] = v), { title: `${i + 1}-е звено · Правый край`, pref: 'RW' })} />
+                  </Block>
                 ))}
               </div>
             </Panel>
             <Panel title="Пары защитников">
-              <div className="space-y-3.5 sm:space-y-3">
+              <div className="space-y-2.5">
                 {L.D.map((pair, i) => (
-                  <div key={i} className="space-y-1.5 sm:space-y-0 sm:grid sm:grid-cols-[28px_1fr_auto] sm:items-center sm:gap-2 rounded-md border border-line/60 sm:border-0 bg-bg/35 sm:bg-transparent p-2 sm:p-0">
-                    <div className="flex items-center justify-between sm:block">
-                      <span className="font-display text-sm sm:text-lg text-amber sm:text-muted uppercase">{i + 1}<span className="sm:hidden">-я пара</span></span>
-                      <span className="sm:hidden">
-                        <Info ids={pair} chemKind="D" />
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 sm:gap-2">
-                      <Slot id={pair[0]} pref="D" label="З" slotTitle={`${i + 1}-я пара · Левый защитник`} setFn={(c, v) => (c.D[i][0] = v)} onClick={() => slotClick((c) => c.D[i][0], (c, v) => (c.D[i][0] = v), { title: `${i + 1}-я пара · Защитник`, pref: 'D' })} />
-                      <Slot id={pair[1]} pref="D" label="З" slotTitle={`${i + 1}-я пара · Правый защитник`} setFn={(c, v) => (c.D[i][1] = v)} onClick={() => slotClick((c) => c.D[i][1], (c, v) => (c.D[i][1] = v), { title: `${i + 1}-я пара · Защитник`, pref: 'D' })} />
-                    </div>
-                    <div className="hidden sm:block">
-                      <Info ids={pair} chemKind="D" />
-                    </div>
-                  </div>
+                  <Block key={i} title={`${i + 1}-я пара`} tone="amber" ids={pair} chemKind="D" cols="sm:grid-cols-2">
+                    <Slot id={pair[0]} pref="D" label="З" slotTitle={`${i + 1}-я пара · Левый защитник`} setFn={(c, v) => (c.D[i][0] = v)} onClick={() => slotClick((c) => c.D[i][0], (c, v) => (c.D[i][0] = v), { title: `${i + 1}-я пара · Защитник`, pref: 'D' })} />
+                    <Slot id={pair[1]} pref="D" label="З" slotTitle={`${i + 1}-я пара · Правый защитник`} setFn={(c, v) => (c.D[i][1] = v)} onClick={() => slotClick((c) => c.D[i][1], (c, v) => (c.D[i][1] = v), { title: `${i + 1}-я пара · Защитник`, pref: 'D' })} />
+                  </Block>
                 ))}
               </div>
             </Panel>
           </div>
 
           <div className={cn('space-y-4', mobileSec !== 'special' && 'hidden md:block')}>
-            <Panel title="Большинство">
-              <div className="space-y-3.5 sm:space-y-3">
+            {/* Power play: forwards in a row of three, the two point men below; penalty kill: 2 + 2. */}
+            <Panel title="Большинство (5 на 4)">
+              <div className="space-y-2.5">
                 {(['pp1', 'pp2'] as const).map((k, i) => (
-                  <div key={k} className="space-y-1.5 sm:space-y-0 sm:grid sm:grid-cols-[28px_1fr_auto] sm:items-center sm:gap-2 rounded-md border border-line/60 sm:border-0 bg-bg/35 sm:bg-transparent p-2 sm:p-0">
-                    <div className="flex items-center justify-between sm:block">
-                      <span className="font-display text-sm sm:text-lg text-ice sm:text-muted uppercase">{i + 1}<span className="sm:hidden">-я бригада ЧБ</span></span>
-                      <span className="sm:hidden">
-                        <Info ids={L[k]} />
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-1.5 sm:gap-2">
-                      {L[k].map((id, j) => (
+                  <Block key={k} title={`${i + 1}-я бригада большинства`} tone="ice" ids={L[k]} cols="sm:grid-cols-6">
+                    {L[k].map((id, j) => (
+                      <div key={j} className={j < 3 ? 'sm:col-span-2' : 'sm:col-span-3'}>
                         <Slot
-                          key={j}
                           id={id}
                           pref={j < 3 ? 'C' : 'D'}
                           label={j < 3 ? 'Н' : 'З'}
@@ -504,42 +488,28 @@ export function Lines() {
                           setFn={(c, v) => (c[k][j] = v)}
                           onClick={() => slotClick((c) => c[k][j], (c, v) => (c[k][j] = v), { title: `${i + 1}-я бригада ЧБ`, pref: j < 3 ? 'C' : 'D' })}
                         />
-                      ))}
-                    </div>
-                    <div className="hidden sm:block">
-                      <Info ids={L[k]} />
-                    </div>
-                  </div>
+                      </div>
+                    ))}
+                  </Block>
                 ))}
               </div>
             </Panel>
-            <Panel title="Меньшинство">
-              <div className="space-y-3.5 sm:space-y-3">
+            <Panel title="Меньшинство (4 на 5)">
+              <div className="space-y-2.5">
                 {(['pk1', 'pk2'] as const).map((k, i) => (
-                  <div key={k} className="space-y-1.5 sm:space-y-0 sm:grid sm:grid-cols-[28px_1fr_auto] sm:items-center sm:gap-2 rounded-md border border-line/60 sm:border-0 bg-bg/35 sm:bg-transparent p-2 sm:p-0">
-                    <div className="flex items-center justify-between sm:block">
-                      <span className="font-display text-sm sm:text-lg text-amber sm:text-muted uppercase">{i + 1}<span className="sm:hidden">-я четвёрка ЧМ</span></span>
-                      <span className="sm:hidden">
-                        <Info ids={L[k]} />
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-4 gap-1.5 sm:gap-2">
-                      {L[k].map((id, j) => (
-                        <Slot
-                          key={j}
-                          id={id}
-                          pref={j < 2 ? 'C' : 'D'}
-                          label={j < 2 ? 'Н' : 'З'}
-                          slotTitle={`${i + 1}-я четвёрка меньшинства · ${j < 2 ? 'Нападающий' : 'Защитник'}`}
-                          setFn={(c, v) => (c[k][j] = v)}
-                          onClick={() => slotClick((c) => c[k][j], (c, v) => (c[k][j] = v), { title: `${i + 1}-я четвёрка ЧМ`, pref: j < 2 ? 'C' : 'D' })}
-                        />
-                      ))}
-                    </div>
-                    <div className="hidden sm:block">
-                      <Info ids={L[k]} />
-                    </div>
-                  </div>
+                  <Block key={k} title={`${i + 1}-я четвёрка меньшинства`} tone="amber" ids={L[k]} cols="sm:grid-cols-2">
+                    {L[k].map((id, j) => (
+                      <Slot
+                        key={j}
+                        id={id}
+                        pref={j < 2 ? 'C' : 'D'}
+                        label={j < 2 ? 'Н' : 'З'}
+                        slotTitle={`${i + 1}-я четвёрка меньшинства · ${j < 2 ? 'Нападающий' : 'Защитник'}`}
+                        setFn={(c, v) => (c[k][j] = v)}
+                        onClick={() => slotClick((c) => c[k][j], (c, v) => (c[k][j] = v), { title: `${i + 1}-я четвёрка ЧМ`, pref: j < 2 ? 'C' : 'D' })}
+                      />
+                    ))}
+                  </Block>
                 ))}
               </div>
             </Panel>
@@ -687,7 +657,7 @@ export function Lines() {
                         sel?.id === p.id ? 'border-accent bg-accent/15 ring-1 ring-accent/50' : 'border-transparent hover:bg-panel2',
                         (isUnavailable(p, s.phase) || suspendedSet.has(p.id)) && 'opacity-60'
                       )}
-                      title="Нажмите для выбора в состав · ⓘ — карточка игрока"
+                      title="Нажмите для выбора в состав · (i) — карточка игрока"
                     >
                       <PlayerFace face={p.face} name={p.name} number={p.number} size={22} />
                       <PosBadge pos={p.position} />
@@ -707,7 +677,7 @@ export function Lines() {
                       className="px-2 py-2 text-xs text-muted hover:text-ice rounded-sm border border-line/60 bg-panel2/50 shrink-0"
                       title="Карточка игрока"
                     >
-                      ⓘ
+                      <Icon name="info" />
                     </button>
                   </li>
                 ))}

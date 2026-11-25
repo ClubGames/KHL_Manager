@@ -2,6 +2,7 @@ import { isApp, saveFile } from '../platform';
 import { ArrayBufferTarget, Muxer } from 'mp4-muxer';
 import type { ReplayClip } from '../game/rinkPlayback';
 import { viewFor, type ReplayCamera, type ReplayView } from './replayCameras';
+import { clockAt, fmtGameClock, STRENGTH_TEXT, type Broadcast } from './replayBroadcast';
 
 /**
  * MP4 export of the 3D goal replay.
@@ -25,6 +26,8 @@ export type ExportGraphics = {
   /** Score before and after the goal. */
   before: [number, number]; after: [number, number];
   scorer?: string; assists?: string;
+  /** TV score bug data (game clock running down to the goal, strengths); without it the clock is not shown */
+  broadcast?: Broadcast;
 };
 
 export type ExportOptions = {
@@ -115,27 +118,54 @@ export function drawGraphics(ctx: CanvasRenderingContext2D, w: number, h: number
     ctx.fillStyle = fg; ctx.textAlign = 'left'; ctx.fillText(text, x0 + 14 * u, y + ph / 2 + 1 * u);
     return pw;
   };
-  // Score bug, top left: [home | score | away] with club colour bars.
-  const x = 40 * u, y = 36 * u, bh = 58 * u;
-  ctx.font = font(34);
-  const hw = Math.max(110 * u, ctx.measureText(g.home.short).width + 36 * u), aw = Math.max(110 * u, ctx.measureText(g.away.short).width + 36 * u), sw = 120 * u;
-  ctx.fillStyle = 'rgba(6,12,22,.86)'; ctx.beginPath(); ctx.roundRect(x, y, hw + sw + aw, bh, 10 * u); ctx.fill();
-  ctx.fillStyle = g.home.color; ctx.fillRect(x, y + bh - 7 * u, hw, 7 * u);
-  ctx.fillStyle = g.away.color; ctx.fillRect(x + hw + sw, y + bh - 7 * u, aw, 7 * u);
-  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center';
-  ctx.fillText(g.home.short, x + hw / 2, y + bh / 2 - 2 * u); ctx.fillText(g.away.short, x + hw + sw + aw / 2, y + bh / 2 - 2 * u);
-  ctx.fillStyle = goal ? '#f5b942' : '#ffffff'; ctx.font = font(38);
-  ctx.fillText(`${score[0]} : ${score[1]}`, x + hw + sw / 2, y + bh / 2);
-  pill(x, y + bh + 10 * u, `${g.period} · ${g.strength}`, 22, 'rgba(6,12,22,.72)', '#c9d6e2');
-  // Shot type, top right; slow-motion badge during the replay.
-  pill(w - 40 * u, y, shot.replay ? `ПОВТОР · ×${shot.speed}` : g.label, 26, shot.replay ? '#d8314b' : 'rgba(6,12,22,.78)', '#ffffff', 'right');
+  // KHL-style score bug, top left: [КХЛ | ▌HOME (БОЛ) score | ▌AWAY score | period clock].
+  const x = 40 * u, y = 36 * u, bh = 58 * u, b = g.broadcast;
+  const seg = (text: string, px: number) => { ctx.font = font(px); return ctx.measureText(text).width; };
+  const st = (ti: 0 | 1) => { const v = b?.strength[ti]; return v ? STRENGTH_TEXT[v] : ''; };
+  const logoW = seg('КХЛ', 26) + 28 * u, numW = 54 * u, barW = 9 * u;
+  const teamW = (ti: 0 | 1) => barW + seg((ti ? g.away : g.home).short, 32) + 30 * u + (st(ti) ? seg(st(ti), 18) + 18 * u : 0) + numW;
+  const period = b ? (b.period === 'ОТ' ? 'ОТ' : `${b.period}-й`) : '';
+  const clock = b ? fmtGameClock(clockAt(b, clip, shot.time)) : '';
+  const clockW = b ? seg(period, 24) + seg('00:00', 32) + 48 * u : 0;
+  const total = logoW + teamW(0) + teamW(1) + clockW;
+  ctx.fillStyle = 'rgba(10,26,51,.95)'; ctx.beginPath(); ctx.roundRect(x, y, total, bh, 4 * u); ctx.fill();
+  ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, total, bh, 4 * u); ctx.clip();
+  const grad = ctx.createLinearGradient(0, y, 0, y + bh); grad.addColorStop(0, '#1f5fbf'); grad.addColorStop(1, '#123a78');
+  ctx.fillStyle = grad; ctx.fillRect(x, y, logoW, bh);
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = font(26); ctx.fillText('КХЛ', x + logoW / 2, y + bh / 2 + 1 * u);
+  let cx = x + logoW;
+  for (const ti of [0, 1] as const) {
+    const t = ti ? g.away : g.home, w0 = teamW(ti);
+    ctx.fillStyle = t.color; ctx.fillRect(cx, y, barW, bh);
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'left'; ctx.font = font(32); ctx.fillText(t.short, cx + barW + 15 * u, y + bh / 2 + 1 * u);
+    if (st(ti)) {
+      const sw = seg(st(ti), 18) + 18 * u, sx = cx + w0 - numW - sw;
+      ctx.fillStyle = '#f5b942'; ctx.fillRect(sx, y, sw, bh);
+      ctx.fillStyle = '#0a1424'; ctx.textAlign = 'center'; ctx.font = font(18); ctx.fillText(st(ti), sx + sw / 2, y + bh / 2 + 1 * u);
+    }
+    const scored = goal && g.after[ti] !== g.before[ti];
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(cx + w0 - numW, y, numW, bh);
+    ctx.fillStyle = scored ? '#d8314b' : '#0a1424'; ctx.textAlign = 'center'; ctx.font = font(36); ctx.fillText(String(score[ti]), cx + w0 - numW / 2, y + bh / 2 + 1 * u);
+    cx += w0;
+    if (ti === 0) { ctx.fillStyle = 'rgba(255,255,255,.15)'; ctx.fillRect(cx - 1 * u, y, 2 * u, bh); }
+  }
+  if (b) {
+    ctx.fillStyle = '#06101f'; ctx.fillRect(cx, y, clockW, bh);
+    ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,.7)'; ctx.font = font(24); ctx.fillText(period, cx + 16 * u, y + bh / 2 + 1 * u);
+    ctx.textAlign = 'right'; ctx.fillStyle = '#ffffff'; ctx.font = font(32); ctx.fillText(clock, cx + clockW - 16 * u, y + bh / 2 + 1 * u);
+  }
+  ctx.restore();
+  if (!b) pill(x, y + bh + 10 * u, `${g.period} · ${g.strength}`, 22, 'rgba(6,12,22,.72)', '#c9d6e2');
+  // «ПОВТОР» tag (with the slow-motion speed) and the shot type, top right.
+  const tagW = pill(w - 40 * u, y, shot.replay ? `● ПОВТОР · ×${shot.speed}` : '● ПОВТОР', 26, '#d8314b', '#ffffff', 'right');
+  pill(w - 40 * u - tagW - 8 * u, y, g.label, 26, 'rgba(10,26,51,.9)', '#ffffff', 'right');
   // Lower third once the puck is in: ГОЛ + scorer (+ assists).
   if (goal) {
     const k = Math.min(1, (shot.time - clip.goal) * clip.duration / .35 / (shot.replay ? 1 / shot.speed : 1));
     const by = h - 170 * u, bx = 40 * u - (1 - k) * 60 * u;
     ctx.globalAlpha = k;
     ctx.fillStyle = '#d8314b'; ctx.beginPath(); ctx.roundRect(bx, by, 190 * u, 92 * u, 10 * u); ctx.fill();
-    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = font(60); ctx.fillText('ГОЛ', bx + 95 * u, by + 48 * u);
+    ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = font(60); ctx.fillText('ГОЛ!', bx + 95 * u, by + 48 * u);
     if (g.scorer) {
       ctx.font = font(40); const nameW = ctx.measureText(g.scorer).width;
       ctx.font = font(24, 500); const asW = g.assists ? ctx.measureText(g.assists).width : 0;

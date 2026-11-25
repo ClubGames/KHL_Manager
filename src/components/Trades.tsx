@@ -71,7 +71,7 @@ function PlayerList({ ids, selected, onToggle, title, empty, footer, own = false
                           className="px-1.5 py-0.5 text-xs text-muted hover:text-ice rounded border border-line/60 shrink-0"
                           title="Карточка игрока"
                         >
-                          ⓘ
+                          <Icon name="info" className="w-3.5 h-3.5" />
                         </button>
                       </div>
                     </li>

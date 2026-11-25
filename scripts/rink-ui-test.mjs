@@ -64,8 +64,17 @@ try {
   await page.getByRole('button', { name: 'Приблизить', exact: true }).click(); await page.waitForTimeout(60);
   assert.ok(!far.equals(await page.locator('[data-replay-renderer]').screenshot()), 'zoom must change the image');
   await page.getByRole('button', { name: 'У ворот', exact: true }).click();
-  await slider.fill('900'); assert.ok(await page.getByText('ГОЛ', { exact: true }).isVisible());
-  await slider.fill('500'); assert.equal(await page.getByText('ГОЛ', { exact: true }).count(), 0);
+  await slider.fill('900'); assert.ok(await page.getByText('ГОЛ!', { exact: true }).isVisible());
+  // TV graphics: score bug with the game clock (frozen at the goal time), score after the goal, lower third.
+  assert.equal(await page.locator('[data-replay-clock]').innerText(), '11:59');
+  assert.deepEqual(await page.locator('[data-bug-score]').allInnerTexts(), ['1', '0']);
+  assert.match(await page.locator('[data-goal-lower-third]').innerText(), /Передачи/);
+  assert.ok(await page.locator('[data-replay-tag]').isVisible());
+  await slider.fill('500'); assert.equal(await page.getByText('ГОЛ!', { exact: true }).count(), 0);
+  assert.deepEqual(await page.locator('[data-bug-score]').allInnerTexts(), ['0', '0']);
+  const clockEarly = await page.locator('[data-replay-clock]').innerText();
+  assert.ok(clockEarly > '11:59' && clockEarly <= '12:05', `the clock runs down to the goal (${clockEarly})`);
+  console.log(`ok broadcast graphics: score bug ${clockEarly} → 11:59, 0:0 → 1:0, «ГОЛ!» lower third`);
   await page.getByLabel('Скорость повтора').selectOption('0.25');
   await page.getByRole('button', { name: '↻ Повторить', exact: true }).click();
   await page.waitForTimeout(300); assert.ok(Number(await slider.inputValue()) < 200);
@@ -139,7 +148,7 @@ try {
   await fallback.locator('[data-replay-renderer="svg"]').waitFor();
   assert.equal(await fallback.locator('[data-rink-player]').count(), 12);
   await fallback.getByRole('slider').fill('950');
-  assert.ok(await fallback.getByText('ГОЛ', { exact: true }).isVisible());
+  assert.ok(await fallback.getByText('ГОЛ!', { exact: true }).isVisible());
   await fallback.keyboard.press('Escape'); await fallback.close();
   console.log('ok WebGL-unavailable fallback uses same timeline and stays dismissible');
 
