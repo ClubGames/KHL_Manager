@@ -81,6 +81,11 @@ try {
   assert.equal(await page.locator('[data-replay-flat]').count(), 1);
   assert.equal(await page.locator('[data-replay-stage] canvas').count(), 0, 'no WebGL canvas in 2D mode');
   assert.equal(await page.locator('[data-replay-export]').count(), 0, 'no video export in 2D mode');
+  // The 2D picture plays by itself: players move without touching the scrubber (they used to stand still).
+  const flatPos = () => page.locator('[data-replay-flat] svg').innerHTML();
+  const p0 = await flatPos(); await page.waitForTimeout(1200); const p1 = await flatPos();
+  assert.notEqual(p0, p1, '2D replay must animate during playback');
+  assert.ok(Number(await page.getByRole('slider', { name: 'Позиция повтора' }).inputValue()) > 0, 'the scrubber follows playback');
   await page.locator('[data-replay-mode="3D"]').click();
   await page.locator('[data-replay-stage] canvas').waitFor({ timeout: 30000 });
   await page.locator('[data-replay-preparing]').waitFor({ state: 'detached', timeout: 60000 });

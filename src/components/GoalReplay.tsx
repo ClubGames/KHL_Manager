@@ -7,6 +7,7 @@ import { canExportMp4, exportReplayMp4, saveVideo, videoFileName, type ExportGra
 import { REPLAY_SPEEDS, setSettings, useSettings } from '../game/settings';
 import { Button, Icon, TeamLogo } from './ui';
 import { exitFullscreen, fullscreenElement, useFullscreen } from '../fullscreen';
+import { broadcastFor, clockAt, fmtGameClock, STRENGTH_TEXT, STRENGTH_TITLE, type Broadcast, type BroadcastStrength } from './replayBroadcast';
 
 /** Finished videos of this session: downloading the same replay with the same options again is instant. */
 const videoCache = new Map<string, { blob: Blob; name: string; note: string }>();
@@ -18,6 +19,49 @@ const fmtSeconds = (s: number) => (s >= 60 ? `${Math.floor(s / 60)} мин ${Mat
 
 /** «→ where» for the apps (a file path / the shared folder); the browser's own download bar says it already. */
 const savedTo = (where: string) => (where === 'загрузки браузера' ? '' : ` → ${where}`);
+
+/** KHL-style TV graphics over the replay: score bug with the running game clock, «ПОВТОР» tag, goal lower third. */
+function BroadcastGraphics({ b, clip, time, home, away, scorer, number, assists, big, flat }: {
+  b: Broadcast; clip: ReplayClip; time: number; home: Team; away: Team; scorer?: string; number?: number; assists?: string; big: boolean; flat: boolean;
+}) {
+  const goal = time >= clip.goal;
+  const score = goal ? b.after : b.before;
+  const side = (team: Team, ti: 0 | 1) => {
+    const st: BroadcastStrength = b.strength[ti];
+    return <div className="flex items-stretch" data-bug-team={ti}>
+      <span className="w-1 sm:w-1.5 shrink-0" style={{ background: team.primaryColor }} />
+      <span className={`px-1.5 sm:px-2.5 flex items-center font-display uppercase tracking-wide ${big ? 'sm:text-xl' : 'sm:text-base'}`}>{(team.short || team.name).toUpperCase()}</span>
+      {st && <span className="px-1 sm:px-1.5 flex items-center bg-[#f5b942] text-[#0a1424] font-bold text-[8px] sm:text-[10px] tracking-wide" title={STRENGTH_TITLE[st]} data-bug-strength={st}>{STRENGTH_TEXT[st]}</span>}
+      <span key={`${ti}-${score[ti]}`} className={`min-w-[1.6em] px-1 sm:px-1.5 flex items-center justify-center font-display tabular bg-white ${big ? 'sm:text-2xl' : 'sm:text-lg'} ${goal && b.after[ti] !== b.before[ti] ? 'score-tick text-[#d8314b]' : 'text-[#0a1424]'}`} data-bug-score={ti}>{score[ti]}</span>
+    </div>;
+  };
+  return <div className="absolute inset-0 pointer-events-none select-none text-white" data-broadcast>
+    {/* Score bug, top left. */}
+    <div className={`absolute top-2 left-2 sm:top-3 sm:left-3 flex items-stretch h-6 ${big ? 'sm:h-10' : 'sm:h-8'} text-xs rounded-sm overflow-hidden shadow-lg shadow-black/40 bg-[#0a1a33]/95 ring-1 ring-white/10`} data-score-bug>
+      <span className="px-1.5 sm:px-2 flex items-center bg-gradient-to-b from-[#1f5fbf] to-[#123a78] font-display font-bold tracking-wider text-[10px] sm:text-sm">КХЛ</span>
+      {side(home, 0)}
+      <span className="w-px bg-white/15" />
+      {side(away, 1)}
+      <span className="px-1.5 sm:px-2.5 flex items-center gap-1.5 sm:gap-2 bg-[#06101f] font-display tabular">
+        <span className="text-white/70 text-[10px] sm:text-sm">{b.period === 'ОТ' ? 'ОТ' : `${b.period}-й`}</span>
+        <span className={`${big ? 'sm:text-xl' : 'sm:text-base'} min-w-[2.6em] text-right`} data-replay-clock>{fmtGameClock(clockAt(b, clip, time))}</span>
+      </span>
+    </div>
+    {/* Replay tag, top right. */}
+    <div className="absolute top-2 right-2 sm:top-3 sm:right-3 flex items-stretch h-5 sm:h-7 text-[9px] sm:text-xs rounded-sm overflow-hidden shadow-lg shadow-black/40" data-replay-tag>
+      <span className="px-1.5 sm:px-2.5 flex items-center gap-1.5 bg-[#d8314b] font-display font-bold tracking-[.2em]"><span className="w-1.5 h-1.5 rounded-full bg-white" />ПОВТОР</span>
+      <span className="hidden min-[480px]:flex px-1.5 sm:px-2.5 items-center bg-[#0a1a33]/90 uppercase tracking-wide">{clip.label}</span>
+    </div>
+    {/* Lower third once the puck is in. */}
+    {goal && <div className={`absolute left-2 sm:left-4 right-2 flex items-stretch slide-in ${flat ? 'bottom-7 sm:bottom-8' : 'bottom-2 sm:bottom-4'}`} data-goal-lower-third>
+      <span className={`px-2.5 sm:px-5 flex items-center bg-[#d8314b] font-display font-bold tracking-widest rounded-l-sm text-lg ${big ? 'sm:text-4xl' : 'sm:text-3xl'}`}>ГОЛ!</span>
+      {scorer && <div className="min-w-0 px-2.5 sm:px-4 py-1 sm:py-1.5 bg-[#0a1a33]/95 rounded-r-sm flex flex-col justify-center border-l-4" style={{ borderColor: (b.after[0] !== b.before[0] ? home : away).primaryColor }}>
+        <div className={`font-display uppercase tracking-wide leading-tight truncate text-sm ${big ? 'sm:text-2xl' : 'sm:text-xl'}`}>{number ? <span className="text-[#f5b942] mr-1.5 tabular">#{number}</span> : null}{scorer}</div>
+        {assists && <div className="text-[10px] sm:text-xs text-[#9fb6c4] truncate">{assists}</div>}
+      </div>}
+    </div>}
+  </div>;
+}
 
 export function GoalReplay({ event, home, away, players, onClose, motionClip, closeLabel = 'Продолжить матч' }: {
   event: GameEvent; home: Team; away: Team; players: Record<string, Player>; onClose: () => void; motionClip?: ReplayClip;
@@ -93,6 +137,9 @@ export function GoalReplay({ event, home, away, players, onClose, motionClip, cl
   // Playback itself runs inside ReplayScene (every display frame, no React re-render per frame); it reports here.
   useEffect(() => { if (time >= 1) setPlaying(false); }, [time]);
   const attack = event.team === home.id ? home : away;
+  const broadcast = useMemo(() => broadcastFor(event, home.id), [event, home.id]);
+  const scorerP = event.player ? players[event.player] : undefined;
+  const assistNames = (event.players ?? []).map(id => players[id]?.name.trim().split(/\s+/).pop()).filter(Boolean);
   const runExport = async () => {
     const source = exporter.current;
     if (mp4 === false) { setExportNote('Этот браузер не умеет записывать видео (нужен Chrome, Edge, Яндекс Браузер, Safari 16.4+ или Firefox 130+).'); return; }
@@ -118,6 +165,7 @@ export function GoalReplay({ event, home, away, players, onClose, motionClip, cl
       before: [Math.max(0, before[0]), Math.max(0, before[1])], after,
       scorer: scorer ? `${scorer.name}${scorer.number ? ` · #${scorer.number}` : ''}` : undefined,
       assists: assists.length ? `Передачи: ${assists.join(', ')}` : undefined,
+      broadcast,
     };
     try {
       const result = await exportReplayMp4({ source, clip, camera, graphics: options.graphics ? graphics : null, height: videoHeight, fps: options.fps, slowmo: options.slowmo, fast: options.fast, signal: controller.signal, onProgress: p => setExportProgress(p) });
@@ -136,14 +184,14 @@ export function GoalReplay({ event, home, away, players, onClose, motionClip, cl
   const overlay = <div className={`fixed inset-0 z-[70] bg-[#040a14]/95 backdrop-blur flex items-center justify-center ${expanded ? 'p-0' : 'p-0 sm:p-4'}`} role="dialog" aria-modal="true" aria-label="3D-повтор гола" ref={dialog} data-goal-replay>
     <div ref={box} data-replay-box data-expanded={expanded || undefined} className={expanded ? 'w-screen h-[100dvh] max-w-none flex flex-col overflow-hidden bg-[#0c1929] pl-[env(safe-area-inset-left)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)]' : 'w-full max-w-5xl max-h-[100dvh] flex flex-col overflow-hidden sm:rounded-xl border-white/15 sm:border bg-[#0c1929] shadow-2xl'}>
       <div className={`${expanded ? 'hidden' : 'flex'} items-center gap-3 px-3 py-1.5 sm:py-2.5 border-b border-white/10 shrink-0`}>
-        <TeamLogo team={attack} size={28} /><div className="min-w-0"><div className="text-[10px] uppercase tracking-[.2em] text-ice">Голевой эпизод · 3D</div><div className="font-semibold text-sm truncate">{event.player ? players[event.player]?.name ?? 'Автор гола' : 'Автор гола'} <span className="text-muted ml-2">{event.score?.join(' : ')}</span></div></div>
+        <TeamLogo team={attack} size={28} /><div className="min-w-0"><div className="text-[10px] uppercase tracking-[.2em] text-ice">Голевой эпизод · {flat ? '2D' : '3D'}</div><div className="font-semibold text-sm truncate">{event.player ? players[event.player]?.name ?? 'Автор гола' : 'Автор гола'} <span className="text-muted ml-2">{event.score?.join(' : ')}</span></div></div>
         <button onClick={finish} className="ml-auto px-2 text-2xl leading-none text-white/70 hover:text-white" aria-label="Закрыть повтор">×</button>
       </div>
       {clip ? <>
         <div className={`relative bg-[#081421] overflow-hidden ${expanded ? 'flex-1 min-h-0' : 'shrink min-h-[140px]'}`} data-replay-stage style={expanded ? undefined : { height: 'min(56.25vw, 560px)' }}>
           <ReplayScene clip={clip} time={seek.time} seek={seek.id} quality={quality} flat={flat} onReady={setReady3d} exporter={exporter} camera={camera} home={home} away={away} players={players} playing={running} speed={speed} zoom={zoom} onTime={onTime} onZoom={setZoom} overlay={<>
-          {camera === 'auto' && <div className="absolute top-10 left-3 pointer-events-none text-[10px] uppercase tracking-widest text-white/80"><span className="rounded px-1.5 py-0.5 bg-black/50" data-replay-auto-view>Авто · {VIEW_LABEL[viewFor('auto', clip, time)]}</span></div>}
-          <div className="absolute right-2 top-10 flex flex-col gap-1">
+          {camera === 'auto' && <div className={`absolute left-2 sm:left-3 pointer-events-none text-[10px] uppercase tracking-widest text-white/80 ${expanded ? 'top-10 sm:top-16' : 'top-10 sm:top-14'}`}><span className="rounded px-1.5 py-0.5 bg-black/50" data-replay-auto-view>Авто · {VIEW_LABEL[viewFor('auto', clip, time)]}</span></div>}
+          <div className="absolute right-2 top-9 sm:right-3 sm:top-12 flex flex-col gap-1">
             <button type="button" aria-label="Приблизить" title="Приблизить (колесо мыши / щипок)" disabled={zoom <= ZOOM.min + 1e-6} onClick={() => setZoom(z => Math.max(ZOOM.min, z / 1.25))} className="w-7 h-7 rounded bg-black/55 text-white text-base leading-none disabled:opacity-40">+</button>
             <button type="button" aria-label="Отдалить" title="Отдалить" disabled={zoom >= ZOOM.max - 1e-6} onClick={() => setZoom(z => Math.min(ZOOM.max, z * 1.25))} className="w-7 h-7 rounded bg-black/55 text-white text-base leading-none disabled:opacity-40">−</button>
             <button type="button" aria-label="Скачать видео MP4" title="Скачать повтор видеофайлом MP4" data-replay-export-quick disabled={exportProgress !== null || !ready3d} onClick={() => void runExport()} className="mt-2 w-7 h-7 rounded bg-[#d8314b]/85 hover:bg-[#d8314b] text-white text-sm leading-none disabled:opacity-40">⤓</button>
@@ -151,7 +199,7 @@ export function GoalReplay({ event, home, away, players, onClose, motionClip, cl
           {!flat && !ready3d && <div className="absolute inset-0 z-[5] flex items-center justify-center bg-[#081421] pointer-events-none" data-replay-preparing>
             <div className="flex items-center gap-2 text-xs text-white/80"><span className="w-4 h-4 border-2 border-white/20 border-t-sky-300 rounded-full animate-spin" />Подготовка 3D-повтора…</div>
           </div>}
-          <div className="absolute top-3 left-3 right-3 pointer-events-none flex justify-between gap-3 text-[11px] text-white"><span className="rounded px-2 py-1 bg-black/60">{clip.label}</span><span className="rounded px-2 py-1 bg-black/60">{expanded && <b className="mr-1.5">{event.player ? players[event.player]?.name ?? '' : ''} {event.score?.join(':')} ·</b>}{event.period <= 3 ? `${event.period}-й период` : 'Овертайм'} · {event.time} · {event.strength ?? 'EV'}</span></div>
+          <BroadcastGraphics b={broadcast} clip={clip} time={time} home={home} away={away} scorer={scorerP?.name} number={scorerP?.number} assists={assistNames.length ? `Передачи: ${assistNames.join(', ')}` : event.player ? 'Без передач' : undefined} big={expanded} flat={flat} />
           {exportProgress !== null && <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/45" data-export-progress={Math.round(exportProgress * 100)}>
             <div className="w-[min(320px,80%)] rounded-lg bg-[#0c1929]/95 border border-white/15 p-3 text-xs text-white">
               <div className="flex justify-between mb-2"><span>Экспорт MP4… {settings.videoHeight}p{settings.videoFps}{settings.videoQuality === 'fast' ? ' · быстрый' : ''}</span><span className="tabular">{Math.round(exportProgress * 100)}%</span></div>
@@ -160,7 +208,6 @@ export function GoalReplay({ event, home, away, players, onClose, motionClip, cl
                 {exportProgress > .04 && <span className="text-muted tabular" data-export-eta>осталось ~{fmtSeconds(((performance.now() - exportStart.current) / 1000) * (1 - exportProgress) / exportProgress)}</span>}</div>
             </div>
           </div>}
-          {time >= clip.goal && <div className="absolute bottom-4 inset-x-0 text-center pointer-events-none"><span className="inline-block px-5 py-1 bg-[#d8314b]/90 text-white font-display text-3xl tracking-widest rounded">ГОЛ</span></div>}
         </div>
         <div className="px-3 py-1.5 sm:py-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5 shrink-0">
           <div className="flex items-center gap-2 text-xs flex-1 min-w-[180px]"><span className="tabular text-muted w-[4.5rem] shrink-0 whitespace-nowrap">{(time * clip.duration).toFixed(1)} / {clip.duration.toFixed(1)} c</span><input className="flex-1 min-w-0 accent-sky-300" type="range" min="0" max="1000" step="1" value={Math.round(time * 1000)} aria-label="Позиция повтора" onChange={e => { setPlaying(false); seekTo(clamp(Number(e.target.value) / 1000, 0, 1)); }} /></div>
