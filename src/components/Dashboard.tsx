@@ -23,6 +23,7 @@ import { PressConferencePanel } from './PressConference';
 import { DressingRoomPanel } from './DressingRoom';
 import { PreseasonPanel } from './Preseason';
 import { TeamLink } from './TeamInfo';
+import { LG } from '../brand';
 
 function TeamBlock({ team, place, right }: { team: Team; place: number | null; right?: boolean }) {
   const r = team.record;
@@ -161,7 +162,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
           <div>
             <b className="text-accent uppercase">
               {capInfo.sanctionsActive
-                ? `⛔ Санкции КХЛ за превышение потолка зарплат (−${capInfo.pointsDeducted} очк.)`
+                ? `⛔ Санкции ${LG()} за превышение потолка зарплат (−${capInfo.pointsDeducted} очк.)`
                 : `⚠ Превышение потолка зарплат на ${money(capInfo.excess)} (льготный период: ${capInfo.graceDaysLeft} дн.)`}
             </b>
             <span className="text-text/85 ml-2">
@@ -312,7 +313,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
             ) : eliminated ? (
               <div className="space-y-3" data-playoff-eliminated>
                 <div className="text-sm text-amber">
-                  Ваша команда завершила выступление в этом розыгрыше сезона. Досимулируйте оставшиеся матчи Кубка Гагарина, чтобы перейти в раздел «Межсезонье» (Ярмарка юниоров КХЛ, продление контрактов и старт нового сезона).
+                  Ваша команда завершила выступление в этом розыгрыше сезона. Досимулируйте оставшиеся матчи Кубка Гагарина, чтобы перейти в раздел «Межсезонье» (Ярмарка юниоров {LG()}, продление контрактов и старт нового сезона).
                 </div>
                 <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
                   <Button variant="primary" size="lg" onClick={simToNext}>
@@ -346,7 +347,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
             ) : (
               <div className="space-y-3" data-offseason-cta>
                 <div className="text-sm text-text/90">
-                  Сезон <b className="text-ice">{s.league.season}</b> завершён! В разделе <b className="text-gold">«Межсезонье»</b> вас ждут итоги Кубка Гагарина, Ярмарка юниоров КХЛ, продление контрактов и переход в новый сезон.
+                  Сезон <b className="text-ice">{s.league.season}</b> завершён! В разделе <b className="text-gold">«Межсезонье»</b> вас ждут итоги Кубка Гагарина, Ярмарка юниоров {LG()}, продление контрактов и переход в новый сезон.
                 </div>
                 <div className="flex flex-wrap gap-2 pt-2 border-t border-line">
                   <Button variant="primary" size="lg" onClick={() => ui.nav('offseason')}>
@@ -561,7 +562,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
 
           {s.allStar && (
             <Panel
-              title="★ Неделя Звёзд КХЛ"
+              title={`★ Неделя Звёзд ${LG()}`}
               right={<Tag color="#F2B544">Запад {s.allStar.westScore}:{s.allStar.eastScore} Восток</Tag>}
             >
               <div className="text-xs space-y-1 text-text/90">

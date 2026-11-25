@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 // The coach market is whatever roster.json lists in `freeCoaches`.
-const FREE_COACHES = JSON.parse(readFileSync('roster.json', 'utf8')).freeCoaches.length;
+const FREE_COACHES = JSON.parse(readFileSync('public/mods/KHL_2627/roster.json', 'utf8')).freeCoaches.length;
 const browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--no-sandbox', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const errors = [];
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });

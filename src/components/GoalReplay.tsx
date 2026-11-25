@@ -8,6 +8,7 @@ import { REPLAY_SPEEDS, setSettings, useSettings } from '../game/settings';
 import { Button, Icon, TeamLogo } from './ui';
 import { exitFullscreen, fullscreenElement, useFullscreen } from '../fullscreen';
 import { broadcastFor, clockAt, fmtGameClock, STRENGTH_TEXT, STRENGTH_TITLE, type Broadcast, type BroadcastStrength } from './replayBroadcast';
+import { LG } from '../brand';
 
 /** Finished videos of this session: downloading the same replay with the same options again is instant. */
 const videoCache = new Map<string, { blob: Blob; name: string; note: string }>();
@@ -38,7 +39,7 @@ function BroadcastGraphics({ b, clip, time, home, away, scorer, number, assists,
   return <div className="absolute inset-0 pointer-events-none select-none text-white" data-broadcast>
     {/* Score bug, top left. */}
     <div className={`absolute top-2 left-2 sm:top-3 sm:left-3 flex items-stretch h-6 ${big ? 'sm:h-10' : 'sm:h-8'} text-xs rounded-sm overflow-hidden shadow-lg shadow-black/40 bg-[#0a1a33]/95 ring-1 ring-white/10`} data-score-bug>
-      <span className="px-1.5 sm:px-2 flex items-center bg-gradient-to-b from-[#1f5fbf] to-[#123a78] font-display font-bold tracking-wider text-[10px] sm:text-sm">КХЛ</span>
+      <span className="px-1.5 sm:px-2 flex items-center bg-gradient-to-b from-[#1f5fbf] to-[#123a78] font-display font-bold tracking-wider text-[10px] sm:text-sm">{LG()}</span>
       {side(home, 0)}
       <span className="w-px bg-white/15" />
       {side(away, 1)}

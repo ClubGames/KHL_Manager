@@ -9,6 +9,7 @@ import { bonusText } from '../game/bonuses';
 import { letGo, releasePlayer, respondRfaOfferSheet, tenderQualifyingOffer, useGame } from '../game/state';
 import { Button, OverallChip, Panel, PosBadge, Stat, Tag, useUI } from './ui';
 import { cn } from '../utils/cn';
+import { LG } from '../brand';
 
 const seasonLabel = (s: string, plus: number) => {
   const m = /^(\d{4})\/(\d{2})$/.exec(s);
@@ -70,7 +71,7 @@ export function Contracts() {
         <Stat
           label="Лимит легионеров"
           value={fl !== null ? `${legCount} / ${fl}` : `${legCount} (без лим.)`}
-          sub={fl !== null ? 'клуб России · норма КХЛ' : 'иностранный клуб КХЛ'}
+          sub={fl !== null ? `клуб России · норма ${LG()}` : `иностранный клуб ${LG()}`}
           color={fl !== null && legCount > fl ? '#E5323E' : '#8FD8F0'}
         />
         <Stat label="Бюджет клуба" value={formatMoney(U.budget)} sub={capInfo.finesTotal > 0 ? `штрафы потолка: −${formatMoney(capInfo.finesTotal)}` : 'зарплаты в конце сезона'} />
@@ -89,7 +90,7 @@ export function Contracts() {
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span className={cn('font-display text-sm uppercase tracking-wider font-bold', capInfo.sanctionsActive ? 'text-accent' : 'text-gold')}>
               {capInfo.sanctionsActive
-                ? '⛔ Жёсткие санкции КХЛ за превышение потолка зарплат активны!'
+                ? `⛔ Жёсткие санкции ${LG()} за превышение потолка зарплат активны!`
                 : `⚠ Превышение потолка зарплат на ${formatMoney(capInfo.excess)} — льготный срок: ещё ${capInfo.graceDaysLeft} дн.`}
             </span>
             {capInfo.pointsDeducted > 0 && <Tag tone="bad">Снято очков: −{capInfo.pointsDeducted}</Tag>}
@@ -162,7 +163,7 @@ export function Contracts() {
         {(s.rfaOffers ?? []).length > 0 && (
           <div className="p-3 border-b border-gold/40 bg-gold/10 space-y-2" data-rfa-offersheets>
             <div className="text-xs font-display uppercase tracking-wider text-gold font-bold">
-              ⚡ Входящие оффершиты КХЛ по вашим ограниченно свободным агентам (ОСА)
+              ⚡ Входящие оффершиты {LG()} по вашим ограниченно свободным агентам (ОСА)
             </div>
             {(s.rfaOffers ?? []).map((os) => {
               const op = P[os.playerId];
@@ -229,7 +230,7 @@ export function Contracts() {
                       </button>
                       <span className="ml-1.5 text-[10px] text-muted">{playerStatusTag(p)}</span>
                       {hasTwoWayContract(p) && (
-                        <span title="Двусторонний контракт КХЛ/ВХЛ: переводы в ВХЛ без отказов и 100% снятие с потолка КХЛ в ВХЛ">
+                        <span title={`Двусторонний контракт ${LG()}/ВХЛ: переводы в ВХЛ без отказов и 100% снятие с потолка ${LG()} в ВХЛ`}>
                           <Tag tone="good" className="ml-1.5">2-СТОР</Tag>
                         </span>
                       )}
@@ -241,7 +242,7 @@ export function Contracts() {
                       )}
                       {p.promise && <span title="Игроку обещана ведущая роль: проверка в конце регулярного чемпионата"><Tag color="#F2B544" className="ml-1.5">обещание</Tag></span>}
                       {p.inVhl && (
-                        <span title={`В потолке КХЛ учитывается ${formatMoney(c.salary - vhlPlayerCapRelief(p))}`}>
+                        <span title={`В потолке ${LG()} учитывается ${formatMoney(c.salary - vhlPlayerCapRelief(p))}`}>
                           <Tag tone="accent" className="ml-1.5">ВХЛ</Tag>
                         </span>
                       )}

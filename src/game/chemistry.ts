@@ -1,6 +1,7 @@
 import type { AttackStyle, ForecheckStyle, Lineup, Player, PullGoaliePolicy, Team, TeamTactics } from '../types';
 import { clamp, isDefense, isForward, isGoalie } from './ratings';
 import { defaultTactics } from './defaults';
+import { LG } from '../brand';
 
 export type ArchetypeId =
   | 'sniper'
@@ -329,7 +330,7 @@ export const FORECHECK_INFO: Record<ForecheckStyle, { label: string; short: stri
   balanced: {
     label: 'Сбалансированный 1-2-2',
     short: '1-2-2 Баланс',
-    desc: 'Классическая система КХЛ без перекосов между давлением и плотностью средней зоны.',
+    desc: `Классическая система ${LG()} без перекосов между давлением и плотностью средней зоны.`,
     shotMult: 1.0,
     oppShotMult: 1.0,
     penMult: 1.0,

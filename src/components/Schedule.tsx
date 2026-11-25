@@ -24,6 +24,7 @@ import { Button, Empty, Modal, Panel, TeamLogo, Tag, useUI } from './ui';
 import { ShotMap } from './ShotMap';
 import { LineupPreview } from './LineupPreview';
 import { cn } from '../utils/cn';
+import { LG } from '../brand';
 
 function scoreTag(g: Game) {
   const r = g.result;
@@ -518,7 +519,7 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                           {!isToday && games.length > 0 && <span className="hidden sm:inline text-[10px] text-muted tabular-nums">{games.length} м.</span>}
                         </div>
                         <div className="hidden sm:block text-[10px] text-muted/60 leading-tight">
-                          {dayIdx === null ? '' : dayIdx < regLen && games.length === 0 ? (dayIdx === asgDay ? 'Матч звёзд' : dayIdx < firstMatchDay ? 'до старта' : 'пауза КХЛ') : 'выходной клуба'}
+                          {dayIdx === null ? '' : dayIdx < regLen && games.length === 0 ? (dayIdx === asgDay ? 'Матч звёзд' : dayIdx < firstMatchDay ? 'до старта' : `пауза ${LG()}`) : 'выходной клуба'}
                         </div>
                       </div>
                     )}
@@ -526,7 +527,7 @@ export function Schedule({ onPlay }: { onPlay: (g: Game) => void }) {
                     {/* Trade window milestones */}
                     {(isDeadline || inFreeze || isWinterOpen) && (
                       <div className={cn('hidden sm:block absolute left-1 right-1 top-6')}>
-                        {isDeadline && <span className="block text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-red/80 text-white truncate">Дедлайн КХЛ</span>}
+                        {isDeadline && <span className="block text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-red/80 text-white truncate">Дедлайн {LG()}</span>}
                         {isWinterOpen && <span className="block text-[9px] font-bold uppercase px-1 py-0.5 rounded bg-good/80 text-white truncate">Зимнее окно</span>}
                         {inFreeze && !isDeadline && <span className="block text-[9px] uppercase px-1 py-0.5 rounded bg-gold/25 text-gold truncate">Мораторий</span>}
                       </div>

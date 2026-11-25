@@ -275,3 +275,109 @@ export function seasonDateOnly(day: number, regularSeasonDays: number, season = 
   const d = seasonDateObj(day, regularSeasonDays, season);
   return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
 }
+
+/* ---------------- league calendar file (mods/<id>/schedule.json) ---------------- */
+
+/** One game of the calendar file: date `YYYY-MM-DD`, home club id, away club id. */
+export interface ScheduleFileGame {
+  date: string;
+  home: string;
+  away: string;
+}
+/**
+ * `schedule.json`: one shared regular-season calendar for the whole league (every club's games).
+ * Day 0 of the season is September 1 of the first year of `season`. Playoffs and later seasons are built by
+ * the game.
+ */
+export interface ScheduleFile {
+  season?: string;
+  /** Length of the regular season in calendar days counted from September 1 (pause days included). */
+  days?: number;
+  games: ScheduleFileGame[];
+}
+
+const DAY_MS = 86400000;
+const pad2 = (n: number) => (n < 10 ? '0' : '') + n;
+/** `YYYY-MM-DD` of a regular-season day (day 0 = September 1). */
+export function scheduleDayToDate(day: number, season = '2025/26'): string {
+  const d = new Date(Date.UTC(seasonStartYear(season), 8, 1) + day * DAY_MS);
+  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+}
+/** Regular-season day of a `YYYY-MM-DD` date (day 0 = September 1), or NaN for a malformed date. */
+export function scheduleDateToDay(date: string, season = '2025/26'): number {
+  const m = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(String(date ?? '').trim());
+  if (!m) return NaN;
+  const y = +m[1], mo = +m[2], d = +m[3];
+  const t = Date.UTC(y, mo - 1, d);
+  const back = new Date(t);
+  if (back.getUTCMonth() !== mo - 1 || back.getUTCDate() !== d) return NaN;
+  return Math.round((t - Date.UTC(seasonStartYear(season), 8, 1)) / DAY_MS);
+}
+
+/** A generated (or played) regular season written out as a calendar file. */
+export function scheduleToFile(days: Game[][], season: string): ScheduleFile {
+  const games: ScheduleFileGame[] = [];
+  const reg = regularSeasonLength(days);
+  for (let d = 0; d < reg; d++) for (const g of days[d] ?? []) if (g.kind === 'regular') games.push({ date: scheduleDayToDate(d, season), home: g.home, away: g.away });
+  return { season, days: reg, games };
+}
+
+/** Compact, diff-friendly text of a calendar file: one game per line. */
+export function scheduleFileText(f: ScheduleFile): string {
+  const head = [f.season !== undefined ? `  "season": ${JSON.stringify(f.season)},` : '', f.days !== undefined ? `  "days": ${f.days},` : ''].filter(Boolean);
+  const rows = f.games.map((g) => `    ${JSON.stringify({ date: g.date, home: g.home, away: g.away })}`);
+  return `{\n${head.join('\n')}${head.length ? '\n' : ''}  "games": [\n${rows.join(',\n')}\n  ]\n}\n`;
+}
+
+export interface ParsedSchedule {
+  days: Game[][];
+  nextId: number;
+  /** games per club when every club has the same number, otherwise null */
+  gamesPerTeam: number | null;
+  warnings: string[];
+}
+
+/**
+ * Turns a calendar file into the season schedule. Throws (with a message for the player) when the file can't be
+ * used: unknown clubs, a club playing twice on one day, a date before September 1, an empty list.
+ */
+export function parseScheduleFile(json: unknown, teamIds: string[], season: string, firstId = 1): ParsedSchedule {
+  const root = json as Partial<ScheduleFile> | null;
+  const list: unknown = Array.isArray(json) ? json : root?.games;
+  if (!Array.isArray(list) || !list.length) throw new Error('в календаре нет матчей (ожидается массив games)');
+  const warnings: string[] = [];
+  const fileSeason = !Array.isArray(json) && typeof root?.season === 'string' ? root.season.trim() : '';
+  if (fileSeason && seasonStartYear(fileSeason) !== seasonStartYear(season)) throw new Error(`календарь составлен на сезон ${fileSeason}, а ростер — на ${season}`);
+  const known = new Set(teamIds);
+  const byDay = new Map<number, { home: string; away: string }[]>();
+  const count = new Map<string, number>(teamIds.map((id) => [id, 0]));
+  list.forEach((g: any, i: number) => {
+    const where = `матч №${i + 1}`;
+    const home = String(g?.home ?? '').trim(), away = String(g?.away ?? '').trim();
+    if (!known.has(home)) throw new Error(`${where}: неизвестный клуб «${home}»`);
+    if (!known.has(away)) throw new Error(`${where}: неизвестный клуб «${away}»`);
+    if (home === away) throw new Error(`${where}: клуб «${home}» не может играть сам с собой`);
+    const day = scheduleDateToDay(g?.date, season);
+    if (!Number.isFinite(day)) throw new Error(`${where}: дата «${g?.date}» не в формате ГГГГ-ММ-ДД`);
+    if (day < 0) throw new Error(`${where}: дата ${g.date} раньше начала сезона (1 сентября)`);
+    if (day > 400) throw new Error(`${where}: дата ${g.date} слишком далеко от начала сезона`);
+    const slate = byDay.get(day) ?? [];
+    for (const o of slate) for (const t of [home, away]) if (o.home === t || o.away === t) throw new Error(`${where}: клуб «${t}» уже играет ${g.date}`);
+    slate.push({ home, away });
+    byDay.set(day, slate);
+    count.set(home, count.get(home)! + 1);
+    count.set(away, count.get(away)! + 1);
+  });
+  const last = Math.max(...byDay.keys());
+  const declared = Number(root && !Array.isArray(json) ? root.days : NaN);
+  const D = Math.max(last + 1, Number.isFinite(declared) ? Math.min(400, Math.round(declared)) : 0);
+  const days: Game[][] = [];
+  let id = firstId;
+  for (let d = 0; d < D; d++) days.push((byDay.get(d) ?? []).map((g) => ({ id: id++, day: d, home: g.home, away: g.away, played: false, result: null, kind: 'regular', seriesId: null })));
+  const idle = teamIds.filter((t) => !count.get(t));
+  if (idle.length) warnings.push(`Календарь: нет матчей у клубов ${idle.join(', ')}`);
+  const counts = new Set(count.values());
+  const gamesPerTeam = counts.size === 1 ? [...counts][0] : null;
+  if (gamesPerTeam === null) warnings.push(`Календарь: у клубов разное число матчей (от ${Math.min(...counts)} до ${Math.max(...counts)})`);
+  return { days, nextId: id, gamesPerTeam, warnings };
+}

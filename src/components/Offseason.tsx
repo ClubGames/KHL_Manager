@@ -10,6 +10,7 @@ import { nextUserGame } from '../game/schedule';
 import { Button, Empty, Panel, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { ScoutOvr } from './Scout';
 import { cn } from '../utils/cn';
+import { LG } from '../brand';
 
 function nextLabel(s: string): string {
   const m = /^(\d{4})\/(\d{2})$/.exec(s);
@@ -151,7 +152,7 @@ export function Offseason() {
       )}
 
       {(s.rfaOffers ?? []).length > 0 && (
-        <Panel title="⚡ Оффершиты КХЛ по вашим ограниченно свободным агентам (ОСА)" className="border-gold/50">
+        <Panel title={`⚡ Оффершиты ${LG()} по вашим ограниченно свободным агентам (ОСА)`} className="border-gold/50">
           <div className="space-y-2">
             {(s.rfaOffers ?? []).map((os) => {
               const op = P[os.playerId];
@@ -195,7 +196,7 @@ export function Offseason() {
 
       {draft && (
         <Panel
-          title={`Ярмарка юниоров КХЛ и Выпуск Академии МХЛ · ${s.league.season}`}
+          title={`Ярмарка юниоров ${LG()} и Выпуск Академии МХЛ · ${s.league.season}`}
           data-junior-draft
           right={
             <div className="flex items-center gap-2 flex-wrap">
@@ -241,7 +242,7 @@ export function Offseason() {
               </div>
 
               {draft.completed ? (
-                <Empty text="Все раунды Ярмарки юниоров КХЛ проведены. Выбранные новички уже зачислены в систему клубов!" />
+                <Empty text={`Все раунды Ярмарки юниоров ${LG()} проведены. Выбранные новички уже зачислены в систему клубов!`} />
               ) : (
                 <div className="max-h-72 overflow-y-auto divide-y divide-line/60 border border-line/70 rounded-sm">
                   {availableProspects.slice(0, 28).map((pr, idx) => {
@@ -251,7 +252,7 @@ export function Offseason() {
                     const gradeTone =
                       pr.tag === 'Топ-проспект'
                         ? 'warn'
-                        : pr.tag === 'Готов к КХЛ'
+                        : pr.tag === 'Готов к КХЛ' // stored value (older saves have it too); shown with the league's name
                           ? 'good'
                           : pr.tag === 'Тёмная лошадка'
                             ? 'accent'
@@ -266,7 +267,7 @@ export function Offseason() {
                               {jp.name}
                             </button>
                             <span className="text-muted">{jp.age} л. · {jp.country}</span>
-                            <Tag tone={gradeTone}>{pr.tag}</Tag>
+                            <Tag tone={gradeTone}>{pr.tag.replace('КХЛ', LG())}</Tag>
                             <span className="text-[10px] px-1 rounded bg-panel2" style={{ color: arch.color }}>
                               {arch.short}
                             </span>

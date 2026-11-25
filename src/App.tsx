@@ -28,6 +28,7 @@ import { regularSeasonLength, seasonDate } from './game/schedule';
 import { effectivePayroll } from './game/cap';
 import { countRosterLegionnaires, teamForeignLimit } from './game/legionnaires';
 import { cn } from './utils/cn';
+import { GAME_NAME, GAME_NAME_EN } from './brand';
 
 const NAV: { id: View; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Обзор', icon: 'dashboard' },
@@ -275,11 +276,14 @@ export default function App() {
             <button type="button" onClick={() => void exitToMenu()} className="flex flex-col items-center gap-0.5 px-1 py-1.5 text-[9.5px] text-muted shrink-0"><Icon name="logout" className="w-[18px] h-[18px]" />Меню</button>
           </nav>
           <aside className="hidden lg:flex flex-col w-56 shrink-0 border-r border-line bg-panel/80 sticky top-0 h-screen">
-            <div className="p-4 border-b border-line">
-              <div className="font-display text-2xl uppercase leading-none">
-                КХЛ <span className="text-accent">ГМ</span>
+            <div className="px-3 py-3 border-b border-line flex items-center gap-2.5" title={GAME_NAME}>
+              <img src="./icon-game.png" alt="" className="w-11 h-11 object-contain shrink-0" />
+              <div className="min-w-0">
+                <div className="font-display text-[15px] uppercase leading-[1.05]">
+                  Хоккейный симулятор <span className="text-accent">менеджера</span>
+                </div>
+                <div className="text-[10px] text-muted mt-0.5 truncate">{GAME_NAME_EN}</div>
               </div>
-              <div className="text-[11px] text-muted mt-1">Симулятор генерального менеджера</div>
             </div>
             <div className="px-3 py-3 border-b border-line flex items-center gap-2">
               <TeamLogo team={U} size={36} />

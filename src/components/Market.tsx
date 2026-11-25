@@ -10,6 +10,7 @@ import { claimFromWaivers, useGame } from '../game/state';
 import { Button, Panel, PlayerFace, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { ScoutOvr } from './Scout';
 import { cn } from '../utils/cn';
+import { LG } from '../brand';
 
 export function Market() {
   const s = useGame()!;
@@ -49,7 +50,7 @@ export function Market() {
         <div className="rounded-md border border-ice/40 bg-ice/10 px-3 py-2 text-xs text-ice">{waiverMsg}</div>
       )}
       {activeWaivers.length > 0 && (
-        <Panel title={`Драфт отказов КХЛ (Waiver Wire · ${activeWaivers.length})`} right={<Tag tone="warn">48 часов · бесплатно</Tag>}>
+        <Panel title={`Драфт отказов ${LG()} (Waiver Wire · ${activeWaivers.length})`} right={<Tag tone="warn">48 часов · бесплатно</Tag>}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {activeWaivers.map((w) => {
               const wp = P[w.playerId];
@@ -68,7 +69,7 @@ export function Market() {
                         <ScoutOvr p={wp} />
                       </div>
                       <div className="text-[11px] text-muted">
-                        Из {fromT?.short ?? 'КХЛ'} · {wp.age} л. · оклад {formatMoney(wp.contract.salary)} × {wp.contract.years} г.
+                        Из {fromT?.short ?? LG()} · {wp.age} л. · оклад {formatMoney(wp.contract.salary)} × {wp.contract.years} г.
                       </div>
                     </div>
                   </div>
@@ -78,7 +79,7 @@ export function Market() {
                       variant="primary"
                       onClick={() => {
                         const err = claimFromWaivers(wp.id);
-                        setWaiverMsg(err ?? `${wp.name} забран со списка отказов КХЛ!`);
+                        setWaiverMsg(err ?? `${wp.name} забран со списка отказов ${LG()}!`);
                       }}
                     >
                       Забрать с отказов
@@ -159,7 +160,7 @@ export function Market() {
             Бюджет: <b className="text-text">{formatMoney(U.budget)}</b>
           </span>
           <span>
-            Заявка КХЛ: <b className={khlRosterCount >= 30 ? 'text-accent' : 'text-text'}>{khlRosterCount} / 30</b>
+            Заявка {LG()}: <b className={khlRosterCount >= 30 ? 'text-accent' : 'text-text'}>{khlRosterCount} / 30</b>
             {farmRosterCount > 0 ? <span className="text-ice"> (+{farmRosterCount} в ВХЛ)</span> : null}
           </span>
         </div>
@@ -210,7 +211,7 @@ export function Market() {
                           }
                         >
                           <Tag tone={p.rightsTeamId === U.id ? 'good' : 'accent'}>
-                            ОСА ({s.teams[p.rightsTeamId]?.short ?? 'КХЛ'})
+                            ОСА ({s.teams[p.rightsTeamId]?.short ?? LG()})
                           </Tag>
                         </span>
                       ) : (
@@ -231,7 +232,7 @@ export function Market() {
                       {formatMoney(ask)}
                     </td>
                     <td className="py-2 pr-4 text-right">
-                      <Button size="sm" variant={left > 0 ? 'secondary' : 'ghost'} disabled={left <= 0 || khlRosterCount >= 30} onClick={() => ui.negotiate(p.id)} title={left <= 0 ? 'Игрок прервал переговоры с вашим клубом' : khlRosterCount >= 30 ? 'В основе КХЛ 30/30 игроков — отправьте игрока в ВХЛ или освободите место' : undefined}>
+                      <Button size="sm" variant={left > 0 ? 'secondary' : 'ghost'} disabled={left <= 0 || khlRosterCount >= 30} onClick={() => ui.negotiate(p.id)} title={left <= 0 ? 'Игрок прервал переговоры с вашим клубом' : khlRosterCount >= 30 ? `В основе ${LG()} 30/30 игроков — отправьте игрока в ВХЛ или освободите место` : undefined}>
                         {left <= 0 ? 'Отказ' : 'Переговоры'}
                       </Button>
                     </td>
@@ -271,7 +272,7 @@ export function Market() {
                     <div className="flex items-center gap-1.5 flex-wrap text-[11px] text-muted tabular">
                       <span>{p.age} л. · {countryCode(p.country)}</span>
                       {p.rightsTeamId && isRfaEligibleAge(p.age) ? (
-                        <Tag tone={p.rightsTeamId === U.id ? 'good' : 'accent'}>ОСА ({s.teams[p.rightsTeamId]?.short ?? 'КХЛ'})</Tag>
+                        <Tag tone={p.rightsTeamId === U.id ? 'good' : 'accent'}>ОСА ({s.teams[p.rightsTeamId]?.short ?? LG()})</Tag>
                       ) : (
                         <Tag>НСА</Tag>
                       )}

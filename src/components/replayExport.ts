@@ -3,6 +3,7 @@ import { ArrayBufferTarget, Muxer } from 'mp4-muxer';
 import type { ReplayClip } from '../game/rinkPlayback';
 import { viewFor, type ReplayCamera, type ReplayView } from './replayCameras';
 import { clockAt, fmtGameClock, STRENGTH_TEXT, type Broadcast } from './replayBroadcast';
+import { LG } from '../brand';
 
 /**
  * MP4 export of the 3D goal replay.
@@ -122,7 +123,7 @@ export function drawGraphics(ctx: CanvasRenderingContext2D, w: number, h: number
   const x = 40 * u, y = 36 * u, bh = 58 * u, b = g.broadcast;
   const seg = (text: string, px: number) => { ctx.font = font(px); return ctx.measureText(text).width; };
   const st = (ti: 0 | 1) => { const v = b?.strength[ti]; return v ? STRENGTH_TEXT[v] : ''; };
-  const logoW = seg('КХЛ', 26) + 28 * u, numW = 54 * u, barW = 9 * u;
+  const logoW = seg(LG(), 26) + 28 * u, numW = 54 * u, barW = 9 * u;
   const teamW = (ti: 0 | 1) => barW + seg((ti ? g.away : g.home).short, 32) + 30 * u + (st(ti) ? seg(st(ti), 18) + 18 * u : 0) + numW;
   const period = b ? (b.period === 'ОТ' ? 'ОТ' : `${b.period}-й`) : '';
   const clock = b ? fmtGameClock(clockAt(b, clip, shot.time)) : '';
@@ -132,7 +133,7 @@ export function drawGraphics(ctx: CanvasRenderingContext2D, w: number, h: number
   ctx.save(); ctx.beginPath(); ctx.roundRect(x, y, total, bh, 4 * u); ctx.clip();
   const grad = ctx.createLinearGradient(0, y, 0, y + bh); grad.addColorStop(0, '#1f5fbf'); grad.addColorStop(1, '#123a78');
   ctx.fillStyle = grad; ctx.fillRect(x, y, logoW, bh);
-  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = font(26); ctx.fillText('КХЛ', x + logoW / 2, y + bh / 2 + 1 * u);
+  ctx.fillStyle = '#ffffff'; ctx.textAlign = 'center'; ctx.font = font(26); ctx.fillText(LG(), x + logoW / 2, y + bh / 2 + 1 * u);
   let cx = x + logoW;
   for (const ti of [0, 1] as const) {
     const t = ti ? g.away : g.home, w0 = teamW(ti);

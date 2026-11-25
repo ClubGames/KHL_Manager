@@ -4,6 +4,7 @@ import { clipFrame, liveRinkFrame, type LiveFrame } from '../game/rinkPlayback';
 import type { RinkAI } from '../game/rinkAI';
 import { FACEOFF_SPOTS, RINK } from '../game/rinkGeometry';
 import { cn } from '../utils/cn';
+import { LG } from '../brand';
 
 export { clipFrame };
 /** Static ice markings in real IIHF/KHL proportions (viewBox 100 × 50 = 60 × 30 m, 1 m = 5/3 units). */
@@ -36,7 +37,7 @@ function RinkMarkings() {
         <rect x={s > 0 ? x - NET_D : x} y={25 - NET_W / 2} width={NET_D} height={NET_W} rx=".5" fill="#beced9" stroke="#ce3d51" strokeWidth=".3" />
       </g>; })}
     </g>
-    <text x="50" y="26" textAnchor="middle" fontSize="2" fill="#7c9cac" fontFamily="sans-serif">КХЛ</text>
+    <text x="50" y="26" textAnchor="middle" fontSize="2" fill="#7c9cac" fontFamily="sans-serif">{LG()}</text>
   </>;
 }
 export function RinkSvg({ frame, home, away, players }: { frame: LiveFrame; home: Team; away: Team; players: Record<string, Player> }) {

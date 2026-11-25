@@ -6,6 +6,7 @@ import { formatInjuryDays } from './medical';
 import { preseasonOpen } from './preseason';
 import { ensureScouting, scoutSlots } from './scouting';
 import { promiseLabel, promiseProgress } from './dressingRoom';
+import { LG } from '../brand';
 
 /**
  * The manager's inbox: everything that needs a decision today, derived from the career state so it
@@ -94,7 +95,7 @@ export function buildInbox(state: GameState, includeDismissed = false): InboxTas
   if (ltir.length) out.push({ id: `ltir-${ltir.map((p) => p.id).join(',')}`, severity: 'warn', kind: 'ltir', title: 'Игроки готовы выйти из ДСБТ', text: ltir.map((p) => p.name).join(', '), view: 'club' });
 
   const cap = getCapSummary(state, U.id);
-  if (cap.over) out.push({ id: `cap-${state.seasonNumber}-${cap.sanctionsActive ? 's' : 'g'}`, severity: 'urgent', kind: 'cap', title: 'Превышен потолок зарплат', text: cap.sanctionsActive ? 'Действуют санкции КХЛ: штрафы и блокировка лидеров.' : `Льготный период: ${cap.graceDaysLeft} дн.`, view: 'contracts' });
+  if (cap.over) out.push({ id: `cap-${state.seasonNumber}-${cap.sanctionsActive ? 's' : 'g'}`, severity: 'urgent', kind: 'cap', title: 'Превышен потолок зарплат', text: cap.sanctionsActive ? `Действуют санкции ${LG()}: штрафы и блокировка лидеров.` : `Льготный период: ${cap.graceDaysLeft} дн.`, view: 'contracts' });
 
   if (state.phase === 'season') {
     const regLen = state.schedule.length;

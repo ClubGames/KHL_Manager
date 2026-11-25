@@ -14,7 +14,7 @@ import { clearTradeCache, generateBlockProposal, matchesWants, maybeIncomingOffe
 
 let failed = 0;
 const check = (name: string, ok: boolean, extra = '') => { if (!ok) failed++; console.log(`${ok ? 'ok  ' : 'FAIL'} ${name}${extra ? ' — ' + extra : ''}`); };
-const text = readFileSync('public/rostfdfer.json', 'utf8');
+const text = readFileSync('scripts/fixtures/test-roster.json', 'utf8');
 const r = parseRosterText(text);
 const st = () => G.store.get()!;
 

@@ -1,7 +1,8 @@
 // Генератор ПРИМЕРА roster.json. Игроки здесь — плейсхолдеры («Игрок N»), чтобы игра запускалась
 // сразу после сборки. Замените их настоящими хоккеистами, сохранив структуру полей.
-// Запуск: node scripts/generate-roster.mjs  →  public/roster.json
+// Запуск: node scripts/generate-roster.mjs [путь=roster.example.json] (например public/mods/MyLeague/roster.json)
 import { writeFileSync, mkdirSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 let seed = 20251001;
 function rnd() {
@@ -69,7 +70,7 @@ function player(teamSlug, teamShort, pos, ovr, age, n) {
   return o;
 }
 
-const out = { league: { name: 'КХЛ', season: '2025/26', gamesPerTeam: 68, salaryCap: 900000000 }, teams: [], freeAgents: [] };
+const out = { league: { name: 'ХЛ', season: '2025/26', gamesPerTeam: 68, salaryCap: 900000000 }, teams: [], freeAgents: [] };
 
 for (const [name, city, conf, div, pc, sc, base, short] of TEAMS) {
   const SLUGS = ['ska', 'cska', 'loko', 'dynamo-m', 'spartak', 'severstal', 'vityaz', 'torpedo', 'sochi', 'dynamo-minsk', 'dynamo-riga', 'moscow', 'zubry', 'metallurg', 'ak-bars', 'avangard', 'salavat', 'avtomobilist', 'sibir', 'barys', 'neftekhimik', 'admiral', 'lada', 'amur', 'kunlun'];
@@ -131,8 +132,9 @@ const text = [
   '',
 ].join('\n');
 
-mkdirSync('public', { recursive: true });
-writeFileSync('public/roster.json', text, 'utf8');
+const outFile = process.argv[2] || 'roster.example.json';
+mkdirSync(dirname(outFile) || '.', { recursive: true });
+writeFileSync(outFile, text, 'utf8');
 // sanity: parse back
 const parsed = JSON.parse(text);
 const total = parsed.teams.reduce((s, t) => s + t.players.length, 0);

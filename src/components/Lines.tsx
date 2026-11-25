@@ -14,6 +14,7 @@ import { Bar, Button, Empty, Icon, Modal, Panel, OverallChip, PlayerFace, PosBad
 const POS_COLOR_TEXT: Record<string, string> = { C: '#8FD8F0', LW: '#8FD8F0', RW: '#8FD8F0', D: '#F2B544', G: '#3FCF8E' };
 import { LineupPreview } from './LineupPreview';
 import { cn } from '../utils/cn';
+import { LG } from '../brand';
 
 function clone(L: Lineup): Lineup {
   return {
@@ -112,7 +113,7 @@ export function Lines() {
       return false;
     }
     if (fl !== null && countLineupLegionnaires(c, P) > fl) {
-      setRuleErr(`Превышен лимит легионеров КХЛ в заявке на матч (максимум ${fl} иностранцев). Замените одного из легионеров.`);
+      setRuleErr(`Превышен лимит легионеров ${LG()} в заявке на матч (максимум ${fl} иностранцев). Замените одного из легионеров.`);
       return false;
     }
     const afterUsed = new Set<string>(
@@ -552,9 +553,9 @@ export function Lines() {
               </div>
             </Panel>
 
-            <Panel title="Лимитчики КХЛ (молодые игроки до 20 лет · ЕАЭС)" data-u20-limiters>
+            <Panel title={`Лимитчики ${LG()} (молодые игроки до 20 лет · ЕАЭС)`} data-u20-limiters>
               <div className="text-xs text-muted mb-2">
-                По регламенту КХЛ в заявку на матч сверх 18 полевых можно включить 13-го нападающего и 7-го защитника не старше 20 лет (паспорт ЕАЭС) — они получают сменную практику и бонус к опыту U23.
+                По регламенту {LG()} в заявку на матч сверх 18 полевых можно включить 13-го нападающего и 7-го защитника не старше 20 лет (паспорт ЕАЭС) — они получают сменную практику и бонус к опыту U23.
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <div>
@@ -645,7 +646,7 @@ export function Lines() {
                     <button
                       onClick={() => {
                         if (suspendedSet.has(p.id)) {
-                          setRuleErr(`Контракт ${p.name} заблокирован КХЛ из-за превышения потолка зарплат!`);
+                          setRuleErr(`Контракт ${p.name} заблокирован ${LG()} из-за превышения потолка зарплат!`);
                           return;
                         }
                         setSel(sel?.id === p.id ? null : { id: p.id });

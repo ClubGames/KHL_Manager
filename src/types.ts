@@ -505,6 +505,7 @@ export interface HallOfFameEntry {
 
 export interface DraftProspectMeta {
   id: string;
+  /** «Готов к КХЛ» is the stored value (saves keep it); the UI shows it with the career's league name. */
   tag: 'Топ-проспект' | 'Готов к КХЛ' | 'Выпускник МХЛ' | 'Тёмная лошадка';
   grade: string;
   potRange: [number, number];
@@ -564,6 +565,18 @@ export interface LeagueInfo {
 
 export type Phase = 'season' | 'playoffs' | 'offseason';
 
+/** The mod (folder in `mods/`) a career was started from. */
+export interface ModRef {
+  /** folder name in `mods/` */
+  id: string;
+  /** name shown to the player */
+  name: string;
+  /** folder the mod's relative paths (logos, photos) are resolved against, e.g. `./mods/KHL_2627` */
+  base: string;
+  /** roster file re-read when the career is opened (names, numbers, photos); null — no file to follow */
+  roster: string | null;
+}
+
 export interface GameState {
   version: number;
   saveId: string;
@@ -604,6 +617,8 @@ export interface GameState {
   coachMarketVersion?: number;
   /** 'roster': free coaches came from roster.json `freeCoaches`; otherwise the built-in fallback list. */
   coachMarketSource?: 'roster' | 'builtin';
+  /** Mod the career was started from. Careers saved before mods existed have none: they follow mods/KHL_2627. */
+  mod?: ModRef;
   /** photos (`face`) were copied from roster.json into this career (older saves predate the field) */
   facesSynced?: boolean;
   /** season whose `Player.seasonSplits` are being kept (older saves lack it and get the splits rebuilt) */

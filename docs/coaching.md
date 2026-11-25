@@ -127,5 +127,5 @@
   `npm install --no-save --package-lock=false jsdom@26` (как старый UI smoke).
 - Существующие `bundles-test`, `gm-test`, `live-test`, `save-test`, `logos-test`
   и `ui-smoke` проверяют отсутствие регрессий. Старые тесты, читающие
-  `public/roster.json`, используют временную копию `public/rostfdfer.json`;
+  `public/roster.json`, используют временную копию `scripts/fixtures/test-roster.json`;
   после прогона она удаляется. Для IndexedDB save-test нужен `fake-indexeddb`.

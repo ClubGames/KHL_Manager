@@ -8,7 +8,7 @@ import { RINK_M, RinkAI } from '../src/game/rinkAI';
 import { FACEOFF_SPOTS } from '../src/game/rinkGeometry';
 import type { GameEvent } from '../src/types';
 
-const r = parseRosterText(readFileSync('public/rostfdfer.json', 'utf8'));
+const r = parseRosterText(readFileSync('scripts/fixtures/test-roster.json', 'utf8'));
 const H = r.teams.find(t => t.id === 'ska')!, A = r.teams.find(t => t.id === 'avangard')!;
 type Frame = RinkAI['frames'][number];
 let pass = 0;

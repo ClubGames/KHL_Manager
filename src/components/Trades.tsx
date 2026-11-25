@@ -10,6 +10,7 @@ import { formatMoney, payroll } from '../game/ratings';
 import { acquireRfaRights, assignUserScout, cancelUserScout, proposeTrade, respondOffer, setTradeBlockWants, setTradeFlag, shopTradeBlockNow, useGame } from '../game/state';
 import { Button, Empty, Icon, OverallChip, Panel, PlayerFace, PosBadge, Tag, TeamLogo, money, useUI } from './ui';
 import { cn } from '../utils/cn';
+import { LG } from '../brand';
 
 function PlayerList({ ids, selected, onToggle, title, empty, footer, own = false }: { ids: string[]; selected: string[]; onToggle: (id: string) => void; title: React.ReactNode; empty: string; footer?: React.ReactNode; own?: boolean }) {
   const s = useGame()!;
@@ -333,7 +334,7 @@ export function Trades({ preselect }: { preselect: string | null }) {
                 <span className={cn('tabular', capBlocked ? 'text-accent' : salaryDumpOk ? 'text-amber' : 'text-text')}>{formatMoney(afterPayroll)}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted">Потолок КХЛ</span>
+                <span className="text-muted">Потолок {LG()}</span>
                 <span className="tabular">{formatMoney(s.league.salaryCap)}</span>
               </div>
               <div className="flex justify-between">
@@ -351,7 +352,7 @@ export function Trades({ preselect }: { preselect: string | null }) {
             </Button>
             {capBlocked && <div className="text-[11px] text-accent mt-1">Обмен превышает потолок зарплат</div>}
             {salaryDumpOk && <div className="text-[11px] text-amber mt-1">Разгрузка ФОТ: сделка разрешена для снижения превышения потолка</div>}
-            {legBlocked && <div className="text-[11px] text-accent mt-1">Обмен превышает лимит легионеров КХЛ ({fl})</div>}
+            {legBlocked && <div className="text-[11px] text-accent mt-1">Обмен превышает лимит легионеров {LG()} ({fl})</div>}
           </Panel>
           {(() => {
             const rfaPool = s.freeAgents

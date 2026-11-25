@@ -8,6 +8,7 @@
   "teams": [
     {
       "id": "avangard",
+      "logo": "logos/avangard.png",
       "name": "Авангард",
       "city": "Омск",
       "conference": "Восток",
@@ -783,6 +784,7 @@
     },
     {
       "id": "avtomobilist",
+      "logo": "logos/avtomobilist.png",
       "name": "Автомобилист",
       "city": "Екатеринбург",
       "conference": "Восток",
@@ -1688,6 +1690,7 @@
     },
     {
       "id": "admiral",
+      "logo": "logos/admiral.png",
       "name": "Адмирал",
       "city": "Владивосток",
       "conference": "Восток",
@@ -2512,6 +2515,7 @@
     },
     {
       "id": "akbars",
+      "logo": "logos/akbars.png",
       "name": "Ак Барс",
       "city": "Казань",
       "conference": "Восток",
@@ -3311,6 +3315,7 @@
     },
     {
       "id": "amur",
+      "logo": "logos/amur.png",
       "name": "Амур",
       "city": "Хабаровск",
       "conference": "Восток",
@@ -4189,6 +4194,7 @@
     },
     {
       "id": "barys",
+      "logo": "logos/barys.png",
       "name": "Барыс",
       "city": "Астана",
       "conference": "Восток",
@@ -5014,6 +5020,7 @@
     },
     {
       "id": "dinamo-mn",
+      "logo": "logos/dinamo-mn.png",
       "name": "Динамо Минск",
       "city": "Минск",
       "conference": "Запад",
@@ -6027,6 +6034,7 @@
     },
     {
       "id": "dinamo-msk",
+      "logo": "logos/dinamo-msk.png",
       "name": "Динамо Москва",
       "city": "Москва",
       "conference": "Запад",
@@ -6933,6 +6941,7 @@
     },
     {
       "id": "lada",
+      "logo": "logos/lada.png",
       "name": "Лада",
       "city": "Тольятти",
       "conference": "Запад",
@@ -7838,6 +7847,7 @@
     },
     {
       "id": "lokomotiv",
+      "logo": "logos/lokomotiv.png",
       "name": "Локомотив",
       "city": "Ярославль",
       "conference": "Запад",
@@ -8512,6 +8522,7 @@
     },
     {
       "id": "metallurg-mg",
+      "logo": "logos/metallurg-mg.png",
       "name": "Металлург Мг",
       "city": "Магнитогорск",
       "conference": "Восток",
@@ -9237,6 +9248,7 @@
     },
     {
       "id": "neftekhimik",
+      "logo": "logos/neftekhimik.png",
       "name": "Нефтехимик",
       "city": "Нижнекамск",
       "conference": "Восток",
@@ -9988,6 +10000,7 @@
     },
     {
       "id": "salavat",
+      "logo": "logos/salavat.png",
       "name": "Салават Юлаев",
       "city": "Уфа",
       "conference": "Восток",
@@ -10815,6 +10828,7 @@
     },
     {
       "id": "ska",
+      "logo": "logos/ska.png",
       "name": "СКА",
       "city": "Санкт-Петербург",
       "conference": "Запад",
@@ -11563,6 +11577,7 @@
     },
     {
       "id": "severstal",
+      "logo": "logos/severstal.png",
       "name": "Северсталь",
       "city": "Череповец",
       "conference": "Запад",
@@ -12576,6 +12591,7 @@
     },
     {
       "id": "sibir",
+      "logo": "logos/sibir.png",
       "name": "Сибирь",
       "city": "Новосибирск",
       "conference": "Восток",
@@ -13458,6 +13474,7 @@
     },
     {
       "id": "sochi",
+      "logo": "logos/sochi.png",
       "name": "Сочи",
       "city": "Сочи",
       "conference": "Запад",
@@ -14365,6 +14382,7 @@
     },
     {
       "id": "spartak",
+      "logo": "logos/spartak.png",
       "name": "Спартак",
       "city": "Москва",
       "conference": "Запад",
@@ -15272,6 +15290,7 @@
     },
     {
       "id": "torpedo",
+      "logo": "logos/torpedo.png",
       "name": "Торпедо",
       "city": "Нижний Новгород",
       "conference": "Запад",
@@ -16154,6 +16173,7 @@
     },
     {
       "id": "traktor",
+      "logo": "logos/traktor.png",
       "name": "Трактор",
       "city": "Челябинск",
       "conference": "Восток",
@@ -16856,6 +16876,7 @@
     },
     {
       "id": "cska",
+      "logo": "logos/cska.png",
       "name": "ЦСКА",
       "city": "Москва",
       "conference": "Запад",
@@ -17656,6 +17677,7 @@
     },
     {
       "id": "shanghai-dragons",
+      "logo": "logos/shanghai-dragons.png",
       "name": "Шанхайские Драконы",
       "city": "Шанхай",
       "conference": "Запад",

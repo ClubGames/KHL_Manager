@@ -13,6 +13,8 @@ export interface SaveMeta {
   secondaryColor: string;
   logo?: string;
   league: string;
+  /** name of the mod the career was started from (absent in older saves) */
+  mod?: string;
   season: string;
   seasonNumber: number;
   phase: 'season' | 'playoffs' | 'offseason';

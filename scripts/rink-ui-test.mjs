@@ -20,7 +20,7 @@ async function mount(page, change = {}) {
     const DOM = await import('/node_modules/.vite/deps/react-dom_client.js');
     const { GoalReplay } = await import('/src/components/GoalReplay.tsx');
     const { parseRosterText } = await import('/src/game/roster.ts');
-    const r = parseRosterText(await (await fetch('/roster.json')).text());
+    const r = parseRosterText(await (await fetch('/mods/KHL_2627/roster.json')).text());
     const home = r.teams.find(t => t.id === 'ska'), away = r.teams.find(t => t.id === 'avangard');
     const ids = t => [...t.lineup.F[0], ...t.lineup.D[0]].filter(Boolean);
     const h = ids(home), a = ids(away);
@@ -95,7 +95,7 @@ try {
     const X = await import('/src/components/replayExport.ts');
     const { buildReplayClip } = await import('/src/game/rinkPlayback.ts');
     const { parseRosterText } = await import('/src/game/roster.ts');
-    const r = parseRosterText(await (await fetch('/roster.json')).text());
+    const r = parseRosterText(await (await fetch('/mods/KHL_2627/roster.json')).text());
     const home = r.teams.find(t => t.id === 'ska'), away = r.teams.find(t => t.id === 'avangard');
     const ids = t => [...t.lineup.F[0], ...t.lineup.D[0]].filter(Boolean);
     const e = { sec: 481, period: 1, time: '11:59', type: 'goal', team: home.id, player: ids(home)[0], players: [], goalie: away.lineup.starterG, ice: [ids(home), ids(away)], x: 82, y: 34, shotType: 'wrist', strength: 'EV', score: [1, 0], text: '' };

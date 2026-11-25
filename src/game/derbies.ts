@@ -1,4 +1,5 @@
 import type { Team } from '../types';
+import { LG } from '../brand';
 
 export interface DerbyInfo {
   id: string;
@@ -50,7 +51,7 @@ const DERBY_RULES: DerbyRule[] = [
   {
     id: 'army',
     title: 'Армейское дерби',
-    subtitle: 'Битва двух армейских столиц КХЛ',
+    subtitle: `Битва двух армейских столиц ${LG()}`,
     intensity: 3,
     match: (a, b) => pair(a, b, ['cska', 'цска'], ['ska', 'санкт-петербург']) && !isClub(a, ['spartak', 'спартак']) && !isClub(b, ['spartak', 'спартак']),
   },

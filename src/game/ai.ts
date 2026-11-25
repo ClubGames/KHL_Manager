@@ -7,6 +7,7 @@ import { ensureCaptains, goalieFreshness } from './chemistry';
 import { isU20DefenseLimiter, isU20ForwardLimiter } from './dynasty';
 import { activeKhlCount, teamVhlCapRelief } from './khlRules';
 import { isUnavailable } from './medical';
+import { LG } from '../brand';
 
 export const byOvr = (a: Player, b: Player) => b.overall - a.overall || a.age - b.age;
 export const groupOf = (p: Player): 'F' | 'D' | 'G' => (isGoalie(p) ? 'G' : isDefense(p) ? 'D' : 'F');
@@ -319,7 +320,7 @@ export function getTradeWindowsSchedule(state: GameState): TradeWindowPeriod[] {
       startDay: 0,
       endDay: Math.max(0, deadline - 1),
       status: statusOf(0, Math.max(0, deadline - 1)),
-      note: 'Обмены разрешены до наступления дедлайна КХЛ.',
+      note: `Обмены разрешены до наступления дедлайна ${LG()}.`,
     });
   }
   out.push({
@@ -482,7 +483,7 @@ function sideProblem(state: GameState, teamId: string, gives: string[], gets: st
     const n = after.filter((id) => groupOf(P[id]) === g).length;
     if (n < min[g]) return `у клуба «${t.name}» останется слишком мало ${GROUP_MANY[g]} (${n}, нужно минимум ${min[g]})`;
   }
-  if (activeKhlCount(after, P) > MAX_ROSTER) return `в основном составе КХЛ «${t.name}» окажется больше ${MAX_ROSTER} игроков`;
+  if (activeKhlCount(after, P) > MAX_ROSTER) return `в основном составе ${LG()} «${t.name}» окажется больше ${MAX_ROSTER} игроков`;
   const fl = teamForeignLimit(t, state.league.foreignLimit);
   if (fl !== null) {
     const beforeLeg = countRosterLegionnaires(t.players, P);

@@ -29,7 +29,7 @@ async function mountReplay(page, k = 0) {
     const DOM = await import('/node_modules/.vite/deps/react-dom_client.js');
     const { GoalReplay } = await import('/src/components/GoalReplay.tsx');
     const { parseRosterText } = await import('/src/game/roster.ts');
-    window.__roster ??= parseRosterText(await (await fetch('/roster.json')).text());
+    window.__roster ??= parseRosterText(await (await fetch('/mods/KHL_2627/roster.json')).text());
     const r = window.__roster;
     const home = r.teams.find((t) => t.id === 'ska'), away = r.teams.find((t) => t.id === 'avangard');
     const ids = (t) => [...t.lineup.F[0], ...t.lineup.D[0]].filter(Boolean);

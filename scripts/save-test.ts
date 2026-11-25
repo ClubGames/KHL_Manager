@@ -32,7 +32,7 @@ const sim = (n: number) => { for (let i = 0; i < n; i++) G.simulateDay(true); };
 
 (async () => {
   if (USE_IDB) await import('fake-indexeddb/auto');
-  const roster = () => parseRosterText(readFileSync('public/rostfdfer.json', 'utf8'));
+  const roster = () => parseRosterText(readFileSync('scripts/fixtures/test-roster.json', 'utf8'));
   console.log('backend:', await G.getBackend());
   check('backend as expected', (await G.getBackend()) === (USE_IDB ? 'indexeddb' : 'localStorage'));
 
@@ -111,7 +111,7 @@ const sim = (n: number) => { for (let i = 0; i < n; i++) G.simulateDay(true); };
   check('deleted slot is gone', list.length === n0 + 2 && !list.some((m) => m.id === idB));
 
   check('import from file', (await G.importCareer(exported)) === null);
-  check('import rejects roster.json', typeof (await G.importCareer(readFileSync('public/rostfdfer.json', 'utf8'))) === 'string');
+  check('import rejects roster.json', typeof (await G.importCareer(readFileSync('scripts/fixtures/test-roster.json', 'utf8'))) === 'string');
   check('import rejects garbage', typeof (await G.importCareer('nope')) === 'string');
   list = await G.listSaves();
   check('imported save is a new slot', list.length === n0 + 3 && list.filter((m) => m.name === 'Моя карьера').length === 2);

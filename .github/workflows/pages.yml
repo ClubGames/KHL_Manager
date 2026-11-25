@@ -36,7 +36,9 @@ jobs:
           ./node_modules/.bin/tsc --noEmit
           npm run build
           test -f dist/index.html
-          test -f dist/roster.json
+          test -f dist/mods/index.json
+          test -f dist/mods/KHL_2627/roster.json
+          test -f dist/mods/KHL_2627/schedule.json
           test -f dist/arena.jpg
           test -f dist/.nojekyll
 

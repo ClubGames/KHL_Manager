@@ -5,7 +5,7 @@ import { parseRosterText } from '../src/game/roster';
 import { buildSchedule, seasonLayout, seasonDateObj } from '../src/game/schedule';
 import { allStarTargetDay } from '../src/game/medical';
 
-const r = parseRosterText(readFileSync('roster.json', 'utf8'));
+const r = parseRosterText(readFileSync('public/mods/KHL_2627/roster.json', 'utf8'));
 const verbose = process.argv.includes('-v');
 let checks = 0;
 function analyse(season: string, teams = r.teams, G = r.gamesPerTeam) {

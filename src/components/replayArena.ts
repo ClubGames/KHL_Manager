@@ -3,6 +3,7 @@ import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js
 import type { Team } from '../types';
 import { FACEOFF_SPOTS, RINK } from '../game/rinkGeometry';
 import { getClubLogoSources } from '../game/clubColors';
+import { LG } from '../brand';
 
 /**
  * Static arena for the 3D goal replay, built for few draw calls:
@@ -96,7 +97,7 @@ function paintIce(ctx: CanvasRenderingContext2D, w: number, h: number, logo?: HT
     const s = X(5.2), r = logo.naturalWidth / logo.naturalHeight;
     ctx.globalAlpha = .9; ctx.drawImage(logo, w / 2 - (r >= 1 ? s : s * r) / 2, h / 2 - (r >= 1 ? s / r : s) / 2, r >= 1 ? s : s * r, r >= 1 ? s / r : s); ctx.globalAlpha = 1;
   } else {
-    ctx.fillStyle = '#9fb6c4'; ctx.font = `bold ${X(2.2)}px Oswald, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('КХЛ', w / 2, h / 2);
+    ctx.fillStyle = '#9fb6c4'; ctx.font = `bold ${X(2.2)}px Oswald, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(LG(), w / 2, h / 2);
   }
   for (const x of [RINK.goalLine, RINK.length - RINK.goalLine]) line(x, RINK.lineWidth, RED);
   for (const x of [RINK.blueLine, RINK.length - RINK.blueLine]) line(x, RINK.blueWidth, BLUE);
@@ -129,7 +130,7 @@ function paintBoards(ctx: CanvasRenderingContext2D, w: number, h: number, home: 
   ctx.fillStyle = '#f6f8fa'; ctx.fillRect(0, 0, w, h);
   ctx.fillStyle = '#e8b52f'; ctx.fillRect(0, h * .83, w, h * .17);
   ctx.fillStyle = '#16304d'; ctx.fillRect(0, 0, w, h * .07);
-  const panels = [['КХЛ', '#c8243a'], [home.name, home.primaryColor], ['ХОККЕЙ', '#1d58a8'], [away.name, away.primaryColor]];
+  const panels = [[LG(), '#c8243a'], [home.name, home.primaryColor], ['ХОККЕЙ', '#1d58a8'], [away.name, away.primaryColor]];
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   panels.forEach(([text, color], i) => {
     const x0 = (i / panels.length) * w;
@@ -309,7 +310,7 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
     c.textAlign = 'center'; c.textBaseline = 'middle';
     c.fillStyle = home.primaryColor; c.fillRect(16, 60, 230, 120); c.fillStyle = away.primaryColor; c.fillRect(266, 60, 230, 120);
     c.fillStyle = '#ffffff'; c.font = 'bold 58px Oswald, sans-serif'; c.fillText(home.short ?? home.name, 131, 122, 210); c.fillText(away.short ?? away.name, 381, 122, 210);
-    c.fillStyle = '#f5b942'; c.font = 'bold 34px Oswald, sans-serif'; c.fillText('ПОВТОР', 256, 222); c.fillStyle = '#9fb6c4'; c.fillText('КХЛ', 256, 30);
+    c.fillStyle = '#f5b942'; c.font = 'bold 34px Oswald, sans-serif'; c.fillText('ПОВТОР', 256, 222); c.fillStyle = '#9fb6c4'; c.fillText(LG(), 256, 30);
   }
   const screen = mat(new T.MeshBasicMaterial({ map: tex(scoreCanvas.c) })), frame = mat(new T.MeshStandardMaterial({ color: '#1a1f27', roughness: .6 }));
   const cube = mesh(new T.BoxGeometry(6.4, 3.4, 4.4), [screen, screen, frame, frame, screen, screen] as unknown as T.Material, false);
