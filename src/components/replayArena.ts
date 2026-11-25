@@ -41,7 +41,8 @@ function outline(offset: number, seg = 14) {
   return pts;
 }
 
-type ProfilePoint = { o: number; y: number; v: number };
+/** `y` may depend on the position around the rink (e.g. taller glass behind the nets). */
+type ProfilePoint = { o: number; y: number | ((x: number, z: number) => number); v: number };
 /** Sweeps profile segments around the rink: one merged geometry, u = metres along the outline / uMetres. */
 function sweep(segments: [ProfilePoint, ProfilePoint][], uMetres: number, seg = 14) {
   const parts = segments.map(([a, b]) => {
@@ -49,7 +50,8 @@ function sweep(segments: [ProfilePoint, ProfilePoint][], uMetres: number, seg = 
     const pos: number[] = [], uv: number[] = [], index: number[] = [];
     ra.forEach((p, i) => {
       const q = rb[i];
-      pos.push(p.x, a.y, p.z, q.x, b.y, q.z);
+      const ya = typeof a.y === 'function' ? a.y(p.x, p.z) : a.y, yb = typeof b.y === 'function' ? b.y(q.x, q.z) : b.y;
+      pos.push(p.x, ya, p.z, q.x, yb, q.z);
       uv.push(ra[i].u / uMetres, a.v, ra[i].u / uMetres, b.v);
       if (i) { const k = i * 2; index.push(k - 2, k - 1, k, k - 1, k + 1, k); }
     });
@@ -140,21 +142,69 @@ function paintBoards(ctx: CanvasRenderingContext2D, w: number, h: number, home: 
   });
 }
 
-/** Spectators: rows of tiny shirts, most of them in the home club's colours. */
-function paintCrowd(ctx: CanvasRenderingContext2D, w: number, h: number, home: Team) {
+/** Mix of two #rrggbb colours (t = 0 → a). */
+function mix(a: string, b: string, t: number) {
+  const pa = new T.Color(a), pb = new T.Color(b);
+  return '#' + pa.lerp(pb, t).getHexString();
+}
+
+/**
+ * Spectators: rows of tiny shirts (most in the home club's colours) on seats in the club colour, with stair aisles
+ * every sector. `rows` rows over the texture height; `empty` = share of free seats.
+ */
+function paintCrowd(ctx: CanvasRenderingContext2D, w: number, h: number, home: Team, seed = 5, rows = 22, empty = .1) {
   ctx.fillStyle = '#121c28'; ctx.fillRect(0, 0, w, h);
-  const rand = rng(5), rows = 22, rh = h / rows, u = w / 1024;
+  const rand = rng(seed), rh = h / rows, u = w / 1024;
   const palette = [home.primaryColor, home.primaryColor, home.secondaryColor, '#d9dde2', '#2a3644', '#55606d', '#8a6d5a', '#c9a27e'];
+  const seat = mix(home.primaryColor, '#0b121a', .55), seatBack = mix(home.primaryColor, '#0b121a', .35);
+  const sectors = 3, aisle = 14 * u;
   for (let r = 0; r < rows; r++) {
-    ctx.fillStyle = r % 2 ? '#1b2735' : '#172230'; ctx.fillRect(0, r * rh, w, rh);
-    for (let x = 0; x < w; x += (4 + rand() * 2) * u) {
-      if (rand() < .1) continue; // empty seat
+    const y0 = r * rh;
+    ctx.fillStyle = r % 2 ? '#1b2735' : '#172230'; ctx.fillRect(0, y0, w, rh);
+    // step edge (light concrete line at the front of every row)
+    ctx.fillStyle = '#2b3846'; ctx.fillRect(0, y0 + rh * .92, w, rh * .08);
+    for (let x = 0; x < w; x += (4 + rand() * 1.2) * u) {
+      if ((x + aisle) % (w / sectors) < aisle * 2) continue; // stairs
+      ctx.fillStyle = seatBack; ctx.fillRect(x, y0 + rh * .3, 3.4 * u, rh * .45);
+      ctx.fillStyle = seat; ctx.fillRect(x, y0 + rh * .7, 3.4 * u, rh * .18);
+      if (rand() < empty) continue; // empty seat
       ctx.fillStyle = palette[Math.floor(rand() * palette.length)];
-      ctx.fillRect(x, r * rh + rh * .35, 3 * u, rh * .55);
+      ctx.fillRect(x, y0 + rh * .35, 3 * u, rh * .55);
       ctx.fillStyle = rand() < .5 ? '#e0b896' : '#c79a78';
-      ctx.fillRect(x + .5 * u, r * rh + rh * .12, 2 * u, rh * .25);
+      ctx.fillRect(x + .5 * u, y0 + rh * .12, 2 * u, rh * .25);
     }
   }
+  // stair aisles: grey steps with a yellow nosing, a hand rail down the middle
+  for (let k = 0; k < sectors; k++) {
+    const x0 = ((k + 1) * w) / sectors - aisle;
+    for (let r = 0; r < rows * 2; r++) {
+      const y0 = (r * rh) / 2;
+      ctx.fillStyle = r % 2 ? '#3a4652' : '#46525e'; ctx.fillRect(x0, y0, aisle * 2, rh / 2);
+      ctx.fillStyle = '#b8962e'; ctx.fillRect(x0, y0 + rh / 2 - rh * .06, aisle * 2, rh * .06);
+    }
+    ctx.fillStyle = '#9aa6b0'; ctx.fillRect(x0 + aisle - u, 0, 2 * u, h);
+  }
+}
+
+/** VIP boxes between the tiers: a dark ring with lit glass fronts and the club colour stripe. */
+function paintSuites(ctx: CanvasRenderingContext2D, w: number, h: number, home: Team) {
+  ctx.fillStyle = '#0c131c'; ctx.fillRect(0, 0, w, h);
+  const rand = rng(11), n = 16, bw = w / n;
+  for (let i = 0; i < n; i++) {
+    const x = i * bw;
+    const g = ctx.createLinearGradient(0, h * .18, 0, h * .78);
+    const lit = rand();
+    g.addColorStop(0, lit > .25 ? '#e8d3a2' : '#2a3442'); g.addColorStop(1, lit > .25 ? '#8a7350' : '#18202b');
+    ctx.fillStyle = g; ctx.fillRect(x + bw * .06, h * .18, bw * .88, h * .6);
+    ctx.fillStyle = 'rgba(10,16,24,.55)'; ctx.fillRect(x + bw * .06, h * .18, bw * .88, h * .08); // shade under the roof
+    if (lit > .25) for (let k = 0; k < 4; k++) { // silhouettes
+      ctx.fillStyle = 'rgba(20,24,30,.7)';
+      const px = x + bw * (.15 + k * .2 + rand() * .05);
+      ctx.fillRect(px, h * .45, bw * .07, h * .33); ctx.fillRect(px + bw * .01, h * .36, bw * .05, h * .09);
+    }
+  }
+  ctx.fillStyle = home.primaryColor; ctx.fillRect(0, h * .84, w, h * .1);
+  ctx.fillStyle = '#d9dee4'; ctx.fillRect(0, h * .8, w, h * .04);
 }
 
 function buildGoal(parent: T.Object3D, dir: 1 | -1, own: Owned, mats: { red: T.Material; white: T.Material; net: T.Material; skirt: T.Material }) {
@@ -268,23 +318,57 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
     [{ o: .2, y: 1.07, v: .985 }, { o: .2, y: 0, v: .985 }],
   ], 12, 20), mat(new T.MeshStandardMaterial({ map: boardTex, roughness: .5, side: T.DoubleSide })));
   boards.castShadow = false;
-  // Glass: 1.8 m along the sides (2.4 m behind the nets in real arenas; one height keeps it to a single mesh).
-  bowl(mesh(sweep([[{ o: .1, y: 1.07, v: 0 }, { o: .1, y: 3.0, v: 1 }]], 10, 20), mat(new T.MeshStandardMaterial({ color: '#cfe8f4', transparent: true, opacity: .12, roughness: .05, metalness: .1, depthWrite: false, side: T.DoubleSide })), false));
-  // Glass stanchions: one instanced mesh.
-  const ring = outline(.1, 20), posts: T.Vector3[] = [];
-  for (let i = 1, acc = 0; i < ring.length; i++) { acc += ring[i].u - ring[i - 1].u; if (acc > 2.4) { acc = 0; posts.push(new T.Vector3(ring[i].x, 2.03, ring[i].z)); } }
-  const postGeo = new T.BoxGeometry(.05, 1.9, .05); own.geometries.push(postGeo);
+  // Glass: 1.8 m along the sides, rising through the corners to 2.4 m behind the nets (as in KHL arenas).
+  const glassTop = (x: number) => 1.07 + 1.8 + .6 * T.MathUtils.smoothstep(Math.abs(x), HALF_L - CORNER - 1, HALF_L - CORNER * .35);
+  bowl(mesh(sweep([[{ o: .1, y: 1.07, v: 0 }, { o: .1, y: glassTop, v: 1 }]], 10, 20), mat(new T.MeshStandardMaterial({ color: '#cfe8f4', transparent: true, opacity: .12, roughness: .05, metalness: .1, depthWrite: false, side: T.DoubleSide })), false));
+  // Thin aluminium top rail along the glass edge.
+  bowl(mesh(sweep([[{ o: .07, y: glassTop, v: 0 }, { o: .13, y: glassTop, v: 1 }]], 10, 20), mat(new T.MeshStandardMaterial({ color: '#c3ced6', metalness: .5, roughness: .35, side: T.DoubleSide })), false));
+  // Glass stanchions: one instanced mesh, each as tall as the glass where it stands.
+  const ring = outline(.1, 20), posts: { x: number; z: number; top: number }[] = [];
+  for (let i = 1, acc = 0; i < ring.length; i++) { acc += ring[i].u - ring[i - 1].u; if (acc > 2.4) { acc = 0; posts.push({ x: ring[i].x, z: ring[i].z, top: glassTop(ring[i].x) }); } }
+  const postGeo = new T.BoxGeometry(.05, 1, .05); own.geometries.push(postGeo);
   const stanchions = new T.InstancedMesh(postGeo, mat(new T.MeshStandardMaterial({ color: '#b7c4cc', metalness: .4, roughness: .4 })), posts.length);
-  const m4 = new T.Matrix4(); posts.forEach((p, i) => stanchions.setMatrixAt(i, m4.makeTranslation(p.x, p.y, p.z)));
+  const m4 = new T.Matrix4();
+  posts.forEach((p, i) => { const hgt = p.top - 1.07; stanchions.setMatrixAt(i, m4.makeScale(1, hgt, 1).setPosition(p.x, 1.07 + hgt / 2, p.z)); });
   group.add(stanchions);
-  // Stands: a stepped crowd bowl (texture) above a dark wall with an LED ribbon.
+  // Stands: two crowd tiers (seats in the club colour, stair aisles) above a dark wall with an LED ribbon,
+  // a ring of lit VIP boxes between the tiers, a dark upper wall and the roof.
   const crowdCanvas = canvas(1024 * K, 256 * K);
-  if (crowdCanvas.ctx) paintCrowd(crowdCanvas.ctx, 1024 * K, 256 * K, home);
+  if (crowdCanvas.ctx) paintCrowd(crowdCanvas.ctx, 1024 * K, 256 * K, home, 5, 11, .08);
   const crowdTex = tex(crowdCanvas.c, true);
+  const upperCanvas = canvas(1024 * K, 256 * K);
+  if (upperCanvas.ctx) paintCrowd(upperCanvas.ctx, 1024 * K, 256 * K, home, 9, 11, .18);
+  const upperTex = tex(upperCanvas.c, true);
+  const suiteCanvas = canvas(1024 * K, 64 * K);
+  if (suiteCanvas.ctx) paintSuites(suiteCanvas.ctx, 1024 * K, 64 * K, home);
+  const suiteTex = tex(suiteCanvas.c, true);
   bowl(mesh(sweep([[{ o: 5, y: -.02, v: 0 }, { o: 5, y: 1.4, v: 1 }]], 20), mat(new T.MeshStandardMaterial({ color: '#0d1620', roughness: .8, side: T.DoubleSide }))));
   bowl(mesh(sweep([[{ o: 5, y: 1.4, v: 0 }, { o: 5.2, y: 1.9, v: 1 }]], 20), mat(new T.MeshBasicMaterial({ color: home.primaryColor, side: T.DoubleSide })), false));
-  bowl(mesh(sweep([[{ o: 5.2, y: 1.9, v: 0 }, { o: 21, y: 12.5, v: 1 }]], 20, 20), mat(new T.MeshStandardMaterial({ map: crowdTex, roughness: .95, side: T.DoubleSide })), false));
-  bowl(mesh(sweep([[{ o: 21, y: 12.5, v: 0 }, { o: 21, y: 22, v: 1 }]], 20, 20), mat(new T.MeshBasicMaterial({ color: '#070d15', side: T.DoubleSide })), false));
+  bowl(mesh(sweep([[{ o: 5.2, y: 1.9, v: 0 }, { o: 12.6, y: 6.9, v: 1 }]], 20, 20), mat(new T.MeshStandardMaterial({ map: crowdTex, roughness: .95, side: T.DoubleSide })), false));
+  bowl(mesh(sweep([
+    [{ o: 12.6, y: 6.9, v: 0 }, { o: 12.6, y: 7.25, v: 0 }], // front rail of the lower tier
+    [{ o: 12.6, y: 7.25, v: 0 }, { o: 12.9, y: 7.25, v: 0 }],
+  ], 20, 20), mat(new T.MeshStandardMaterial({ color: '#202b37', roughness: .7, side: T.DoubleSide })), false));
+  bowl(mesh(sweep([[{ o: 12.9, y: 7.25, v: 1 }, { o: 12.9, y: 8.75, v: 0 }]], 10, 20), mat(new T.MeshBasicMaterial({ map: suiteTex, side: T.DoubleSide })), false));
+  bowl(mesh(sweep([[{ o: 12.9, y: 8.75, v: 0 }, { o: 13.5, y: 8.75, v: 1 }]], 20, 20), mat(new T.MeshStandardMaterial({ color: '#141d27', roughness: .8, side: T.DoubleSide })), false));
+  bowl(mesh(sweep([[{ o: 13.5, y: 8.75, v: 0 }, { o: 21, y: 13.6, v: 1 }]], 20, 20), mat(new T.MeshStandardMaterial({ map: upperTex, roughness: .95, side: T.DoubleSide })), false));
+  bowl(mesh(sweep([[{ o: 21, y: 13.6, v: 0 }, { o: 21, y: 22, v: 1 }]], 20, 20), mat(new T.MeshBasicMaterial({ color: '#070d15', side: T.DoubleSide })), false));
+  // Roof: a dark ceiling over the bowl and two lighting rigs (catwalk + rows of lamps) above the ice. Single-sided,
+  // facing down: seen from the ice and the low cameras, culled for the high «Сверху» / zoomed-out views.
+  const downOnly = (g: T.BufferGeometry) => (g.getAttribute('normal').getY(0) > 0 ? T.BackSide : T.FrontSide);
+  const roofGeo = sweep([[{ o: 21, y: 22, v: 0 }, { o: -CORNER + .5, y: 23.5, v: 1 }]], 20, 20);
+  bowl(mesh(roofGeo, mat(new T.MeshBasicMaterial({ color: '#05090f', side: downOnly(roofGeo) })), false));
+  const rig: T.BufferGeometry[] = [], lamps: T.BufferGeometry[] = [];
+  const down = (w: number, d: number, x: number, y: number, z: number) => { const g = new T.PlaneGeometry(w, d); g.rotateX(Math.PI / 2); g.translate(x, y, z); return g; };
+  for (const z of [-7.5, 7.5]) {
+    rig.push(down(HALF_L * 1.8, 1, 0, 19.2, z));
+    for (let x = -HALF_L * .85; x <= HALF_L * .85 + .01; x += HALF_L * .85 / 5) for (const dz of [-.26, .26]) lamps.push(down(.7, .42, x, 19.15, z + dz));
+  }
+  for (const x of [-HALF_L * .55, 0, HALF_L * .55]) rig.push(down(.5, 15.9, x, 19.25, 0));
+  const rigGeo = mergeGeometries(rig, false)!, lampGeo = mergeGeometries(lamps, false)!;
+  [...rig, ...lamps].forEach(b => b.dispose());
+  bowl(mesh(rigGeo, mat(new T.MeshBasicMaterial({ color: '#141b24' })), false));
+  bowl(mesh(lampGeo, mat(new T.MeshBasicMaterial({ color: '#fff6e0' })), false));
 
   // Team benches (the side the 2D rink draws them on) and the penalty boxes opposite, merged per material.
   const boxes: Record<string, T.BufferGeometry[]> = {};
@@ -315,6 +399,25 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
   const screen = mat(new T.MeshBasicMaterial({ map: tex(scoreCanvas.c) })), frame = mat(new T.MeshStandardMaterial({ color: '#1a1f27', roughness: .6 }));
   const cube = mesh(new T.BoxGeometry(6.4, 3.4, 4.4), [screen, screen, frame, frame, screen, screen] as unknown as T.Material, false);
   cube.position.set(0, 15.5, 0); hidden.push(cube, stanchions);
+  // LED rings above and below the screens (club colour), a smaller lower tier with the league name, the hoist.
+  const ledCanvas = canvas(512, 32);
+  if (ledCanvas.ctx) {
+    const c = ledCanvas.ctx; c.fillStyle = home.primaryColor; c.fillRect(0, 0, 512, 32);
+    c.fillStyle = '#ffffff'; c.font = 'bold 22px Oswald, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+    for (let i = 0; i < 2; i++) c.fillText(`${LG()} · ${home.short ?? home.name} — ${away.short ?? away.name}`, 128 + i * 256, 17, 240);
+  }
+  const ledTex = tex(ledCanvas.c, true); ledTex.repeat.set(2, 1);
+  const led = mat(new T.MeshBasicMaterial({ map: ledTex }));
+  for (const y of [17.45, 13.55]) { const ringMesh = mesh(new T.BoxGeometry(6.6, .42, 4.6), [led, led, frame, frame, led, led] as unknown as T.Material, false); ringMesh.position.set(0, y, 0); hidden.push(ringMesh); }
+  const lowCanvas = canvas(256, 64);
+  if (lowCanvas.ctx) {
+    const c = lowCanvas.ctx; c.fillStyle = '#05080d'; c.fillRect(0, 0, 256, 64);
+    c.fillStyle = home.primaryColor; c.fillRect(0, 0, 256, 6); c.fillRect(0, 58, 256, 6);
+    c.fillStyle = '#e8eef5'; c.font = 'bold 30px Oswald, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText(LG(), 128, 33, 230);
+  }
+  const lowScreen = mat(new T.MeshBasicMaterial({ map: tex(lowCanvas.c) }));
+  const low = mesh(new T.CylinderGeometry(2.1, 2.1, 1, 8, 1, true), lowScreen, false); low.position.set(0, 12.75, 0); hidden.push(low);
+  const hoist = mesh(new T.CylinderGeometry(.06, .06, 4.6, 6), frame, false); hoist.position.set(0, 19.9, 0); hidden.push(hoist);
 
   // Goals.
   const netCanvas = canvas(64, 64);
