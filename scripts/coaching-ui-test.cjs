@@ -3,6 +3,11 @@
 const { JSDOM, VirtualConsole } = require('jsdom');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+// checks the real data of the KHL_2627 mod, which is not in the repository (the game ships without a league)
+if (!fs.existsSync('public/mods/KHL_2627/roster.json')) {
+  console.log('SKIP: put the KHL_2627 mod into public/mods to run this test');
+  process.exit(0);
+}
 const html = fs.readFileSync('dist/index.html', 'utf8')
   .replace('<script type="module" crossorigin>', '<script>window.__app=function(){')
   .replace('</script>', '};document.addEventListener("DOMContentLoaded",window.__app);</script>')
@@ -15,7 +20,7 @@ function boot(seed = {}) {
   vc.on('jsdomError', (e) => errors.push(String(e.detail?.stack || e.message)));
   vc.on('error', (...args) => errors.push(args.join(' ')));
   const dom = new JSDOM(html, { runScripts: 'dangerously', pretendToBeVisual: true, virtualConsole: vc, url: 'http://localhost/', beforeParse(w) {
-    w.fetch = () => Promise.resolve({ ok: true, text: () => Promise.resolve(roster) });
+    w.fetch = (u) => Promise.resolve({ ok: true, text: () => Promise.resolve(String(u).includes('mods/index.json') ? '{"mods":["KHL_2627"]}' : roster) });
     w.Element.prototype.scrollTo = function () {};
     w.scrollTo = function () {};
     for (const [k, v] of Object.entries(seed)) w.localStorage.setItem(k, v);

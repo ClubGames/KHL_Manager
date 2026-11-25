@@ -2,8 +2,10 @@
 // putting a skater on the PP / PK never pulls him out of the 5-on-5 lines; «Авто ЧБ» refills the PP.
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
+import { serveTestMod } from './testMod.mjs';
 
 const browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--no-sandbox'] });
+serveTestMod(browser);
 const errors = [];
 const ok = (m) => console.log('ok', m);
 try {

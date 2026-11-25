@@ -4,11 +4,13 @@
 // Start Vite first: BASE_URL=http://localhost:5173 CHROMIUM_PATH=/path/to/chromium node scripts/apps-ui-test.mjs
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
+import { serveTestMod } from './testMod.mjs';
 
 const browser = await chromium.launch({
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
   args: ['--no-sandbox', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
+serveTestMod(browser);
 const errors = [];
 const ok = (m) => console.log('ok', m);
 const BASE = process.env.BASE_URL ?? 'http://localhost:5173';

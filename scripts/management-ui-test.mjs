@@ -1,7 +1,12 @@
 // Real browser checks; start Vite first. Uses the same Chromium/BASE_URL options as rink-ui-test.mjs.
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
+// checks the real data of the KHL_2627 mod, which is not in the repository (the game ships without a league)
+if (!existsSync('public/mods/KHL_2627/roster.json')) {
+  console.log('SKIP: put the KHL_2627 mod into public/mods to run this test');
+  process.exit(0);
+}
 // The coach market is whatever roster.json lists in `freeCoaches`.
 const FREE_COACHES = JSON.parse(readFileSync('public/mods/KHL_2627/roster.json', 'utf8')).freeCoaches.length;
 const browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--no-sandbox', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });

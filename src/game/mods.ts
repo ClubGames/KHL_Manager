@@ -92,24 +92,29 @@ export function parseModIndex(json: unknown): string[] {
 /** Every mod the game can find: the folders named in mods/index.json, plus a legacy roster.json next to index.html. */
 export async function listMods(): Promise<ModEntry[]> {
   let ids: string[] = [];
+  let indexed = true;
   try {
     ids = parseModIndex(await fetchJson(`${MODS_ROOT}/index.json`));
   } catch {
-    /* no index: try the bundled mod */
+    // no index file at all (a hand-made folder on a static server): look for a mods/KHL_2627 folder, if it is there
+    indexed = false;
+    ids = [DEFAULT_MOD_ID];
   }
-  if (!ids.length) ids = [DEFAULT_MOD_ID];
-  const mods = await Promise.all(
-    ids.map(async (id) => {
+  // the game ships without a league: an empty list is fine — the start screen offers to install a mod or pick a roster file
+  const found = await Promise.all(
+    ids.map(async (id): Promise<ModEntry | null> => {
       const base = modBase(id);
       let manifest: unknown = {};
       try {
         manifest = await fetchJson(`${base}/mod.json`);
       } catch {
-        /* mod.json is optional */
+        /* mod.json is optional — but a guessed folder without one is taken as absent */
+        if (!indexed) return null;
       }
       return entryFrom(id, base, manifest);
     })
   );
+  const mods = found.filter((m): m is ModEntry => m !== null);
   try {
     const legacy = await fetchJson('./roster.json');
     if (legacy && typeof legacy === 'object') {

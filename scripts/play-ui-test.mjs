@@ -5,10 +5,12 @@
 // BASE_URL=http://localhost:5173 CHROMIUM_PATH=/path/to/chromium node scripts/play-ui-test.mjs
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
+import { serveTestMod } from './testMod.mjs';
 const browser = await chromium.launch({
   ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
   args: ['--no-sandbox', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
+serveTestMod(browser);
 const errors = [];
 async function open(options = {}, settings = {}) {
   const page = await browser.newPage(options);

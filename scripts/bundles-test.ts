@@ -3,7 +3,7 @@
 // 2. Tactics & Locker Room (Live mid-period coaching + timeout + goalie swap + empty net, Line/Pair Chemistry & Archetypes, Captain/Assistants, Goalie Freshness & Far East road fatigue)
 // 3. KHL Pro Regulations (RFA <28 / UFA 28+ & Offer Sheets & NMC, VHL Farm & 48h Waiver Wire, KHL Rivalry Derbies)
 
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { parseRosterText } from '../src/game/roster';
@@ -28,6 +28,11 @@ import { Match } from '../src/components/Match';
 import { Club } from '../src/components/Club';
 import { facilityUpgradeCost, isUnavailable, normalizeInjury } from '../src/game/medical';
 import { attackRating } from '../src/game/ratings';
+// checks the real data of the KHL_2627 mod, which is not in the repository (the game ships without a league)
+if (!existsSync('public/mods/KHL_2627/roster.json')) {
+  console.log('SKIP: put the KHL_2627 mod into public/mods to run this test');
+  process.exit(0);
+}
 
 let failed = 0;
 const check = (name: string, ok: boolean, extra = '') => {

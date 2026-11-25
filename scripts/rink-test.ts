@@ -1,10 +1,10 @@
 // npx tsx scripts/rink-test.ts
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { parseRosterText } from '../src/game/roster';
 import { advanceRinkClock, buildReplayClip, buildRinkTimeline, clipFrame, timelineFrame, timelineGoalClip, liveRinkFrame, samplePath } from '../src/game/rinkPlayback';
 import type { GameEvent } from '../src/types';
-const r = parseRosterText(readFileSync('public/mods/KHL_2627/roster.json', 'utf8'));
+const r = parseRosterText(readFileSync((existsSync('public/mods/KHL_2627/roster.json') ? 'public/mods/KHL_2627/roster.json' : 'scripts/fixtures/test-roster.json'), 'utf8'));
 const home = r.teams.find(t => t.id === 'ska')!, away = r.teams.find(t => t.id === 'avangard')!;
 const ids = (t: typeof home) => [...t.lineup.F[0], ...t.lineup.D[0]].filter((id): id is string => !!id);
 const h = ids(home), a = ids(away);
