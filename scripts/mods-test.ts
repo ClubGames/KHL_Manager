@@ -45,6 +45,21 @@ async function main() {
     assert.ok(!existsSync('roster.json') && !existsSync('public/roster.json') && !existsSync('public/logos'), 'nothing left at the old places');
   });
 
+  await ok('every player of the bundled roster has a real stick hand (L / R), right shots are a minority', () => {
+    const r = JSON.parse(rosterText);
+    const players = [...r.teams.flatMap((t: { players: unknown[] }) => t.players), ...r.freeAgents] as { id: string; hand?: string }[];
+    for (const p of players) assert.ok(p.hand === 'L' || p.hand === 'R', `${p.id}: hand ${p.hand}`);
+    const right = players.filter((p) => p.hand === 'R').length / players.length;
+    assert.ok(right > 0.15 && right < 0.4, `right shots ${(right * 100).toFixed(1)}%`);
+    // spot checks against the sources (khl.ru, Wikipedia)
+    const byId = new Map(players.map((p) => [p.id, p.hand]));
+    assert.equal(byId.get('nhk-g02'), 'R', 'Любалин catches right (khl.ru)');
+    assert.equal(byId.get('fa-02'), 'R', 'Тэйлор Бек shoots right');
+    const loaded = parseRosterText(rosterText).players;
+    assert.equal(loaded['nhk-g02']?.hand, 'R', 'the loader keeps the hand');
+    assert.equal(Object.values(loaded).filter((p) => p.hand === 'R').length, players.filter((p) => p.hand === 'R').length, 'no hand lost on load');
+  });
+
   await ok('schedule.json is a full league calendar: 68 games per club, nobody twice a day, round trip', () => {
     // the real 2026/27 calendar (uploaded by the author), no longer the generator's output
     const r = parseRosterText(rosterText);

@@ -64,6 +64,7 @@
           "weight": 92,
           "number": 1,
           "country": "Россия",
+          "hand": "L",
           "overall": 84,
           "potential": 85,
           "skills": {
@@ -88,6 +89,7 @@
           "weight": 73,
           "number": 54,
           "country": "Россия",
+          "hand": "L",
           "overall": 81,
           "potential": 78,
           "skills": {
@@ -112,6 +114,7 @@
           "weight": 89,
           "number": 25,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -137,6 +140,7 @@
           "weight": 85,
           "number": 28,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -162,6 +166,7 @@
           "weight": 94,
           "number": 44,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -187,6 +192,7 @@
           "weight": 95,
           "number": 55,
           "country": "США",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -212,6 +218,7 @@
           "weight": 87,
           "number": 58,
           "country": "Канада",
+          "hand": "L",
           "overall": 75,
           "potential": 75,
           "skills": {
@@ -237,6 +244,7 @@
           "weight": 81,
           "number": 66,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 82,
           "skills": {
@@ -262,6 +270,7 @@
           "weight": 79,
           "number": 75,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -287,6 +296,7 @@
           "weight": 78,
           "number": 76,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 72,
           "skills": {
@@ -312,6 +322,7 @@
           "weight": 78,
           "number": 84,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 84,
           "skills": {
@@ -337,6 +348,7 @@
           "weight": 95,
           "number": 95,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -362,6 +374,7 @@
           "weight": 86,
           "number": 9,
           "country": "Канада",
+          "hand": "R",
           "overall": 82,
           "potential": 83,
           "skills": {
@@ -387,6 +400,7 @@
           "weight": 93,
           "number": 13,
           "country": "Канада",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -412,6 +426,7 @@
           "weight": 82,
           "number": 17,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -437,6 +452,7 @@
           "weight": 85,
           "number": 22,
           "country": "США",
+          "hand": "R",
           "overall": 83,
           "potential": 83,
           "skills": {
@@ -462,6 +478,7 @@
           "weight": 101,
           "number": 26,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 84,
           "skills": {
@@ -487,6 +504,7 @@
           "weight": 89,
           "number": 34,
           "country": "Россия",
+          "hand": "L",
           "overall": 73,
           "potential": 73,
           "skills": {
@@ -512,6 +530,7 @@
           "weight": 86,
           "number": 65,
           "country": "Россия",
+          "hand": "L",
           "overall": 79,
           "potential": 79,
           "skills": {
@@ -537,6 +556,7 @@
           "weight": 71,
           "number": 73,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 80,
           "skills": {
@@ -563,6 +583,7 @@
           "weight": 86,
           "number": 74,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -588,6 +609,7 @@
           "weight": 76,
           "number": 78,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -613,6 +635,7 @@
           "weight": 88,
           "number": 83,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -638,6 +661,7 @@
           "weight": 90,
           "number": 86,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -663,6 +687,7 @@
           "weight": 77,
           "number": 87,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 80,
           "skills": {
@@ -689,6 +714,7 @@
           "weight": 85,
           "number": 90,
           "country": "Канада",
+          "hand": "R",
           "overall": 85,
           "potential": 85,
           "skills": {
@@ -714,6 +740,7 @@
           "weight": 82,
           "number": 92,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 82,
           "skills": {
@@ -739,6 +766,7 @@
           "weight": 79,
           "number": 93,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -764,6 +792,7 @@
           "weight": 79,
           "number": 96,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -840,6 +869,7 @@
           "weight": 77,
           "number": 1,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 80,
           "skills": {
@@ -864,6 +894,7 @@
           "weight": 91,
           "number": 18,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -888,6 +919,7 @@
           "weight": 92,
           "number": 50,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -912,6 +944,7 @@
           "weight": 85,
           "number": 7,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -937,6 +970,7 @@
           "weight": 95,
           "number": 8,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 72,
           "potential": 82,
           "skills": {
@@ -962,6 +996,7 @@
           "weight": 80,
           "number": 9,
           "country": "Канада",
+          "hand": "R",
           "overall": 79,
           "potential": 79,
           "skills": {
@@ -987,6 +1022,7 @@
           "weight": 80,
           "number": 10,
           "country": "Канада",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -1012,6 +1048,7 @@
           "weight": 90,
           "number": 44,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -1037,6 +1074,7 @@
           "weight": 89,
           "number": 55,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -1062,6 +1100,7 @@
           "weight": 70,
           "number": 62,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -1087,6 +1126,7 @@
           "weight": 85,
           "number": 72,
           "country": "США",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -1112,6 +1152,7 @@
           "weight": 114,
           "number": 88,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -1137,6 +1178,7 @@
           "weight": 87,
           "number": 89,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -1162,6 +1204,7 @@
           "weight": 88,
           "number": 11,
           "country": "Нидерланды",
+          "hand": "R",
           "overall": 83,
           "potential": 83,
           "skills": {
@@ -1187,6 +1230,7 @@
           "weight": 86,
           "number": 15,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -1212,6 +1256,7 @@
           "weight": 82,
           "number": 17,
           "country": "Россия",
+          "hand": "L",
           "overall": 83,
           "potential": 83,
           "skills": {
@@ -1237,6 +1282,7 @@
           "weight": 104,
           "number": 21,
           "country": "Словакия",
+          "hand": "L",
           "overall": 80,
           "potential": 82,
           "skills": {
@@ -1262,6 +1308,7 @@
           "weight": 76,
           "number": 24,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -1287,6 +1334,7 @@
           "weight": 79,
           "number": 25,
           "country": "Канада",
+          "hand": "R",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -1312,6 +1360,7 @@
           "weight": 79,
           "number": 56,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -1337,6 +1386,7 @@
           "weight": 75,
           "number": 66,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 82,
           "skills": {
@@ -1362,6 +1412,7 @@
           "weight": 86,
           "number": 71,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -1387,6 +1438,7 @@
           "weight": 96,
           "number": 72,
           "country": "Россия",
+          "hand": "R",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -1412,6 +1464,7 @@
           "weight": 71,
           "number": 76,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -1437,6 +1490,7 @@
           "weight": 96,
           "number": 77,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 82,
           "skills": {
@@ -1462,6 +1516,7 @@
           "weight": 98,
           "number": 78,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 82,
           "skills": {
@@ -1487,6 +1542,7 @@
           "weight": 91,
           "number": 86,
           "country": "Россия",
+          "hand": "L",
           "overall": 75,
           "potential": 75,
           "skills": {
@@ -1512,6 +1568,7 @@
           "weight": 74,
           "number": 92,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 72,
           "skills": {
@@ -1537,6 +1594,7 @@
           "weight": 85,
           "number": 96,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -1562,6 +1620,7 @@
           "weight": 91,
           "number": 99,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -1587,6 +1646,7 @@
           "weight": 83,
           "number": 26,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -1614,6 +1674,7 @@
           "weight": 74,
           "number": 58,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -1641,6 +1702,7 @@
           "weight": 90,
           "number": 90,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -1668,6 +1730,7 @@
           "weight": 67,
           "number": 63,
           "country": "Россия",
+          "hand": "R",
           "overall": 66,
           "potential": 80,
           "skills": {
@@ -1746,6 +1809,7 @@
           "weight": 80,
           "number": 1,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -1770,6 +1834,7 @@
           "weight": 87,
           "number": 39,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -1794,6 +1859,7 @@
           "weight": 78,
           "number": 87,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -1818,6 +1884,7 @@
           "weight": 98,
           "number": 7,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -1843,6 +1910,7 @@
           "weight": 88,
           "number": 16,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 72,
           "skills": {
@@ -1868,6 +1936,7 @@
           "weight": 81,
           "number": 23,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -1893,6 +1962,7 @@
           "weight": 82,
           "number": 28,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -1918,6 +1988,7 @@
           "weight": 92,
           "number": 44,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -1943,6 +2014,7 @@
           "weight": 90,
           "number": 55,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -1968,6 +2040,7 @@
           "weight": 86,
           "number": 65,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -1993,6 +2066,7 @@
           "weight": 104,
           "number": 73,
           "country": "Чехия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -2018,6 +2092,7 @@
           "weight": 89,
           "number": 77,
           "country": "Словакия",
+          "hand": "R",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -2043,6 +2118,7 @@
           "weight": 88,
           "number": 94,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -2068,6 +2144,7 @@
           "weight": 77,
           "number": 9,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -2093,6 +2170,7 @@
           "weight": 86,
           "number": 11,
           "country": "Беларусь",
+          "hand": "R",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -2118,6 +2196,7 @@
           "weight": 96,
           "number": 15,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -2143,6 +2222,7 @@
           "weight": 80,
           "number": 17,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -2168,6 +2248,7 @@
           "weight": 86,
           "number": 19,
           "country": "Россия",
+          "hand": "L",
           "overall": 73,
           "potential": 73,
           "skills": {
@@ -2193,6 +2274,7 @@
           "weight": 87,
           "number": 21,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -2218,6 +2300,7 @@
           "weight": 74,
           "number": 24,
           "country": "Казахстан",
+          "hand": "R",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -2243,6 +2326,7 @@
           "weight": 87,
           "number": 36,
           "country": "Канада",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -2268,6 +2352,7 @@
           "weight": 75,
           "number": 41,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -2293,6 +2378,7 @@
           "weight": 76,
           "number": 47,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -2318,6 +2404,7 @@
           "weight": 93,
           "number": 70,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -2343,6 +2430,7 @@
           "weight": 95,
           "number": 71,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -2368,6 +2456,7 @@
           "weight": 91,
           "number": 72,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -2393,6 +2482,7 @@
           "weight": 91,
           "number": 93,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -2418,6 +2508,7 @@
           "weight": 84,
           "number": 95,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -2443,6 +2534,7 @@
           "weight": 89,
           "number": 97,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -2468,6 +2560,7 @@
           "weight": 92,
           "number": 98,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -2493,6 +2586,7 @@
           "weight": 83,
           "number": 45,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 80,
           "skills": {
@@ -2571,6 +2665,7 @@
           "weight": 88,
           "number": 1,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 82,
           "skills": {
@@ -2595,6 +2690,7 @@
           "weight": 90,
           "number": 20,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 82,
           "skills": {
@@ -2619,6 +2715,7 @@
           "weight": 75,
           "number": 36,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 80,
           "skills": {
@@ -2644,6 +2741,7 @@
           "weight": 75,
           "number": 40,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -2668,6 +2766,7 @@
           "weight": 79,
           "number": 82,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -2692,6 +2791,7 @@
           "weight": 78,
           "number": 28,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -2717,6 +2817,7 @@
           "weight": 83,
           "number": 32,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 80,
           "skills": {
@@ -2743,6 +2844,7 @@
           "weight": 92,
           "number": 44,
           "country": "Россия",
+          "hand": "R",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -2768,6 +2870,7 @@
           "weight": 81,
           "number": 49,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -2793,6 +2896,7 @@
           "weight": 83,
           "number": 53,
           "country": "Россия",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -2818,6 +2922,7 @@
           "weight": 86,
           "number": 71,
           "country": "США",
+          "hand": "R",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -2843,6 +2948,7 @@
           "weight": 80,
           "number": 75,
           "country": "Россия",
+          "hand": "L",
           "overall": 64,
           "potential": 80,
           "skills": {
@@ -2869,6 +2975,7 @@
           "weight": 85,
           "number": 96,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -2894,6 +3001,7 @@
           "weight": 75,
           "number": 8,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -2919,6 +3027,7 @@
           "weight": 90,
           "number": 14,
           "country": "Россия",
+          "hand": "R",
           "overall": 80,
           "potential": 82,
           "skills": {
@@ -2944,6 +3053,7 @@
           "weight": 81,
           "number": 16,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -2969,6 +3079,7 @@
           "weight": 85,
           "number": 20,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -2994,6 +3105,7 @@
           "weight": 90,
           "number": 23,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -3019,6 +3131,7 @@
           "weight": 95,
           "number": 26,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 80,
           "skills": {
@@ -3044,6 +3157,7 @@
           "weight": 82,
           "number": 29,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -3069,6 +3183,7 @@
           "weight": 86,
           "number": 35,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -3094,6 +3209,7 @@
           "weight": 86,
           "number": 57,
           "country": "США",
+          "hand": "R",
           "overall": 82,
           "potential": 84,
           "skills": {
@@ -3119,6 +3235,7 @@
           "weight": 85,
           "number": 59,
           "country": "США",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -3144,6 +3261,7 @@
           "weight": 75,
           "number": 71,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -3169,6 +3287,7 @@
           "weight": 83,
           "number": 86,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -3194,6 +3313,7 @@
           "weight": 83,
           "number": 87,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -3219,6 +3339,7 @@
           "weight": 80,
           "number": 94,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 76,
           "skills": {
@@ -3244,6 +3365,7 @@
           "weight": 82,
           "number": 95,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -3269,6 +3391,7 @@
           "weight": 76,
           "number": 97,
           "country": "Россия",
+          "hand": "R",
           "overall": 66,
           "potential": 80,
           "skills": {
@@ -3295,6 +3418,7 @@
           "weight": 84,
           "number": 98,
           "country": "Россия",
+          "hand": "L",
           "overall": 84,
           "potential": 84,
           "skills": {
@@ -3371,6 +3495,7 @@
           "weight": 81,
           "number": 1,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 76,
           "skills": {
@@ -3395,6 +3520,7 @@
           "weight": 67,
           "number": 60,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -3419,6 +3545,7 @@
           "weight": 95,
           "number": 83,
           "country": "Россия",
+          "hand": "L",
           "overall": 83,
           "potential": 76,
           "skills": {
@@ -3443,6 +3570,7 @@
           "weight": 91,
           "number": 3,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -3468,6 +3596,7 @@
           "weight": 90,
           "number": 8,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -3493,6 +3622,7 @@
           "weight": 96,
           "number": 17,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -3518,6 +3648,7 @@
           "weight": 85,
           "number": 19,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -3543,6 +3674,7 @@
           "weight": 92,
           "number": 23,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -3568,6 +3700,7 @@
           "weight": 86,
           "number": 24,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -3593,6 +3726,7 @@
           "weight": 88,
           "number": 26,
           "country": "Россия",
+          "hand": "R",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -3618,6 +3752,7 @@
           "weight": 88,
           "number": 57,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 72,
           "skills": {
@@ -3643,6 +3778,7 @@
           "weight": 89,
           "number": 93,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -3668,6 +3804,7 @@
           "weight": 72,
           "number": 4,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -3693,6 +3830,7 @@
           "weight": 85,
           "number": 9,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 84,
           "skills": {
@@ -3718,6 +3856,7 @@
           "weight": 80,
           "number": 10,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -3743,6 +3882,7 @@
           "weight": 82,
           "number": 11,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -3768,6 +3908,7 @@
           "weight": 77,
           "number": 12,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -3793,6 +3934,7 @@
           "weight": 86,
           "number": 13,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 82,
           "skills": {
@@ -3818,6 +3960,7 @@
           "weight": 88,
           "number": 16,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -3843,6 +3986,7 @@
           "weight": 102,
           "number": 18,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -3868,6 +4012,7 @@
           "weight": 90,
           "number": 21,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -3893,6 +4038,7 @@
           "weight": 82,
           "number": 34,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -3918,6 +4064,7 @@
           "weight": 75,
           "number": 50,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -3943,6 +4090,7 @@
           "weight": 88,
           "number": 56,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -3968,6 +4116,7 @@
           "weight": 76,
           "number": 77,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -3993,6 +4142,7 @@
           "weight": 87,
           "number": 82,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -4018,6 +4168,7 @@
           "weight": 94,
           "number": 88,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -4043,6 +4194,7 @@
           "weight": 87,
           "number": 90,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -4068,6 +4220,7 @@
           "weight": 76,
           "number": 98,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -4093,6 +4246,7 @@
           "weight": 75,
           "number": 78,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -4118,6 +4272,7 @@
           "weight": 84,
           "number": 2,
           "country": "Россия",
+          "hand": "L",
           "overall": 62,
           "potential": 82,
           "skills": {
@@ -4145,6 +4300,7 @@
           "weight": 73,
           "number": 25,
           "country": "Россия",
+          "hand": "L",
           "overall": 64,
           "potential": 82,
           "skills": {
@@ -4172,6 +4328,7 @@
           "weight": 79,
           "number": 61,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -4250,6 +4407,7 @@
           "weight": 90,
           "number": 43,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 80,
           "potential": 78,
           "skills": {
@@ -4274,6 +4432,7 @@
           "weight": 80,
           "number": 66,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -4298,6 +4457,7 @@
           "weight": 88,
           "number": 70,
           "country": "Россия",
+          "hand": "L",
           "overall": 81,
           "potential": 78,
           "skills": {
@@ -4322,6 +4482,7 @@
           "weight": 91,
           "number": 2,
           "country": "Канада",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -4347,6 +4508,7 @@
           "weight": 99,
           "number": 3,
           "country": "США",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -4372,6 +4534,7 @@
           "weight": 85,
           "number": 4,
           "country": "США",
+          "hand": "R",
           "overall": 81,
           "potential": 76,
           "skills": {
@@ -4397,6 +4560,7 @@
           "weight": 80,
           "number": 7,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -4422,6 +4586,7 @@
           "weight": 71,
           "number": 19,
           "country": "Казахстан",
+          "hand": "R",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -4448,6 +4613,7 @@
           "weight": 95,
           "number": 26,
           "country": "США",
+          "hand": "R",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -4473,6 +4639,7 @@
           "weight": 81,
           "number": 31,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -4498,6 +4665,7 @@
           "weight": 70,
           "number": 71,
           "country": "Казахстан",
+          "hand": "R",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -4523,6 +4691,7 @@
           "weight": 87,
           "number": 87,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -4548,6 +4717,7 @@
           "weight": 78,
           "number": 91,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -4573,6 +4743,7 @@
           "weight": 91,
           "number": 93,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -4598,6 +4769,7 @@
           "weight": 97,
           "number": 8,
           "country": "США",
+          "hand": "R",
           "overall": 84,
           "potential": 78,
           "skills": {
@@ -4623,6 +4795,7 @@
           "weight": 88,
           "number": 9,
           "country": "США",
+          "hand": "R",
           "overall": 76,
           "potential": 80,
           "skills": {
@@ -4648,6 +4821,7 @@
           "weight": 91,
           "number": 10,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 68,
           "potential": 80,
           "skills": {
@@ -4674,6 +4848,7 @@
           "weight": 91,
           "number": 11,
           "country": "Канада",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -4699,6 +4874,7 @@
           "weight": 81,
           "number": 12,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -4724,6 +4900,7 @@
           "weight": 82,
           "number": 13,
           "country": "Казахстан",
+          "hand": "R",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -4749,6 +4926,7 @@
           "weight": 87,
           "number": 14,
           "country": "США",
+          "hand": "R",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -4774,6 +4952,7 @@
           "weight": 72,
           "number": 17,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -4799,6 +4978,7 @@
           "weight": 85,
           "number": 22,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -4824,6 +5004,7 @@
           "weight": 90,
           "number": 28,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 68,
           "potential": 80,
           "skills": {
@@ -4850,6 +5031,7 @@
           "weight": 81,
           "number": 29,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -4875,6 +5057,7 @@
           "weight": 84,
           "number": 64,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -4900,6 +5083,7 @@
           "weight": 81,
           "number": 70,
           "country": "Россия",
+          "hand": "L",
           "overall": 77,
           "potential": 80,
           "skills": {
@@ -4925,6 +5109,7 @@
           "weight": 84,
           "number": 77,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -4950,6 +5135,7 @@
           "weight": 79,
           "number": 81,
           "country": "Казахстан",
+          "hand": "R",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -4975,6 +5161,7 @@
           "weight": 89,
           "number": 84,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -5000,6 +5187,7 @@
           "weight": 89,
           "number": 96,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -5076,6 +5264,7 @@
           "weight": 78,
           "number": 31,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 68,
           "potential": 80,
           "skills": {
@@ -5101,6 +5290,7 @@
           "weight": 82,
           "number": 60,
           "country": "Канада",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -5125,6 +5315,7 @@
           "weight": 75,
           "number": 94,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -5149,6 +5340,7 @@
           "weight": 96,
           "number": 10,
           "country": "Канада",
+          "hand": "R",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -5174,6 +5366,7 @@
           "weight": 90,
           "number": 18,
           "country": "США",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -5199,6 +5392,7 @@
           "weight": 81,
           "number": 24,
           "country": "Канада",
+          "hand": "L",
           "overall": 76,
           "potential": 80,
           "skills": {
@@ -5224,6 +5418,7 @@
           "weight": 89,
           "number": 27,
           "country": "Канада",
+          "hand": "R",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -5249,6 +5444,7 @@
           "weight": 86,
           "number": 28,
           "country": "США",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -5274,6 +5470,7 @@
           "weight": 98,
           "number": 33,
           "country": "Канада",
+          "hand": "R",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -5299,6 +5496,7 @@
           "weight": 84,
           "number": 37,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -5324,6 +5522,7 @@
           "weight": 90,
           "number": 38,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -5349,6 +5548,7 @@
           "weight": 89,
           "number": 61,
           "country": "Канада",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -5374,6 +5574,7 @@
           "weight": 82,
           "number": 82,
           "country": "Беларусь",
+          "hand": "R",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -5399,6 +5600,7 @@
           "weight": 76,
           "number": 93,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -5424,6 +5626,7 @@
           "weight": 75,
           "number": 7,
           "country": "США",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -5449,6 +5652,7 @@
           "weight": 81,
           "number": 9,
           "country": "США",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -5474,6 +5678,7 @@
           "weight": 91,
           "number": 12,
           "country": "США",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -5499,6 +5704,7 @@
           "weight": 87,
           "number": 14,
           "country": "Беларусь",
+          "hand": "R",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -5524,6 +5730,7 @@
           "weight": 102,
           "number": 22,
           "country": "Канада",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -5549,6 +5756,7 @@
           "weight": 77,
           "number": 26,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -5574,6 +5782,7 @@
           "weight": 87,
           "number": 40,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -5599,6 +5808,7 @@
           "weight": 93,
           "number": 71,
           "country": "Канада",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -5624,6 +5834,7 @@
           "weight": 88,
           "number": 72,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 78,
           "potential": 82,
           "skills": {
@@ -5649,6 +5860,7 @@
           "weight": 90,
           "number": 76,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -5674,6 +5886,7 @@
           "weight": 82,
           "number": 77,
           "country": "Франция",
+          "hand": "R",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -5699,6 +5912,7 @@
           "weight": 83,
           "number": 80,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -5724,6 +5938,7 @@
           "weight": 74,
           "number": 86,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -5749,6 +5964,7 @@
           "weight": 76,
           "number": 91,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -5774,6 +5990,7 @@
           "weight": 85,
           "number": 96,
           "country": "США",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -5799,6 +6016,7 @@
           "weight": 92,
           "number": 97,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -5824,6 +6042,7 @@
           "weight": 82,
           "number": 35,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -5850,6 +6069,7 @@
           "weight": 72,
           "number": 49,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -5877,6 +6097,7 @@
           "weight": 76,
           "number": 62,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -5904,6 +6125,7 @@
           "weight": 72,
           "number": 37,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -5931,6 +6153,7 @@
           "weight": 81,
           "number": 52,
           "country": "Беларусь",
+          "hand": "R",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -5958,6 +6181,7 @@
           "weight": 77,
           "number": 56,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 64,
           "potential": 80,
           "skills": {
@@ -5985,6 +6209,7 @@
           "weight": 78,
           "number": 58,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -6012,6 +6237,7 @@
           "weight": 86,
           "number": 68,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -6091,6 +6317,7 @@
           "weight": 89,
           "number": 20,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -6115,6 +6342,7 @@
           "weight": 92,
           "number": 59,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -6139,6 +6367,7 @@
           "weight": 80,
           "number": 99,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -6163,6 +6392,7 @@
           "weight": 90,
           "number": 4,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -6188,6 +6418,7 @@
           "weight": 94,
           "number": 5,
           "country": "Россия",
+          "hand": "R",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -6213,6 +6444,7 @@
           "weight": 88,
           "number": 22,
           "country": "Канада",
+          "hand": "R",
           "overall": 76,
           "potential": 82,
           "skills": {
@@ -6238,6 +6470,7 @@
           "weight": 91,
           "number": 45,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 78,
           "skills": {
@@ -6263,6 +6496,7 @@
           "weight": 85,
           "number": 55,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 82,
           "skills": {
@@ -6289,6 +6523,7 @@
           "weight": 94,
           "number": 75,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -6314,6 +6549,7 @@
           "weight": 93,
           "number": 88,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -6339,6 +6575,7 @@
           "weight": 95,
           "number": 92,
           "country": "Россия",
+          "hand": "R",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -6364,6 +6601,7 @@
           "weight": 97,
           "number": 93,
           "country": "Россия",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -6389,6 +6627,7 @@
           "weight": 90,
           "number": 94,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -6414,6 +6653,7 @@
           "weight": 93,
           "number": 96,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -6439,6 +6679,7 @@
           "weight": 87,
           "number": 7,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -6464,6 +6705,7 @@
           "weight": 83,
           "number": 9,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -6489,6 +6731,7 @@
           "weight": 88,
           "number": 10,
           "country": "Канада",
+          "hand": "R",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -6514,6 +6757,7 @@
           "weight": 88,
           "number": 15,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -6539,6 +6783,7 @@
           "weight": 84,
           "number": 29,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -6564,6 +6809,7 @@
           "weight": 95,
           "number": 31,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -6589,6 +6835,7 @@
           "weight": 93,
           "number": 35,
           "country": "Россия",
+          "hand": "R",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -6614,6 +6861,7 @@
           "weight": 82,
           "number": 38,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -6639,6 +6887,7 @@
           "weight": 85,
           "number": 47,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 84,
           "skills": {
@@ -6664,6 +6913,7 @@
           "weight": 91,
           "number": 57,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -6689,6 +6939,7 @@
           "weight": 87,
           "number": 70,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -6714,6 +6965,7 @@
           "weight": 83,
           "number": 77,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -6739,6 +6991,7 @@
           "weight": 100,
           "number": 79,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 82,
           "skills": {
@@ -6764,6 +7017,7 @@
           "weight": 87,
           "number": 87,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 82,
           "skills": {
@@ -6789,6 +7043,7 @@
           "weight": 76,
           "number": 90,
           "country": "Канада",
+          "hand": "L",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -6814,6 +7069,7 @@
           "weight": 83,
           "number": 91,
           "country": "Канада",
+          "hand": "R",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -6839,6 +7095,7 @@
           "weight": 82,
           "number": 94,
           "country": "Россия",
+          "hand": "L",
           "overall": 64,
           "potential": 82,
           "skills": {
@@ -6865,6 +7122,7 @@
           "weight": 88,
           "number": 43,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 84,
           "skills": {
@@ -6892,6 +7150,7 @@
           "weight": 71,
           "number": 27,
           "country": "Россия",
+          "hand": "R",
           "overall": 66,
           "potential": 82,
           "skills": {
@@ -6919,6 +7178,7 @@
           "weight": 70,
           "number": 56,
           "country": "Россия",
+          "hand": "R",
           "overall": 68,
           "potential": 80,
           "skills": {
@@ -6997,6 +7257,7 @@
           "weight": 94,
           "number": 1,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -7021,6 +7282,7 @@
           "weight": 91,
           "number": 73,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -7045,6 +7307,7 @@
           "weight": 89,
           "number": 77,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -7069,6 +7332,7 @@
           "weight": 77,
           "number": 12,
           "country": "Канада",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -7094,6 +7358,7 @@
           "weight": 101,
           "number": 27,
           "country": "США",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -7119,6 +7384,7 @@
           "weight": 97,
           "number": 32,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 84,
           "skills": {
@@ -7144,6 +7410,7 @@
           "weight": 96,
           "number": 44,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -7169,6 +7436,7 @@
           "weight": 100,
           "number": 47,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -7194,6 +7462,7 @@
           "weight": 91,
           "number": 49,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -7219,6 +7488,7 @@
           "weight": 90,
           "number": 75,
           "country": "Канада",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -7244,6 +7514,7 @@
           "weight": 91,
           "number": 89,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -7269,6 +7540,7 @@
           "weight": 98,
           "number": 96,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -7294,6 +7566,7 @@
           "weight": 88,
           "number": 99,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -7319,6 +7592,7 @@
           "weight": 84,
           "number": 10,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -7344,6 +7618,7 @@
           "weight": 92,
           "number": 14,
           "country": "Канада",
+          "hand": "R",
           "overall": 80,
           "potential": 82,
           "skills": {
@@ -7369,6 +7644,7 @@
           "weight": 83,
           "number": 15,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -7394,6 +7670,7 @@
           "weight": 92,
           "number": 17,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -7419,6 +7696,7 @@
           "weight": 85,
           "number": 18,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -7444,6 +7722,7 @@
           "weight": 88,
           "number": 19,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -7469,6 +7748,7 @@
           "weight": 81,
           "number": 21,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -7494,6 +7774,7 @@
           "weight": 88,
           "number": 22,
           "country": "Россия",
+          "hand": "R",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -7519,6 +7800,7 @@
           "weight": 83,
           "number": 23,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -7544,6 +7826,7 @@
           "weight": 85,
           "number": 25,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -7569,6 +7852,7 @@
           "weight": 81,
           "number": 66,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -7594,6 +7878,7 @@
           "weight": 84,
           "number": 71,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -7619,6 +7904,7 @@
           "weight": 83,
           "number": 72,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -7644,6 +7930,7 @@
           "weight": 88,
           "number": 83,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -7669,6 +7956,7 @@
           "weight": 91,
           "number": 84,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -7694,6 +7982,7 @@
           "weight": 95,
           "number": 88,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -7719,6 +8008,7 @@
           "weight": 81,
           "number": 93,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -7744,6 +8034,7 @@
           "weight": 83,
           "number": 64,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -7771,6 +8062,7 @@
           "weight": 82,
           "number": 9,
           "country": "Россия",
+          "hand": "L",
           "overall": 62,
           "potential": 84,
           "skills": {
@@ -7798,6 +8090,7 @@
           "weight": 72,
           "number": 63,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -7825,6 +8118,7 @@
           "weight": 75,
           "number": 87,
           "country": "Россия",
+          "hand": "R",
           "overall": 68,
           "potential": 80,
           "skills": {
@@ -7903,6 +8197,7 @@
           "weight": 91,
           "number": 38,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -7927,6 +8222,7 @@
           "weight": 77,
           "number": 92,
           "country": "Россия",
+          "hand": "L",
           "overall": 84,
           "potential": 82,
           "skills": {
@@ -7951,6 +8247,7 @@
           "weight": 87,
           "number": 4,
           "country": "Россия",
+          "hand": "R",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -7976,6 +8273,7 @@
           "weight": 95,
           "number": 5,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -8001,6 +8299,7 @@
           "weight": 69,
           "number": 49,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 80,
           "skills": {
@@ -8027,6 +8326,7 @@
           "weight": 100,
           "number": 73,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -8052,6 +8352,7 @@
           "weight": 113,
           "number": 77,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -8077,6 +8378,7 @@
           "weight": 89,
           "number": 87,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 78,
           "skills": {
@@ -8102,6 +8404,7 @@
           "weight": 85,
           "number": 93,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 80,
           "skills": {
@@ -8127,6 +8430,7 @@
           "weight": 90,
           "number": 99,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -8152,6 +8456,7 @@
           "weight": 84,
           "number": 7,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 84,
           "skills": {
@@ -8177,6 +8482,7 @@
           "weight": 83,
           "number": 9,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 80,
           "skills": {
@@ -8202,6 +8508,7 @@
           "weight": 90,
           "number": 10,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -8227,6 +8534,7 @@
           "weight": 93,
           "number": 13,
           "country": "Канада",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -8252,6 +8560,7 @@
           "weight": 94,
           "number": 14,
           "country": "Словакия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -8277,6 +8586,7 @@
           "weight": 82,
           "number": 16,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -8302,6 +8612,7 @@
           "weight": 80,
           "number": 27,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 84,
           "skills": {
@@ -8327,6 +8638,7 @@
           "weight": 93,
           "number": 47,
           "country": "Россия",
+          "hand": "L",
           "overall": 84,
           "potential": 84,
           "skills": {
@@ -8352,6 +8664,7 @@
           "weight": 87,
           "number": 70,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 82,
           "skills": {
@@ -8377,6 +8690,7 @@
           "weight": 98,
           "number": 72,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 82,
           "skills": {
@@ -8402,6 +8716,7 @@
           "weight": 93,
           "number": 78,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -8427,6 +8742,7 @@
           "weight": 100,
           "number": 81,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -8452,6 +8768,7 @@
           "weight": 91,
           "number": 89,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 80,
           "skills": {
@@ -8477,6 +8794,7 @@
           "weight": 82,
           "number": 90,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -8502,6 +8820,7 @@
           "weight": 88,
           "number": 91,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -8578,6 +8897,7 @@
           "weight": 78,
           "number": 20,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 82,
           "skills": {
@@ -8602,6 +8922,7 @@
           "weight": 83,
           "number": 30,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 84,
           "skills": {
@@ -8626,6 +8947,7 @@
           "weight": 86,
           "number": 9,
           "country": "Казахстан",
+          "hand": "L",
           "overall": 80,
           "potential": 78,
           "skills": {
@@ -8651,6 +8973,7 @@
           "weight": 86,
           "number": 44,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -8676,6 +8999,7 @@
           "weight": 88,
           "number": 45,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -8701,6 +9025,7 @@
           "weight": 88,
           "number": 56,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -8726,6 +9051,7 @@
           "weight": 82,
           "number": 58,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -8751,6 +9077,7 @@
           "weight": 90,
           "number": 72,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -8776,6 +9103,7 @@
           "weight": 83,
           "number": 74,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -8801,6 +9129,7 @@
           "weight": 94,
           "number": 81,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 84,
           "skills": {
@@ -8827,6 +9156,7 @@
           "weight": 98,
           "number": 87,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -8852,6 +9182,7 @@
           "weight": 74,
           "number": 98,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -8877,6 +9208,7 @@
           "weight": 73,
           "number": 11,
           "country": "Казахстан",
+          "hand": "R",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -8902,6 +9234,7 @@
           "weight": 90,
           "number": 13,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -8927,6 +9260,7 @@
           "weight": 73,
           "number": 14,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -8952,6 +9286,7 @@
           "weight": 89,
           "number": 17,
           "country": "Россия",
+          "hand": "R",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -8977,6 +9312,7 @@
           "weight": 88,
           "number": 18,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -9002,6 +9338,7 @@
           "weight": 72,
           "number": 19,
           "country": "Россия",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -9027,6 +9364,7 @@
           "weight": 86,
           "number": 26,
           "country": "Канада",
+          "hand": "R",
           "overall": 84,
           "potential": 80,
           "skills": {
@@ -9052,6 +9390,7 @@
           "weight": 74,
           "number": 28,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 76,
           "skills": {
@@ -9077,6 +9416,7 @@
           "weight": 83,
           "number": 29,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -9102,6 +9442,7 @@
           "weight": 79,
           "number": 39,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 82,
           "skills": {
@@ -9127,6 +9468,7 @@
           "weight": 83,
           "number": 47,
           "country": "США",
+          "hand": "R",
           "overall": 80,
           "potential": 78,
           "skills": {
@@ -9152,6 +9494,7 @@
           "weight": 69,
           "number": 84,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 82,
           "skills": {
@@ -9178,6 +9521,7 @@
           "weight": 83,
           "number": 92,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -9203,6 +9547,7 @@
           "weight": 82,
           "number": 94,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -9228,6 +9573,7 @@
           "weight": 90,
           "number": 96,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -9304,6 +9650,7 @@
           "weight": 79,
           "number": 31,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 78,
           "skills": {
@@ -9328,6 +9675,7 @@
           "weight": 72,
           "number": 39,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 82,
           "skills": {
@@ -9352,6 +9700,7 @@
           "weight": 73,
           "number": 53,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -9376,6 +9725,7 @@
           "weight": 89,
           "number": 7,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -9401,6 +9751,7 @@
           "weight": 93,
           "number": 22,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 82,
           "skills": {
@@ -9427,6 +9778,7 @@
           "weight": 85,
           "number": 24,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -9452,6 +9804,7 @@
           "weight": 73,
           "number": 27,
           "country": "США",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -9477,6 +9830,7 @@
           "weight": 82,
           "number": 29,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 80,
           "skills": {
@@ -9502,6 +9856,7 @@
           "weight": 92,
           "number": 55,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -9527,6 +9882,7 @@
           "weight": 86,
           "number": 57,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -9552,6 +9908,7 @@
           "weight": 73,
           "number": 65,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -9577,6 +9934,7 @@
           "weight": 90,
           "number": 81,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -9602,6 +9960,7 @@
           "weight": 82,
           "number": 8,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -9627,6 +9986,7 @@
           "weight": 84,
           "number": 10,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -9652,6 +10012,7 @@
           "weight": 80,
           "number": 11,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -9677,6 +10038,7 @@
           "weight": 83,
           "number": 17,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -9702,6 +10064,7 @@
           "weight": 75,
           "number": 21,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -9727,6 +10090,7 @@
           "weight": 75,
           "number": 23,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -9752,6 +10116,7 @@
           "weight": 81,
           "number": 33,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 82,
           "skills": {
@@ -9777,6 +10142,7 @@
           "weight": 85,
           "number": 44,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -9802,6 +10168,7 @@
           "weight": 95,
           "number": 52,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -9827,6 +10194,7 @@
           "weight": 81,
           "number": 61,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -9852,6 +10220,7 @@
           "weight": 86,
           "number": 71,
           "country": "Россия",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -9877,6 +10246,7 @@
           "weight": 73,
           "number": 72,
           "country": "Россия",
+          "hand": "R",
           "overall": 64,
           "potential": 82,
           "skills": {
@@ -9903,6 +10273,7 @@
           "weight": 76,
           "number": 84,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 80,
           "skills": {
@@ -9929,6 +10300,7 @@
           "weight": 70,
           "number": 87,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 80,
           "skills": {
@@ -9955,6 +10327,7 @@
           "weight": 74,
           "number": 88,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 72,
           "skills": {
@@ -9980,6 +10353,7 @@
           "weight": 79,
           "number": 97,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -10056,6 +10430,7 @@
           "weight": 82,
           "number": 35,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 82,
           "skills": {
@@ -10080,6 +10455,7 @@
           "weight": 66,
           "number": 50,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -10104,6 +10480,7 @@
           "weight": 76,
           "number": 60,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -10128,6 +10505,7 @@
           "weight": 91,
           "number": 4,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 82,
           "skills": {
@@ -10153,6 +10531,7 @@
           "weight": 80,
           "number": 8,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 82,
           "skills": {
@@ -10178,6 +10557,7 @@
           "weight": 89,
           "number": 11,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -10203,6 +10583,7 @@
           "weight": 91,
           "number": 18,
           "country": "Канада",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -10228,6 +10609,7 @@
           "weight": 90,
           "number": 22,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -10253,6 +10635,7 @@
           "weight": 97,
           "number": 43,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -10278,6 +10661,7 @@
           "weight": 88,
           "number": 52,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -10303,6 +10687,7 @@
           "weight": 82,
           "number": 73,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -10328,6 +10713,7 @@
           "weight": 85,
           "number": 85,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -10353,6 +10739,7 @@
           "weight": 82,
           "number": 89,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 84,
           "skills": {
@@ -10379,6 +10766,7 @@
           "weight": 80,
           "number": 96,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -10404,6 +10792,7 @@
           "weight": 75,
           "number": 13,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -10429,6 +10818,7 @@
           "weight": 88,
           "number": 21,
           "country": "Канада",
+          "hand": "R",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -10454,6 +10844,7 @@
           "weight": 71,
           "number": 37,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 82,
           "skills": {
@@ -10480,6 +10871,7 @@
           "weight": 80,
           "number": 55,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -10505,6 +10897,7 @@
           "weight": 77,
           "number": 56,
           "country": "Канада",
+          "hand": "R",
           "overall": 82,
           "potential": 78,
           "skills": {
@@ -10530,6 +10923,7 @@
           "weight": 91,
           "number": 57,
           "country": "Канада",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -10555,6 +10949,7 @@
           "weight": 75,
           "number": 61,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -10580,6 +10975,7 @@
           "weight": 82,
           "number": 65,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -10605,6 +11001,7 @@
           "weight": 82,
           "number": 71,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -10630,6 +11027,7 @@
           "weight": 70,
           "number": 72,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -10655,6 +11053,7 @@
           "weight": 87,
           "number": 77,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 82,
           "skills": {
@@ -10681,6 +11080,7 @@
           "weight": 90,
           "number": 78,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -10706,6 +11106,7 @@
           "weight": 84,
           "number": 79,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -10731,6 +11132,7 @@
           "weight": 85,
           "number": 81,
           "country": "Канада",
+          "hand": "R",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -10756,6 +11158,7 @@
           "weight": 86,
           "number": 87,
           "country": "Россия",
+          "hand": "L",
           "overall": 84,
           "potential": 84,
           "skills": {
@@ -10781,6 +11184,7 @@
           "weight": 74,
           "number": 97,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -10806,6 +11210,7 @@
           "weight": 86,
           "number": 91,
           "country": "Россия",
+          "hand": "L",
           "overall": 64,
           "potential": 82,
           "skills": {
@@ -10884,6 +11289,7 @@
           "weight": 80,
           "number": 1,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 82,
           "skills": {
@@ -10908,6 +11314,7 @@
           "weight": 79,
           "number": 73,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 82,
           "skills": {
@@ -10932,6 +11339,7 @@
           "weight": 110,
           "number": 3,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -10957,6 +11365,7 @@
           "weight": 101,
           "number": 5,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -10982,6 +11391,7 @@
           "weight": 86,
           "number": 8,
           "country": "Канада",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -11007,6 +11417,7 @@
           "weight": 90,
           "number": 9,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 82,
           "skills": {
@@ -11032,6 +11443,7 @@
           "weight": 90,
           "number": 22,
           "country": "Россия",
+          "hand": "R",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -11057,6 +11469,7 @@
           "weight": 78,
           "number": 34,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -11082,6 +11495,7 @@
           "weight": 103,
           "number": 42,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -11107,6 +11521,7 @@
           "weight": 90,
           "number": 62,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -11132,6 +11547,7 @@
           "weight": 81,
           "number": 85,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -11157,6 +11573,7 @@
           "weight": 85,
           "number": 7,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -11182,6 +11599,7 @@
           "weight": 80,
           "number": 13,
           "country": "Швеция",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -11207,6 +11625,7 @@
           "weight": 93,
           "number": 16,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -11232,6 +11651,7 @@
           "weight": 88,
           "number": 17,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -11257,6 +11677,7 @@
           "weight": 83,
           "number": 20,
           "country": "Канада",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -11282,6 +11703,7 @@
           "weight": 81,
           "number": 23,
           "country": "США",
+          "hand": "R",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -11307,6 +11729,7 @@
           "weight": 86,
           "number": 47,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 82,
           "skills": {
@@ -11332,6 +11755,7 @@
           "weight": 81,
           "number": 53,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -11357,6 +11781,7 @@
           "weight": 79,
           "number": 55,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -11382,6 +11807,7 @@
           "weight": 78,
           "number": 69,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -11407,6 +11833,7 @@
           "weight": 90,
           "number": 70,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 82,
           "skills": {
@@ -11432,6 +11859,7 @@
           "weight": 73,
           "number": 71,
           "country": "Россия",
+          "hand": "R",
           "overall": 77,
           "potential": 80,
           "skills": {
@@ -11457,6 +11885,7 @@
           "weight": 87,
           "number": 87,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -11482,6 +11911,7 @@
           "weight": 105,
           "number": 90,
           "country": "Россия",
+          "hand": "R",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -11507,6 +11937,7 @@
           "weight": 87,
           "number": 91,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 82,
           "skills": {
@@ -11532,6 +11963,7 @@
           "weight": 97,
           "number": 97,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -11557,6 +11989,7 @@
           "weight": 91,
           "number": 98,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -11633,6 +12066,7 @@
           "weight": 104,
           "number": 29,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 78,
           "skills": {
@@ -11657,6 +12091,7 @@
           "weight": 92,
           "number": 30,
           "country": "Россия",
+          "hand": "L",
           "overall": 77,
           "potential": 78,
           "skills": {
@@ -11681,6 +12116,7 @@
           "weight": 70,
           "number": 35,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -11705,6 +12141,7 @@
           "weight": 71,
           "number": 2,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -11730,6 +12167,7 @@
           "weight": 74,
           "number": 7,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -11755,6 +12193,7 @@
           "weight": 85,
           "number": 8,
           "country": "Канада",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -11780,6 +12219,7 @@
           "weight": 78,
           "number": 14,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -11805,6 +12245,7 @@
           "weight": 83,
           "number": 22,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -11830,6 +12271,7 @@
           "weight": 84,
           "number": 32,
           "country": "Канада",
+          "hand": "R",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -11855,6 +12297,7 @@
           "weight": 95,
           "number": 52,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -11880,6 +12323,7 @@
           "weight": 73,
           "number": 54,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -11905,6 +12349,7 @@
           "weight": 90,
           "number": 73,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -11930,6 +12375,7 @@
           "weight": 91,
           "number": 75,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -11955,6 +12401,7 @@
           "weight": 70,
           "number": 6,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -11980,6 +12427,7 @@
           "weight": 69,
           "number": 10,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -12005,6 +12453,7 @@
           "weight": 88,
           "number": 11,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -12030,6 +12479,7 @@
           "weight": 87,
           "number": 12,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -12055,6 +12505,7 @@
           "weight": 71,
           "number": 16,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -12080,6 +12531,7 @@
           "weight": 82,
           "number": 17,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -12105,6 +12557,7 @@
           "weight": 91,
           "number": 18,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -12130,6 +12583,7 @@
           "weight": 83,
           "number": 23,
           "country": "Словакия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -12155,6 +12609,7 @@
           "weight": 80,
           "number": 37,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -12180,6 +12635,7 @@
           "weight": 91,
           "number": 42,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -12205,6 +12661,7 @@
           "weight": 78,
           "number": 66,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -12230,6 +12687,7 @@
           "weight": 82,
           "number": 69,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -12255,6 +12713,7 @@
           "weight": 91,
           "number": 71,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -12280,6 +12739,7 @@
           "weight": 87,
           "number": 79,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -12305,6 +12765,7 @@
           "weight": 82,
           "number": 88,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -12330,6 +12791,7 @@
           "weight": 67,
           "number": 89,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -12355,6 +12817,7 @@
           "weight": 84,
           "number": 97,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -12380,6 +12843,7 @@
           "weight": 80,
           "number": 21,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -12407,6 +12871,7 @@
           "weight": 75,
           "number": 77,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -12434,6 +12899,7 @@
           "weight": 82,
           "number": 78,
           "country": "Россия",
+          "hand": "L",
           "overall": 64,
           "potential": 78,
           "skills": {
@@ -12461,6 +12927,7 @@
           "weight": 81,
           "number": 25,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -12488,6 +12955,7 @@
           "weight": 74,
           "number": 47,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -12515,6 +12983,7 @@
           "weight": 76,
           "number": 51,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -12542,6 +13011,7 @@
           "weight": 72,
           "number": 70,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -12569,6 +13039,7 @@
           "weight": 78,
           "number": 81,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -12647,6 +13118,7 @@
           "weight": 82,
           "number": 1,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 80,
           "skills": {
@@ -12671,6 +13143,7 @@
           "weight": 79,
           "number": 33,
           "country": "Россия",
+          "hand": "L",
           "overall": 81,
           "potential": 74,
           "skills": {
@@ -12695,6 +13168,7 @@
           "weight": 90,
           "number": 90,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -12720,6 +13194,7 @@
           "weight": 84,
           "number": 5,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -12745,6 +13220,7 @@
           "weight": 80,
           "number": 6,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -12770,6 +13246,7 @@
           "weight": 89,
           "number": 21,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -12795,6 +13272,7 @@
           "weight": 92,
           "number": 23,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -12820,6 +13298,7 @@
           "weight": 87,
           "number": 38,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -12846,6 +13325,7 @@
           "weight": 95,
           "number": 44,
           "country": "Канада",
+          "hand": "R",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -12871,6 +13351,7 @@
           "weight": 87,
           "number": 47,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -12896,6 +13377,7 @@
           "weight": 97,
           "number": 74,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -12921,6 +13403,7 @@
           "weight": 87,
           "number": 91,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 72,
           "skills": {
@@ -12946,6 +13429,7 @@
           "weight": 96,
           "number": 8,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -12971,6 +13455,7 @@
           "weight": 77,
           "number": 9,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -12997,6 +13482,7 @@
           "weight": 87,
           "number": 11,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -13022,6 +13508,7 @@
           "weight": 96,
           "number": 12,
           "country": "Россия",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -13047,6 +13534,7 @@
           "weight": 83,
           "number": 13,
           "country": "Россия",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -13072,6 +13560,7 @@
           "weight": 88,
           "number": 15,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -13097,6 +13586,7 @@
           "weight": 87,
           "number": 18,
           "country": "Россия",
+          "hand": "L",
           "overall": 75,
           "potential": 78,
           "skills": {
@@ -13122,6 +13612,7 @@
           "weight": 91,
           "number": 24,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -13147,6 +13638,7 @@
           "weight": 81,
           "number": 28,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -13173,6 +13665,7 @@
           "weight": 80,
           "number": 31,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -13198,6 +13691,7 @@
           "weight": 80,
           "number": 34,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -13223,6 +13717,7 @@
           "weight": 88,
           "number": 50,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 72,
           "skills": {
@@ -13248,6 +13743,7 @@
           "weight": 76,
           "number": 51,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -13273,6 +13769,7 @@
           "weight": 82,
           "number": 88,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -13298,6 +13795,7 @@
           "weight": 90,
           "number": 95,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -13323,6 +13821,7 @@
           "weight": 97,
           "number": 96,
           "country": "Россия",
+          "hand": "L",
           "overall": 75,
           "potential": 74,
           "skills": {
@@ -13348,6 +13847,7 @@
           "weight": 77,
           "number": 97,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -13373,6 +13873,7 @@
           "weight": 99,
           "number": 98,
           "country": "Канада",
+          "hand": "L",
           "overall": 82,
           "potential": 80,
           "skills": {
@@ -13398,6 +13899,7 @@
           "weight": 81,
           "number": 4,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -13425,6 +13927,7 @@
           "weight": 65,
           "number": 73,
           "country": "Россия",
+          "hand": "L",
           "overall": 62,
           "potential": 78,
           "skills": {
@@ -13452,6 +13955,7 @@
           "weight": 82,
           "number": 86,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -13530,6 +14034,7 @@
           "weight": 82,
           "number": 31,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -13554,6 +14059,7 @@
           "weight": 75,
           "number": 39,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 76,
           "skills": {
@@ -13578,6 +14084,7 @@
           "weight": 85,
           "number": 8,
           "country": "Россия",
+          "hand": "R",
           "overall": 68,
           "potential": 76,
           "skills": {
@@ -13603,6 +14110,7 @@
           "weight": 83,
           "number": 55,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -13628,6 +14136,7 @@
           "weight": 100,
           "number": 57,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -13653,6 +14162,7 @@
           "weight": 96,
           "number": 62,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -13678,6 +14188,7 @@
           "weight": 84,
           "number": 64,
           "country": "Канада",
+          "hand": "R",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -13704,6 +14215,7 @@
           "weight": 82,
           "number": 67,
           "country": "США",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -13729,6 +14241,7 @@
           "weight": 95,
           "number": 74,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -13754,6 +14267,7 @@
           "weight": 93,
           "number": 76,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -13779,6 +14293,7 @@
           "weight": 74,
           "number": 94,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -13804,6 +14319,7 @@
           "weight": 72,
           "number": 9,
           "country": "Россия",
+          "hand": "R",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -13829,6 +14345,7 @@
           "weight": 92,
           "number": 10,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -13854,6 +14371,7 @@
           "weight": 85,
           "number": 14,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -13879,6 +14397,7 @@
           "weight": 80,
           "number": 15,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 72,
           "skills": {
@@ -13904,6 +14423,7 @@
           "weight": 78,
           "number": 17,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -13929,6 +14449,7 @@
           "weight": 86,
           "number": 18,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -13954,6 +14475,7 @@
           "weight": 93,
           "number": 27,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -13979,6 +14501,7 @@
           "weight": 75,
           "number": 29,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -14004,6 +14527,7 @@
           "weight": 78,
           "number": 41,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -14029,6 +14553,7 @@
           "weight": 87,
           "number": 42,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -14054,6 +14579,7 @@
           "weight": 75,
           "number": 71,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -14079,6 +14605,7 @@
           "weight": 93,
           "number": 72,
           "country": "США",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -14104,6 +14631,7 @@
           "weight": 88,
           "number": 77,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -14129,6 +14657,7 @@
           "weight": 94,
           "number": 82,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -14155,6 +14684,7 @@
           "weight": 93,
           "number": 87,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -14180,6 +14710,7 @@
           "weight": 77,
           "number": 89,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -14205,6 +14736,7 @@
           "weight": 102,
           "number": 90,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -14230,6 +14762,7 @@
           "weight": 89,
           "number": 93,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -14255,6 +14788,7 @@
           "weight": 74,
           "number": 97,
           "country": "Россия",
+          "hand": "R",
           "overall": 84,
           "potential": 84,
           "skills": {
@@ -14280,6 +14814,7 @@
           "weight": 94,
           "number": 1,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -14306,6 +14841,7 @@
           "weight": 81,
           "number": 12,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -14333,6 +14869,7 @@
           "weight": 82,
           "number": 13,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -14360,6 +14897,7 @@
           "weight": 78,
           "number": 88,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 74,
           "skills": {
@@ -14438,6 +14976,7 @@
           "weight": 94,
           "number": 28,
           "country": "Россия",
+          "hand": "L",
           "overall": 84,
           "potential": 84,
           "skills": {
@@ -14462,6 +15001,7 @@
           "weight": 78,
           "number": 35,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -14486,6 +15026,7 @@
           "weight": 84,
           "number": 50,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -14510,6 +15051,7 @@
           "weight": 84,
           "number": 4,
           "country": "США",
+          "hand": "R",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -14535,6 +15077,7 @@
           "weight": 88,
           "number": 8,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -14560,6 +15103,7 @@
           "weight": 97,
           "number": 33,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -14585,6 +15129,7 @@
           "weight": 89,
           "number": 44,
           "country": "Канада",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -14610,6 +15155,7 @@
           "weight": 102,
           "number": 48,
           "country": "Канада",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -14635,6 +15181,7 @@
           "weight": 85,
           "number": 55,
           "country": "Россия",
+          "hand": "R",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -14660,6 +15207,7 @@
           "weight": 83,
           "number": 62,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -14685,6 +15233,7 @@
           "weight": 96,
           "number": 74,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -14710,6 +15259,7 @@
           "weight": 99,
           "number": 89,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -14735,6 +15285,7 @@
           "weight": 96,
           "number": 94,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -14760,6 +15311,7 @@
           "weight": 82,
           "number": 6,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -14785,6 +15337,7 @@
           "weight": 101,
           "number": 10,
           "country": "Канада",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -14810,6 +15363,7 @@
           "weight": 87,
           "number": 16,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -14835,6 +15389,7 @@
           "weight": 88,
           "number": 20,
           "country": "Канада",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -14860,6 +15415,7 @@
           "weight": 69,
           "number": 22,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -14885,6 +15441,7 @@
           "weight": 81,
           "number": 24,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -14910,6 +15467,7 @@
           "weight": 80,
           "number": 26,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -14935,6 +15493,7 @@
           "weight": 80,
           "number": 38,
           "country": "Россия",
+          "hand": "L",
           "overall": 73,
           "potential": 78,
           "skills": {
@@ -14960,6 +15519,7 @@
           "weight": 80,
           "number": 41,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -14985,6 +15545,7 @@
           "weight": 87,
           "number": 65,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -15010,6 +15571,7 @@
           "weight": 86,
           "number": 76,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -15036,6 +15598,7 @@
           "weight": 88,
           "number": 78,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -15061,6 +15624,7 @@
           "weight": 70,
           "number": 93,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -15087,6 +15651,7 @@
           "weight": 85,
           "number": 85,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -15112,6 +15677,7 @@
           "weight": 94,
           "number": 97,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -15137,6 +15703,7 @@
           "weight": 85,
           "number": 98,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -15162,6 +15729,7 @@
           "weight": 70,
           "number": 99,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -15187,6 +15755,7 @@
           "weight": 80,
           "number": 49,
           "country": "Россия",
+          "hand": "L",
           "overall": 64,
           "potential": 78,
           "skills": {
@@ -15214,6 +15783,7 @@
           "weight": 80,
           "number": 2,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -15241,6 +15811,7 @@
           "weight": 88,
           "number": 18,
           "country": "Россия",
+          "hand": "L",
           "overall": 62,
           "potential": 78,
           "skills": {
@@ -15268,6 +15839,7 @@
           "weight": 95,
           "number": 71,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -15346,6 +15918,7 @@
           "weight": 71,
           "number": 29,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -15370,6 +15943,7 @@
           "weight": 65,
           "number": 52,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -15394,6 +15968,7 @@
           "weight": 95,
           "number": 72,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -15418,6 +15993,7 @@
           "weight": 80,
           "number": 2,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -15443,6 +16019,7 @@
           "weight": 88,
           "number": 3,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -15468,6 +16045,7 @@
           "weight": 80,
           "number": 6,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 80,
           "skills": {
@@ -15493,6 +16071,7 @@
           "weight": 75,
           "number": 7,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -15518,6 +16097,7 @@
           "weight": 97,
           "number": 8,
           "country": "США",
+          "hand": "R",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -15543,6 +16123,7 @@
           "weight": 86,
           "number": 21,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 72,
           "skills": {
@@ -15568,6 +16149,7 @@
           "weight": 89,
           "number": 24,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -15593,6 +16175,7 @@
           "weight": 91,
           "number": 33,
           "country": "Россия",
+          "hand": "R",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -15619,6 +16202,7 @@
           "weight": 81,
           "number": 36,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -15644,6 +16228,7 @@
           "weight": 88,
           "number": 73,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -15669,6 +16254,7 @@
           "weight": 79,
           "number": 77,
           "country": "США",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -15694,6 +16280,7 @@
           "weight": 82,
           "number": 10,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -15719,6 +16306,7 @@
           "weight": 80,
           "number": 14,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -15744,6 +16332,7 @@
           "weight": 73,
           "number": 27,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 74,
           "skills": {
@@ -15769,6 +16358,7 @@
           "weight": 78,
           "number": 43,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -15795,6 +16385,7 @@
           "weight": 94,
           "number": 55,
           "country": "Россия",
+          "hand": "L",
           "overall": 84,
           "potential": 84,
           "skills": {
@@ -15820,6 +16411,7 @@
           "weight": 84,
           "number": 61,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 72,
           "skills": {
@@ -15845,6 +16437,7 @@
           "weight": 98,
           "number": 63,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -15870,6 +16463,7 @@
           "weight": 76,
           "number": 68,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 76,
           "skills": {
@@ -15895,6 +16489,7 @@
           "weight": 80,
           "number": 75,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -15921,6 +16516,7 @@
           "weight": 78,
           "number": 80,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -15946,6 +16542,7 @@
           "weight": 76,
           "number": 88,
           "country": "Россия",
+          "hand": "R",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -15972,6 +16569,7 @@
           "weight": 81,
           "number": 89,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -15997,6 +16595,7 @@
           "weight": 88,
           "number": 91,
           "country": "США",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -16022,6 +16621,7 @@
           "weight": 82,
           "number": 92,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -16047,6 +16647,7 @@
           "weight": 84,
           "number": 93,
           "country": "Беларусь",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -16072,6 +16673,7 @@
           "weight": 77,
           "number": 97,
           "country": "Россия",
+          "hand": "R",
           "overall": 79,
           "potential": 74,
           "skills": {
@@ -16097,6 +16699,7 @@
           "weight": 70,
           "number": 9,
           "country": "Россия",
+          "hand": "R",
           "overall": 62,
           "potential": 78,
           "skills": {
@@ -16124,6 +16727,7 @@
           "weight": 80,
           "number": 41,
           "country": "Россия",
+          "hand": "L",
           "overall": 64,
           "potential": 78,
           "skills": {
@@ -16151,6 +16755,7 @@
           "weight": 91,
           "number": 39,
           "country": "Россия",
+          "hand": "L",
           "overall": 64,
           "potential": 78,
           "skills": {
@@ -16229,6 +16834,7 @@
           "weight": 72,
           "number": 20,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 84,
           "skills": {
@@ -16253,6 +16859,7 @@
           "weight": 93,
           "number": 40,
           "country": "Норвегия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -16277,6 +16884,7 @@
           "weight": 91,
           "number": 2,
           "country": "Россия",
+          "hand": "L",
           "overall": 81,
           "potential": 80,
           "skills": {
@@ -16302,6 +16910,7 @@
           "weight": 84,
           "number": 9,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -16327,6 +16936,7 @@
           "weight": 82,
           "number": 24,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -16352,6 +16962,7 @@
           "weight": 78,
           "number": 72,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -16377,6 +16988,7 @@
           "weight": 75,
           "number": 77,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -16402,6 +17014,7 @@
           "weight": 81,
           "number": 79,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -16427,6 +17040,7 @@
           "weight": 90,
           "number": 82,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -16452,6 +17066,7 @@
           "weight": 86,
           "number": 84,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -16477,6 +17092,7 @@
           "weight": 82,
           "number": 89,
           "country": "Россия",
+          "hand": "R",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -16503,6 +17119,7 @@
           "weight": 103,
           "number": 7,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -16528,6 +17145,7 @@
           "weight": 75,
           "number": 10,
           "country": "Россия",
+          "hand": "R",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -16554,6 +17172,7 @@
           "weight": 89,
           "number": 11,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 80,
           "skills": {
@@ -16580,6 +17199,7 @@
           "weight": 76,
           "number": 12,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -16605,6 +17225,7 @@
           "weight": 96,
           "number": 13,
           "country": "Канада",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -16630,6 +17251,7 @@
           "weight": 27,
           "number": 18,
           "country": "Россия",
+          "hand": "L",
           "overall": 64,
           "potential": 76,
           "skills": {
@@ -16656,6 +17278,7 @@
           "weight": 93,
           "number": 28,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -16681,6 +17304,7 @@
           "weight": 84,
           "number": 30,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 76,
           "skills": {
@@ -16706,6 +17330,7 @@
           "weight": 91,
           "number": 37,
           "country": "Канада",
+          "hand": "R",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -16731,6 +17356,7 @@
           "weight": 80,
           "number": 34,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 76,
           "skills": {
@@ -16756,6 +17382,7 @@
           "weight": 74,
           "number": 40,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -16781,6 +17408,7 @@
           "weight": 83,
           "number": 74,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 84,
           "skills": {
@@ -16806,6 +17434,7 @@
           "weight": 90,
           "number": 87,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -16831,6 +17460,7 @@
           "weight": 83,
           "number": 90,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -16856,6 +17486,7 @@
           "weight": 96,
           "number": 94,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -16932,6 +17563,7 @@
           "weight": 77,
           "number": 1,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -16957,6 +17589,7 @@
           "weight": 76,
           "number": 32,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -16981,6 +17614,7 @@
           "weight": 79,
           "number": 33,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 80,
           "skills": {
@@ -17005,6 +17639,7 @@
           "weight": 88,
           "number": 41,
           "country": "Россия",
+          "hand": "L",
           "overall": 64,
           "potential": 78,
           "skills": {
@@ -17030,6 +17665,7 @@
           "weight": 89,
           "number": 5,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -17055,6 +17691,7 @@
           "weight": 91,
           "number": 6,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 78,
           "skills": {
@@ -17080,6 +17717,7 @@
           "weight": 88,
           "number": 22,
           "country": "Канада",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -17105,6 +17743,7 @@
           "weight": 73,
           "number": 28,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -17130,6 +17769,7 @@
           "weight": 88,
           "number": 55,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -17155,6 +17795,7 @@
           "weight": 86,
           "number": 65,
           "country": "Канада",
+          "hand": "R",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -17180,6 +17821,7 @@
           "weight": 78,
           "number": 76,
           "country": "Россия",
+          "hand": "L",
           "overall": 66,
           "potential": 78,
           "skills": {
@@ -17206,6 +17848,7 @@
           "weight": 88,
           "number": 79,
           "country": "Канада",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -17231,6 +17874,7 @@
           "weight": 90,
           "number": 80,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -17256,6 +17900,7 @@
           "weight": 90,
           "number": 89,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -17281,6 +17926,7 @@
           "weight": 80,
           "number": 13,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -17306,6 +17952,7 @@
           "weight": 95,
           "number": 15,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 76,
           "skills": {
@@ -17331,6 +17978,7 @@
           "weight": 77,
           "number": 19,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 78,
           "skills": {
@@ -17356,6 +18004,7 @@
           "weight": 96,
           "number": 24,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -17381,6 +18030,7 @@
           "weight": 75,
           "number": 26,
           "country": "США",
+          "hand": "R",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -17406,6 +18056,7 @@
           "weight": 85,
           "number": 27,
           "country": "Россия",
+          "hand": "L",
           "overall": 81,
           "potential": 78,
           "skills": {
@@ -17431,6 +18082,7 @@
           "weight": 91,
           "number": 34,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 80,
           "skills": {
@@ -17456,6 +18108,7 @@
           "weight": 85,
           "number": 51,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 82,
           "skills": {
@@ -17481,6 +18134,7 @@
           "weight": 88,
           "number": 61,
           "country": "Россия",
+          "hand": "L",
           "overall": 81,
           "potential": 78,
           "skills": {
@@ -17506,6 +18160,7 @@
           "weight": 86,
           "number": 69,
           "country": "Россия",
+          "hand": "R",
           "overall": 70,
           "potential": 80,
           "skills": {
@@ -17531,6 +18186,7 @@
           "weight": 77,
           "number": 72,
           "country": "Россия",
+          "hand": "R",
           "overall": 72,
           "potential": 80,
           "skills": {
@@ -17556,6 +18212,7 @@
           "weight": 80,
           "number": 87,
           "country": "Россия",
+          "hand": "L",
           "overall": 70,
           "potential": 78,
           "skills": {
@@ -17581,6 +18238,7 @@
           "weight": 84,
           "number": 88,
           "country": "Россия",
+          "hand": "L",
           "overall": 80,
           "potential": 80,
           "skills": {
@@ -17606,6 +18264,7 @@
           "weight": 103,
           "number": 95,
           "country": "Россия",
+          "hand": "L",
           "overall": 62,
           "potential": 78,
           "skills": {
@@ -17632,6 +18291,7 @@
           "weight": 82,
           "number": 97,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -17657,6 +18317,7 @@
           "weight": 95,
           "number": 98,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -17733,6 +18394,7 @@
           "weight": 83,
           "number": 30,
           "country": "Россия",
+          "hand": "L",
           "overall": 82,
           "potential": 76,
           "skills": {
@@ -17757,6 +18419,7 @@
           "weight": 84,
           "number": 31,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 78,
           "skills": {
@@ -17781,6 +18444,7 @@
           "weight": 75,
           "number": 35,
           "country": "Россия",
+          "hand": "L",
           "overall": 78,
           "potential": 82,
           "skills": {
@@ -17805,6 +18469,7 @@
           "weight": 89,
           "number": 2,
           "country": "Канада",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -17830,6 +18495,7 @@
           "weight": 91,
           "number": 4,
           "country": "Канада",
+          "hand": "L",
           "overall": 75,
           "potential": 78,
           "skills": {
@@ -17855,6 +18521,7 @@
           "weight": 78,
           "number": 6,
           "country": "Канада",
+          "hand": "R",
           "overall": 77,
           "potential": 80,
           "skills": {
@@ -17880,6 +18547,7 @@
           "weight": 77,
           "number": 19,
           "country": "Россия",
+          "hand": "L",
           "overall": 68,
           "potential": 78,
           "skills": {
@@ -17906,6 +18574,7 @@
           "weight": 88,
           "number": 20,
           "country": "Канада",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -17931,6 +18600,7 @@
           "weight": 87,
           "number": 27,
           "country": "США",
+          "hand": "R",
           "overall": 81,
           "potential": 79,
           "skills": {
@@ -17956,6 +18626,7 @@
           "weight": 88,
           "number": 38,
           "country": "Россия",
+          "hand": "L",
           "overall": 77,
           "potential": 77,
           "skills": {
@@ -17981,6 +18652,7 @@
           "weight": 90,
           "number": 96,
           "country": "Россия",
+          "hand": "L",
           "overall": 75,
           "potential": 75,
           "skills": {
@@ -18006,6 +18678,7 @@
           "weight": 82,
           "number": 7,
           "country": "Канада",
+          "hand": "L",
           "overall": 81,
           "potential": 81,
           "skills": {
@@ -18031,6 +18704,7 @@
           "weight": 86,
           "number": 9,
           "country": "Китай",
+          "hand": "R",
           "overall": 68,
           "potential": 76,
           "skills": {
@@ -18056,6 +18730,7 @@
           "weight": 86,
           "number": 11,
           "country": "Россия",
+          "hand": "L",
           "overall": 73,
           "potential": 74,
           "skills": {
@@ -18081,6 +18756,7 @@
           "weight": 76,
           "number": 12,
           "country": "Россия",
+          "hand": "L",
           "overall": 72,
           "potential": 72,
           "skills": {
@@ -18106,6 +18782,7 @@
           "weight": 84,
           "number": 14,
           "country": "США",
+          "hand": "R",
           "overall": 79,
           "potential": 77,
           "skills": {
@@ -18131,6 +18808,7 @@
           "weight": 90,
           "number": 17,
           "country": "Россия",
+          "hand": "R",
           "overall": 69,
           "potential": 80,
           "skills": {
@@ -18156,6 +18834,7 @@
           "weight": 98,
           "number": 21,
           "country": "Канада",
+          "hand": "L",
           "overall": 80,
           "potential": 76,
           "skills": {
@@ -18181,6 +18860,7 @@
           "weight": 102,
           "number": 23,
           "country": "Чехия",
+          "hand": "L",
           "overall": 82,
           "potential": 82,
           "skills": {
@@ -18206,6 +18886,7 @@
           "weight": 93,
           "number": 29,
           "country": "Чехия",
+          "hand": "R",
           "overall": 78,
           "potential": 78,
           "skills": {
@@ -18231,6 +18912,7 @@
           "weight": 86,
           "number": 32,
           "country": "Россия",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -18256,6 +18938,7 @@
           "weight": 79,
           "number": 37,
           "country": "США",
+          "hand": "L",
           "overall": 75,
           "potential": 75,
           "skills": {
@@ -18281,6 +18964,7 @@
           "weight": 90,
           "number": 53,
           "country": "Россия",
+          "hand": "R",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -18306,6 +18990,7 @@
           "weight": 98,
           "number": 54,
           "country": "Канада",
+          "hand": "L",
           "overall": 74,
           "potential": 74,
           "skills": {
@@ -18331,6 +19016,7 @@
           "weight": 80,
           "number": 59,
           "country": "Россия",
+          "hand": "L",
           "overall": 76,
           "potential": 79,
           "skills": {
@@ -18360,6 +19046,7 @@
       "weight": 98,
       "number": 92,
       "country": "Россия",
+      "hand": "L",
       "overall": 82,
       "potential": 82,
       "skills": {
@@ -18382,6 +19069,7 @@
       "weight": 99,
       "number": 17,
       "country": "Канада",
+      "hand": "R",
       "overall": 76,
       "potential": 76,
       "skills": {
@@ -18404,6 +19092,7 @@
       "weight": 90,
       "number": 35,
       "country": "Словакия",
+      "hand": "L",
       "overall": 75,
       "potential": 75,
       "skills": {
@@ -18426,6 +19115,7 @@
       "weight": 93,
       "number": 3,
       "country": "Швеция",
+      "hand": "L",
       "overall": 77,
       "potential": 77,
       "skills": {
@@ -18448,6 +19138,7 @@
       "weight": 86,
       "number": 27,
       "country": "США",
+      "hand": "L",
       "overall": 74,
       "potential": 74,
       "skills": {
@@ -18470,6 +19161,7 @@
       "weight": 92,
       "number": 9,
       "country": "Хорватия",
+      "hand": "R",
       "overall": 75,
       "potential": 75,
       "skills": {
@@ -18492,6 +19184,7 @@
       "weight": 87,
       "number": 25,
       "country": "Россия",
+      "hand": "L",
       "overall": 73,
       "potential": 73,
       "skills": {
@@ -18514,6 +19207,7 @@
       "weight": 87,
       "number": 23,
       "country": "США",
+      "hand": "L",
       "overall": 79,
       "potential": 79,
       "skills": {
@@ -18536,6 +19230,7 @@
       "weight": 78,
       "number": 86,
       "country": "Россия",
+      "hand": "L",
       "overall": 76,
       "potential": 76,
       "skills": {
@@ -18558,6 +19253,7 @@
       "weight": 93,
       "number": 7,
       "country": "Россия",
+      "hand": "L",
       "overall": 75,
       "potential": 77,
       "skills": {
@@ -18580,6 +19276,7 @@
       "weight": 90,
       "number": 0,
       "country": "Словакия",
+      "hand": "L",
       "overall": 82,
       "potential": 82,
       "skills": {
@@ -18604,6 +19301,7 @@
       "weight": 91,
       "number": 0,
       "country": "Канада",
+      "hand": "R",
       "overall": 76,
       "potential": 76,
       "skills": {
@@ -18628,6 +19326,7 @@
       "weight": 85,
       "number": 0,
       "country": "Россия",
+      "hand": "L",
       "overall": 74,
       "potential": 75,
       "skills": {
@@ -18652,6 +19351,7 @@
       "weight": 91,
       "number": 0,
       "country": "Канада",
+      "hand": "L",
       "overall": 75,
       "potential": 75,
       "skills": {
@@ -18676,6 +19376,7 @@
       "weight": 86,
       "number": 0,
       "country": "Канада",
+      "hand": "L",
       "overall": 75,
       "potential": 75,
       "skills": {
@@ -18700,6 +19401,7 @@
       "weight": 101,
       "number": 0,
       "country": "Канада",
+      "hand": "L",
       "overall": 74,
       "potential": 74,
       "skills": {
@@ -18724,6 +19426,7 @@
       "weight": 88,
       "number": 0,
       "country": "Канада",
+      "hand": "L",
       "overall": 74,
       "potential": 76,
       "skills": {
@@ -18748,6 +19451,7 @@
       "weight": 94,
       "number": 0,
       "country": "США",
+      "hand": "R",
       "overall": 76,
       "potential": 76,
       "skills": {
@@ -18772,6 +19476,7 @@
       "weight": 84,
       "number": 0,
       "country": "Канада",
+      "hand": "R",
       "overall": 75,
       "potential": 79,
       "skills": {
@@ -18796,6 +19501,7 @@
       "weight": 88,
       "number": 0,
       "country": "США",
+      "hand": "L",
       "overall": 77,
       "potential": 77,
       "skills": {
