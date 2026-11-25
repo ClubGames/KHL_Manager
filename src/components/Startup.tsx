@@ -1,4 +1,5 @@
-import { APP_RELEASE, canOpenModsFolder, MOD_SUBMIT_URL, openModsFolder, platform, USER_MODS_DIR } from '../platform';
+import { APP_RELEASE, canInstallMods, canOpenModsFolder, installModArchive, MOD_SUBMIT_URL, openModsFolder, platform, USER_MODS_DIR, userModsDir } from '../platform';
+import type { ModInstallResult } from '../platform';
 import { useEffect, useRef, useState } from 'react';
 // served next to index.html instead of being inlined into the script
 const arena = './arena.jpg';
@@ -114,7 +115,7 @@ function ModFormatDoc() {
     ['roster.json', 'Лига, клубы, игроки и свободные тренеры — поля описаны ниже. Название лиги берётся из league.name'],
     ['schedule.json', 'Один календарь на всю лигу: games[] с датой (ГГГГ-ММ-ДД), id хозяев и гостей. Сезон начинается 1 сентября; days — длина регулярки в днях (с паузами). Клуб не может играть дважды в день. Нет файла — календарь составит игра. Плей-офф и следующие сезоны игра строит сама'],
     ['logos/', 'Эмблемы клубов (PNG с прозрачностью, лучше 160×160 и больше). Пути в roster.json — относительно папки мода'],
-    ['index.json', 'Список папок модов. Браузер не умеет читать содержимое папки, поэтому новый мод нужно вписать сюда (при сборке игры список обновляется сам; в версии для Windows папки из «Документы\\Hockey Simulator Manager\\mods» находятся без него)'],
+    ['index.json', 'Список папок модов. Браузер не умеет читать содержимое папки, поэтому новый мод нужно вписать сюда (при сборке игры список обновляется сам; в версии для Windows папки из «mods» рядом с игрой находятся без него — туда же распаковывает архив кнопка «Установить мод»)'],
   ];
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" data-mod-format>
@@ -135,11 +136,52 @@ function ModFormatDoc() {
   );
 }
 
-/** Mods found in mods/: pick the league to start a career in. */
-function ModPicker({ mods, current, busy, onPick, onFile, onReload }: { mods: ModEntry[]; current: string; busy: boolean; onPick: (m: ModEntry) => void; onFile: () => void; onReload: () => void }) {
+/** Mods found in mods/: pick the league to start a career in. Windows app: install a mod from a .zip (button or drag-and-drop). */
+function ModPicker({ mods, current, busy, onPick, onFile, onReload, onInstalled }: { mods: ModEntry[]; current: string; busy: boolean; onPick: (m: ModEntry) => void; onFile: () => void; onReload: () => void; onInstalled: (id: string) => void }) {
   const desktop = canOpenModsFolder();
+  const installer = canInstallMods();
+  const [dir, setDir] = useState(USER_MODS_DIR);
+  const [drag, setDrag] = useState(false);
+  const [installing, setInstalling] = useState(false);
+  const [result, setResult] = useState<ModInstallResult | null>(null);
+  useEffect(() => {
+    if (desktop) void userModsDir().then((d) => d && setDir(d));
+  }, [desktop]);
+  const install = async (files?: File[]) => {
+    if (!installer || installing) return;
+    setInstalling(true);
+    setResult(null);
+    try {
+      const all: ModInstallResult = { installed: [], errors: [], dir };
+      for (const f of files?.length ? files : [undefined]) {
+        const r = await installModArchive(f);
+        if (!r) continue;
+        all.installed.push(...r.installed);
+        all.errors.push(...r.errors);
+        if (r.dir) all.dir = r.dir;
+      }
+      if (all.installed.length || all.errors.length) setResult(all);
+      if (all.dir) setDir(all.dir);
+      if (all.installed.length) onInstalled(all.installed[all.installed.length - 1].id);
+    } finally {
+      setInstalling(false);
+    }
+  };
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer?.types ?? []).includes('Files');
   return (
-    <div className="mb-4" data-mod-picker>
+    <div
+      className={cn('mb-4 relative rounded-md', drag && 'ring-2 ring-ice ring-offset-4 ring-offset-bg')}
+      data-mod-picker
+      onDragOver={installer ? (e) => { if (!hasFiles(e)) return; e.preventDefault(); e.dataTransfer.dropEffect = 'copy'; setDrag(true); } : undefined}
+      onDragLeave={installer ? (e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDrag(false); } : undefined}
+      onDrop={installer ? (e) => { if (!hasFiles(e)) return; e.preventDefault(); setDrag(false); void install(Array.from(e.dataTransfer.files)); } : undefined}
+    >
+      {drag && (
+        <div className="absolute inset-0 z-10 rounded-md bg-bg/85 border-2 border-dashed border-ice flex flex-col items-center justify-center gap-1 pointer-events-none" data-mod-dropzone>
+          <span className="text-3xl text-ice">⤓</span>
+          <b className="text-ice">Отпустите архив .zip — мод установится в папку mods</b>
+        </div>
+      )}
       <div className="text-[11px] uppercase tracking-wider text-muted mb-1.5">Мод (лига)</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         {mods.map((m) => (
@@ -183,14 +225,45 @@ function ModPicker({ mods, current, busy, onPick, onFile, onReload }: { mods: Mo
             <span className="block text-xs text-muted mt-0.5">roster.json с компьютера, без установки мода</span>
           </span>
         </button>
+        {installer && (
+          <button
+            type="button"
+            disabled={busy || installing}
+            onClick={() => void install()}
+            data-mod-install
+            title="Выберите архив .zip с модом (или перетащите его сюда) — игра распакует его в папку mods рядом с игрой"
+            className="flex items-center gap-3 p-3 rounded-md border border-dashed border-ice/50 text-left transition-all duration-150 hover:bg-panel2 hover:border-ice disabled:opacity-60"
+          >
+            <span className="w-10 h-10 shrink-0 rounded-sm border border-ice/50 flex items-center justify-center text-ice text-lg">{installing ? <Spinner /> : '⤓'}</span>
+            <span className="min-w-0">
+              <b>{installing ? 'Устанавливаю мод…' : 'Установить мод…'}</b>
+              <span className="block text-xs text-muted mt-0.5">архив .zip — кнопкой или перетащите на этот список</span>
+            </span>
+          </button>
+        )}
       </div>
+      {result && (
+        <div className={cn('mt-2 rounded-sm border px-3 py-2 text-xs flex items-start justify-between gap-2', result.errors.length ? 'border-red/50 bg-red/10' : 'border-ok/50 bg-ok/10')} data-mod-install-result>
+          <div className="space-y-0.5 min-w-0">
+            {result.installed.map((m) => (
+              <div key={m.id}>
+                ✓ {m.replaced ? 'Обновлён' : 'Установлен'} мод <b className="text-text">{m.name}</b> → <code className="font-mono break-all">{`mods\\${m.id}`}</code>
+              </div>
+            ))}
+            {result.errors.map((e, i) => (
+              <div key={i} className="text-red">⛔ {e}</div>
+            ))}
+          </div>
+          <button type="button" onClick={() => setResult(null)} className="text-muted hover:text-text px-1 shrink-0" aria-label="Закрыть">✕</button>
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 mt-2 text-xs" data-mod-links>
         <a href={MOD_SUBMIT_URL} target="_blank" rel="noopener" className="inline-flex items-center gap-1 text-ice hover:underline" data-mod-submit title="Форма на GitHub: прикрепите архив .zip с папкой мода — после проверки мод может войти в игру (нужен аккаунт GitHub)">
           <Icon name="plus" /> Предложить свой мод ↗
         </a>
         {desktop && (
           <>
-            <button type="button" className="inline-flex items-center gap-1 text-ice hover:underline" onClick={() => void openModsFolder()} data-mod-folder title={`Свои моды кладите в ${USER_MODS_DIR}: обновления игры эту папку не трогают`}>
+            <button type="button" className="inline-flex items-center gap-1 text-ice hover:underline" onClick={() => void openModsFolder()} data-mod-folder title={`Свои моды: ${dir} — обновления игры эту папку не трогают`}>
               <Icon name="folder" /> Папка моих модов
             </button>
             <button type="button" className="inline-flex items-center gap-1 text-muted hover:text-text hover:underline" onClick={onReload} disabled={busy} data-mod-reload>
@@ -199,7 +272,7 @@ function ModPicker({ mods, current, busy, onPick, onFile, onReload }: { mods: Mo
           </>
         )}
         <span className="text-muted/80">
-          {desktop ? <>Свои моды: <code className="font-mono">{USER_MODS_DIR}</code> — при обновлении игры не удаляются.</> : 'Архив .zip с папкой мода — разработчик проверит и добавит его в игру.'}
+          {desktop ? <>Свои моды: <code className="font-mono break-all" data-mod-dir>{dir}</code> — при обновлении игры не удаляются.</> : 'Архив .zip с папкой мода — разработчик проверит и добавит его в игру.'}
         </span>
       </div>
     </div>
@@ -354,6 +427,17 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
         setStage('error');
       });
   };
+  /** A mod was just installed from an archive: refresh the list and open it. */
+  const afterInstall = (id: string) => {
+    rememberMod(id);
+    listMods()
+      .then((list) => {
+        setMods(list);
+        const m = list.find((x) => x.id === id);
+        if (m) openMod(m);
+      })
+      .catch(() => load());
+  };
   const load = () => {
     setStage('loading');
     setErr('');
@@ -441,7 +525,7 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
               </h2>
               <p className="text-sm text-muted mt-1.5">Выберите мод и клуб — новая карьера займёт отдельный слот и не затронет существующие сохранения.</p>
             </div>
-            {mods && <ModPicker mods={mods} current={modId ?? ''} busy={stage === 'loading'} onPick={openMod} onFile={() => fileRef.current?.click()} onReload={load} />}
+            {mods && <ModPicker mods={mods} current={modId ?? ''} busy={stage === 'loading'} onPick={openMod} onFile={() => fileRef.current?.click()} onReload={load} onInstalled={afterInstall} />}
             <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={(e) => { if (e.target.files?.[0]) void onFile(e.target.files[0]); e.target.value = ''; }} />
           </>
         )}

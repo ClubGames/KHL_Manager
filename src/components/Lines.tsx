@@ -15,63 +15,19 @@ const POS_COLOR_TEXT: Record<string, string> = { C: '#8FD8F0', LW: '#8FD8F0', RW
 import { LineupPreview } from './LineupPreview';
 import { cn } from '../utils/cn';
 import { LG } from '../brand';
-
-function clone(L: Lineup): Lineup {
-  return {
-    F: L.F.map((l) => [...l]),
-    D: L.D.map((l) => [...l]),
-    pp1: [...L.pp1],
-    pp2: [...L.pp2],
-    pk1: [...L.pk1],
-    pk2: [...L.pk2],
-    starterG: L.starterG,
-    backupG: L.backupG,
-    u20F: L.u20F ?? null,
-    u20D: L.u20D ?? null,
-  };
-}
-
-function dedupeLineup(L: Lineup) {
-  const seen = new Set<string>();
-  const unique = (ids: (string | null)[]) =>
-    ids.map((id) => {
-      if (!id || seen.has(id)) return null;
-      seen.add(id);
-      return id;
-    });
-  const even = unique([...L.F.flat(), ...L.D.flat(), L.starterG, L.backupG]);
-  let n = 0;
-  L.F = L.F.map((line) => line.map(() => even[n++] ?? null));
-  L.D = L.D.map((line) => line.map(() => even[n++] ?? null));
-  L.starterG = even[n++] ?? null;
-  L.backupG = even[n++] ?? null;
-  if (L.u20F && seen.has(L.u20F)) L.u20F = null;
-  else if (L.u20F) seen.add(L.u20F);
-  if (L.u20D && seen.has(L.u20D)) L.u20D = null;
-  else if (L.u20D) seen.add(L.u20D);
-
-  const uniqueSpecial = (ids: (string | null)[]) => {
-    const sp = new Set<string>();
-    return ids.map((id) => {
-      if (!id || sp.has(id)) return null;
-      sp.add(id);
-      return id;
-    });
-  };
-  const pp = uniqueSpecial([...L.pp1, ...L.pp2]);
-  L.pp1 = pp.slice(0, 5);
-  L.pp2 = [...pp.slice(5, 10), ...Array(Math.max(0, 5 - pp.slice(5, 10).length)).fill(null)];
-  const pk = uniqueSpecial([...L.pk1, ...L.pk2]);
-  L.pk1 = pk.slice(0, 4);
-  L.pk2 = [...pk.slice(4, 8), ...Array(Math.max(0, 4 - pk.slice(4, 8).length)).fill(null)];
-}
+import { assignSpecial, autoSpecialTeams, cloneLineup, dedupeLineup, dressedSkaters, evenStrengthSpot, findSpecial, type SpecialKind, type SpecialUnit } from '../game/lineupEdit';
 
 type PickerTarget = {
   title: string;
   pref: 'C' | 'LW' | 'RW' | 'D' | 'G' | 'U20F' | 'U20D';
   curId: string | null;
   set: (c: Lineup, v: string | null) => void;
+  /** Special-team slot: a copy of a dressed skater, never moves anyone out of the 5-on-5 lines. */
+  special?: SpecialSlot;
 };
+type SpecialSlot = { unit: SpecialUnit; idx: number };
+const clone = cloneLineup;
+const isPPSlot = (sp: SpecialSlot) => sp.unit.startsWith('pp');
 
 export function Lines() {
   const s = useGame()!;
@@ -79,7 +35,7 @@ export function Lines() {
   const P = s.players;
   const U = s.teams[s.userTeamId];
   const L = U.lineup;
-  const [sel, setSel] = useState<{ id: string; set?: (c: Lineup, v: string | null) => void } | null>(null);
+  const [sel, setSel] = useState<{ id: string; set?: (c: Lineup, v: string | null) => void; special?: SpecialSlot } | null>(null);
   const [picker, setPicker] = useState<PickerTarget | null>(null);
   const [mobileSec, setMobileSec] = useState<'5v5' | 'special' | 'goalies' | 'tactics'>('5v5');
   const [ruleErr, setRuleErr] = useState<string | null>(null);
@@ -91,9 +47,8 @@ export function Lines() {
   const nextG = nextUserGame(s, U.id);
   const nextOppId = nextG ? (nextG.home === U.id ? nextG.away : nextG.home) : undefined;
 
-  const used = new Set<string>(
-    [...L.F.flat(), ...L.D.flat(), ...L.pp1, ...L.pp2, ...L.pk1, ...L.pk2, L.starterG, L.backupG, L.u20F, L.u20D].filter((x): x is string => !!x)
-  );
+  // Dressed for the game (special teams are copies of these players, so they do not count separately).
+  const used = new Set<string>([...L.F.flat(), ...L.D.flat(), L.starterG, L.backupG, L.u20F, L.u20D].filter((x): x is string => !!x));
   const bench = U.players
     .filter((id) => !used.has(id) && P[id] && !P[id].inVhl)
     .map((id) => P[id])
@@ -103,7 +58,7 @@ export function Lines() {
   const place = (setter: (c: Lineup) => void): boolean => {
     const c = clone(L);
     setter(c);
-    dedupeLineup(c);
+    dedupeLineup(c, L);
     if (c.u20F && !isU20ForwardLimiter(P[c.u20F])) {
       setRuleErr('В слот 13-го нападающего («лимитчик» U20) можно заявить только нападающего ЕАЭС не старше 20 лет!');
       return false;
@@ -162,19 +117,36 @@ export function Lines() {
   const slotClick = (
     get: (c: Lineup) => string | null | undefined,
     set: (c: Lineup, v: string | null) => void,
-    pickerMeta?: { title: string; pref: PickerTarget['pref'] }
+    pickerMeta?: { title: string; pref: PickerTarget['pref'] },
+    special?: SpecialSlot
   ) => {
     const cur = get(L) ?? null;
     if (!sel) {
       if (cur) {
-        setSel({ id: cur, set });
+        setSel({ id: cur, set, special });
       } else if (pickerMeta) {
-        setPicker({ title: pickerMeta.title, pref: pickerMeta.pref, curId: null, set });
+        setPicker({ title: pickerMeta.title, pref: pickerMeta.pref, curId: null, set, special });
       }
       return;
     }
     if (cur === sel.id) {
       setSel(null);
+      return;
+    }
+    if (special) {
+      // Into a PP / PK slot: copy the selected skater (a swap only inside the same kind); the 5-on-5 lines stay as they are.
+      if (!dressedSkaters(L).has(sel.id)) {
+        setRuleErr('В бригады большинства и меньшинства ставятся только полевые игроки из звеньев 5×5.');
+        setSel(null);
+        return;
+      }
+      // Same kind (PP→PP, PK→PK): assignSpecial swaps the two slots. Other kinds / 5-on-5: the source keeps its player.
+      place((c) => assignSpecial(c, special.unit, special.idx, sel.id));
+      return;
+    }
+    if (sel.special) {
+      // From a special-team slot onto a 5-on-5 slot: just select the clicked player instead.
+      setSel(cur ? { id: cur, set } : null);
       return;
     }
     place((c) => {
@@ -209,6 +181,8 @@ export function Lines() {
     slotTitle,
     pickerPref,
     setFn,
+    special,
+    note,
   }: {
     id: string | null | undefined;
     pref: 'C' | 'LW' | 'RW' | 'D' | 'G';
@@ -217,6 +191,9 @@ export function Lines() {
     slotTitle: string;
     pickerPref?: PickerTarget['pref'];
     setFn: (c: Lineup, v: string | null) => void;
+    special?: SpecialSlot;
+    /** Small grey tag in the badge row, e.g. the 5-on-5 line of a special-team player. */
+    note?: string | null;
   }) => {
     const p = skater(id ?? null);
     const capRole = p ? playerCaptainRole(U, p.id) : null;
@@ -245,6 +222,7 @@ export function Lines() {
                   {arch && !isGoalie(p) && <span className="shrink-0 px-1 py-0.5 rounded bg-bg/70" style={{ color: arch.color }}>{arch.short}</span>}
                   {capRole && <span className={cn('shrink-0 px-1 py-0.5 rounded', capRole === 'C' ? 'bg-gold/25 text-gold' : 'bg-ice/20 text-ice')}>{capRole === 'C' ? 'К' : 'А'}</span>}
                   {isLegionnaire(p) && <span className="shrink-0 px-1 py-0.5 rounded bg-gold/20 text-gold">ЛЕГ</span>}
+                  {note && <span className="shrink-0 px-1 py-0.5 rounded bg-bg/70 text-muted" data-slot-note>{note}</span>}
                 </span>
               </span>
               <OverallChip value={p.overall} size="sm" />
@@ -259,7 +237,7 @@ export function Lines() {
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                setPicker({ title: slotTitle, pref: pickerPref ?? pref, curId: p.id, set: setFn });
+                setPicker({ title: slotTitle, pref: pickerPref ?? pref, curId: p.id, set: setFn, special });
               }}
               className="px-2 py-1.5 text-sm text-muted hover:text-ice flex items-center justify-center"
               title="Быстрая замена из состава / запаса"
@@ -340,6 +318,8 @@ export function Lines() {
         .map((id) => P[id])
         .filter((p): p is Player => {
           if (!p || p.inVhl || p.id === picker.curId) return false;
+          // PP / PK: any dressed skater (the engine only sends dressed players out on special teams).
+          if (picker.special) return dressedSkaters(L).has(p.id) && !isGoalie(p);
           if (isUnavailable(p, s.phase) || suspendedSet.has(p.id)) return false;
           if (picker.pref === 'G') return isGoalie(p);
           if (picker.pref === 'U20F') return isU20ForwardLimiter(p);
@@ -347,6 +327,13 @@ export function Lines() {
           return !isGoalie(p);
         })
         .sort((a, b) => {
+          if (picker.special) {
+            const kind: SpecialKind = picker.special.unit.startsWith('pp') ? 'pp' : 'pk';
+            const fit = (pl: Player) => (picker.pref === 'D' ? isDefense(pl) : isForward(pl)) ? 1 : 0;
+            const free = (pl: Player) => (findSpecial(L, kind, pl.id) ? 0 : 1);
+            const rating = (pl: Player) => (kind === 'pp' ? attackRating(pl) : defenseRating(pl));
+            return fit(b) - fit(a) || free(b) - free(a) || rating(b) - rating(a);
+          }
           const aBench = !used.has(a.id) ? 1 : 0;
           const bBench = !used.has(b.id) ? 1 : 0;
           if (aBench !== bBench) return bBench - aBench;
@@ -474,46 +461,52 @@ export function Lines() {
           </div>
 
           <div className={cn('space-y-4', mobileSec !== 'special' && 'hidden md:block')}>
-            {/* Power play: forwards in a row of three, the two point men below; penalty kill: 2 + 2. */}
-            <Panel title="Большинство (5 на 4)">
-              <div className="space-y-2.5">
-                {(['pp1', 'pp2'] as const).map((k, i) => (
-                  <Block key={k} title={`${i + 1}-я бригада большинства`} tone="ice" ids={L[k]} cols="sm:grid-cols-6">
-                    {L[k].map((id, j) => (
-                      <div key={j} className={j < 3 ? 'sm:col-span-2' : 'sm:col-span-3'}>
-                        <Slot
-                          id={id}
-                          pref={j < 3 ? 'C' : 'D'}
-                          label={j < 3 ? 'Н' : 'З'}
-                          slotTitle={`${i + 1}-я бригада большинства · ${j < 3 ? 'Нападающий' : 'Защитник'}`}
-                          setFn={(c, v) => (c[k][j] = v)}
-                          onClick={() => slotClick((c) => c[k][j], (c, v) => (c[k][j] = v), { title: `${i + 1}-я бригада ЧБ`, pref: j < 3 ? 'C' : 'D' })}
-                        />
-                      </div>
+            {/* Power play: forwards in a row of three, the two point men below; penalty kill: 2 + 2.
+                Special-team slots hold copies of dressed skaters: they never pull anyone out of the 5-on-5 lines. */}
+            {(['pp', 'pk'] as const).map((kind) => {
+              const isPP = kind === 'pp';
+              const nF = isPP ? 3 : 2;
+              const unitName = (i: number) => (isPP ? `${i + 1}-я бригада большинства` : `${i + 1}-я четвёрка меньшинства`);
+              return (
+                <Panel
+                  key={kind}
+                  title={isPP ? 'Большинство (5 на 4)' : 'Меньшинство (4 на 5)'}
+                  right={
+                    <Button size="sm" variant="secondary" data-auto-special={kind} title="Собрать бригады из игроков звеньев автоматически (как у ИИ)" onClick={() => place((c) => autoSpecialTeams(c, P, kind))}>
+                      Авто {isPP ? 'ЧБ' : 'ЧМ'}
+                    </Button>
+                  }
+                >
+                  <div className="space-y-2.5">
+                    {(isPP ? (['pp1', 'pp2'] as const) : (['pk1', 'pk2'] as const)).map((k, i) => (
+                      <Block key={k} title={unitName(i)} tone={isPP ? 'ice' : 'amber'} ids={L[k]} cols={isPP ? 'sm:grid-cols-6' : 'sm:grid-cols-2'}>
+                        {Array.from({ length: isPP ? 5 : 4 }, (_, j) => {
+                          const id = L[k][j] ?? null;
+                          const fwd = j < nF;
+                          const title = `${unitName(i)} · ${fwd ? 'Нападающий' : 'Защитник'}`;
+                          const special = { unit: k, idx: j };
+                          const setter = (c: Lineup, v: string | null) => assignSpecial(c, k, j, v);
+                          return (
+                            <div key={j} className={isPP ? (fwd ? 'sm:col-span-2' : 'sm:col-span-3') : undefined}>
+                              <Slot
+                                id={id}
+                                pref={fwd ? 'LW' : 'D'}
+                                label={fwd ? 'Н' : 'З'}
+                                slotTitle={title}
+                                setFn={setter}
+                                special={special}
+                                note={id ? evenStrengthSpot(L, id) : null}
+                                onClick={() => slotClick((c) => c[k][j], setter, { title, pref: fwd ? 'LW' : 'D' }, special)}
+                              />
+                            </div>
+                          );
+                        })}
+                      </Block>
                     ))}
-                  </Block>
-                ))}
-              </div>
-            </Panel>
-            <Panel title="Меньшинство (4 на 5)">
-              <div className="space-y-2.5">
-                {(['pk1', 'pk2'] as const).map((k, i) => (
-                  <Block key={k} title={`${i + 1}-я четвёрка меньшинства`} tone="amber" ids={L[k]} cols="sm:grid-cols-2">
-                    {L[k].map((id, j) => (
-                      <Slot
-                        key={j}
-                        id={id}
-                        pref={j < 2 ? 'C' : 'D'}
-                        label={j < 2 ? 'Н' : 'З'}
-                        slotTitle={`${i + 1}-я четвёрка меньшинства · ${j < 2 ? 'Нападающий' : 'Защитник'}`}
-                        setFn={(c, v) => (c[k][j] = v)}
-                        onClick={() => slotClick((c) => c[k][j], (c, v) => (c[k][j] = v), { title: `${i + 1}-я четвёрка ЧМ`, pref: j < 2 ? 'C' : 'D' })}
-                      />
-                    ))}
-                  </Block>
-                ))}
-              </div>
-            </Panel>
+                  </div>
+                </Panel>
+              );
+            })}
           </div>
 
           <div className={cn('space-y-4', mobileSec !== 'goalies' && 'hidden md:block')}>
@@ -740,13 +733,19 @@ export function Lines() {
                 {pickerCandidates.map((p) => {
                   const inLineup = used.has(p.id);
                   const arch = getArchetype(p);
+                  const sp = picker.special;
+                  const spKind: SpecialKind | null = sp ? (sp.unit.startsWith('pp') ? 'pp' : 'pk') : null;
+                  const spAt = spKind ? findSpecial(L, spKind, p.id) : null;
+                  const spUnitLabel = spAt ? `${spAt.unit.endsWith('1') ? '1' : '2'}-${spKind === 'pp' ? 'я бригада ЧБ' : 'я четвёрка ЧМ'}` : null;
                   return (
                     <button
                       key={p.id}
                       type="button"
                       onClick={() => {
                         const ok = place((c) => {
-                          if (inLineup && picker.pref !== 'C' && picker.pref !== 'LW' && picker.pref !== 'RW' && picker.pref !== 'D') {
+                          if (sp) {
+                            assignSpecial(c, sp.unit, sp.idx, p.id);
+                          } else if (inLineup && picker.pref !== 'C' && picker.pref !== 'LW' && picker.pref !== 'RW' && picker.pref !== 'D') {
                             picker.set(c, p.id);
                           } else if (inLineup) {
                             findExistingSlot(c, p.id, picker.set, picker.curId);
@@ -770,7 +769,12 @@ export function Lines() {
                         </div>
                         <div className="text-[11px] text-muted">
                           {p.age} л. · {!isGoalie(p) ? `${arch.label} · ` : ''}
-                          {inLineup ? 'в другом звене (поменять)' : <span className="text-ok font-semibold">в запасе</span>}
+                          {sp ? (
+                            <>
+                              {evenStrengthSpot(L, p.id) ?? 'в составе'} · {isPPSlot(sp) ? `АТК ${Math.round(attackRating(p))}` : `ЗАЩ ${Math.round(defenseRating(p))}`}
+                              {spUnitLabel ? <span className="text-amber"> · уже: {spUnitLabel} (поменять)</span> : <span className="text-ok font-semibold"> · свободен</span>}
+                            </>
+                          ) : inLineup ? 'в другом звене (поменять)' : <span className="text-ok font-semibold">в запасе</span>}
                         </div>
                       </div>
                       <OverallChip value={p.overall} size="sm" />

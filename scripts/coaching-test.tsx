@@ -15,7 +15,7 @@ import { Coaching, StaffSummary } from '../src/components/Coaching';
 import { Dashboard } from '../src/components/Dashboard';
 import { UIContext } from '../src/components/ui';
 
-const rosterText = readFileSync('roster.json', 'utf8');
+const rosterText = readFileSync('public/mods/KHL_2627/roster.json', 'utf8');
 const fresh = () => G.createGameState(parseRosterText(rosterText), 'ska');
 const copy = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 const user = (s: GameState) => s.teams[s.userTeamId];

@@ -18,6 +18,24 @@ export interface LineupConstraints {
   phase?: Phase;
 }
 
+/** Power-play and penalty-kill units from the dressed skaters: the best attackers on the PP, the best defenders on the PK. */
+export function buildSpecialUnits(L: Pick<Lineup, 'F' | 'D'>, P: Record<string, Player>): Pick<Lineup, 'pp1' | 'pp2' | 'pk1' | 'pk2'> {
+  const dressed = [...L.F.flat(), ...L.D.flat()].filter((x): x is string => !!x && !!P[x] && !isGoalie(P[x]));
+  const dressedF = dressed.filter((id) => !isDefense(P[id]));
+  const dressedD = dressed.filter((id) => isDefense(P[id]));
+  const fAtt = [...dressedF].sort((a, b) => attackRating(P[b]) - attackRating(P[a]));
+  const dAtt = [...dressedD].sort((a, b) => attackRating(P[b]) - attackRating(P[a]));
+  const fDef = [...dressedF].sort((a, b) => defenseRating(P[b]) - defenseRating(P[a]));
+  const dDef = [...dressedD].sort((a, b) => defenseRating(P[b]) - defenseRating(P[a]));
+  const pad = (ids: string[], n: number) => [...ids, ...Array(Math.max(0, n - ids.length)).fill(null)].slice(0, n) as (string | null)[];
+  return {
+    pp1: pad([...fAtt.slice(0, 3), ...dAtt.slice(0, 2)], 5),
+    pp2: pad([...fAtt.slice(3, 6), ...dAtt.slice(2, 4)], 5),
+    pk1: pad([...fDef.slice(0, 2), ...dDef.slice(0, 2)], 4),
+    pk2: pad([...fDef.slice(2, 4), ...dDef.slice(2, 4)], 4),
+  };
+}
+
 export function autoLineup(ids: string[], P: Record<string, Player>, opts?: LineupConstraints): Lineup {
   const excluded = opts?.excluded;
   const foreignLimit = opts?.foreignLimit ?? null;
@@ -67,16 +85,7 @@ export function autoLineup(ids: string[], P: Record<string, Player>, opts?: Line
     if (d1) used.add(d1);
     L.D[i] = [d0, d1];
   }
-  const dressedF = L.F.flat().filter((x): x is string => !!x);
-  const dressedD = L.D.flat().filter((x): x is string => !!x);
-  const fAtt = [...dressedF].sort((a, b) => attackRating(P[b]) - attackRating(P[a]));
-  const dAtt = [...dressedD].sort((a, b) => attackRating(P[b]) - attackRating(P[a]));
-  const fDef = [...dressedF].sort((a, b) => defenseRating(P[b]) - defenseRating(P[a]));
-  const dDef = [...dressedD].sort((a, b) => defenseRating(P[b]) - defenseRating(P[a]));
-  L.pp1 = [...fAtt.slice(0, 3), ...dAtt.slice(0, 2)];
-  L.pp2 = [...fAtt.slice(3, 6), ...dAtt.slice(2, 4)];
-  L.pk1 = [...fDef.slice(0, 2), ...dDef.slice(0, 2)];
-  L.pk2 = [...fDef.slice(2, 4), ...dDef.slice(2, 4)];
+  Object.assign(L, buildSpecialUnits(L, P));
   L.starterG = G[0]?.id ?? null;
   L.backupG = G[1]?.id ?? null;
   // KHL U20 young-player limiters (13th forward & 7th defenseman)

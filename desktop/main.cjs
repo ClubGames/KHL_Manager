@@ -3,11 +3,13 @@
 // - GPU acceleration forced on (no blocklist fallback to software rendering) and no background throttling;
 // - files (videos, saves, roster) are written through the system «Save as» dialog;
 // - external links open in the default browser;
-// - the player's own mods live in Documents/Hockey Simulator Manager/mods (kept across updates).
+// - the player's own mods live in the «mods» folder next to KHL-GM.exe (kept across updates, see installer.nsh);
+//   «Установить мод» unpacks a .zip archive there.
 const { app, BrowserWindow, protocol, net, shell, ipcMain, dialog, Menu } = require('electron');
 const path = require('node:path');
 const fs = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
+const { installModZip, migrateMods, writeZip } = require('./modInstall.cjs');
 
 const SCHEME = 'app';
 const ORIGIN = `${SCHEME}://khl`;
@@ -38,32 +40,68 @@ if (!smokeArg && !app.requestSingleInstanceLock()) app.quit();
 let win = null;
 
 /**
- * Player's own mods: Documents\Hockey Simulator Manager\mods\<id>\{mod.json, roster.json, schedule.json, logos}.
- * Outside the install folder on purpose — the installer (and an update, which reinstalls the app) never touches it.
+ * Player's own mods: <game folder>\mods\<id>\{mod.json, roster.json, schedule.json, logos}.
+ * - installed app: next to KHL-GM.exe (%LOCALAPPDATA%\Programs\Hockey Simulator Manager\mods by default); the
+ *   uninstaller of an update keeps this folder (desktop/installer.nsh → customRemoveFiles);
+ * - portable exe: next to KHL-GM-Portable.exe (PORTABLE_EXECUTABLE_DIR — the exe itself runs from a temp folder);
+ * - a game folder without write access (e.g. installed into Program Files): Documents\Hockey Simulator Manager\mods.
+ * Older versions kept mods in Documents: they are copied over once (never overwriting).
  * The game sees these folders next to the bundled ones under app://khl/mods/; a user folder with the same name as a
  * bundled mod takes priority file by file (so the bundled league can be edited without losing it on the next update).
  */
-const USER_MODS = path.join(app.getPath('documents'), 'Hockey Simulator Manager', 'mods');
-const MODS_README = `Папка модов «Хоккейного Симулятора Менеджера» (Hockey Simulator Manager).
+const LEGACY_MODS = path.join(app.getPath('documents'), 'Hockey Simulator Manager', 'mods');
+const GAME_DIR = process.env.PORTABLE_EXECUTABLE_DIR || (app.isPackaged ? path.dirname(app.getPath('exe')) : __dirname);
+let USER_MODS = path.join(GAME_DIR, 'mods');
+const MOVED_NOTE = 'МОДЫ ПЕРЕЕХАЛИ.txt';
+const modsReadme = () => `Папка модов «Хоккейного Симулятора Менеджера» (Hockey Simulator Manager).
+${USER_MODS}
 
-Каждый мод — отдельная папка внутри этой:
+Проще всего: в игре на экране новой карьеры нажмите «Установить мод» и выберите архив .zip
+(или перетащите архив на список модов) — игра сама распакует его сюда.
+
+Вручную: каждый мод — отдельная папка внутри этой:
   mods\\МойМод\\roster.json     клубы, игроки, тренеры (обязательно)
   mods\\МойМод\\mod.json        название и описание (необязательно)
   mods\\МойМод\\schedule.json   календарь сезона (необязательно)
   mods\\МойМод\\logos\\...      эмблемы клубов (необязательно)
-
 Если мод скачан архивом .zip — распакуйте его сюда, чтобы получилась папка с roster.json внутри.
-Обновление и переустановка игры эту папку не трогают: она лежит в «Документах», а не в папке с игрой.
-Мод появится в списке «Мод (лига)» на экране новой карьеры (если игра открыта — нажмите F5).
-`;
 
-async function ensureUserMods() {
+Обновление игры эту папку не удаляет. Мод появится в списке «Мод (лига)» на экране новой карьеры
+(если игра открыта — нажмите «Обновить список» или F5).
+`;
+const winText = (t) => '\ufeff' + t.replace(/\r?\n/g, '\r\n');
+
+async function writable(dir) {
+  try {
+    await fs.mkdir(dir, { recursive: true });
+    const probe = path.join(dir, `.write-test-${process.pid}`);
+    await fs.writeFile(probe, '');
+    await fs.rm(probe, { force: true });
+    return true;
+  } catch { return false; }
+}
+
+/** Picks the mods folder (game folder, else Documents), creates it with a README, moves mods over from Documents. */
+async function setupUserMods() {
+  if (!(await writable(USER_MODS))) USER_MODS = LEGACY_MODS;
   try {
     await fs.mkdir(USER_MODS, { recursive: true });
-    const readme = path.join(USER_MODS, 'README.txt');
-    await fs.access(readme).catch(() => fs.writeFile(readme, '\ufeff' + MODS_README.replace(/\n/g, '\r\n'), 'utf8'));
-  } catch { /* read-only Documents: bundled mods only */ }
+    await fs.writeFile(path.join(USER_MODS, 'README.txt'), winText(modsReadme()), 'utf8');
+  } catch { /* read-only: bundled mods only */ }
+  if (USER_MODS !== LEGACY_MODS) {
+    const note = path.join(LEGACY_MODS, MOVED_NOTE);
+    const moved = await fs.access(note).then(() => true, () => false);
+    if (!moved && await fs.access(LEGACY_MODS).then(() => true, () => false)) {
+      try {
+        const copied = await migrateMods(LEGACY_MODS, USER_MODS);
+        await fs.writeFile(note, winText(`Папка модов игры теперь находится рядом с игрой:\n${USER_MODS}\n\nМоды из этой папки скопированы туда${copied.length ? ` (${copied.join(', ')})` : ''}. Эту папку можно удалить.\n`), 'utf8');
+      } catch { /* keep the old folder as it is */ }
+    }
+  }
+  return USER_MODS;
 }
+let modsReady = Promise.resolve(USER_MODS);
+const ensureUserMods = () => modsReady;
 
 /** Folders in the user mods directory that look like a mod (have roster.json or mod.json). */
 async function userModIds() {
@@ -79,6 +117,7 @@ async function userModIds() {
 
 /** mods/index.json = bundled mods + the player's folders. */
 async function modIndex() {
+  await modsReady;
   let bundled = [];
   try {
     const json = JSON.parse(await fs.readFile(path.join(WEB_ROOT, 'mods', 'index.json'), 'utf8'));
@@ -97,6 +136,7 @@ function serveApp() {
     if (rel === '/' || rel === '') rel = '/index.html';
     if (rel === '/mods/index.json') return modIndex();
     if (rel.startsWith('/mods/')) {
+      await modsReady;
       const own = path.normalize(path.join(USER_MODS, rel.slice('/mods/'.length)));
       if (own.startsWith(USER_MODS + path.sep)) {
         try {
@@ -181,12 +221,45 @@ ipcMain.handle('khl:info', () => ({
   gpu: gpuSummary(),
   // electron-builder's portable exe sets these: its update is the portable file, not the installer
   portable: !!(process.env.PORTABLE_EXECUTABLE_FILE || process.env.PORTABLE_EXECUTABLE_DIR),
+  modsDir: USER_MODS,
 }));
 
 ipcMain.handle('khl:open-mods', async () => {
   await ensureUserMods();
+  await fs.mkdir(USER_MODS, { recursive: true }).catch(() => {});
   const err = await shell.openPath(USER_MODS);
   return err ? null : USER_MODS;
+});
+
+/**
+ * «Установить мод»: `file` = { name, data } of an archive dropped on the game window, or nothing — then the system
+ * «Open» dialog (several archives at once allowed). Resolves to { installed: [{ id, name, replaced }], errors, dir }
+ * or null when cancelled.
+ */
+async function installMods(items) {
+  await ensureUserMods();
+  const installed = [], errors = [];
+  for (const it of items) {
+    try {
+      const data = it.data ? Buffer.from(it.data) : await fs.readFile(it.path);
+      installed.push(...(await installModZip(data, it.name || path.basename(it.path || 'mod.zip'), USER_MODS)).installed);
+    } catch (e) {
+      errors.push(`${it.name || path.basename(it.path || '')}: ${e && e.message || e}`);
+    }
+  }
+  return { installed, errors, dir: USER_MODS };
+}
+ipcMain.handle('khl:install-mod', async (event, file) => {
+  if (file && file.data) return installMods([{ name: String(file.name || 'mod.zip'), data: file.data }]);
+  const owner = BrowserWindow.fromWebContents(event.sender) ?? undefined;
+  const { canceled, filePaths } = await dialog.showOpenDialog(owner, {
+    title: 'Установить мод — выберите архив .zip',
+    defaultPath: app.getPath('downloads'),
+    properties: ['openFile', 'multiSelections'],
+    filters: [{ name: 'Архив мода (.zip)', extensions: ['zip'] }, { name: 'Все файлы', extensions: ['*'] }],
+  });
+  if (canceled || !filePaths.length) return null;
+  return installMods(filePaths.map((p) => ({ path: p, name: path.basename(p) })));
 });
 
 ipcMain.handle('khl:save-file', async (event, { name, data, kind }) => {
@@ -231,11 +304,19 @@ async function smokeTest(outFile) {
     result.startScreen = text.includes('Начать карьеру');
     result.roster = text.includes('СКА');
     result.storage = await evalJs(`(() => { localStorage.setItem('khl.smoke', '1'); return localStorage.getItem('khl.smoke') === '1'; })()`);
-    result.desktopBridge = await evalJs('typeof window.khlDesktop?.saveFile === "function"');
+    result.desktopBridge = await evalJs('typeof window.khlDesktop?.saveFile === "function" && typeof window.khlDesktop?.installMod === "function"');
+    // Mods folder next to the exe; a .zip installs into it and shows up in mods/index.json.
+    result.modsDir = await modsReady;
+    result.modsInGameFolder = path.resolve(result.modsDir) === path.resolve(GAME_DIR, 'mods');
+    const smokeMod = 'SmokeTestMod';
+    const inst = await installMods([{ name: `${smokeMod}.zip`, data: writeZip({ 'roster.json': JSON.stringify({ league: { name: 'Smoke' }, teams: [] }), 'mod.json': JSON.stringify({ name: 'Smoke' }) }) }]);
+    const listed = await evalJs(`fetch('/mods/index.json').then(r => r.json()).then(j => j.mods)`);
+    result.modInstall = inst.errors.length === 0 && inst.installed[0]?.id === smokeMod && listed.includes(smokeMod);
+    await fs.rm(path.join(result.modsDir, smokeMod), { recursive: true, force: true });
     result.webgl = await evalJs(`(() => { const c = document.createElement('canvas'); const gl = c.getContext('webgl2') || c.getContext('webgl'); if (!gl) return null; const e = gl.getExtension('WEBGL_debug_renderer_info'); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); })()`);
     result.gpu = gpuSummary();
     result.version = app.getVersion();
-    result.ok = result.startScreen && result.roster && result.storage && result.desktopBridge;
+    result.ok = result.startScreen && result.roster && result.storage && result.desktopBridge && result.modsInGameFolder && result.modInstall;
   } catch (e) {
     result.error = String(e && e.stack || e);
   }
@@ -249,8 +330,8 @@ app.on('second-instance', () => {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  modsReady = setupUserMods();
   serveApp();
-  void ensureUserMods();
   if (smokeArg) {
     const out = smokeArg.includes('=') ? smokeArg.split('=').slice(1).join('=') : path.join(process.cwd(), 'smoke-result.json');
     void smokeTest(out);

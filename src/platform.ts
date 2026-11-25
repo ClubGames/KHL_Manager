@@ -11,11 +11,14 @@ export type Platform = 'web' | 'windows' | 'android';
 /** Bridge exposed by `desktop/preload.cjs`. */
 type DesktopBridge = {
   platform: string;
-  info: () => Promise<{ version: string; electron: string; chrome: string; gpu: string; portable?: boolean }>;
+  info: () => Promise<{ version: string; electron: string; chrome: string; gpu: string; portable?: boolean; modsDir?: string }>;
   saveFile: (file: { name: string; data: Uint8Array; kind: FileKind }) => Promise<string | null>;
-  /** Opens Documents\\Hockey Simulator Manager\\mods in Explorer (apps built before it existed lack it). */
+  /** Opens the mods folder (next to KHL-GM.exe) in Explorer (apps built before it existed lack it). */
   openModsFolder?: () => Promise<string | null>;
+  /** Unpacks a mod archive (.zip) into the mods folder: a dropped file, or the «Open» dialog without one. */
+  installMod?: (file?: { name: string; data: Uint8Array }) => Promise<ModInstallResult | null>;
 };
+export type ModInstallResult = { installed: { id: string; name: string; replaced: boolean }[]; errors: string[]; dir: string };
 declare global {
   interface Window { khlDesktop?: DesktopBridge }
 }
@@ -32,11 +35,32 @@ export const isApp = () => platform() !== 'web';
 
 /** Players send their mods (a .zip attached to a GitHub issue form, see .github/ISSUE_TEMPLATE/mod.yml). */
 export const MOD_SUBMIT_URL = 'https://github.com/ClubGames/KHL_Manager/issues/new?template=mod.yml';
-/** Where the Windows app looks for the player's own mods (outside the install folder: updates never touch it). */
-export const USER_MODS_DIR = 'Документы\\Hockey Simulator Manager\\mods';
+/**
+ * Where the Windows app looks for the player's own mods: the «mods» folder next to the game (KHL-GM.exe or the
+ * portable exe; Documents\\Hockey Simulator Manager\\mods when the game folder is read-only). Updates keep it.
+ * The exact path comes from the app (`userModsDir()`); this is the label until it answers.
+ */
+export const USER_MODS_DIR = 'папка игры\\mods';
+export async function userModsDir(): Promise<string | null> {
+  try { return (await window.khlDesktop?.info())?.modsDir ?? null; } catch { return null; }
+}
 export const canOpenModsFolder = () => typeof window !== 'undefined' && typeof window.khlDesktop?.openModsFolder === 'function';
 export async function openModsFolder(): Promise<string | null> {
   try { return (await window.khlDesktop?.openModsFolder?.()) ?? null; } catch { return null; }
+}
+/** «Установить мод» is there (Windows app; the browser and Android have no mods folder to write to). */
+export const canInstallMods = () => typeof window !== 'undefined' && typeof window.khlDesktop?.installMod === 'function';
+/** Install a mod archive: `file` (drag-and-drop) or the system «Open» dialog. null: cancelled. */
+export async function installModArchive(file?: File): Promise<ModInstallResult | null> {
+  const bridge = window.khlDesktop?.installMod;
+  if (!bridge) return null;
+  try {
+    if (!file) return await bridge();
+    if (!/\.zip$/i.test(file.name)) return { installed: [], errors: [`${file.name}: нужен архив .zip с папкой мода`], dir: '' };
+    return await bridge({ name: file.name, data: new Uint8Array(await file.arrayBuffer()) });
+  } catch (e) {
+    return { installed: [], errors: [String((e as Error)?.message ?? e)], dir: '' };
+  }
 }
 
 export const APP_RELEASE = 'https://github.com/ClubGames/KHL_Manager/releases/tag/app';

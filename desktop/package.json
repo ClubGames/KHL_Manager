@@ -21,7 +21,7 @@
     "executableName": "KHL-GM",
     "copyright": "ClubGames",
     "directories": { "output": "release", "buildResources": "build" },
-    "files": ["main.cjs", "preload.cjs", "app/**/*", "package.json"],
+    "files": ["main.cjs", "preload.cjs", "modInstall.cjs", "app/**/*", "package.json"],
     "asar": true,
     "electronLanguages": ["ru", "en-US"],
     "win": {
@@ -45,6 +45,7 @@
       "createStartMenuShortcut": true,
       "shortcutName": "Хоккейный Симулятор Менеджера",
       "deleteAppDataOnUninstall": false,
+      "include": "installer.nsh",
       "artifactName": "KHL-GM-Setup.${ext}"
     },
     "portable": { "artifactName": "KHL-GM-Portable.${ext}" }
