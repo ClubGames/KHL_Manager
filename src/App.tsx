@@ -43,6 +43,14 @@ const NAV: { id: View; label: string; icon: string }[] = [
   { id: 'club', label: 'Инфраструктура', icon: 'trophy' },
 ];
 
+/** Labels of the landscape-phone rail: long words get soft hyphens (they wrap onto a second line instead of being cut). */
+const SHY = '\u00ad';
+const RAIL_LABEL: Partial<Record<string, string>> = {
+  offseason: `Меж${SHY}сезонье`, format: 'Формат', management: `Управ${SHY}ление`, club: `Инфра${SHY}струк${SHY}тура`,
+  schedule: `Кален${SHY}дарь`, stats: `Стати${SHY}стика`, contracts: `Кон${SHY}тракты`, inbox: `Вхо${SHY}дящие`,
+};
+
+
 const MOBILE_MAIN: View[] = ['dashboard', 'roster', 'lines', 'standings'];
 
 type ConfirmState = { title: string; text?: string; confirmLabel?: string; danger?: boolean; onYes: () => void } | null;
@@ -245,10 +253,10 @@ export default function App() {
       ) : (
         <div className="min-h-screen flex land:h-[100dvh] land:min-h-0 land:overflow-hidden">
           {/* Landscape phones: a slim scrollable rail instead of the bottom bar, so the content gets the full height. */}
-          <nav className="hidden land:flex flex-col w-[68px] shrink-0 border-r border-line bg-panel/90 overflow-y-auto no-scrollbar pl-[env(safe-area-inset-left)]" aria-label="Разделы" data-land-rail>
+          <nav className="hidden land:flex flex-col w-[calc(76px+env(safe-area-inset-left))] shrink-0 border-r border-line bg-panel/90 overflow-y-auto no-scrollbar pl-[env(safe-area-inset-left)]" aria-label="Разделы" data-land-rail>
             {nav.map((v) => {
               const item = NAV.find((n) => n.id === v);
-              const label = v === 'offseason' ? 'Межсезонье' : v === 'format' ? 'Формат' : v === 'management' ? 'Управление' : v === 'club' ? 'Инфраструктура' : item?.label ?? v;
+              const label = RAIL_LABEL[v] ?? item?.label ?? v;
               const icon = v === 'offseason' ? 'trophy' : v === 'format' ? 'code' : item?.icon ?? 'dashboard';
               return (
                 <button key={v} type="button" onClick={() => switchView(v)} aria-current={view === v ? 'page' : undefined} className={cn('flex flex-col items-center gap-0.5 px-1 py-1.5 text-[9.5px] leading-tight border-l-2 shrink-0', view === v ? 'border-ice text-ice bg-ice/5' : 'border-transparent text-muted')}>
@@ -256,7 +264,7 @@ export default function App() {
                     <Icon name={icon} className="w-[18px] h-[18px]" />
                     {v === 'inbox' && inboxTasks.length > 0 && <span className="absolute -top-1.5 -right-2.5 bg-amber text-bg text-[8.5px] font-bold px-0.5 rounded-sm leading-3">{inboxTasks.length}</span>}
                   </span>
-                  <span className="w-full truncate text-center">{label}</span>
+                  <span className="w-full text-center break-words [hyphens:manual]">{label}</span>
                 </button>
               );
             })}
