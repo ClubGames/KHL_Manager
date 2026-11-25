@@ -180,8 +180,8 @@ export default function App() {
   };
   const nav: View[] =
     s.phase === 'offseason'
-      ? ['dashboard', 'offseason', ...NAV.filter((n) => n.id !== 'dashboard').map((n) => n.id), 'format']
-      : [...NAV.map((n) => n.id), 'format'];
+      ? ['dashboard', 'offseason', ...NAV.filter((n) => n.id !== 'dashboard').map((n) => n.id)]
+      : NAV.map((n) => n.id);
   const navItem = (v: View, mobile = false) => {
     const item = NAV.find((n) => n.id === v);
     const label = v === 'offseason' ? 'Межсезонье' : v === 'format' ? 'Формат JSON' : item?.label ?? v;

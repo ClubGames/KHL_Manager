@@ -1326,7 +1326,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               <ShotMap shots={res.shotMap ?? stats.shotMap} home={H} away={A} players={P} compact />
             </div>
           )}
-          {res.so && <ShootoutBoard events={res.events} home={H} away={A} players={P} className="mt-3 w-full max-w-lg" />}
+          {res.so && <ShootoutBoard events={res.events} home={H} away={A} players={P} className="mt-3 w-full max-w-lg" tally={res.periodScores[res.periodScores.length - 1] as [number, number] | undefined} />}
           <div className="mt-3 w-full max-w-lg text-left text-xs max-h-48 overflow-y-auto" data-final-goals>
             {res.scorers.length > 0 && <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Голы · нажмите «▶ Повтор», чтобы посмотреть 3D-повтор</div>}
             {res.scorers.map((sc, i) => {

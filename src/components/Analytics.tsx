@@ -32,7 +32,7 @@ function ChartBox({ config, className }: { config: ChartConfiguration; className
   return (
     <div className={cn('relative', className)}>
       <canvas ref={ref} className={cn(failed && 'invisible')} />
-      {failed && <div className="absolute inset-0 flex items-center justify-center text-xs text-muted">График недоступен в этом окружении (нет 2D canvas).</div>}
+      {failed && <div className="absolute inset-0 flex items-center justify-center text-xs text-muted">График недоступен в этом браузере.</div>}
     </div>
   );
 }

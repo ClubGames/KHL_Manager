@@ -226,4 +226,63 @@ test('special teams: the power play sets up and holds the zone, the penalty kill
   assert.ok(pkD / pkN < evD / evN - 0.3, `penalty killers stay tighter to the net (${(pkD / pkN).toFixed(1)} m vs ${(evD / evN).toFixed(1)} m)`);
 });
 
+test('lines: the right number of skaters, defensemen on the blue line, quick changes; defenders skate and stay goal-side', () => {
+  type Ag = { id: string; side: 0 | 1; on: string; goalie: boolean; leave: null | 'bench' | 'box'; role: string; x: number; y: number; vx: number; vy: number };
+  type Probe = { agents: Map<string, Ag>; mode: string; baseSkaters: [number, number]; lastGoalie: [string | null, string | null]; puck: { carrier: Ag | null }; g: number; players: typeof r.players };
+  const proto = RinkAI.prototype as unknown as { record: (this: Probe) => void };
+  const rec0 = proto.record;
+  const BENCH = [{ x: 24, y: 0.8 }, { x: 36, y: 0.8 }], BOX = [{ x: 27, y: 29.2 }, { x: 33, y: 29.2 }];
+  const d2 = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
+  const ppIds = [H, A].map(T => new Set([...T.lineup.pp1, ...T.lineup.pp2]));
+  const st = { frames: 0, over: 0, under: 0, noChange: 0, fwdAsD: 0, dAsFwd: 0, gapN: 0, goalSide: 0, spdN: 0, spd: 0, stall: 0, holdSum: 0, holds: 0 };
+  let lastAI: unknown = null, carrier: Ag | null = null, holdStart = 0, stallRun = 0;
+  proto.record = function (this: Probe) {
+    rec0.call(this);
+    if (lastAI !== this) { lastAI = this; carrier = null; }
+    if (this.mode !== 'play') return;
+    st.frames++;
+    const even = this.baseSkaters[0] === this.baseSkaters[1] && this.lastGoalie[0] !== null && this.lastGoalie[1] !== null;
+    for (const s of [0, 1] as const) {
+      const all = [...this.agents.values()].filter(a => a.side === s && a.on === 'ice' && !a.goalie);
+      const act = all.filter(a => !a.leave);
+      // a man skating off counts until he is at the gate
+      const visible = all.filter(a => !a.leave || d2(a, a.leave === 'box' ? BOX[s] : BENCH[s]) > 3).length;
+      if (visible > this.baseSkaters[s] + (this.lastGoalie[s] === null ? 1 : 0)) st.over++;
+      if (act.length < this.baseSkaters[s]) { st.under++; if (all.length === act.length) st.noChange++; }
+      if (!even) continue;
+      const ds = act.filter(b => b.role === 'LD' || b.role === 'RD').length;
+      for (const a of act) {
+        const pos = this.players[a.id]?.position, dRole = a.role === 'LD' || a.role === 'RD';
+        if (dRole && pos !== 'D' && !act.every(b => ppIds[s].has(b.id))) st.fwdAsD++;
+        if (!dRole && pos === 'D' && ds < 2) st.dAsFwd++;
+      }
+    }
+    const c = this.puck.carrier;
+    if (c !== carrier) { if (carrier) { st.holdSum += this.g - holdStart; st.holds++; } carrier = c; holdStart = this.g; stallRun = 0; }
+    if (!c) return;
+    stallRun = Math.hypot(c.vx, c.vy) < 1.5 ? stallRun + 1 : 0;
+    if (stallRun > 20) st.stall++;
+    const s = (1 - c.side) as 0 | 1, net = s === 0 ? { x: 4, y: 15 } : { x: 56, y: 15 };
+    const lxC = lx(c.side, c.x);
+    const defs = [...this.agents.values()].filter(a => a.side === s && a.on === 'ice' && !a.goalie && !a.leave);
+    if (!defs.length) return;
+    if (lxC > 22 && lxC < 45) { const near = defs.reduce((p, q) => (d2(p, c) < d2(q, c) ? p : q)); st.gapN++; if (d2(near, net) < d2(c, net)) st.goalSide++; }
+    if (lxC > 30) for (const a of defs) { st.spd += Math.hypot(a.vx, a.vy); st.spdN++; }
+  };
+  try {
+    for (let g = 0; g < 2; g++) {
+      const sim = new GameSim(H, A, r.players);
+      for (let k = 0; k < 3; k++) { const start = sim.sec, evs = sim.simPeriod(); new RinkAI(evs, H, A, r.players, start, sim.sec).runToEnd(); }
+    }
+  } finally { proto.record = rec0; }
+  const f = (n: number) => n / st.frames;
+  assert.ok(f(st.over) < 0.005, `too many skaters on the ice in ${(100 * f(st.over)).toFixed(2)}% of frames`);
+  assert.ok(f(st.under) < 0.06, `a team is short a skater in ${(100 * f(st.under)).toFixed(2)}% of frames`);
+  assert.ok(f(st.noChange) < 0.002, `short-handed with nobody changing in ${(100 * f(st.noChange)).toFixed(2)}% of frames`);
+  assert.ok(f(st.fwdAsD) < 0.005 && f(st.dAsFwd) < 0.002, `wrong roles: F as D ${(100 * f(st.fwdAsD)).toFixed(2)}%, D as F ${(100 * f(st.dAsFwd)).toFixed(2)}%`);
+  assert.ok(st.goalSide / st.gapN > 0.62, `the nearest defender is goal-side of the carrier ${(100 * st.goalSide / st.gapN).toFixed(0)}% of the time`);
+  assert.ok(st.spd / st.spdN > 3.3, `defenders in their end move at ${(st.spd / st.spdN).toFixed(2)} m/s`);
+  assert.ok(f(st.stall) < 0.01 && st.holdSum / st.holds < 1.6, `stalling carriers ${(100 * f(st.stall)).toFixed(2)}%, average hold ${(st.holdSum / st.holds).toFixed(2)} s`);
+});
+
 console.log(`\n${pass} rink AI tests passed`);

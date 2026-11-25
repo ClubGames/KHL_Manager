@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getTradeWindowsSchedule, groupOf, hasWants, matchesWants, tradeValue, tradeWindow } from '../game/ai';
+import { CASH_PER_VALUE, MAX_TRADE_CASH, formatTradeCash, getTradeWindowsSchedule, groupOf, hasWants, matchesWants, tradeShapeProblem, tradeValue, tradeWindow } from '../game/ai';
 import { asScouted, scoutSlots } from '../game/scouting';
 import { ScoutOvr } from './Scout';
 import type { PosCode } from '../types';
@@ -98,6 +98,8 @@ export function Trades({ preselect }: { preselect: string | null }) {
   const [get, setGet] = useState<string[]>([]);
   const [mobileSide, setMobileSide] = useState<'give' | 'get'>('give');
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  /** money in the deal: > 0 we pay the partner, < 0 we ask the partner to pay */
+  const [cash, setCash] = useState(0);
   useEffect(() => {
     if (!preselect) return;
     if (preselect.startsWith('team:')) {
@@ -126,9 +128,14 @@ export function Trades({ preselect }: { preselect: string | null }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preselect]);
   const partner = s.teams[partnerId];
-  const gv = give.reduce((a, id) => a + tradeValue(P[id]), 0);
+  const gv = give.reduce((a, id) => a + tradeValue(P[id]), 0) + Math.max(0, cash) / CASH_PER_VALUE;
   // Players of other clubs are valued from the scouts' reports, not from hidden true ratings.
-  const rv = get.reduce((a, id) => a + tradeValue(asScouted(s, P[id])), 0);
+  const rv = get.reduce((a, id) => a + tradeValue(asScouted(s, P[id])), 0) + Math.max(0, -cash) / CASH_PER_VALUE;
+  const shapeProblem = tradeShapeProblem(give, get, cash);
+  const cashBlocked = cash > 0 && U.budget < cash;
+  const cashMode: 'none' | 'pay' | 'ask' = cash > 0 ? 'pay' : cash < 0 ? 'ask' : 'none';
+  const cashM = Math.round(Math.abs(cash) / 1_000_000);
+  const setCashMode = (m: 'none' | 'pay' | 'ask') => setCash(m === 'none' ? 0 : (m === 'pay' ? 1 : -1) * (cashM || 20) * 1_000_000);
   const afterIds = U.players.filter((id) => !give.includes(id)).concat(get);
   const dead = s.phase === 'offseason' ? 0 : (U.deadCap ?? 0);
   const beforePayroll = payroll(U.players, P) + dead;
@@ -149,11 +156,12 @@ export function Trades({ preselect }: { preselect: string | null }) {
     set(list.includes(id) ? list.filter((x) => x !== id) : list.length >= 3 ? list : [...list, id]);
   };
   const propose = () => {
-    const r = proposeTrade(partnerId, give, get);
+    const r = proposeTrade(partnerId, give, get, cash);
     setMsg({ ok: r.ok, text: r.reason });
     if (r.ok) {
       setGive([]);
       setGet([]);
+      setCash(0);
     }
   };
 
@@ -295,7 +303,8 @@ export function Trades({ preselect }: { preselect: string | null }) {
           <Panel title="Условия обмена">
             <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Вы отдаёте</div>
             <div className="flex flex-wrap gap-1 mb-3 min-h-[26px]">
-              {give.length === 0 && <span className="text-xs text-muted">— выберите слева</span>}
+              {give.length === 0 && cash <= 0 && <span className="text-xs text-muted">— выберите слева</span>}
+              {cash > 0 && <span className="text-xs bg-panel2 border border-amber/60 text-amber rounded-sm px-2 py-0.5" data-trade-cash-chip="pay">{formatTradeCash(cash)}</span>}
               {give.map((id) => (
                 <button key={id} onClick={() => setGive(give.filter((x) => x !== id))} className="text-xs bg-panel2 border border-accent/50 rounded-sm px-2 py-0.5 hover:border-accent">
                   {P[id].name} ×
@@ -304,12 +313,52 @@ export function Trades({ preselect }: { preselect: string | null }) {
             </div>
             <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Вы получаете</div>
             <div className="flex flex-wrap gap-1 mb-3 min-h-[26px]">
-              {get.length === 0 && <span className="text-xs text-muted">— выберите справа</span>}
+              {get.length === 0 && cash >= 0 && <span className="text-xs text-muted">— выберите справа</span>}
+              {cash < 0 && <span className="text-xs bg-panel2 border border-amber/60 text-amber rounded-sm px-2 py-0.5" data-trade-cash-chip="ask">{formatTradeCash(cash)}</span>}
               {get.map((id) => (
                 <button key={id} onClick={() => setGet(get.filter((x) => x !== id))} className="text-xs bg-panel2 border border-ok/50 rounded-sm px-2 py-0.5 hover:border-ok">
                   {P[id].name} ×
                 </button>
               ))}
+            </div>
+            <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Деньги в сделке</div>
+            <div className="mb-3" data-trade-cash={cash}>
+              <div className="grid grid-cols-3 gap-1">
+                {([['none', 'Без денег'], ['pay', 'Доплатить'], ['ask', 'Попросить']] as const).map(([m, label]) => (
+                  <button
+                    key={m}
+                    type="button"
+                    onClick={() => setCashMode(m)}
+                    data-trade-cash-mode={m}
+                    className={cn('rounded-sm border px-1.5 py-1 text-xs font-semibold', cashMode === m ? 'border-amber bg-amber/15 text-amber' : 'border-line bg-panel2/50 text-muted hover:text-text')}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              {cashMode !== 'none' && (
+                <div className="mt-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="range"
+                      min={5}
+                      max={MAX_TRADE_CASH / 1_000_000}
+                      step={5}
+                      value={cashM}
+                      onChange={(e) => setCash((cashMode === 'pay' ? 1 : -1) * Number(e.target.value) * 1_000_000)}
+                      className="flex-1 accent-[#F2B544]"
+                      aria-label={cashMode === 'pay' ? 'Сумма доплаты' : 'Сколько просим'}
+                      data-trade-cash-amount
+                    />
+                    <span className="w-20 text-right text-sm font-semibold tabular text-amber">{cashM} млн ₽</span>
+                  </div>
+                  <div className={cn('text-[11px] mt-1', cashBlocked ? 'text-accent' : 'text-muted')}>
+                    {cashMode === 'pay'
+                      ? `Платим «${partner.name}» из бюджета клуба (сейчас ${formatMoney(U.budget)}).`
+                      : `«${partner.name}» доплачивает нам — если у клуба есть деньги (бюджет ${formatMoney(partner.budget)}).`}
+                  </div>
+                </div>
+              )}
             </div>
             <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Ценность по оценке клубов</div>
             <div className="space-y-1.5 text-xs tabular">
@@ -347,8 +396,8 @@ export function Trades({ preselect }: { preselect: string | null }) {
             {msg && (
               <div className={cn('mt-3 text-xs rounded-sm border px-2.5 py-2', msg.ok ? 'border-ok/50 text-ok bg-ok/10' : 'border-accent/50 text-accent bg-accent/10')}>{msg.text}</div>
             )}
-            <Button variant="primary" className="w-full mt-3" disabled={!give.length || !get.length || capBlocked || legBlocked || !win.open} onClick={propose}>
-              Предложить обмен
+            <Button variant="primary" className="w-full mt-3" disabled={!!shapeProblem || cashBlocked || capBlocked || legBlocked || !win.open} onClick={propose} data-trade-propose>
+              {give.length && get.length ? 'Предложить обмен' : get.length ? 'Купить за деньги' : give.length ? 'Продать за деньги' : 'Предложить обмен'}
             </Button>
             {capBlocked && <div className="text-[11px] text-accent mt-1">Обмен превышает потолок зарплат</div>}
             {salaryDumpOk && <div className="text-[11px] text-amber mt-1">Разгрузка ФОТ: сделка разрешена для снижения превышения потолка</div>}
@@ -424,11 +473,11 @@ export function Trades({ preselect }: { preselect: string | null }) {
             </div>
           )}
           <div className="flex gap-2">
-            {give.length > 0 && get.length === 0 ? (
+            {give.length > 0 && get.length === 0 && cash >= 0 ? (
               <Button size="sm" variant="ice" className="flex-1" onClick={() => setMobileSide('get')}>
                 Выбрать кого получаем ({partner.short}) →
               </Button>
-            ) : get.length > 0 && give.length === 0 ? (
+            ) : get.length > 0 && give.length === 0 && cash <= 0 ? (
               <Button size="sm" variant="ice" className="flex-1" onClick={() => setMobileSide('give')}>
                 ← Выбрать кого отдаём ({U.short})
               </Button>
@@ -437,13 +486,13 @@ export function Trades({ preselect }: { preselect: string | null }) {
                 size="sm"
                 variant="primary"
                 className="flex-1"
-                disabled={!give.length || !get.length || capBlocked || legBlocked || !win.open}
+                disabled={!!shapeProblem || cashBlocked || capBlocked || legBlocked || !win.open}
                 onClick={propose}
               >
-                Предложить обмен
+                {cash ? `Предложить (${cash > 0 ? '+' : '−'}${cashM} млн ₽)` : 'Предложить обмен'}
               </Button>
             )}
-            <Button size="sm" variant="ghost" className="border border-line" onClick={() => { setGive([]); setGet([]); setMsg(null); }}>
+            <Button size="sm" variant="ghost" className="border border-line" onClick={() => { setGive([]); setGet([]); setCash(0); setMsg(null); }}>
               Сброс
             </Button>
           </div>

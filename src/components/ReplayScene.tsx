@@ -480,6 +480,6 @@ export function ReplayScene(props: Props) {
   return <div className="absolute inset-0" data-replay-renderer={failed ? 'svg' : 'webgl'} data-replay-models={rigged && !failed ? 'rigged' : 'simple'}>
     <div ref={host} className={failed ? 'hidden' : 'w-full h-full'} />
     {!failed && props.overlay}
-    {failed && <div className="w-full h-full p-3 bg-[#102335]" data-replay-flat={props.flat || undefined}><RinkSvg frame={clipFrame(clip, flatTime)} home={home} away={away} players={players} /><span className="absolute bottom-2 left-3 text-[10px] text-white/70">{props.flat ? '2D-повтор · 3D можно включить в настройках' : 'WebGL недоступен — показан тот же эпизод сверху.'}</span></div>}
+    {failed && <div className="w-full h-full p-3 bg-[#102335]" data-replay-flat={props.flat || undefined}><RinkSvg frame={clipFrame(clip, flatTime)} home={home} away={away} players={players} /><span className="absolute bottom-2 left-3 text-[10px] text-white/70">{props.flat ? '2D-повтор · 3D можно включить в настройках' : '3D-повтор недоступен на этом устройстве — показан тот же эпизод сверху.'}</span></div>}
   </div>;
 }

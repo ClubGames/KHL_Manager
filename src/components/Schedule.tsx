@@ -172,7 +172,7 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
             </div>
           )}
 
-          {r.so && <ShootoutBoard events={r.events} home={H} away={A} players={P} className="mt-4" />}
+          {r.so && <ShootoutBoard events={r.events} home={H} away={A} players={P} className="mt-4" tally={r.periodScores[r.periodScores.length - 1] as [number, number] | undefined} />}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
             <div>
@@ -200,7 +200,6 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
                   );
                 })}
               </ul>
-              {r.scorers.length > 0 && !r.events.some((e) => e.type === 'goal') && <div className="mt-1 text-[10px] text-muted">{isUserMatch ? '3D-повторы сохраняются для матчей, сыгранных после обновления игры.' : '3D-повторы сохраняются только для матчей вашей команды.'}</div>}
             </div>
             <div>
               <div className="text-[11px] uppercase tracking-wider text-muted mb-1">Вратари и звёзды</div>
