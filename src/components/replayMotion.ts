@@ -18,8 +18,8 @@ export type MotionPlan = { touches: Touch[]; releases: Release[]; saves: Map<str
 
 /** World x of the goal lines (the nets stand on them). */
 export const NET_X = RINK.length / 2 - RINK.goalLine;
-const WINDUP: Record<ReleaseKind, number> = { wrist: .32, snap: .2, slap: .55, backhand: .3, tip: .1, pass: .24 };
-const FOLLOW: Record<ReleaseKind, number> = { wrist: .45, snap: .38, slap: .5, backhand: .45, tip: .25, pass: .32 };
+export const WINDUP: Record<ReleaseKind, number> = { wrist: .32, snap: .2, slap: .55, backhand: .3, tip: .1, pass: .24 };
+export const FOLLOW: Record<ReleaseKind, number> = { wrist: .45, snap: .38, slap: .5, backhand: .45, tip: .25, pass: .32 };
 /** Body turned away from the target in the windup (rad): side-on for shots, square for passes; < 0 backhand side. */
 const SIDE_ON: Record<ReleaseKind, number> = { wrist: .55, snap: .45, slap: .95, backhand: -.5, tip: .2, pass: .3 };
 

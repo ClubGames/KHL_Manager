@@ -7,9 +7,10 @@ const browser = await chromium.launch({
   args: ['--no-sandbox', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'],
 });
 const errors = [];
-async function open(options = {}) {
+async function open(options = {}, settings = null) {
   const page = await browser.newPage(options);
   page.on('pageerror', e => errors.push(e.message));
+  if (settings) await page.addInitScript(s => localStorage.setItem('khl.settings', JSON.stringify(s)), settings);
   await page.goto(process.env.BASE_URL ?? 'http://localhost:5173');
   await page.getByRole('button', { name: 'Начать карьеру', exact: true }).waitFor();
   return page;
@@ -171,9 +172,21 @@ try {
   let moved = false;
   for (let i = 0; i < 30 && !moved; i++) { await match.waitForTimeout(250); moved = (await rink.locator('[data-rink-puck]').getAttribute('cx')) !== frozen; }
   assert.ok(moved, 'puck moves after resume');
-  await match.getByRole('button', { name: 'Скрыть площадку 2D', exact: true }).click(); assert.equal(await rink.count(), 0);
-  await match.getByRole('button', { name: 'Показать площадку 2D', exact: true }).click(); assert.equal(await rink.count(), 1);
-  await match.close(); console.log('ok actual match: moving 2D rink, freeze/resume and hide/show');
+  // The 3D match (the default) shows the same frame as the 2D minimap; cameras and the 2D/3D switch work.
+  assert.equal(await rink.locator('[data-rink-view]').getAttribute('data-rink-view'), '3d');
+  await rink.locator('[data-live-3d="ready"]').waitFor({ timeout: 60000 });
+  assert.equal(await rink.locator('[data-rink-minimap] [data-rink-puck]').count(), 1, 'minimap over the 3D picture');
+  await rink.locator('[data-live-camera="end"]').click();
+  assert.equal(await rink.locator('[data-live-camera="end"]').getAttribute('aria-checked'), 'true');
+  await rink.locator('[data-live-minimap-toggle]').click(); assert.equal(await rink.locator('[data-rink-minimap]').count(), 0);
+  await rink.locator('[data-live-minimap-toggle]').click(); assert.equal(await rink.locator('[data-rink-minimap]').count(), 1);
+  await rink.locator('[data-rink-view-button="2d"]').click();
+  assert.equal(await rink.locator('[data-rink-3d]').count(), 0); assert.equal(await rink.locator('[data-rink-svg]').count(), 1);
+  await rink.locator('[data-rink-view-button="3d"]').click(); await rink.locator('[data-live-3d]').waitFor();
+  console.log('ok 3D match: same frame as the minimap, camera choice, minimap and 2D/3D switch');
+  await match.getByRole('button', { name: 'Скрыть площадку', exact: true }).click(); assert.equal(await rink.count(), 0);
+  await match.getByRole('button', { name: 'Показать площадку', exact: true }).click(); assert.equal(await rink.count(), 1);
+  await match.close(); console.log('ok actual match: moving rink, freeze/resume and hide/show');
 
   // The replay is centred in the viewport even inside a transformed, scrolled page (phone held sideways).
   const sideways = await open({ viewport: { width: 844, height: 390 }, reducedMotion: 'reduce', isMobile: true, hasTouch: true });
@@ -188,7 +201,7 @@ try {
   console.log('ok replay centred in a landscape phone viewport, portalled out of transformed ancestors');
 
   // Landscape match: nothing but the side list scrolls, the clock waits for the opening faceoff.
-  const land = await open({ viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true });
+  const land = await open({ viewport: { width: 844, height: 390 }, isMobile: true, hasTouch: true }, { matchView: '2d' });
   await land.getByRole('button', { name: /^СКА/ }).click();
   await land.getByRole('button', { name: 'Начать карьеру', exact: true }).click();
   const toMatch2 = land.getByRole('button', { name: 'Симулировать до матча', exact: true });

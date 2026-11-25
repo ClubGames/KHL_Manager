@@ -3,9 +3,9 @@ name: Apps (Windows + Android)
 # Builds the Windows app (Electron: installer + portable exe) and the Android app (Capacitor: signed APK)
 # from the same web build as the browser version. Pull requests: build + checks, files as workflow artifacts.
 # main: also publishes them to the «app» release — stable download links:
-#   https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM-Setup.exe
-#   https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM-Portable.exe
-#   https://github.com/ClubGames/KHL_Manager/releases/download/app/KHL-GM.apk
+#   https://github.com/ClubGames/KHL_Manager/releases/download/app/Hockey-Simulator-Manager-Setup.exe
+#   https://github.com/ClubGames/KHL_Manager/releases/download/app/Hockey-Simulator-Manager-Portable.exe
+#   https://github.com/ClubGames/KHL_Manager/releases/download/app/Hockey-Simulator-Manager.apk
 
 on:
   push:
@@ -75,12 +75,12 @@ jobs:
           npm version "$APP_VERSION" --no-git-tag-version --allow-same-version
           npm run dist:win
           ls -la release
-          test -f release/KHL-GM-Setup.exe && test -f release/KHL-GM-Portable.exe
+          test -f release/Hockey-Simulator-Manager-Setup.exe && test -f release/Hockey-Simulator-Manager-Portable.exe
       - name: Smoke test (the packaged app starts, loads the game and the roster)
         working-directory: desktop
         run: |
           out="$(pwd -W)/smoke.json"
-          timeout 180 ./release/win-unpacked/KHL-GM.exe --smoke-test="$out" || echo "exit code $?"
+          timeout 180 "./release/win-unpacked/Hockey Simulator Manager.exe" --smoke-test="$out" || echo "exit code $?"
           cat smoke.json
           node -e "const r=require('./smoke.json'); console.log('::notice title=Windows smoke test::' + JSON.stringify(r))"
           node -e "const r=require('./smoke.json'); if(!r.ok){console.error('smoke test failed');process.exit(1)}"
@@ -88,8 +88,8 @@ jobs:
         with:
           name: windows
           path: |
-            desktop/release/KHL-GM-Setup.exe
-            desktop/release/KHL-GM-Portable.exe
+            desktop/release/Hockey-Simulator-Manager-Setup.exe
+            desktop/release/Hockey-Simulator-Manager-Portable.exe
           retention-days: 14
 
   android:
@@ -136,18 +136,18 @@ jobs:
         run: |
           chmod +x gradlew
           ./gradlew assembleRelease --no-daemon --stacktrace -PkhlVersionCode=${{ github.run_number }} -PkhlVersionName="$APP_VERSION"
-          cp app/build/outputs/apk/release/app-release.apk ../KHL-GM.apk
+          cp app/build/outputs/apk/release/app-release.apk ../Hockey-Simulator-Manager.apk
       - name: Verify the APK
         run: |
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
-          "$BT/apksigner" verify --print-certs KHL-GM.apk | head -5
-          "$BT/aapt2" dump badging KHL-GM.apk | grep -E "^package|application-label|sdkVersion|targetSdkVersion|launchable"
-          ls -la KHL-GM.apk
-          echo "::notice title=Android APK::$("$BT/aapt2" dump badging KHL-GM.apk | grep -E "^package|sdkVersion|targetSdkVersion" | tr '\n' ' ') size $(stat -c %s KHL-GM.apk) · $("$BT/apksigner" verify --print-certs KHL-GM.apk | head -1)"
+          "$BT/apksigner" verify --print-certs Hockey-Simulator-Manager.apk | head -5
+          "$BT/aapt2" dump badging Hockey-Simulator-Manager.apk | grep -E "^package|application-label|sdkVersion|targetSdkVersion|launchable"
+          ls -la Hockey-Simulator-Manager.apk
+          echo "::notice title=Android APK::$("$BT/aapt2" dump badging Hockey-Simulator-Manager.apk | grep -E "^package|sdkVersion|targetSdkVersion" | tr '\n' ' ') size $(stat -c %s Hockey-Simulator-Manager.apk) · $("$BT/apksigner" verify --print-certs Hockey-Simulator-Manager.apk | head -1)"
       - uses: actions/upload-artifact@v4
         with:
           name: android
-          path: KHL-GM.apk
+          path: Hockey-Simulator-Manager.apk
           retention-days: 14
 
   release:
@@ -189,9 +189,11 @@ jobs:
 
           | Файл | Что это |
           |---|---|
-          | **KHL-GM-Setup.exe** | Windows 10/11: установщик — лицензионное соглашение, выбор папки установки, ярлык на рабочем столе |
-          | **KHL-GM-Portable.exe** | Windows: без установки, запускается сразу |
-          | **KHL-GM.apk** | Android 7+: установите файл (разрешите установку из этого источника) |
+          | **Hockey-Simulator-Manager-Setup.exe** | Windows 10/11: установщик — лицензионное соглашение, выбор папки установки, ярлык на рабочем столе |
+          | **Hockey-Simulator-Manager-Portable.exe** | Windows: без установки, запускается сразу |
+          | **Hockey-Simulator-Manager.apk** | Android 7+: установите файл (разрешите установку из этого источника) |
+
+          Файлы KHL-GM-* — те же самые сборки под старыми именами: по ним обновляются версии, установленные до переименования.
 
           Windows может показать «Система Windows защитила ваш компьютер» — приложение не подписано сертификатом:
           «Подробнее» → «Выполнить в любом случае». Обновление: просто установите новую версию поверх — карьеры и свои моды (папка mods рядом с игрой) сохранятся. Мод из архива .zip: экран новой карьеры → «Установить мод…».
@@ -199,8 +201,15 @@ jobs:
 
           <!-- khl-build: ${STAMP} -->
           EOF
-          ASSETS="files/KHL-GM-Setup.exe files/KHL-GM-Portable.exe files/KHL-GM.apk"
+          ASSETS="files/Hockey-Simulator-Manager-Setup.exe files/Hockey-Simulator-Manager-Portable.exe files/Hockey-Simulator-Manager.apk"
           for f in $ASSETS; do test -f "$f" || { echo "::error::missing $f"; exit 1; }; done
+          # Apps installed before the rename look for the old file names when they update: the same files under
+          # those names keep their update button working (new versions find the files by kind, see src/update.ts).
+          mkdir -p legacy
+          cp files/Hockey-Simulator-Manager-Setup.exe legacy/KHL-GM-Setup.exe
+          cp files/Hockey-Simulator-Manager-Portable.exe legacy/KHL-GM-Portable.exe
+          cp files/Hockey-Simulator-Manager.apk legacy/KHL-GM.apk
+          ASSETS="$ASSETS legacy/KHL-GM-Setup.exe legacy/KHL-GM-Portable.exe legacy/KHL-GM.apk"
           if gh release view app >/dev/null 2>&1; then
             gh release upload app $ASSETS --clobber
             gh release edit app --title "Приложения Hockey Simulator Manager ${APP_VERSION}" --notes-file notes.md --latest
@@ -209,6 +218,6 @@ jobs:
           fi
           # Anything else attached to the release (left over from an earlier run) is removed.
           gh release view app --json assets --jq '.assets[].name' | while read -r name; do
-            case "$name" in KHL-GM-Setup.exe|KHL-GM-Portable.exe|KHL-GM.apk) ;; *) gh release delete-asset app "$name" --yes ;; esac
+            case "$name" in Hockey-Simulator-Manager-Setup.exe|Hockey-Simulator-Manager-Portable.exe|Hockey-Simulator-Manager.apk|KHL-GM-Setup.exe|KHL-GM-Portable.exe|KHL-GM.apk) ;; *) gh release delete-asset app "$name" --yes ;; esac
           done
           gh release view app --json assets --jq '.assets[] | "\(.name) \(.size)"'

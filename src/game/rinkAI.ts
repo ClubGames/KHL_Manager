@@ -75,7 +75,7 @@ interface Puck { x: number; y: number; h: number; vx: number; vy: number; carrie
 interface ShotPlan { ev: GameEvent; T: Side; chain: Agent[]; spots: V2[]; rel: number[]; arr: number[]; tr: number; target: V2 | Agent; th: number; step: number; acquired: boolean; acqStarted: boolean; shot: boolean }
 interface DuelPlan { ev: GameEvent; kind: 'hit' | 'penalty'; actor: Agent; victim: Agent | null }
 interface Stop { reason: 'start' | 'goal' | 'freeze' | 'icing' | 'penalty' | 'offside'; dot: V2; t0: number; phase: 'whistle' | 'celebrate' | 'gather' | 'set' | 'drop'; phaseAt: number; scorer?: Agent; winner?: Side }
-interface Frame { tau: number; g: number; px: number; py: number; ph: number; ids: string[]; pos: Float32Array; flags: Uint8Array; carrier: number; stop: 0 | 1 | 2; ox: number; oy: number }
+interface Frame { tau: number; g: number; px: number; py: number; ph: number; ids: string[]; pos: Float32Array; flags: Uint8Array; carrier: number; stop: 0 | 1 | 2; ox: number; oy: number; pace: number }
 
 const isAgent = (v: V2 | Agent): v is Agent => typeof (v as Agent).id === 'string';
 const SHOT_SPEED: Record<string, number> = { slap: 36, snap: 30, wrist: 26, backhand: 21, tip: 24, rebound: 18 };
@@ -202,6 +202,14 @@ export class RinkAI {
     const pp = this.pp, p = this.puck;
     if (this.mode === 'play' && pp !== null && this.zoneIn[pp] && (p.carrier?.side ?? p.leg?.by?.side) === pp) return RinkAI.PACE.setup;
     return RinkAI.PACE.cold;
+  }
+  /**
+   * Pace of the moment shown at presentation time `tau` (recorded with every frame), so it does not depend on how
+   * far ahead the rink has been simulated (the 3D view looks a second ahead to wind up shots and passes).
+   */
+  paceAt(tau: number): number {
+    const [a] = this.bracket(tau);
+    return a.pace;
   }
   get lastTau() { return this.frames.at(-1)?.tau ?? 0; }
   /** Simulate until presentation time `tau` (lazy; keeps the live match cheap). */
@@ -1634,7 +1642,7 @@ export class RinkAI {
     const st = this.stop;
     const faceoff = !!st && (st.phase === 'set' || st.phase === 'drop' || (st.phase === 'gather' && dist(this.puck, st.dot) < 0.05));
     const off = st ? { x: st.dot.x + 0.9, y: st.dot.y + 1.6 } : { x: 0, y: 0 };
-    this.frames.push({ tau: this.tau, g: this.g, px: this.puck.x, py: this.puck.y, ph: this.puck.h, ids: this.lastIds, pos, flags, carrier: this.puck.carrier ? this.lastIds.indexOf(this.puck.carrier.id) : -1, stop: st ? (faceoff ? 1 : 2) : 0, ox: off.x, oy: off.y });
+    this.frames.push({ tau: this.tau, g: this.g, px: this.puck.x, py: this.puck.y, ph: this.puck.h, ids: this.lastIds, pos, flags, carrier: this.puck.carrier ? this.lastIds.indexOf(this.puck.carrier.id) : -1, stop: st ? (faceoff ? 1 : 2) : 0, ox: off.x, oy: off.y, pace: this.mode === 'end' || !this.frames.length ? RinkAI.PACE.cold : this.pace });
   }
 }
 

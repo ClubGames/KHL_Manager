@@ -50,6 +50,8 @@ export function resolveReplayQuality(q: ReplayQuality | 'auto' = 'auto'): Replay
   if (q !== 'auto') return q;
   return typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches ? 'standard' : 'high';
 }
+/** Resolution and shadow settings of a preset (the live 3D match uses the same ones). */
+export const replayPreset = (q: ReplayQuality) => QUALITY[q];
 /** Arena texture detail of a preset (also used by the background preparation of replays). */
 export const arenaDetail = (q: ReplayQuality) => QUALITY[q].detail;
 
