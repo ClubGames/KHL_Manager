@@ -298,7 +298,7 @@ async function smokeTest(outFile) {
     const started = Date.now();
     let text = '';
     while (Date.now() - started < 60000) {
-      text = await evalJs('document.body.innerText');
+      text = await evalJs('document.body.textContent'); // not innerText: headings are CSS-uppercased
       if (text.includes('Новая карьера') && await evalJs('!!document.querySelector("[data-mod-picker]")')) break;
       await new Promise(r => setTimeout(r, 250));
     }
