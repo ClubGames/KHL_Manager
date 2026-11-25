@@ -90,11 +90,19 @@ try {
   await overlay.first().waitFor({ timeout: 3000 }).catch(() => {});
   for (let k = 0; k < 20 && (await overlay.count()); k++) { await page.keyboard.press('Escape'); await page.waitForTimeout(150); }
   const before = await read((s) => ({ fans: s.fans, conf: s.board.confidence }));
-  await press.locator('[data-press-option]').first().click();
-  await press.waitFor({ state: 'detached' });
+  const total = await read((s) => s.press?.total ?? 1);
+  const steps = [];
+  for (let k = 0; k < 6 && (await press.count()); k++) {
+    steps.push((await press.first().locator('[data-press-step]').getAttribute('data-press-step').catch(() => null)) ?? '1/1');
+    assert.ok((await press.first().locator('[data-press-reporter]').count()) === 1, 'the journalist is named');
+    await press.first().locator('[data-press-option]').first().click();
+    await page.waitForTimeout(150);
+  }
+  await press.first().waitFor({ state: 'detached' });
   const after = await read((s) => ({ fans: s.fans, conf: s.board.confidence, press: s.press }));
   assert.equal(after.press, null);
-  ok(`post-match press conference answered (fans ${before.fans}→${after.fans}, board ${before.conf}→${after.conf})`);
+  assert.equal(steps.length, total, `answered ${steps.join(',')}`);
+  ok(`post-match press conference: ${total} questions answered one by one (${steps.join(' → ')}; fans ${before.fans}→${after.fans}, board ${before.conf}→${after.conf})`);
 
   // Live match: quick decisions + intermission assistant
   for (let k = 0; k < 10; k++) {
@@ -105,8 +113,18 @@ try {
     await page.waitForTimeout(200);
     const go = page.getByRole('button', { name: 'Всё равно продолжить', exact: true });
     if (await go.count()) await go.click();
-    const pr = page.locator('[data-press-option]');
-    if (await pr.count()) await pr.first().click();
+    for (let q = 0; q < 6; q++) {
+      const pr = page.locator('[data-press-option]');
+      if (!(await pr.count())) break;
+      await pr.first().click();
+      await page.waitForTimeout(120);
+    }
+    for (let q = 0; q < 4; q++) {
+      const ro = page.locator('[data-room-option]');
+      if (!(await ro.count())) break;
+      await ro.first().click();
+      await page.waitForTimeout(120);
+    }
   }
   await page.getByRole('button', { name: 'Играть матч', exact: true }).click();
   await page.getByRole('button', { name: 'Начать матч', exact: true }).click();

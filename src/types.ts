@@ -614,6 +614,11 @@ export interface GameState {
   tradeBlock?: TradeBlock;
   /** pending post-match press conference */
   press?: PressConference | null;
+  /** dressing-room situations waiting for the manager */
+  roomEvents?: ClubEvent[];
+  /** promises made to players (wishes, conflicts, press) */
+  roomPromises?: RoomPromise[];
+  roomMemory?: RoomMemory;
   /** August preseason tournament of the current season */
   preseason?: PreseasonState | null;
   /** inbox tasks dismissed by the user: task id -> day */
@@ -653,21 +658,111 @@ export interface PressEffect {
   fans: number;
   playerId?: string;
   playerMorale?: number;
+  /** morale changes of other players (id -> delta) */
+  players?: Record<string, number>;
+  /** club budget change in rubles (fines, team-building, donations) */
+  budget?: number;
+  /** a promise to `playerId` (checked over the next games / days) */
+  promise?: RoomPromiseSpec;
+  /** remembered by the media and the dressing room for follow-up questions and consequences */
+  tag?: string;
+  /** manager's trade note for `playerId` */
+  tradeFlag?: 'block' | 'keep' | null;
+  /** captaincy for `playerId` */
+  role?: 'C' | 'A';
+  /** youth development progress for `playerId` (mentoring) */
+  trainingXp?: number;
+  /** fatigue relief for the whole team (lighter practices) */
+  rest?: number;
 }
 
 export interface PressOption {
   id: string;
   text: string;
   effects: PressEffect;
+  /** short note on what happens next (shown under the answer) */
+  hint?: string;
+}
+
+export interface PressQuestion {
+  topic: string;
+  question: string;
+  options: PressOption[];
+  /** journalist and outlet asking the question */
+  reporter?: string;
 }
 
 export interface PressConference {
   id: number;
   day: number;
   gameId: number;
+  /** current question (older saves have only this one) */
   topic: string;
   question: string;
   options: PressOption[];
+  reporter?: string;
+  /** post-match (default) or pre-match press conference */
+  kind?: 'post' | 'pre';
+  /** headline of the whole press conference, e.g. «После матча с «Динамо» (3:2)» */
+  title?: string;
+  /** questions still to come */
+  queue?: PressQuestion[];
+  /** number of the current question (1-based) and the total */
+  step?: number;
+  total?: number;
+  /** effects of the answers given so far */
+  totals?: { morale: number; board: number; fans: number };
+}
+
+/** What a manager can promise a player; checked by the dressing room over the next games or days. */
+export type RoomPromiseKind = 'role' | 'pp' | 'starts' | 'dress' | 'rest' | 'scratch' | 'linemate' | 'extend' | 'callup';
+
+export interface RoomPromiseSpec {
+  kind: RoomPromiseKind;
+  playerId: string;
+  /** second player (linemate) */
+  otherId?: string;
+}
+
+export interface RoomPromise extends RoomPromiseSpec {
+  id: number;
+  made: number;
+  /** day by which the promise must be kept */
+  due: number;
+  /** games to judge by (0 = judged by a state reached before `due`) */
+  target: number;
+  /** user games played by the healthy player since the promise / games the promise was honoured in */
+  played: number;
+  hits: number;
+  /** contract snapshot for 'extend' */
+  base?: number;
+}
+
+export type ClubEventKind = 'wish' | 'conflict' | 'agent' | 'fans' | 'media' | 'team';
+
+/** A dressing-room / club situation that needs the manager's decision. */
+export interface ClubEvent {
+  id: number;
+  /** generator key (cooldowns) */
+  key: string;
+  day: number;
+  /** last day to answer; afterwards `fallback` is applied */
+  expires: number;
+  kind: ClubEventKind;
+  title: string;
+  text: string;
+  playerIds: string[];
+  options: PressOption[];
+  /** option applied when the manager does not answer in time */
+  fallback: string;
+}
+
+export interface RoomMemory {
+  /** generator key -> day it last fired */
+  cool: Record<string, number>;
+  /** remembered answers / incidents -> day */
+  tags: Record<string, number>;
+  seq: number;
 }
 
 export interface PreseasonGame {

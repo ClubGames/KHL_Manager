@@ -8,7 +8,8 @@ import { buildSchedule, isWeekendDay, regularSeasonLength, seasonDateObj } from 
 import { GameSim } from './engine';
 import { buildSimTeam } from './simTeam';
 import { assignScout, cancelScout, ensureScouting, scoutGame, stepScouting } from './scouting';
-import { answerPressConference, createPressConference, fanGateMult } from './press';
+import { answerPressConference, createPrePressConference, createPressConference, fanGateMult } from './press';
+import { answerClubEvent, stepDressingRoom, trackPromises } from './dressingRoom';
 import { autoFinishPreseason, createPreseason, playPreseasonRound, preseasonTable } from './preseason';
 import { blockingTasks, dismissInboxTask } from './inbox';
 import { autoLineup, clubSideProblem, ensureTradeBlock, evaluateTrade, shopTradeBlock, executeTrade, groupOf, lineupConstraintsFor, MAX_ROSTER, maybeAiTrade, maybeIncomingOffer, prepareLineup, sanitizeLineup, tradeWindow, userSideProblem } from './ai';
@@ -25,7 +26,7 @@ import type { SaveMeta } from './storage';
 import { buyoutDeadCap, CAP_GAMES_PER_POINT_DEDUCTION, CAP_GRACE_DAYS, capExcess, dailyCapFine, effectivePayroll, getCapSummary, recomputePoints } from './cap';
 import { countRosterLegionnaires, DEFAULT_FOREIGN_LIMIT, isLegionnaire, teamForeignLimit } from './legionnaires';
 import { isYouthPlayer, recommendYouthPlan, stepYouthTrainingWeek } from './training';
-import { ensureCaptains, getTeamTactics, goalieFreshness, recordLineupChemistryGP } from './chemistry';
+import { assignTeamRole, ensureCaptains, getTeamTactics, goalieFreshness, recordLineupChemistryGP } from './chemistry';
 import { advanceAiDraftToUser, autoCompleteDraft, currentDraftTeamId, executeSingleDraftPick } from './dynasty';
 import { activeKhlCount, aiShouldMatchOfferSheet, canHaveNmc, canSignTwoWay, isOnWaivers, isRfaEligibleAge, isWaiverExempt, MAX_VHL_PLAYERS, offerSheetCompensation, processDailyWaivers, vhlPlayerCapRelief, WAIVER_DAYS } from './khlRules';
 import { getDerby, isFarEastClub } from './derbies';
@@ -234,6 +235,8 @@ export function migrateState(raw: unknown): GameState | null {
   s.allStar ??= null;
   s.fans ??= 60;
   s.press ??= null;
+  s.roomEvents ??= [];
+  s.roomPromises ??= [];
   s.preseason ??= null;
   s.inboxDismissed ??= {};
   ensureScouting(s);
@@ -658,24 +661,7 @@ export function setTeamRole(playerId: string, role: 'C' | 'A' | null) {
     const t = s.teams[s.userTeamId];
     const p = s.players[playerId];
     if (!p || p.teamId !== t.id || isGoalie(p)) return;
-    t.assistantIds ??= [];
-    if (role === 'C') {
-      const oldCap = t.captainId;
-      t.captainId = playerId;
-      t.assistantIds = t.assistantIds.filter((id) => id !== playerId);
-      if (oldCap && oldCap !== playerId && t.assistantIds.length < 2) t.assistantIds.push(oldCap);
-    } else if (role === 'A') {
-      if (t.captainId === playerId) t.captainId = null;
-      if (!t.assistantIds.includes(playerId)) {
-        if (t.assistantIds.length >= 2) t.assistantIds.shift();
-        t.assistantIds.push(playerId);
-      }
-      ensureCaptains(t, s.players);
-    } else {
-      if (t.captainId === playerId) t.captainId = null;
-      t.assistantIds = t.assistantIds.filter((id) => id !== playerId);
-      ensureCaptains(t, s.players);
-    }
+    assignTeamRole(t, s.players, playerId, role);
   });
 }
 export function setUserTactics(patch: Partial<TeamTactics>) {
@@ -984,6 +970,7 @@ function commitResult(state: GameState, g: Game, res: GameResult) {
     const userWon = (g.home === U) === hw;
     const swing = (userWon ? 1 : beyond ? -0.5 : -1) * (g.kind === 'playoff' ? 2 : 1) * (derby ? 1.5 : 1);
     state.fans = Math.max(0, Math.min(100, Math.round(((state.fans ?? 60) + swing) * 10) / 10));
+    trackPromises(state, g, res);
     state.press = createPressConference(state, g, res);
   }
 }
@@ -1055,6 +1042,12 @@ function postDay(state: GameState) {
   }
   for (const text of stepScouting(state, calStep)) addNews(state, 'info', text, state.userTeamId);
   if (state.press && state.press.day < state.day - 2) state.press = null;
+  stepDressingRoom(state, calStep, (t) => addNews(state, 'info', t, state.userTeamId));
+  // Before derbies, playoff games and games against the leaders the press wants a word first.
+  if (!state.press) {
+    const ug = (state.schedule[state.day] ?? []).find((x) => !x.played && (x.home === state.userTeamId || x.away === state.userTeamId));
+    if (ug) state.press = createPrePressConference(state, ug);
+  }
 
   // Daily goalie recovery for goalies whose club did not play on the day that just finished
   const playedToday = new Set<string>();
@@ -1633,6 +1626,13 @@ export function assignUserScout(kind: 'player' | 'team', target: string): string
 
 export function cancelUserScout(kind: 'player' | 'team', target: string) {
   store.update((state) => cancelScout(state, kind, target));
+}
+
+export function answerRoomEvent(eventId: number, optionId: string) {
+  store.update((state) => {
+    const text = answerClubEvent(state, eventId, optionId);
+    if (text) addNews(state, 'info', text, state.userTeamId);
+  });
 }
 
 export function answerPress(optionId: string | null) {

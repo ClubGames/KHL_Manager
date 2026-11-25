@@ -226,6 +226,28 @@ export function ensureCaptains(team: Team, P: Record<string, Player>) {
   team.assistantIds = assts.slice(0, 2);
 }
 
+/** Give a player the «C» or an «A» (null strips the letter); the old captain becomes an alternate. */
+export function assignTeamRole(t: Team, P: Record<string, Player>, playerId: string, role: 'C' | 'A' | null) {
+  t.assistantIds ??= [];
+  if (role === 'C') {
+    const oldCap = t.captainId;
+    t.captainId = playerId;
+    t.assistantIds = t.assistantIds.filter((id) => id !== playerId);
+    if (oldCap && oldCap !== playerId && t.assistantIds.length < 2) t.assistantIds.push(oldCap);
+  } else if (role === 'A') {
+    if (t.captainId === playerId) t.captainId = null;
+    if (!t.assistantIds.includes(playerId)) {
+      if (t.assistantIds.length >= 2) t.assistantIds.shift();
+      t.assistantIds.push(playerId);
+    }
+    ensureCaptains(t, P);
+  } else {
+    if (t.captainId === playerId) t.captainId = null;
+    t.assistantIds = t.assistantIds.filter((id) => id !== playerId);
+    ensureCaptains(t, P);
+  }
+}
+
 export function playerCaptainRole(team: Team | undefined, playerId: string): 'C' | 'A' | null {
   if (!team) return null;
   if (team.captainId === playerId) return 'C';

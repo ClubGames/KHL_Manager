@@ -130,12 +130,16 @@ check('the preseason is in the inbox', buildInbox(s0).some((t) => t.kind === 'pr
   sim.runAll();
   G.commitUserResult(g.id, sim.result());
   const pc = st().press;
-  check('a press conference follows the user’s game', !!pc && pc.options.length === 3, pc ? `${pc.topic}: ${pc.question}` : '');
+  check('a press conference follows the user’s game', !!pc && pc.options.length >= 2 && (pc.total ?? 1) >= 2, pc ? `${pc.topic}: ${pc.question}` : '');
   check('the press conference is in the inbox', buildInbox(st()).some((t) => t.kind === 'press'));
   const fans0 = st().fans!, conf0 = st().board.confidence;
-  const o = pc!.options[0];
-  G.answerPress(o.id);
-  check('answer applies its effects', st().press === null && st().fans === Math.max(0, Math.min(100, fans0 + o.effects.fans)) && st().board.confidence === Math.max(5, Math.min(100, conf0 + o.effects.board)));
+  let df = 0, db = 0, n = 0;
+  while (st().press && n < 6) {
+    const o = st().press!.options[0];
+    df += o.effects.fans; db += o.effects.board; n++;
+    G.answerPress(o.id);
+  }
+  check('answers apply their effects', st().press === null && n === (pc!.total ?? 1) && st().fans === Math.max(0, Math.min(100, fans0 + df)) && st().board.confidence === Math.max(5, Math.min(100, conf0 + db)), `${n} вопроса`);
 }
 
 // trade block

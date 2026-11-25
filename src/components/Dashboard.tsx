@@ -20,6 +20,7 @@ import { boardOnTrack } from '../game/board';
 import { blockingTasks, buildInbox } from '../game/inbox';
 import { InboxList } from './Inbox';
 import { PressConferencePanel } from './PressConference';
+import { DressingRoomPanel } from './DressingRoom';
 import { PreseasonPanel } from './Preseason';
 import { TeamLink } from './TeamInfo';
 
@@ -141,6 +142,7 @@ export function Dashboard({ onPlay }: { onPlay: (g: Game) => void }) {
 
       <LastResults s={s} simulated={simulated} onDismiss={() => setSimulated([])} />
       {s.press && <PressConferencePanel />}
+      <DressingRoomPanel />
       <PreseasonPanel />
       {(simNote || inbox.length > 0) && (
         <Panel title={<span className="flex items-center gap-2"><Icon name="bell" /> Входящие ({inbox.length})</span>} right={<Button size="sm" variant="ghost" onClick={() => ui.nav('inbox')}>Все →</Button>} data-dashboard-inbox>

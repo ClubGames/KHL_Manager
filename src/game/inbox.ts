@@ -5,6 +5,7 @@ import { goalieFreshness } from './chemistry';
 import { formatInjuryDays } from './medical';
 import { preseasonOpen } from './preseason';
 import { ensureScouting, scoutSlots } from './scouting';
+import { promiseLabel, promiseProgress } from './dressingRoom';
 
 /**
  * The manager's inbox: everything that needs a decision today, derived from the career state so it
@@ -17,7 +18,7 @@ export type InboxView = 'dashboard' | 'roster' | 'lines' | 'trades' | 'contracts
 export interface InboxTask {
   id: string;
   severity: InboxSeverity;
-  kind: 'press' | 'offer' | 'rfa' | 'lineup' | 'goalie' | 'injury' | 'contract' | 'morale' | 'request' | 'cap' | 'ltir' | 'preseason' | 'deadline' | 'scout' | 'board';
+  kind: 'press' | 'event' | 'promise' | 'offer' | 'rfa' | 'lineup' | 'goalie' | 'injury' | 'contract' | 'morale' | 'request' | 'cap' | 'ltir' | 'preseason' | 'deadline' | 'scout' | 'board';
   title: string;
   text: string;
   view: InboxView;
@@ -37,6 +38,14 @@ export function buildInbox(state: GameState, includeDismissed = false): InboxTas
 
   if (state.press) {
     out.push({ id: `press-${state.press.id}`, severity: 'info', kind: 'press', title: `Пресс-конференция: ${state.press.topic}`, text: state.press.question, view: 'dashboard' });
+  }
+  for (const e of state.roomEvents ?? []) {
+    const left = e.expires - state.day;
+    out.push({ id: `event-${e.id}`, severity: 'warn', kind: 'event', title: e.title, text: `${e.text} ${left <= 0 ? 'Ответить нужно сегодня.' : `Ответ ждут ещё ${left + 1} дн.`}`, view: 'dashboard', playerId: e.playerIds[0] });
+  }
+  for (const pr of state.roomPromises ?? []) {
+    const pg = promiseProgress(state, pr);
+    if (pg.risk && pr.kind !== 'scratch') out.push({ id: `promise-${pr.id}-${pr.played}`, severity: 'info', kind: 'promise', title: `Обещание под угрозой: ${promiseLabel(state, pr)}`, text: pg.text, view: pr.kind === 'extend' ? 'contracts' : pr.kind === 'callup' ? 'roster' : 'lines', playerId: pr.playerId });
   }
   if (preseasonOpen(state)) {
     const ps = state.preseason!;
@@ -129,7 +138,7 @@ export function buildInbox(state: GameState, includeDismissed = false): InboxTas
 }
 
 /** Tasks that should stop fast simulation: they need a decision before time moves on. */
-export const blockingTasks = (state: GameState) => buildInbox(state).filter((t) => t.severity === 'urgent' || t.kind === 'offer' || t.kind === 'request');
+export const blockingTasks = (state: GameState) => buildInbox(state).filter((t) => t.severity === 'urgent' || t.kind === 'offer' || t.kind === 'request' || t.kind === 'event');
 
 export function dismissInboxTask(state: GameState, id: string) {
   state.inboxDismissed ??= {};

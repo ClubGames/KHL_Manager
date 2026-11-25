@@ -2,6 +2,7 @@ import { buildInbox, type InboxSeverity, type InboxTask } from '../game/inbox';
 import { dismissInbox, useGame } from '../game/state';
 import { Button, Empty, Icon, Panel, Tag, useUI } from './ui';
 import { PressConferencePanel } from './PressConference';
+import { DressingRoomPanel } from './DressingRoom';
 import { PreseasonPanel } from './Preseason';
 import { cn } from '../utils/cn';
 
@@ -11,7 +12,7 @@ const SEV: Record<InboxSeverity, { color: string; label: string }> = {
   info: { color: '#8FD8F0', label: 'инфо' },
 };
 const KIND_ICON: Partial<Record<InboxTask['kind'], string>> = {
-  press: 'mic', offer: 'trade', rfa: 'contract', lineup: 'lines', goalie: 'lines', injury: 'injury', contract: 'contract',
+  press: 'mic', event: 'roster', promise: 'check', offer: 'trade', rfa: 'contract', lineup: 'lines', goalie: 'lines', injury: 'injury', contract: 'contract',
   morale: 'roster', request: 'trade', cap: 'alert', ltir: 'injury', preseason: 'trophy', deadline: 'trade', scout: 'scout', board: 'alert',
 };
 
@@ -43,7 +44,7 @@ export function InboxList({ limit, compact = false }: { limit?: number; compact?
                   Открыть
                 </Button>
               )}
-              {t.kind !== 'press' && t.kind !== 'preseason' && (
+              {t.kind !== 'press' && t.kind !== 'event' && t.kind !== 'preseason' && (
                 <button type="button" className="p-1 text-muted hover:text-text" title="Скрыть задачу" onClick={() => dismissInbox(t.id)}>
                   <Icon name="close" className="w-3.5 h-3.5" />
                 </button>
@@ -68,11 +69,12 @@ export function Inbox() {
   return (
     <div className="space-y-4 fade-in" data-inbox-view>
       {s.press && <PressConferencePanel />}
+      <DressingRoomPanel />
       <PreseasonPanel />
       <Panel title="Входящие" right={<span className="text-xs text-muted">{all.length} задач{urgent ? ` · срочных: ${urgent}` : ''}</span>}>
         <InboxList />
         <div className="text-[11px] text-muted mt-3">
-          Быстрая симуляция («до матча», «5 дней») останавливается, когда приходит новое предложение обмена, игрок просит обмен или появляется срочная задача.
+          Быстрая симуляция («до матча», «5 дней») останавливается, когда приходит новое предложение обмена, игрок просит обмен, в раздевалке возникает ситуация, требующая решения, или появляется срочная задача.
         </div>
       </Panel>
     </div>
