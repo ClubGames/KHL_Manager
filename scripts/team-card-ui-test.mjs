@@ -4,7 +4,7 @@
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
 import { HAS_REAL_MOD } from './testMod.mjs';
-// player photos come from the KHL_2627 mod, which is not in the repository (the game ships without a league)
+// player photos come from the KHL_2627 mod, which is not in the repository (the game ships with its own invented league «ХЛ» instead)
 if (!HAS_REAL_MOD) {
   console.log('SKIP: put the KHL_2627 mod into public/mods to run this test');
   process.exit(0);

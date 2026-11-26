@@ -1,3 +1,4 @@
+import { BY_FIRST, BY_LAST, INTL, JUNIOR_SCHOOL_ABROAD, JUNIOR_SCHOOL_BY, JUNIOR_SCHOOL_KZ, JUNIOR_SCHOOLS, KZ_FIRST, KZ_LAST, RU_FIRST, RU_LAST } from './fictionalNames';
 import type { DraftPickRecord, DraftProspectMeta, GameState, HallOfFameEntry, JuniorDraftState, Player, PosCode, Skills, Team } from '../types';
 import { clamp, computeOverall, isDefense, isForward, isGoalie } from './ratings';
 import { emptyStats } from './defaults';
@@ -146,37 +147,8 @@ export function processVeteranRetirements(
 
 /* ---------------- MHL Graduation & KHL Junior Draft ---------------- */
 
-const RU_FIRST = [
-  'Матвей', 'Иван', 'Даниил', 'Артём', 'Максим', 'Никита', 'Кирилл', 'Егор', 'Илья', 'Александр',
-  'Михаил', 'Дмитрий', 'Тимофей', 'Ярослав', 'Арсений', 'Роман', 'Глеб', 'Владислав', 'Сергей', 'Степан',
-  'Фёдор', 'Павел', 'Прохор', 'Савелий', 'Богдан', 'Всеволод', 'Андрей', 'Захар',
-];
-const RU_LAST = [
-  'Демидов', 'Мичков', 'Силаев', 'Бутузов', 'Рябкин', 'Артамонов', 'Сурин', 'Кол', 'Набоков', 'Гуляев',
-  'Юров', 'Мирошниченко', 'Гребёнкин', 'Канцеров', 'Симашев', 'Мухамадуллин', 'Коромыслов', 'Заврагин',
-  'Воронов', 'Морозов', 'Соколов', 'Волков', 'Ковалёв', 'Тарасов', 'Кузнецов', 'Белов', 'Поляков', 'Орлов',
-  'Калинин', 'Мельников', 'Сафонов', 'Чернышов', 'Ларионов', 'Зубов', 'Каменский', 'Фёдоров',
-];
-const BY_FIRST = ['Артём', 'Вадим', 'Илья', 'Алексей', 'Даниил', 'Егор', 'Виталий', 'Роман'];
-const BY_LAST = ['Левшунов', 'Протас', 'Шарангович', 'Колосов', 'Пинчук', 'Сидоров', 'Алистров', 'Бориков', 'Соловьёв'];
-const KZ_FIRST = ['Роман', 'Адиль', 'Никита', 'Дмитрий', 'Батырлан', 'Алихан', 'Кирилл', 'Руслан'];
-const KZ_LAST = ['Старченко', 'Бекетаев', 'Муратов', 'Омирбеков', 'Орехов', 'Панюков', 'Савицкий', 'Михайлис'];
-const INT_NAMES: { name: string; country: string }[] = [
-  { name: 'Лукас Линдстрём', country: 'Швеция' },
-  { name: 'Адам Новак', country: 'Словакия' },
-  { name: 'Мартин Крал', country: 'Чехия' },
-  { name: 'Картер Миллер', country: 'Канада' },
-  { name: 'Коул Андерсон', country: 'США' },
-  { name: 'Якуб Ковач', country: 'Словакия' },
-  { name: 'Эмиль Нюстрём', country: 'Финляндия' },
-];
-
-const MHL_SCHOOLS = [
-  'СКА-1946 (МХЛ)', 'Красная Армия (МХЛ)', 'Локо Ярославль (МХЛ)', 'Омские Ястребы (МХЛ)',
-  'Белые Медведи (МХЛ)', 'Толпар Уфа (МХЛ)', 'Стальные Лисы (МХЛ)', 'Ирбис Казань (МХЛ)',
-  'Чайка НН (МХЛ)', 'Сибирские Снайперы (МХЛ)', 'Мамонты Югры (МХЛ)', 'МХК Спартак',
-  'МХК Динамо Мск', 'Авто Екатеринбург (МХЛ)', 'Динамо-Шинник (МХЛ)', 'Снежные Барсы (МХЛ)',
-];
+// invented names and junior clubs only (src/game/fictionalNames.ts)
+const INT_NAMES = Object.entries(INTL);
 
 function randInt(lo: number, hi: number): number {
   return lo + Math.floor(Math.random() * (hi - lo + 1));
@@ -239,30 +211,27 @@ export function createJuniorDraft(state: GameState, orderWorstFirst: string[]): 
 
   for (let i = 0; i < count; i++) {
     const pos = positions[i % positions.length];
-    let name = '';
     let country = 'Россия';
-    let school = pickArr(MHL_SCHOOLS);
+    let school = pickArr(JUNIOR_SCHOOLS);
+    let first = RU_FIRST, last = RU_LAST;
     const natRoll = Math.random();
-    if (natRoll < 0.77) {
-      country = 'Россия';
-      name = `${pickArr(RU_FIRST)} ${pickArr(RU_LAST)}`;
-    } else if (natRoll < 0.86) {
+    if (natRoll < 0.86 && natRoll >= 0.77) {
       country = 'Беларусь';
-      school = 'Динамо-Шинник (МХЛ)';
-      name = `${pickArr(BY_FIRST)} ${pickArr(BY_LAST)}`;
-    } else if (natRoll < 0.94) {
+      school = JUNIOR_SCHOOL_BY;
+      [first, last] = [BY_FIRST, BY_LAST];
+    } else if (natRoll >= 0.86 && natRoll < 0.94) {
       country = 'Казахстан';
-      school = 'Снежные Барсы (МХЛ)';
-      name = `${pickArr(KZ_FIRST)} ${pickArr(KZ_LAST)}`;
-    } else {
-      const intl = pickArr(INT_NAMES);
-      country = intl.country;
-      name = intl.name;
-      school = 'Европейская / СА юниорская лига';
+      school = JUNIOR_SCHOOL_KZ;
+      [first, last] = [KZ_FIRST, KZ_LAST];
+    } else if (natRoll >= 0.94) {
+      const [land, pool] = pickArr(INT_NAMES);
+      country = land;
+      [first, last] = [pool.first, pool.last];
+      school = JUNIOR_SCHOOL_ABROAD;
     }
-    if (usedNames.has(name)) {
-      name = `${name} ${['мл.', 'II'][i % 2] === 'II' ? `${pickArr(RU_FIRST)} ${pickArr(RU_LAST)}` : name}`;
-    }
+    let name = `${pickArr(first)} ${pickArr(last)}`;
+    for (let t = 0; usedNames.has(name) && t < 30; t++) name = `${pickArr(first)} ${pickArr(last)}`;
+    if (usedNames.has(name)) name = `${name} мл.`;
     usedNames.add(name);
 
     const age = i < 10 ? randInt(17, 18) : randInt(17, 19);
@@ -312,7 +281,7 @@ export function createJuniorDraft(state: GameState, orderWorstFirst: string[]): 
       history: [],
     };
     if (userClub && userAcademy >= 2 && (i === 6 || i === 18)) {
-      school = `Академия «${userClub.name}» (МХЛ)`;
+      school = `Академия «${userClub.name}»`;
       pot = clamp(pot + (userAcademy - 1), 72, 94);
     }
     player.overall = computeOverall(player);

@@ -1,4 +1,4 @@
-// The game ships without a league, so the dev server has no mod to start a career from. Browser tests call
+// Browser tests run on a small synthetic league instead of the built-in «ХЛ» (mods/HL_2627). They call
 // serveTestMod(browser): unless a real mods/KHL_2627 lies in public/mods, every page of the browser is served a mod
 // «KHL_2627» made of the synthetic roster scripts/fixtures/test-roster.json (same club ids: ska, avangard, …).
 import { existsSync, readFileSync } from 'node:fs';

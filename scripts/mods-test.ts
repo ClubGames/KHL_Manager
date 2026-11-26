@@ -1,10 +1,14 @@
 // Run with: npx tsx scripts/mods-test.ts
-// Mods: mods/index.json → mods/<id>/{mod.json, roster.json, schedule.json, logos/}; old saves keep working.
+// Mods: mods/index.json → mods/<id>/{mod.json, roster.json, schedule.json, logos/}; old saves keep working;
+// the built-in league «ХЛ» (mods/HL_2627) is complete, playable and has nothing real in it.
 import assert from 'node:assert/strict';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { parseRosterText } from '../src/game/roster';
 import { buildSchedule, parseScheduleFile, scheduleDateToDay, scheduleDayToDate, scheduleFileText, scheduleToFile } from '../src/game/schedule';
-import { careerMod, DEFAULT_MOD_ID, listMods, loadMod, modUrl, parseModIndex } from '../src/game/mods';
+import { careerMod, DEFAULT_MOD_ID, LEGACY_MOD_ID, listMods, loadMod, modUrl, parseModIndex } from '../src/game/mods';
+import { COACH_PROFILES, REAL_STAFF, defaultCoachMarket } from '../src/game/coachData';
+import { getOfficialClubPalette, OFFICIAL_KHL_PALETTES } from '../src/game/clubColors';
+import { isLegionnaire } from '../src/game/legionnaires';
 import { buildMeta, createGameState, store } from '../src/game/state';
 import { getClubLogoSources } from '../src/game/clubColors';
 import { DEFAULT_LEAGUE_NAME, GAME_NAME, leagueName, LG } from '../src/brand';
@@ -31,8 +35,9 @@ const served: string[] = [];
 const mem = new Map<string, string>();
 (globalThis as any).localStorage = { getItem: (k: string) => mem.get(k) ?? null, setItem: (k: string, v: string) => void mem.set(k, v), removeItem: (k: string) => void mem.delete(k) };
 
-// The game ships without a league. The checks of the KHL_2627 data run only when that mod is put into public/mods.
-const dir = `public/mods/${DEFAULT_MOD_ID}`;
+// The checks of the old KHL_2627 data run only when that mod is put into public/mods (it is not in the repository).
+const dir = `public/mods/${LEGACY_MOD_ID}`;
+const hlDir = `public/mods/${DEFAULT_MOD_ID}`;
 const HAS_MOD = existsSync(`${dir}/roster.json`);
 const rosterText = HAS_MOD ? readFileSync(`${dir}/roster.json`, 'utf8') : readFileSync('scripts/fixtures/test-roster.json', 'utf8');
 const scheduleJson = HAS_MOD ? JSON.parse(readFileSync(`${dir}/schedule.json`, 'utf8')) : null;
@@ -46,22 +51,106 @@ const okMod = (name: string, fn: () => void | Promise<void>) => {
 };
 
 async function main() {
-  await ok('the game ships without a league: an empty mod list is a valid start (install a mod or pick a file)', async () => {
-    if (HAS_MOD) return; // a local copy of the mod is lying in public/mods
-    assert.deepEqual(parseModIndex(JSON.parse(readFileSync('public/mods/index.json', 'utf8'))), []);
-    assert.deepEqual(await listMods(), [], 'no phantom KHL_2627 entry');
-    // no index file at all: a KHL_2627 folder is only guessed when its mod.json is really there
+  await ok('the game ships with «ХЛ»: mods/index.json names HL_2627, found with and without the index', async () => {
+    assert.equal(DEFAULT_MOD_ID, 'HL_2627');
+    assert.equal(parseModIndex(JSON.parse(readFileSync('public/mods/index.json', 'utf8')))[0], DEFAULT_MOD_ID);
+    const mods = await listMods();
+    const hl = mods.find((m) => m.id === DEFAULT_MOD_ID)!;
+    assert.ok(hl, 'the built-in league is listed');
+    assert.equal(hl.name, 'ХЛ — Хоккейная Лига 2026/27');
+    assert.equal(hl.schedule, null, 'the calendar is generated');
+    assert.equal(hl.cover, './mods/HL_2627/cover.svg');
+    if (!HAS_MOD) assert.deepEqual(mods.map((m) => m.id), [DEFAULT_MOD_ID], 'no phantom KHL_2627 entry');
+    // no index file at all (a hand-made static copy): the built-in folder is still found, KHL_2627 only if it is there
     const real = (globalThis as any).fetch;
     (globalThis as any).fetch = async (url: string) => (String(url).includes('index.json') ? { ok: false, status: 404, text: async () => '' } : real(url));
     try {
-      assert.deepEqual(await listMods(), []);
+      assert.deepEqual((await listMods()).map((m) => m.id), HAS_MOD ? [DEFAULT_MOD_ID, LEGACY_MOD_ID] : [DEFAULT_MOD_ID]);
     } finally {
       (globalThis as any).fetch = real;
     }
   });
 
+  const hlRaw = JSON.parse(readFileSync(`${hlDir}/roster.json`, 'utf8'));
+  await ok('«ХЛ»: 24 clubs in 2 conferences × 2 divisions, own colours, short names and SVG emblems', () => {
+    assert.equal(hlRaw.league.name, 'ХЛ');
+    assert.equal(hlRaw.teams.length, 24);
+    const ids = hlRaw.teams.map((t: any) => t.id), shorts = hlRaw.teams.map((t: any) => t.short), names = hlRaw.teams.map((t: any) => t.name);
+    for (const xs of [ids, shorts, names]) assert.equal(new Set(xs).size, 24);
+    const groups = new Map<string, number>();
+    for (const t of hlRaw.teams) groups.set(`${t.conference}/${t.division}`, (groups.get(`${t.conference}/${t.division}`) ?? 0) + 1);
+    assert.deepEqual([...groups.values()], [6, 6, 6, 6], [...groups.keys()].join(', '));
+    for (const t of hlRaw.teams) {
+      assert.match(t.primaryColor, /^#[0-9A-F]{6}$/i); assert.match(t.secondaryColor, /^#[0-9A-F]{6}$/i);
+      assert.equal(t.logo, `logos/${t.id}.svg`);
+      const svg = readFileSync(`${hlDir}/${t.logo}`, 'utf8');
+      assert.ok(svg.startsWith('<svg') && svg.includes('width="256"') && !svg.includes('<text'), `${t.id}: a self-contained emblem (no fonts)`);
+      assert.ok(svg.includes(t.primaryColor), `${t.id}: emblem in club colours`);
+      assert.equal(t.players.length, 27); assert.equal(t.coaches.length, 2);
+      assert.ok(t.captainId && t.assistantIds.length === 2);
+    }
+    assert.ok(readFileSync(`${hlDir}/cover.svg`, 'utf8').startsWith('<svg'));
+    assert.deepEqual(readdirSync(`${hlDir}/logos`).sort(), ids.map((id: string) => `${id}.svg`).sort(), 'one emblem per club, nothing extra');
+  });
+
+  await ok('«ХЛ»: nothing real — no club matches a real club, no real coach, every coach marked fictional', () => {
+    const realStaff = new Set([...Object.values(REAL_STAFF).flatMap(([h, a]) => [h, a]), ...defaultCoachMarket().map((c) => c.name)]);
+    const realClubs = JSON.parse(readFileSync('scripts/fixtures/test-roster.json', 'utf8')).teams.map((t: any) => t.name.toLowerCase());
+    for (const t of hlRaw.teams) {
+      assert.equal(getOfficialClubPalette(t), null, `${t.id}: no real club palette/logo/staff fallback`);
+      assert.ok(!(t.id in REAL_STAFF) && !(t.id in OFFICIAL_KHL_PALETTES), t.id);
+      assert.ok(!realClubs.some((n: string) => n.includes(t.name.toLowerCase()) || t.name.toLowerCase().includes(n)), `${t.name}: not a real club name`);
+    }
+    const coaches = [...hlRaw.teams.flatMap((t: any) => t.coaches), ...hlRaw.freeCoaches];
+    for (const c of coaches) {
+      assert.equal(c.fictional, true, c.name);
+      assert.ok(!realStaff.has(c.name), `${c.name}: a real coach`);
+      assert.ok(c.profile in COACH_PROFILES && !c.source && !c.face);
+    }
+    const people = [...hlRaw.teams.flatMap((t: any) => t.players), ...hlRaw.freeAgents, ...coaches];
+    assert.equal(new Set(people.map((p: any) => p.name)).size, people.length, 'every name is used once');
+    assert.ok(people.every((p: any) => !p.face), 'no photos of real people');
+  });
+
+  await ok('«ХЛ»: loads without warnings, rosters are legal (positions, legionnaires, payroll under the cap)', async () => {
+    const m = (await listMods()).find((x) => x.id === DEFAULT_MOD_ID)!;
+    const r = await loadMod(m);
+    assert.deepEqual(r.warnings, []);
+    assert.equal(r.leagueName, 'ХЛ');
+    assert.equal(r.freeCoaches?.length, 13);
+    assert.equal(r.freeAgents.length, 26);
+    assert.deepEqual(r.mod, { id: DEFAULT_MOD_ID, name: 'ХЛ — Хоккейная Лига 2026/27', base: './mods/HL_2627', roster: './mods/HL_2627/roster.json' });
+    for (const t of r.teams) {
+      const ps = t.players.map((id) => r.players[id]);
+      const count = (pos: string) => ps.filter((p) => p.position === pos).length;
+      assert.ok(count('G') === 3 && count('D') === 8 && count('C') + count('LW') + count('RW') === 16, t.id);
+      assert.ok(ps.filter((p) => isLegionnaire(p)).length <= r.foreignLimit, `${t.id}: legionnaires`);
+      const payroll = ps.reduce((s, p) => s + p.contract.salary, 0);
+      assert.ok(payroll < r.salaryCap && payroll < t.budget, `${t.id}: payroll ${payroll}`);
+      assert.equal(getClubLogoSources(t)[0], `./mods/HL_2627/logos/${t.id}.svg`);
+      assert.equal(getClubLogoSources(t).length, 1, 'no real-club logo fallback');
+      assert.ok(t.lineup.starterG && t.lineup.F.flat().every(Boolean) && t.lineup.D.flat().every(Boolean), `${t.id}: full lineup`);
+    }
+    const ovr = Object.values(r.players).map((p) => p.overall);
+    assert.ok(Math.min(...ovr) >= 55 && Math.max(...ovr) <= 90);
+  });
+
+  await ok('«ХЛ»: a new career keeps the clubs\' own coaches and the roster coach market', async () => {
+    const m = (await listMods()).find((x) => x.id === DEFAULT_MOD_ID)!;
+    const r = await loadMod(m);
+    const s = createGameState(r, 'vyuga');
+    assert.equal(s.league.name, 'ХЛ');
+    assert.equal(s.coachMarketSource, 'roster');
+    for (const t of Object.values(s.teams)) {
+      const src = hlRaw.teams.find((x: any) => x.id === t.id);
+      assert.deepEqual(t.coaches!.map((c) => c.name), src.coaches.map((c: any) => c.name), `${t.id}: staff from the file`);
+    }
+    assert.deepEqual(s.coachMarket!.map((c) => c.name).sort(), hlRaw.freeCoaches.map((c: any) => c.name).sort());
+    assert.ok(s.schedule.flat().length >= (24 * 68) / 2, 'generated calendar');
+    assert.equal(buildMeta(s).mod, 'ХЛ — Хоккейная Лига 2026/27');
+  });
+
   await okMod('the bundled mod is complete: index, mod.json, roster, schedule, 22 logos', () => {
-    assert.ok(parseModIndex(JSON.parse(readFileSync('public/mods/index.json', 'utf8'))).length <= 1);
     const m = JSON.parse(readFileSync(`${dir}/mod.json`, 'utf8'));
     assert.equal(m.roster, 'roster.json');
     assert.equal(m.schedule, 'schedule.json');
@@ -136,14 +225,13 @@ async function main() {
 
   await okMod('mod list and loading: roster + schedule + logos inside the mod folder', async () => {
     const mods = await listMods();
-    assert.equal(mods.length, 1, 'no legacy roster.json next to index.html');
-    const m = mods[0];
-    assert.equal(m.id, DEFAULT_MOD_ID);
+    assert.ok(!mods.some((x) => x.legacy), 'no legacy roster.json next to index.html');
+    const m = mods.find((x) => x.id === LEGACY_MOD_ID)!;
     assert.equal(m.name, 'КХЛ 2026/27');
     const r = await loadMod(m);
     assert.equal(r.leagueName, 'КХЛ', 'league name comes from the roster');
     assert.ok(r.schedule, 'schedule from the mod');
-    assert.deepEqual(r.mod, { id: DEFAULT_MOD_ID, name: 'КХЛ 2026/27', base: './mods/KHL_2627', roster: './mods/KHL_2627/roster.json' });
+    assert.deepEqual(r.mod, { id: LEGACY_MOD_ID, name: 'КХЛ 2026/27', base: './mods/KHL_2627', roster: './mods/KHL_2627/roster.json' });
     const ska = r.teams.find((t) => t.id === 'ska')!;
     assert.equal(ska.logo, './mods/KHL_2627/logos/ska.png');
     assert.deepEqual(getClubLogoSources(ska)[0], './mods/KHL_2627/logos/ska.png');
@@ -152,7 +240,7 @@ async function main() {
   });
 
   await okMod('a new career plays the mod calendar and remembers its mod', async () => {
-    const [m] = await listMods();
+    const m = (await listMods()).find((x) => x.id === LEGACY_MOD_ID)!;
     const r = await loadMod(m);
     const s = createGameState(r, 'ska');
     const plain = parseRosterText(rosterText);
@@ -172,7 +260,7 @@ async function main() {
     (globalThis as any).fetch = async (url: string) =>
       String(url).endsWith('schedule.json') ? { ok: true, status: 200, text: async () => JSON.stringify({ games: [{ date: '2026-09-05', home: 'ska', away: 'nobody' }] }) } : real(url);
     try {
-      const [m] = await listMods();
+      const m = (await listMods()).find((x) => x.id === LEGACY_MOD_ID)!;
       const r = await loadMod(m);
       assert.equal(r.schedule, undefined);
       assert.match(r.warnings.join(' '), /не подошёл.*неизвестный клуб «nobody»/);
@@ -184,7 +272,7 @@ async function main() {
   await ok('old saves: no mod field, follow mods/KHL_2627, meta unchanged', () => {
     const s = createGameState(parseRosterText(rosterText), 'ska') as GameState;
     delete s.mod;
-    assert.deepEqual(careerMod(s), { id: DEFAULT_MOD_ID, name: 'КХЛ 2026/27', base: './mods/KHL_2627', roster: './mods/KHL_2627/roster.json' });
+    assert.deepEqual(careerMod(s), { id: LEGACY_MOD_ID, name: 'КХЛ 2026/27', base: './mods/KHL_2627', roster: './mods/KHL_2627/roster.json' });
     assert.equal('mod' in buildMeta(s), false);
     assert.equal(s.mod, undefined, 'careerMod does not write into the save');
   });
@@ -216,7 +304,7 @@ async function main() {
   });
 
   await ok('no «КХЛ» left in the interface texts', () => {
-    const files = ['src/components/Startup.tsx', 'src/App.tsx', 'index.html', 'public/manifest.webmanifest'];
+    const files = ['src/components/Startup.tsx', 'src/App.tsx', 'index.html', 'public/manifest.webmanifest', `${hlDir}/mod.json`, `${hlDir}/roster.json`];
     for (const f of files) assert.ok(!readFileSync(f, 'utf8').includes('КХЛ'), f);
   });
 

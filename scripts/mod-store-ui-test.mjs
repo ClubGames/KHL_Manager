@@ -28,10 +28,11 @@ try {
   page = await context.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE);
-  await page.locator('[data-mods-empty]').waitFor({ timeout: 60000 });
-  const btn = page.locator('[data-mod-install]');
+  // the built-in league «ХЛ» is open; «Установить мод…» sits next to it in the picker
+  await page.getByRole('button', { name: 'Начать карьеру', exact: true }).waitFor({ timeout: 60000 });
+  assert.ok((await page.locator('[data-mod="HL_2627"]').getAttribute('class')).includes('border-accent'));
+  const btn = page.locator('[data-mod-install]').first();
   await btn.waitFor();
-  assert.ok((await page.locator('[data-mods-empty]').innerText()).includes('в память браузера'), 'the empty state says where the mod goes');
   assert.equal(await page.evaluate(() => !!navigator.serviceWorker.controller), false, 'no service worker before a mod is installed');
   ok('browser: «Установить мод…» is offered');
 
@@ -58,16 +59,16 @@ try {
 
   page.once('dialog', (d) => void d.accept());
   await page.locator('[data-mod-remove="TestLeague"]').click();
-  await page.locator('[data-mods-empty]').waitFor({ timeout: 30000 });
+  await page.waitForFunction(() => document.querySelector('[data-mod="HL_2627"]')?.className.includes('border-accent'), null, { timeout: 30000 });
   assert.equal(await page.locator('[data-mod="TestLeague"]').count(), 0);
   const left = await page.evaluate(async () => (await fetch('./mods/TestLeague/roster.json', { cache: 'no-store' })).headers.get('content-type'));
   assert.ok(!String(left).includes('application/json'), 'its files are gone');
-  ok('remove: the mod and its files are deleted');
+  ok('remove: the mod and its files are deleted, the built-in league is picked again');
 
   const bad = '.arena/bad.zip';
   writeFileSync(bad, writeZip({ 'readme.txt': 'not a mod' }));
   const ch2 = page.waitForEvent('filechooser');
-  await page.locator('[data-mod-install]').click();
+  await page.locator('[data-mod-install]').first().click();
   await (await ch2).setFiles(bad);
   await page.locator('[data-mod-install-result]').getByText(/нет roster\.json/).waitFor();
   ok('an archive without roster.json is reported');
