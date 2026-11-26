@@ -185,3 +185,10 @@
     animation: none;
   }
 }
+
+/* Gamepad navigation (gamepadNav.ts): a clear ring on the focused element while the pad is in use. */
+html.pad-nav :focus {
+  outline: 3px solid #2ee6ff !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px rgba(46, 230, 255, 0.25);
+}

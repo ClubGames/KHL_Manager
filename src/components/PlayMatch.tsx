@@ -3,6 +3,7 @@ import type { Game, GameEvent } from '../types';
 import type { BlockKind } from '../game/engine';
 import { fmtClock } from '../game/engine';
 import { commitUserResult, makeUserSim, useGame } from '../game/state';
+import { gameClipsKey, goalClipKey, saveGameClips, type GameClips } from '../game/clipStore';
 import { PlayRink, screenToRink, type PadState, type PlayOut } from '../game/playRink';
 import { endsSwitched } from '../game/rinkGeometry';
 import type { ReplayClip } from '../game/rinkPlayback';
@@ -14,7 +15,8 @@ import { LiveRink } from './RinkView';
 import { GoalReplay } from './GoalReplay';
 import { ShootoutBoard } from './Shootout';
 import type { FigureRequest } from './replayCache';
-import { anyGamepad, CAPTURED, COMMAND_KEYS, detectDevice, emptyTouch, gamepadPad, keyboardPad, mergePads, stickVector, type Command, type InputDevice, type TouchState } from './playInput';
+import { anyGamepad, CAPTURED, COMMAND_KEYS, detectDevice, emptyTouch, gamepadPad, keyboardPad, mergePads, mouseDown, mouseMove, mousePad, mouseUp, newMouse, stickVector, type Command, type InputDevice, type MouseState, type TouchState } from './playInput';
+import { suspendPadNav } from '../gamepadNav';
 
 /**
  * A match the manager plays himself, NHL style: he skates one of his players — the puck carrier when his team has
@@ -27,7 +29,7 @@ type Phase = 'intro' | 'playing' | 'break' | 'shootout' | 'final';
 interface Hud {
   clock: number; len: number; score: [number, number]; shots: [number, number]; men: [number, number];
   boxed: [{ id: string; left: number }[], { id: string; left: number }[]]; delayed: 0 | 1 | null; mode: PlayRink['mode'];
-  ctl: string | null; power: number; context: 'carry' | 'support' | 'defend'; labels: { shoot: string; pass: string; deke: string }; energy: number; faceoff: boolean; foCue: 'ready' | 'now' | null; foCall: string | null; pulled: boolean;
+  ctl: string | null; power: number; context: 'carry' | 'support' | 'defend'; labels: { shoot: string; pass: string; deke: string }; energy: number; faceoff: boolean; foCue: 'ready' | 'now' | null; foCall: string | null; pulled: boolean; move: string | null;
 }
 interface GoalItem { event: GameEvent; tau: number; clip?: ReplayClip; period: number }
 interface Toast { id: number; text: string; tone: 'goal' | 'pen' | 'info' }
@@ -45,12 +47,18 @@ const KEY_HELP: [string, string][] = [
   ['G', 'снять / вернуть вратаря'],
   ['R', 'повтор последнего гола'],
   ['Esc / P', 'пауза'],
+  ['Мышь: курсор', 'прицел: бросок идёт в ту сторону ворот, где курсор (метка на воротах), пас — партнёру у курсора'],
+  ['Мышь: ЛКМ', 'бросок (держать — сильнее); в обороне — силовой приём'],
+  ['ЛКМ + провести', 'клюшка, как правый стик: вниз и вверх — щелчок, рывок вверх — кистевой, вбок — финт'],
+  ['Мышь: ПКМ', 'пас к курсору (держать — верхом); в обороне — смена на игрока у курсора'],
+  ['Колесо / средняя', 'колесо — приблизить / отдалить камеру; средняя кнопка — финт'],
 ];
 const PAD_HELP: [string, string][] = [
   ['Левый стик', 'катиться'],
   ['B / RT', 'бросок (держать — сильнее), в обороне — силовой'],
   ['A', 'пас (держать — верхом), в обороне — смена игрока'],
-  ['Правый стик', 'клюшка: назад и вперёд — щелчок / заряженный бросок, рывок вперёд — кистевой, вбок — финт, назад и вбок — протяжка, вбок туда-обратно — между ног, круг — вертушка, назад и отпустить — ложный замах; в обороне — отбор / подбить клюшку'],
+  ['Правый стик', 'клюшка, как в NHL: вниз и вверх — щелчок (дольше вниз — сильнее, полная сила за треть секунды), рывок вверх — кистевой, вбок и вверх — кистевой с протяжкой; держать вбок — ведение шайбы, рывок вбок — финт, вниз и вбок — протяжка, вбок туда-обратно — между ног, круг — вертушка, вниз и отпустить — ложный замах; в обороне — отбор / подбить клюшку'],
+  ['Левый стик + бросок', 'прицел: куда наклонён стик, туда и бросок (метка на воротах); прямо — в сторону, открытую вратарём'],
   ['X', 'финт / отбор клюшкой'],
   ['RB / R3', 'вбрасывание: нажмите, когда судья бросает шайбу'],
   ['LB', 'сменить игрока (в обороне смена на защитника идёт сама)'],
@@ -87,6 +95,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   const ticker = useRef(new PlayTicker()).current;
   const keys = useRef(new Set<string>());
   const touch = useRef<TouchState>(emptyTouch());
+  const mouse = useRef<MouseState>(newMouse());
   const goals = useRef<GoalItem[]>([]);
   const carry = useRef<[[string, number][], [string, number][]] | null>(null);
   const toastId = useRef(0);
@@ -202,6 +211,10 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   };
 
   const finish = () => {
+    // the goals as they were really scored: the match card replays these clips, not a reconstruction
+    const clips: GameClips = {};
+    for (const g of goals.current) if (g.clip) clips[goalClipKey(g.event)] = g.clip;
+    void saveGameClips(gameClipsKey(s.saveId, s.seasonNumber, game.id), clips);
     commitUserResult(game.id, sim.result());
     onFinished();
   };
@@ -242,27 +255,43 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); };
   }, []);
   const phaseRef = useRef(phase); phaseRef.current = phase;
+  // the gamepad drives the menus everywhere — except while it skates a player here
+  useEffect(() => { suspendPadNav(phase === 'playing' && !paused && !replay); return () => suspendPadNav(false); }, [phase, paused, replay]);
 
   // The game loop: input → rink (fixed 1/60 s steps inside) → books → HUD.
   useEffect(() => {
     if (phase !== 'playing' || paused || replay || busy) return;
     let raf = 0, last = performance.now(), hudAt = 0, waited = 0;
+    // a button still held from the menu (Start that resumed the match) is not a new press
+    prevCommands.current = gamepadPad(typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : null).commands;
     const loop = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
       const k = rink.current;
       if (!k) return;
-      // the 3D picture is being prepared: the match waits (a few seconds at most)
-      if (ticker.wait && waited < 8) { waited += dt; raf = requestAnimationFrame(loop); return; }
       const gp = gamepadPad(typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : null);
       if (gp.connected !== padOnRef.current) { padOnRef.current = gp.connected; setPadOn(gp.connected); }
       for (const c of gp.commands) if (!prevCommands.current.has(c)) commandRef.current(c);
       prevCommands.current = gp.commands;
+      // the 3D picture is being prepared: the match waits (a few seconds at most)
+      if (ticker.wait && waited < 8) { waited += dt; raf = requestAnimationFrame(loop); return; }
       const t = touch.current;
-      let pad: PadState = mergePads(keyboardPad(keys.current), gp.pad, t);
-      // the stick is read in screen terms: the camera of the 3D picture turns it into rink terms
+      let pad: PadState = mergePads(keyboardPad(keys.current), gp.pad, t, mousePad(mouse.current, now));
+      // the sticks are read in screen terms: the camera of the 3D picture turns them into rink terms (the skill
+      // stick's up / down stays the screen's — NHL style — only the side of a deke or the stickhandling turns)
       const cam = settingsRef.current.matchView === '3d' ? settingsRef.current.matchCamera : 'top';
-      if ((cam === 'end' || cam === 'vertical') && (pad.mx || pad.my)) { const v = screenToRink(pad.mx, pad.my, cam, k.frameAt(k.tau).puck.x, k.attack ?? 1); pad = { ...pad, mx: v.x, my: v.y }; }
+      if (cam === 'end' || cam === 'vertical') {
+        const px = k.frameAt(k.tau).puck.x, att = k.attack ?? 1;
+        if (pad.mx || pad.my) { const v = screenToRink(pad.mx, pad.my, cam, px, att); pad = { ...pad, mx: v.x, my: v.y }; }
+        if (pad.sx || pad.sy) { const v = screenToRink(pad.sx ?? 0, pad.sy ?? 0, cam, px, att); pad = { ...pad, srx: v.x, sry: v.y }; }
+      }
+      // the mouse aims: the cursor on the ice (for a few seconds after it moved, or while a button is held)
+      const ms = mouse.current;
+      if (ms.at > 0 && (now - ms.at < 3000 || ms.lmb || ms.rmb)) {
+        const pick = settingsRef.current.matchView === '3d' && k.screenPick ? k.screenPick : svgPick;
+        const pc = pick(ms.x, ms.y);
+        if (pc) pad = { ...pad, aimAt: k.fromPercent(pc.x, pc.y) };
+      }
       k.advance(dt, pad);
       book(k, k.drain());
       ticker.tau = Math.max(0, k.tau - 1 / 60);
@@ -347,7 +376,12 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       )}
 
       {/* The ice */}
-      <main className="relative flex-1 min-h-0 flex">
+      <main className="relative flex-1 min-h-0 flex" data-play-ice
+        onPointerDown={(e) => { if (e.pointerType === 'mouse' && phase === 'playing' && !paused && !replay && !(e.target as HTMLElement).closest('button, a, input, select, [data-play-touch]')) { e.preventDefault(); try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not an active pointer */ } mouseDown(mouse.current, e.button, e.clientX, e.clientY, performance.now()); } }}
+        onPointerMove={(e) => { if (e.pointerType === 'mouse') mouseMove(mouse.current, e.clientX, e.clientY, performance.now()); }}
+        onPointerUp={(e) => { if (e.pointerType === 'mouse') mouseUp(mouse.current, e.button, performance.now()); }}
+        onPointerCancel={() => { mouse.current = { ...newMouse(), x: mouse.current.x, y: mouse.current.y, at: mouse.current.at }; }}
+        onContextMenu={(e) => { if (phase === 'playing') e.preventDefault(); }}>
         {phase === 'playing' && k ? (
           <LiveRink fill className="flex-1 min-h-0 rounded-none border-0" ticker={ticker} ids={[[], []]} goalies={[null, null]} event={null} home={H} away={A} players={P} ai={k} running={!paused && !replay} roster={roster3d} allow3d={!replay} bare minimap={!touchUI} />
         ) : (
@@ -360,6 +394,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
             {ctlName && (
               <div className="rounded-sm bg-black/55 backdrop-blur-sm px-2 py-1 text-white text-xs">
                 <div className="flex items-center gap-1.5"><b className="text-[#ffd23f] tabular">#{ctlName.number}</b><span className="truncate" data-play-ctl>{ctlName.name}</span><span className="ml-auto text-[10px] text-white/60">{ctlName.position}</span></div>
+                {hud.move && <div className="mt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ice" data-play-move>{hud.move}</div>}
                 <div className="mt-1 h-1 rounded bg-white/15 overflow-hidden" title="Силы"><div className={cn('h-full', hud.energy > 0.5 ? 'bg-ok' : hud.energy > 0.25 ? 'bg-amber' : 'bg-accent')} style={{ width: `${Math.round(hud.energy * 100)}%` }} data-play-energy /></div>
               </div>
             )}
@@ -478,9 +513,18 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   );
 }
 
+/** The 2D rink under the mouse: a screen point → rink percent (the 3D view brings its own through the camera). */
+function svgPick(cx: number, cy: number): { x: number; y: number } | null {
+  const svg = document.querySelector<SVGSVGElement>('[data-play-match] [data-live-rink] > div:not([data-rink-3d]) [data-rink-svg]');
+  const m = svg?.getScreenCTM();
+  if (!svg || !m) return null;
+  const p = new DOMPoint(cx, cy).matrixTransform(m.inverse());
+  return { x: Math.max(0, Math.min(100, p.x)), y: Math.max(0, Math.min(100, p.y * 2)) };
+}
+
 function Sheet({ children }: { children: React.ReactNode }) {
   return (
-    <div className="absolute inset-0 z-40 bg-bg/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
+    <div data-pad-scope className="absolute inset-0 z-40 bg-bg/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
       <div className="bg-panel border border-line rounded-md p-4 sm:p-5 w-full max-w-2xl text-center shadow-2xl flex flex-col items-center max-h-[94dvh] overflow-y-auto overscroll-contain fade-in">{children}</div>
     </div>
   );
@@ -522,7 +566,7 @@ function Controls({ device }: { device: InputDevice }) {
       {view === 'touch' ? (
         <>
           <p className="mb-1 text-muted">Слева — стик (коснитесь и ведите пальцем), в центре справа — <b className="text-text">клюшка</b>, как правый стик в NHL, у края — кнопки <b className="text-text">Бросок</b> (держать — сильнее), <b className="text-text">Пас</b>, <b className="text-text">Финт</b>, <b className="text-text">Смена</b> и <b className="text-text">Рывок</b>. Подписи кнопок меняются: в обороне «Бросок» — силовой приём, «Финт» — отбор клюшкой.</p>
-          <p className="mb-1 text-muted" data-play-skill-help>Клюшка: оттяните палец назад (от ворот соперника) и резко вперёд — <b className="text-text">щелчок</b> (чем дольше держали — тем сильнее); короткий рывок вперёд — <b className="text-text">кистевой</b>; рывок вбок — <b className="text-text">финт</b>, вбок и сразу обратно — <b className="text-text">между ног</b>, назад и вбок — <b className="text-text">протяжка</b>, круг — <b className="text-text">вертушка</b>, оттянуть и отпустить — <b className="text-text">ложный замах</b>. В обороне рывок клюшкой — отбор (сбоку и сзади — подбить клюшку); без шайбы в атаке клюшка назад — готов к броску в одно касание.</p>
+          <p className="mb-1 text-muted" data-play-skill-help>Клюшка, как правый стик в NHL: проведите пальцем вниз и резко вверх — <b className="text-text">щелчок</b> (чем дольше внизу — тем сильнее, полная сила примерно за треть секунды); короткий рывок вверх — <b className="text-text">кистевой</b>; палец сбоку — ведение шайбы, рывок вбок — <b className="text-text">финт</b>, вбок и сразу обратно — <b className="text-text">между ног</b>, вниз и вбок — <b className="text-text">протяжка</b>, круг — <b className="text-text">вертушка</b>, вниз и отпустить — <b className="text-text">ложный замах</b>. Кнопка <b className="text-text">Финт</b>: обычный финт, с зажатым «Рывком» — вертушка, второе нажатие сразу после финта — между ног, стик назад — протяжка. В обороне рывок клюшкой или «Отбор» — отбор шайбы (сбоку и сзади — подбить клюшку); без шайбы в атаке клюшка вниз — готов к броску в одно касание. Метка на воротах показывает, куда полетит бросок: целится стик движения.</p>
           <p className="text-muted">На вбрасывании появляется большая кнопка <b className="text-text">Вбрасывание</b> — нажмите её, когда судья бросает шайбу. В обороне управление само переходит к защитнику между шайбой и воротами.</p>
         </>
       ) : (
@@ -603,13 +647,34 @@ function FloatStick({ className, R, hint, onVec, data }: { className: string; R:
  * for a slap / snap shot, flick for a wrist shot, sideways for dekes, a poke check on defence) in the middle of
  * the right half, and the buttons at the right edge.
  */
+type TouchKey = 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff';
+/** The shortest press a touch button gives the rink (ms): several of its 1/60 s steps. */
+const TAP_MS = 110;
+
 function TouchControls({ touch, labels, onCommand, pulled, faceoff }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean; faceoff: boolean }) {
   useEffect(() => () => { touch.current = emptyTouch(); }, [touch]);
   useEffect(() => { if (!faceoff) touch.current.faceoff = false; }, [faceoff, touch]);
-  const hold = (key: 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff') => ({
-    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => { e.preventDefault(); try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* not an active pointer */ } touch.current[key] = true; },
-    onPointerUp: () => { touch.current[key] = false; },
-    onPointerCancel: () => { touch.current[key] = false; },
+  // A quick tap is held down for a moment: a press and a release inside one frame would never reach the rink
+  // (the deke button used to «not work» on a phone for exactly that reason).
+  const downAt = useRef<Partial<Record<TouchKey, number>>>({});
+  const timers = useRef<Partial<Record<TouchKey, number>>>({});
+  useEffect(() => () => { Object.values(timers.current).forEach((t) => window.clearTimeout(t)); }, []);
+  const up = (key: TouchKey) => {
+    const left = TAP_MS - (performance.now() - (downAt.current[key] ?? 0));
+    window.clearTimeout(timers.current[key]);
+    if (left > 0) timers.current[key] = window.setTimeout(() => { touch.current[key] = false; }, left);
+    else touch.current[key] = false;
+  };
+  const hold = (key: TouchKey) => ({
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      e.preventDefault(); try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* not an active pointer */ }
+      window.clearTimeout(timers.current[key]);
+      // a second tap right after the first: release first, so the rink sees a new press
+      if (touch.current[key]) { touch.current[key] = false; window.setTimeout(() => { touch.current[key] = true; downAt.current[key] = performance.now(); }, 34); return; }
+      touch.current[key] = true; downAt.current[key] = performance.now();
+    },
+    onPointerUp: () => up(key),
+    onPointerCancel: () => up(key),
     onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
   });
   const btn = 'rounded-full border-2 border-white/40 bg-black/45 active:bg-white/35 text-white font-semibold backdrop-blur-sm flex items-center justify-center shadow-lg touch-none';

@@ -25,6 +25,10 @@ export interface LiveSource {
   ensure(tau: number): void;
   /** releases known as they happen (the played match): used instead of reading them back from the frames */
   readonly motion?: LiveMotionLike;
+  /** the played match: the aim marker on the net (world metres, the charge of the shot 0…1) */
+  aimMarker?(): { x: number; y: number; z: number; charge: number } | null;
+  /** set by the 3D view: a screen point (client px) → rink percent on the ice, for the mouse */
+  screenPick?: ((cx: number, cy: number) => { x: number; y: number } | null) | null;
 }
 export interface LiveMotionLike {
   update(): void;
