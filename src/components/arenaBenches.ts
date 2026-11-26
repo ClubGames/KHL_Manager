@@ -23,6 +23,26 @@ export const BENCH = { x: [-6, 6] as const, length: 9, seatZ: -(HW + 1.35), seat
 /** Penalty boxes across the ice from the benches: home at x −2.6, visitors at +2.6. */
 export const BOX = { x: [-2.6, 2.6] as const, seatZ: HW + 1.85, slots: 3 };
 
+/** The doors in the boards: the two of each bench (players come out of the tunnel through the outer one), one per
+ *  penalty box, and the officials' door beside the boxes (their corridor runs back under the stands). `x` is the middle
+ *  of the door on the boards' line `z`; `out` the side it swings to (away from the ice). */
+export type DoorKind = 'bench' | 'box' | 'officials';
+export type DoorSpot = { kind: DoorKind; side: 0 | 1 | null; x: number; z: number; out: 1 | -1 };
+export const OFFICIALS_DOOR_X = 6.2;
+export const DOORS: readonly DoorSpot[] = [
+  ...BENCH.x.flatMap((x0, side) => [-1, 1].map(s => ({ kind: 'bench' as const, side: side as 0 | 1, x: x0 + s * 3.7, z: -HW, out: -1 as const }))),
+  ...BOX.x.map((x0, side) => ({ kind: 'box' as const, side: side as 0 | 1, x: x0, z: HW, out: 1 as const })),
+  { kind: 'officials', side: null, x: OFFICIALS_DOOR_X, z: HW, out: 1 },
+];
+/** The bench door a team comes out of the tunnel through (the outer one, toward its end of the bench). */
+export const gateDoor = (side: 0 | 1) => DOORS.find(d => d.kind === 'bench' && d.side === side && Math.abs(d.x) > Math.abs(BENCH.x[side]))!;
+/** The tunnels to the dressing rooms (the mouth in the stands wall behind each bench) and the officials' corridor
+ *  across the ice; the gap in the bench's back wall the players walk through. */
+export const TUNNEL = { z: -(HW + 4.7), gapX: (side: 0 | 1) => BENCH.x[side] - .25, officialsZ: HW + 4.7 };
+/** Where the coaches stand behind their bench (offset from the bench centre, facing the ice). */
+export const COACH_DX = [-2.4, 1.2, 2.6] as const;
+export const COACH_Z = -(HW + 2.15);
+
 /** Where the n-th seat of a team's bench is (world metres) and the heading that faces the ice (the live scene's convention: 0 = facing +x). */
 export function benchSeat(side: 0 | 1, slot: number) {
   const span = BENCH.length - .9, i = ((slot % BENCH.slots) + BENCH.slots) % BENCH.slots;
@@ -76,6 +96,24 @@ class Parts {
       if (g) mesh(g, material(key), parent);
     });
     this.by.clear();
+  }
+  /** Everything matte in one mesh, the colours painted on the vertices (one draw call for a small figure). */
+  buildTinted(parent: T.Object3D, mesh: (g: T.BufferGeometry, m: T.Material, parent: T.Object3D) => T.Mesh, tinted: T.Material, material: (key: string) => T.Material) {
+    const all: T.BufferGeometry[] = [], col = new T.Color();
+    this.by.forEach((list, key) => {
+      if (!key.startsWith('#')) return;
+      col.set(key).convertSRGBToLinear();
+      for (const g of list) {
+        const n = g.getAttribute('position').count, c = new Float32Array(n * 3);
+        for (let i = 0; i < n; i++) { c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b; }
+        g.setAttribute('color', new T.BufferAttribute(c, 3));
+        all.push(g.index ? g.toNonIndexed() : g);
+      }
+      this.by.delete(key);
+    });
+    const g = mergeGeometries(all, false); all.forEach(x => x.dispose());
+    if (g) mesh(g, tinted, parent);
+    this.build(parent, mesh, material);
   }
 }
 
@@ -197,6 +235,8 @@ export function buildBenches(b: BenchBuild) {
     b.mat(m); cache.set(key, m); return m;
   };
   const p = new Parts(), crowd = new Parts();
+  const coaches: BenchCoach[] = [];
+  const tinted = new T.MeshStandardMaterial({ vertexColors: true, roughness: .75 }); b.mat(tinted);
   const D = '#1b232c', FLOOR = '#20272f', SEAT = '#2d3743', CAP = '#d8dee4';
   let seed = 7;
   const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
@@ -210,9 +250,14 @@ export function buildBenches(b: BenchBuild) {
     p.box(FLOOR, L, .05, 2.45, [x0, .025, bz]);
     p.box(SEAT, L - .4, .4, .42, [x0, .2, BENCH.seatZ]);
     p.box(team.primaryColor, L - .4, .08, .45, [x0, .44, BENCH.seatZ]);
-    p.box(D, L, 1.25, .12, [x0, .625, wallZ]);
-    p.box(CAP, L + .04, .05, .18, [x0, 1.275, wallZ]);
-    p.box('glass', L, 1.1, .03, [x0, 1.85, wallZ]);
+    // the back wall, with a gap in front of the tunnel (the players walk in from the dressing room through it)
+    const gx = TUNNEL.gapX(side as 0 | 1), g0 = gx - .7, g1 = gx + .7, a0 = x0 - L / 2, a1 = x0 + L / 2;
+    for (const [u, v] of [[a0, g0], [g1, a1]]) {
+      p.box(D, v - u, 1.25, .12, [(u + v) / 2, .625, wallZ]);
+      p.box(CAP, v - u + .02, .05, .18, [(u + v) / 2, 1.275, wallZ]);
+      p.box('glass', v - u, 1.1, .03, [(u + v) / 2, 1.85, wallZ]);
+    }
+    p.box(CAP, .08, 1.3, .2, [g0, .65, wallZ]); p.box(CAP, .08, 1.3, .2, [g1, .65, wallZ]);
     for (const s of [-1, 1]) {
       p.box(D, .1, 1.25, 2.45, [x0 + s * L / 2, .625, bz]);
       p.box('glass', .03, 1.15, 2.45, [x0 + s * L / 2, 1.85, bz]);
@@ -237,8 +282,14 @@ export function buildBenches(b: BenchBuild) {
       c.fillStyle = '#ffffff'; c.font = 'bold 54px Oswald, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
       for (const cx of [256, 768]) c.fillText((team.short ?? team.name).toUpperCase(), cx, 50, 480);
     }
-    const plate = b.mesh(new T.PlaneGeometry(L - .2, .7), b.mat(new T.MeshBasicMaterial({ map: b.texture(tag.c) })), b.group);
-    plate.position.set(x0, .78, wallZ + .065); plate.updateMatrix();
+    // the name plate on both parts of the wall (the gap in the middle stays open)
+    const plateMat = b.mat(new T.MeshBasicMaterial({ map: b.texture(tag.c) }));
+    for (const [u, v] of [[a0 + .1, g0 - .05], [g1 + .05, a1 - .1]]) {
+      const geo = new T.PlaneGeometry(v - u, .7), uv = geo.getAttribute('uv') as T.BufferAttribute;
+      for (let i = 0; i < uv.count; i++) uv.setX(i, ((u + (v - u) * uv.getX(i)) - (a0 + .1)) / (L - .2));
+      const plate = b.mesh(geo, plateMat, b.group);
+      plate.position.set((u + v) / 2, .78, wallZ + .065); plate.updateMatrix();
+    }
     const rackX = x0 + (side ? -1 : 1) * (L / 2 - .55);
     p.box(D, .9, .08, .2, [rackX, 1.45, wallZ + .14]);
     for (let i = 0; i < 12; i++) {
@@ -252,10 +303,15 @@ export function buildBenches(b: BenchBuild) {
     p.box(team.primaryColor, 2.6, .2, .06, [x0, 2.33, -(HW + 4.96)]);
     p.box(FLOOR, 2.4, .04, 2.3, [x0, .02, -(HW + 3.8)]);
     // coaches: the head coach arms crossed, an assistant with the line card, one with the tablet / pointing
+    // (each one his own little group: the live match walks them out of the tunnel after the players)
     const poses = ['clip', 'cross', 'point'] as const;
-    [-2.4, .3, 2.5].forEach((dx, i) => {
-      p.at(x0 + dx + (rnd() - .5) * .3, BENCH.floor, -(HW + 2.15), (rnd() - .5) * .3);
-      coach(p, { suit: SUIT[(i + side) % SUIT.length], tie: i === 1 ? team.primaryColor : pick(['#7a1f2b', '#22426b', team.secondaryColor]), skin: pick(SKIN), hair: pick(HAIR), pose: poses[i] });
+    COACH_DX.forEach((dx, i) => {
+      const c = new Parts(), x = x0 + dx + (rnd() - .5) * .3, yaw = (rnd() - .5) * .3;
+      c.at(0, BENCH.floor, 0, 0);
+      coach(c, { suit: SUIT[(i + side) % SUIT.length], tie: i === 1 ? team.primaryColor : pick(['#7a1f2b', '#22426b', team.secondaryColor]), skin: pick(SKIN), hair: pick(HAIR), pose: poses[i] });
+      const g = new T.Group(); g.position.set(x, 0, COACH_Z); g.rotation.y = yaw; g.updateMatrix(); b.group.add(g);
+      c.buildTinted(g, b.mesh, tinted, material);
+      coaches.push({ side: side as 0 | 1, group: g, x, z: COACH_Z, yaw });
     });
     // the players who are not on the ice (light preset and the replays): seated, one standing at the door
     const k = kits[side];
@@ -304,6 +360,56 @@ export function buildBenches(b: BenchBuild) {
   p.world();
   p.box(SEAT, 1.4, .45, .4, [0, .225, HW + 1.6]);
 
+  /* ---------- the officials' corridor (near side, beside the visitors' box) ---------- */
+  {
+    const x = OFFICIALS_DOOR_X, z0 = HW + .2, z1 = TUNNEL.officialsZ + .27, zc = (z0 + z1) / 2, len = z1 - z0;
+    p.box(FLOOR, 1.7, .05, len, [x, .025, zc]);
+    for (const s of [-1, 1]) {
+      p.box(D, .1, 1.25, len, [x + s * .85, .625, zc]);
+      p.box(CAP, .14, .05, len, [x + s * .85, 1.275, zc]);
+    }
+    p.box('#04060a', 1.9, 2.25, .05, [x, 1.125, z1]);
+    p.box('#2b2f36', 2.1, .3, .07, [x, 2.38, z1 - .01]);
+    const sign = b.canvas(256, 40);
+    if (sign.ctx) { const c = sign.ctx; c.fillStyle = '#2b2f36'; c.fillRect(0, 0, 256, 40); c.fillStyle = '#f2f4f6'; c.font = 'bold 26px Oswald, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('СУДЬИ', 128, 21); }
+    const plate = b.mesh(new T.PlaneGeometry(2, .28), b.mat(new T.MeshBasicMaterial({ map: b.texture(sign.c) })), b.group);
+    plate.position.set(x, 2.38, z1 - .05); plate.rotation.y = Math.PI; plate.updateMatrix();
+    for (const e of [-.45, .45]) p.box('#f4f6f8', .05, 1.0, .014, [x + e, .53, HW - .008]);
+  }
+
   p.build(b.group, b.mesh, material);
   crowd.build(b.crowd, b.mesh, material);
+
+  /* ---------- the doors: a panel hinged on one post that swings open away from the ice, and the dark gap behind it ---------- */
+  const panelMat = material('#eef2f5'), gapMat = material(FLOOR);
+  const doors: BenchDoor[] = DOORS.map(d => {
+    const hinge = new T.Group();
+    hinge.position.set(d.x - .45, .03, d.z - d.out * .028);
+    const panelGeo = new T.BoxGeometry(.89, 1.0, .045); panelGeo.translate(.445, .5, 0);
+    const trimGeo = new T.BoxGeometry(.89, .05, .05); trimGeo.translate(.445, 1.0, 0);
+    const doorGeo = mergeGeometries([panelGeo, trimGeo], false)!; panelGeo.dispose(); trimGeo.dispose();
+    b.mesh(doorGeo, panelMat, hinge);
+    const gap = b.mesh(new T.BoxGeometry(.86, 1.02, .26), gapMat, b.group);
+    gap.position.set(d.x, .53, d.z + d.out * .1); gap.visible = false; gap.updateMatrix();
+    hinge.updateMatrix(); hinge.children.forEach(c => c.updateMatrix());
+    b.group.add(hinge);
+    let open = 0;
+    return {
+      ...d, hinge, gap,
+      get open() { return open; },
+      set(v: number) {
+        v = Math.max(0, Math.min(1, v));
+        if (Math.abs(v - open) < 1e-4) return;
+        open = v;
+        // out = −1 (the benches, behind the boards at −z): a positive turn about +y swings the panel's free end to −z
+        hinge.rotation.y = -d.out * 1.75 * v * v * (3 - 2 * v);
+        hinge.updateMatrix(); hinge.updateMatrixWorld(true);
+        gap.visible = v > .01;
+      },
+    };
+  });
+  return { doors, coaches };
 }
+
+export type BenchDoor = DoorSpot & { hinge: T.Group; gap: T.Mesh; readonly open: number; set: (v: number) => void };
+export type BenchCoach = { side: 0 | 1; group: T.Group; x: number; z: number; yaw: number };

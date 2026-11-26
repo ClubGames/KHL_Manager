@@ -89,6 +89,8 @@ export class OfficialCrew {
   private dropper = -1;
   private wasStop = false;
   private dropped = false;
+  /** the highest the puck has been in his hand at this faceoff (the windup lifts it) */
+  private peak = 0;
   private stoppedAt = NaN;
 
   constructor() {
@@ -155,19 +157,20 @@ export class OfficialCrew {
 
     // the next faceoff: known from the whistle on, so the man who drops the puck skates there at once (signalling
     // on the way if he has a call to show) and is at the dot, set, before the players are
-    const dot = f.stopped && f.official ? toW(f.official) : f.faceoff ? { x: puck.x + .9 * (puck.x > 0 ? -1 : 1), z: puck.z + 1.6 } : null;
+    const dot = f.stopped && f.official ? toW(f.official) : f.faceoff ? { x: puck.x, z: puck.z - .75 } : null;
     if (dot && (!this.wasStop || this.dropper < 0) && !this.dropped) {
       const centre = Math.abs(dot.x) < 3 && Math.abs(dot.z) < 3.5;
       this.dropper = this.crew.indexOf(nearest(centre ? 'ref' : 'line', dot));
     }
-    // the drop: as the puck leaves his hand
-    if (f.faceoff && this.dropper >= 0 && !this.dropped && f.puck.h < 1.06) {
+    // the drop: the windup lifts the puck (to 1.32 m), the throw starts as it comes down out of his hand
+    if (f.faceoff) this.peak = Math.max(this.peak, f.puck.h); else this.peak = 0;
+    if (f.faceoff && this.dropper >= 0 && !this.dropped && this.peak > 1.24 && f.puck.h < this.peak - .015) {
       signal(this.crew[this.dropper], [{ g: 'drop', dur: .55 }]); this.dropped = true;
     }
     if (!f.stopped && this.wasStop) {
       // the puck is in play: he backs off (also when the drop went unannounced)
       if (this.dropper >= 0) { const o = this.crew[this.dropper]; if (o.gesture === 'ready') signal(o, [{ g: 'drop', dur: .4 }]); }
-      this.dropper = -1; this.dropped = false;
+      this.dropper = -1; this.dropped = false; this.peak = 0;
     }
     this.wasStop = !!f.stopped;
     if (f.stopped && Number.isNaN(this.stoppedAt)) this.stoppedAt = tau;

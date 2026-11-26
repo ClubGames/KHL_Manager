@@ -21,7 +21,7 @@ const pair = (g: number): [Team, Team] => { const H = teams[g % teams.length]; l
 const make = (g: number, extra: Partial<ConstructorParameters<typeof PlayRink>[0]> = {}) => { const [H, A] = pair(g); return new PlayRink({ home: H, away: A, players: P, lineups: [H.lineup, A.lineup], userSide: null, kind: 'reg', periodMinutes: 20, seed: 1000 + g, ...extra }); };
 
 /** Plays a block to its end (or `maxReal` seconds), calling `each` every step. */
-function run(k: PlayRink, pad: (k: PlayRink) => PadState = () => NO_PAD, each?: (k: PlayRink, out: PlayOut[]) => void, maxReal = 1500) {
+function run(k: PlayRink, pad: (k: PlayRink) => PadState = () => NO_PAD, each?: (k: PlayRink, out: PlayOut[]) => void, maxReal = 2400) {
   const all: PlayOut[] = [];
   for (let i = 0; i < maxReal * 60 && !k.ended; i++) { k.advance(1 / 60, pad(k)); const o = k.drain(); all.push(...o); each?.(k, o); }
   return all;

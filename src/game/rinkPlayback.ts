@@ -139,7 +139,9 @@ export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: 
   /** how a fallen skater went down (on his back, face first, sideways over the hip) and, sideways, to which side (±1) */
   fallKind?: 'back' | 'front' | 'side'; fallSide?: 1 | -1 }[]; faceoff?: boolean; stopped?: boolean; carrier?: string | null; caption?: string;
   /** during a stoppage: where the official who drops the puck at the next faceoff stands (known from the whistle) */
-  official?: Point };
+  official?: Point;
+  /** during a stoppage: the dot of the next faceoff */
+  dot?: Point };
 export function clipFrame(clip: ReplayClip, time: number): LiveFrame {
   return { puck: samplePath(clip.puck, time), skaters: clip.tracks.map(tr => ({ id: tr.id, side: tr.side, goalie: tr.goalie, pos: samplePath(tr.keys, time) })) };
 }

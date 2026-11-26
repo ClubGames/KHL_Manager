@@ -4,14 +4,15 @@ import type { Player, Team } from '../types';
 import { clamp } from '../game/rinkPlayback';
 import type { PlayerFigure } from './playerModel';
 import { acquireRenderer, addStageLights, compileScene, kitFor, loadModel, officialKit, onCacheRedraw, releaseRenderer, sharedProps, takeArena, takeFigures, type FigureRequest } from './replayCache';
-import { crewFor, type Official } from './officialCrew';
+import { crewFor, penaltyGesture, type Official } from './officialCrew';
 import { buildArenaShow } from './arenaShow';
-import { INTRO_STRIDE, introCamera, introChapter, introOfficials, introPoses, introShotAt, introShow, planIntro, type IntroPlan, type IntroSkater } from './matchIntro';
-import { celebrateCamera, GOAL_SHOW, goalReplay, MOMENT_GAP, momentReplay, pickMoment, replayAngle, replayCamera, replayLength, replayTau, type ReplaySpec } from './liveShow';
+import { INTRO_STRIDE, introCamera, introChapter, introCoaches, introOfficials, introPoses, introShotAt, introShow, planIntro, type IntroPlan, type IntroSkater } from './matchIntro';
+import { goalLines, seasonLine } from './statLines';
+import { announceCamera, announceGesture, ANNOUNCE, boxCamera, bumpCamera, bumpPlan, bumpPose, bumpReach, celebrateCamera, FACEOFF_CAM, faceoffCamera, GOAL_SHOW, goalReplay, mixCam, MOMENT_GAP, momentReplay, penaltyCaption, penaltyReplay, pickMoment, replayAngle, replayCamera, replayLength, replayTau, type BumpPlan, type ReplaySpec } from './liveShow';
 import { NET_X } from './replayMotion';
 import { liveCameraPose, toWorld, ZOOM, type LiveCamera } from './replayCameras';
 import { RINK } from '../game/rinkGeometry';
-import { benchSeat, boxSeat, BENCH } from './arenaBenches';
+import { benchSeat, boxSeat, BENCH, BOX, DOORS } from './arenaBenches';
 
 export { LIVE_CAMERAS, type LiveCamera } from './replayCameras';
 import { releaseHeading } from './replayMotion';
@@ -43,17 +44,23 @@ type Actor = {
   on?: boolean;
 };
 /** A walk between the ice and a seat: from (fx, fz), through the door in the boards (or over the boards, `hop`). */
-type Trip = { fx: number; fz: number; t0: number; hop: boolean; dur: number };
+type Trip = { fx: number; fz: number; t0: number; hop: boolean; dur: number; /** through this door in the boards (at a whistle the bench uses its doors) */ door?: { x: number; z: number } };
+/** The bench door of a side nearest to x (on the boards' line, a step onto the ice). */
+const benchDoor = (side: 0 | 1, x: number) => { const d = DOORS.filter(o => o.kind === 'bench' && o.side === side).sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0]; return { x: d.x, z: d.z + .45 }; };
 /** The door (or the top of the boards) a seat is reached through: on the ice edge in front of it. */
-const doorOf = (seat: { x: number; z: number }) => ({ x: seat.x, z: Math.sign(seat.z) * (RINK.width / 2 - .45) });
+const doorOf = (seat: { x: number; z: number }) => {
+  // the penalty box: its own door (in the middle of the box); the bench: over the boards in front of the seat
+  const box = seat.z > 0 ? BOX.x.reduce((b, x) => (Math.abs(x - seat.x) < Math.abs(b - seat.x) ? x : b), BOX.x[0]) : seat.x;
+  return { x: box, z: Math.sign(seat.z) * (RINK.width / 2 - .45) };
+};
 
 /** What the 3D view tells the match loop: wait for the first picture, hold the clock (the entrance, a replay), play
  *  in real time (a goal celebration), and that it shows the goals' replays itself (no replay window then). */
 export type LiveTicker = { tau?: number; wait?: boolean; hold?: boolean; slow?: boolean; shows?: boolean };
 /** The broadcast captions over the picture. */
-type Ui = { mode: 'intro' | 'celebrate' | 'replay'; title: string; name?: string; sub?: string; color?: string };
+type Ui = { mode: 'intro' | 'celebrate' | 'replay' | 'call'; title: string; name?: string; sub?: string; color?: string; /** the close-up's numbers (season, match) */ lines?: string[] };
 const SHOT_LABEL = { goalie: 'Вратарь', captain: 'Капитан', leader: 'Лидер команды' } as const;
-const RE_LABEL = { goal: 'Повтор гола', save: 'Опасный момент', post: 'Штанга!', hit: 'Силовой приём', miss: 'Опасный момент' } as const;
+const RE_LABEL = { goal: 'Повтор гола', save: 'Опасный момент', post: 'Штанга!', hit: 'Силовой приём', miss: 'Опасный момент', penalty: 'Нарушение' } as const;
 type Props = {
   ai: LiveSource; ticker: LiveTicker; home: Team; away: Team; players: Record<string, Player>;
   /** everyone who may come on the ice (dressed players, both goalies): their figures are prepared up front */
@@ -139,7 +146,7 @@ export function LiveScene3D(props: Props) {
       // players who are not on the ice sit there (and come and go with the line changes).
       const realBench = quality !== 'standard';
       arena.benchCrowd.visible = !realBench;
-      releaseArena = () => { arena.benchCrowd.visible = true; arena.lights(1); taken.release(); };
+      releaseArena = () => { arena.benchCrowd.visible = true; arena.lights(1); arena.resetProps(); taken.release(); };
       const benchUsed = [new Set<number>(), new Set<number>()];
       const frustum = new T.Frustum(), projView = new T.Matrix4(), seatBall = new T.Sphere(new T.Vector3(), 1.1);
       const leaveSeat = (a: Actor) => { if (a.seat?.startsWith('b')) benchUsed[a.side].delete(Number(a.seat.slice(1))); a.seat = undefined; a.figure?.castShadows(true); };
@@ -262,7 +269,7 @@ export function LiveScene3D(props: Props) {
       let settled = false, camSpeed = 0;
       // the captions over the picture: React state, set only when they change
       let uiKey = '';
-      const showUi = (u: Ui | null) => { const k = u ? `${u.mode}|${u.title}|${u.name ?? ''}|${u.sub ?? ''}` : ''; if (k !== uiKey) { uiKey = k; setUi(u); } };
+      const showUi = (u: Ui | null) => { const k = u ? `${u.mode}|${u.title}|${u.name ?? ''}|${u.sub ?? ''}|${u.lines?.join('/') ?? ''}` : ''; if (k !== uiKey) { uiKey = k; setUi(u); } };
       const forget = () => { actors.forEach(a => { a.lx = NaN; a.save = null; a.on = undefined; a.off = a.enter = undefined; }); focus.init = false; lastTau = NaN; dirty = true; };
       // the teams' entrance (see matchIntro): everybody dressed skates out, the reserves end on their seats
       let intro: { t0: number; plan: IntroPlan; ids: Set<string> } | null = null, introStarted = false;
@@ -274,6 +281,9 @@ export function LiveScene3D(props: Props) {
         introSeats.forEach((slot, id) => { const a = actors.get(id); if (a && !a.seat) { a.seat = `b${slot}`; a.sitAt = undefined; } });
         introSeats.clear();
         intro = null; tickerRef.current.hold = false; setIntroOn(false); showUi(null);
+        arena.resetProps();
+        // the camera is already down at the centre circle: it waits there for the drop
+        foWanted = 1;
         hemi.intensity = lit.hemi; sun.intensity = lit.sun; fill.intensity = lit.fill; scene.environmentIntensity = lit.env;
         officials.forEach(o => { o.lx = NaN; });
         forget();
@@ -307,13 +317,22 @@ export function LiveScene3D(props: Props) {
 
       // The broadcast between the plays (see liveShow): a goal — the celebration in close-up, then its replay; a
       // stoppage after a big moment — its replay. The replays read the rink's own frames again; the clock holds.
-      type Tv = { kind: 'goal' | 'moment'; phase: 'celebrate' | 'replay'; t0: number; spec: ReplaySpec; goalTau: number };
+      // a penalty: the referee's call (the clock held), the replay of the infraction, the man's skate to the box;
+      // a goal: the celebration, the line of scorers along the bench for the fist bumps, the replay. After all of
+      // them the faceoff camera comes down from high over the circle while the players take their places.
+      type Tv = {
+        kind: 'goal' | 'moment' | 'penalty'; phase: 'celebrate' | 'bump' | 'call' | 'replay' | 'box'; t0: number; spec: ReplaySpec; goalTau: number;
+        side?: 0 | 1; bump?: BumpPlan; ref?: number; player?: string; caption?: { name: string; reason: string }; gesture?: Official['gesture']; box?: { x: number; z: number }; seated?: number;
+      };
       let tv: Tv | null = null, lastAngle = '';
+      // the faceoff camera: from `t0` (real ms) coming down over `dot`; `playAt` when the puck is in play (the hand-over)
+      let foCam: { t0: number; dot: { x: number; z: number }; playAt: number } | null = null, foWanted = -1;
+      const seenPen = new Set<number>();
       const seenGoals = new Set<number>();
       let lastMomentClock = -Infinity, stopSeen = NaN, stopChecked = false;
       const tvFocus = { x: 0, z: 0, init: false };
       const startReplay = () => { tickerRef.current.hold = true; tickerRef.current.slow = false; lastAngle = ''; tvFocus.init = false; forget(); };
-      const endTv = () => { tv = null; tickerRef.current.hold = false; tickerRef.current.slow = false; showUi(null); forget(); };
+      const endTv = () => { tv = null; tickerRef.current.hold = false; tickerRef.current.slow = false; showUi(null); forget(); foWanted = 0; };
       unbind.push(() => { if (tv) endTv(); });
       // the officials as they were (a replay shows them where they stood then)
       const crewHist: { tau: number; crew: Official[] }[] = [];
@@ -341,7 +360,7 @@ export function LiveScene3D(props: Props) {
         if (introWanted && !introStarted && (figuresDone || now - mountAt > 8000)) beginIntro(now, ai);
         if (intro && (skipIntro.current || (now - intro.t0) / 1000 >= intro.plan.t.length)) endIntro();
         if (intro) dirty = true;
-        if (!motion || motionOf !== ai) { motion = ai.motion ?? new LiveMotion(ai); motionOf = ai; focus.init = false; actors.forEach(a => { a.lx = NaN; a.save = null; a.on = undefined; a.off = a.enter = undefined; }); if (tv) endTv(); crewHist.length = 0; }
+        if (!motion || motionOf !== ai) { motion = ai.motion ?? new LiveMotion(ai); motionOf = ai; focus.init = false; actors.forEach(a => { a.lx = NaN; a.save = null; a.on = undefined; a.off = a.enter = undefined; }); if (tv) endTv(); foCam = null; foWanted = -1; crewHist.length = 0; }
         const liveTau = tickerRef.current.tau ?? 0;
         if (tv && (skipShow.current || !replaysRef.current)) endTv();
         skipShow.current = false;
@@ -356,7 +375,40 @@ export function LiveScene3D(props: Props) {
               tickerRef.current.slow = true; tvFocus.init = false;
             }
           }
-          if (tv?.phase === 'celebrate' && (liveTau >= tv.goalTau + GOAL_SHOW.celebrate || now - tv.t0 > 7000)) { tv.phase = 'replay'; tv.t0 = now; startReplay(); }
+          if (tv?.phase === 'celebrate' && (liveTau >= tv.goalTau + GOAL_SHOW.celebrate || now - tv.t0 > 7000)) {
+            // the scorers skate along their bench for the fist bumps (the clock held), the scorer first
+            const fl = ai.frameAt(liveTau), side = motion.goalAt(tv.goalTau + .01)?.side ?? tv.side ?? 0, bx = BENCH.x[side];
+            const ids = shownSkaters(fl).filter(p => p.side === side && !p.goalie).sort((p, q) => +(q.id === tv!.spec.player) - +(p.id === tv!.spec.player) || Math.abs(toWorld(p.pos).x - bx) - Math.abs(toWorld(q.pos).x - bx)).map(p => p.id);
+            tv.side = side;
+            if (ids.length) { tv.phase = 'bump'; tv.t0 = now; tv.bump = bumpPlan(ids, bx); tickerRef.current.hold = true; tickerRef.current.slow = false; forget(); }
+            else { tv.phase = 'replay'; tv.t0 = now; startReplay(); }
+          }
+          if (tv?.phase === 'bump' && tv.bump && now - tv.t0 >= tv.bump.length * 1000) { tv.phase = 'replay'; tv.t0 = now; startReplay(); }
+          // a penalty called at the whistle: the referee's call on camera first
+          if (!tv) {
+            for (let i = ai.plays.length - 1; i >= 0; i--) {
+              const p = ai.plays[i];
+              if (p.tau < liveTau - 1.5) break;
+              if (p.kind !== 'penalty' || p.text.startsWith('Отложенный') || p.tau > liveTau || seenPen.has(p.tau)) continue;
+              seenPen.add(p.tau);
+              const fp = ai.frameAt(p.tau), who = fp.skaters.find(x => x.id === p.player), at = toWorld(who?.pos ?? fp.puck);
+              const crewNow = crewFor(ai).officials;
+              const ref = [0, 1].sort((x, y) => Math.hypot(crewNow[x].x - at.x, crewNow[x].z - at.z) - Math.hypot(crewNow[y].x - at.x, crewNow[y].z - at.z))[0];
+              let inf: number | null = null;
+              for (let j = i - 1; j >= 0 && ai.plays[j].tau > p.tau - 40; j--) { const q = ai.plays[j]; if (q.kind === 'penalty' && q.text.startsWith('Отложенный') && q.player === p.player) { inf = q.tau; break; } }
+              const side = (p.side ?? 0) as 0 | 1;
+              tv = { kind: 'penalty', phase: 'call', t0: now, spec: penaltyReplay(p.tau, inf, p.text, p.player), goalTau: NaN, side, ref, player: p.player, caption: penaltyCaption(p.text), gesture: penaltyGesture(p.text), box: { x: BOX.x[side], z: RINK.width / 2 + .6 } };
+              tickerRef.current.hold = true; tickerRef.current.slow = false; tvFocus.init = false; foCam = null;
+              break;
+            }
+          }
+          if (tv?.phase === 'call' && now - tv.t0 >= ANNOUNCE.length * 1000) { tv.phase = 'replay'; tv.t0 = now; startReplay(); }
+          if (tv?.phase === 'box') {
+            // he skates to the box (the clock runs in real time) until he sits down
+            const a = tv.player ? actors.get(tv.player) : undefined;
+            if (a?.seat?.startsWith('p') && !a.off) tv.seated ??= now;
+            if ((tv.seated !== undefined && now - tv.seated > 700) || now - tv.t0 > 8000) endTv();
+          }
           // a stoppage: a replay of the big moment just before the whistle (now and then)
           if (!tv) {
             const fl = ai.frameAt(liveTau);
@@ -381,8 +433,17 @@ export function LiveScene3D(props: Props) {
         let tau = liveTau;
         if (tv?.phase === 'replay') {
           const real = (now - tv.t0) / 1000;
-          if (real >= replayLength(tv.spec)) endTv(); else tau = replayTau(tv.spec, real);
+          if (real < replayLength(tv.spec)) tau = replayTau(tv.spec, real);
+          else if (tv.kind === 'penalty') { tv.phase = 'box'; tv.t0 = now; tickerRef.current.hold = false; tickerRef.current.slow = true; tvFocus.init = false; forget(); }
+          else endTv();
         }
+        // after the broadcast's own pictures: the faceoff camera, when a faceoff is coming
+        if (foWanted >= 0 && !tv && !intro) {
+          const fl = ai.frameAt(liveTau);
+          foCam = fl.stopped && fl.dot ? { t0: now - foWanted * FACEOFF_CAM.descend * 1000, dot: toWorld(fl.dot), playAt: NaN } : null;
+          foWanted = -1;
+        }
+        if (foCam) dirty = true;
         const replaying = tv?.phase === 'replay';
         if (tv) dirty = true;
         const realDt = Math.min(.1, (now - lastNow) / 1000); lastNow = now;
@@ -407,14 +468,20 @@ export function LiveScene3D(props: Props) {
         let crew: readonly Official[];
         if (replaying) crew = crewAt(tau);
         else { crew = crewFor(ai).update(f, ai.plays, tau); recordCrew(tau, crew); }
+        const calling = tv?.phase === 'call' ? announceGesture((now - tv.t0) / 1000) : null;
         crew.forEach((c, i) => {
           const o = officials[i];
           o.group.position.set(c.x, 0, c.z); o.group.rotation.set(0, c.heading, 0);
           if (!o.figure) return;
           o.group.updateMatrixWorld(true);
-          const aim = c.aim ? o.figure.root.worldToLocal(new T.Vector3(c.aim.x, 1.2, c.aim.z)) : null;
+          // the referee announcing a penalty (the clock held): the arm up, the infraction's signal, the point to the box
+          let gesture = c.gesture, gt = c.gt, aimAt = c.aim;
+          if (calling && i === tv!.ref) { gesture = calling.phase === 'armUp' ? 'armUp' : calling.phase === 'signal' ? tv!.gesture ?? 'fist' : 'point'; gt = calling.t; aimAt = calling.phase === 'point' ? tv!.box ?? null : null; }
+          const aim = aimAt ? o.figure.root.worldToLocal(new T.Vector3(aimAt.x, 1.2, aimAt.z)) : null;
           const look = angleDiff(c.heading, Math.atan2(-(pw.z - c.z), pw.x - c.x));
-          o.figure.officiate({ phase: c.phase, amp: clamp(Math.hypot(c.vx, c.vz) / 6, 0, 1), gesture: c.gesture, t: c.gt, aim, look });
+          // at the dot: the hand with the puck comes up for the windup before the throw
+          const windup = gesture === 'ready' && f.faceoff ? clamp((pw.y - 1.1) / .22, 0, 1) : 0;
+          o.figure.officiate({ phase: c.phase, amp: clamp(Math.hypot(c.vx, c.vz) / 6, 0, 1), gesture, t: gt, aim, look, windup });
         });
 
         const goal = motion.goalAt(tau);
@@ -437,6 +504,7 @@ export function LiveScene3D(props: Props) {
         carrierRing.visible = !!holder;
         if (holder) { const c = toWorld(holder.pos); carrierRing.position.set(c.x, .017, c.z); const pulse = 1 + Math.sin(now / 160) * .05; carrierRing.scale.set(pulse, pulse, 1); }
         const onIce = new Set(shown.map(p => p.id));
+        const bumpNow = tv?.phase === 'bump' && tv.bump ? bumpPose(tv.bump, (now - tv.t0) / 1000) : null;
         // Off the ice: the penalty box (everyone, every preset) or the bench (the real figures on the higher presets).
         const boxCount = [0, 0], boxOf = new Map<string, number>();
         for (const p of f.skaters) if (p.box) { boxOf.set(p.id, boxCount[p.side]++); actorFor(p.id, p.side, !!p.goalie); }
@@ -448,7 +516,8 @@ export function LiveScene3D(props: Props) {
             if (a.on === false) {
               // from his seat, from where he was going, or (the light preset seats nobody) from the bench
               const p = a.seat || a.off ? a.group.position : { x: BENCH.x[a.side] + (a.phase % 1 - .5) * 4, z: BENCH.seatZ };
-              a.enter = { fx: p.x, fz: p.z, t0: now, hop: !a.seat?.startsWith('p') && p.z < 0, dur: 750 };
+              const bench = !a.seat?.startsWith('p') && p.z < 0, door = bench && f.stopped ? benchDoor(a.side, p.x) : undefined;
+              a.enter = { fx: p.x, fz: p.z, t0: now, hop: bench && !door, dur: door ? 750 + Math.hypot(door.x - p.x, door.z - p.z) / 2.2 * 1000 : 750, door };
             }
             a.on = true; a.off = undefined;
             if (a.seat) { leaveSeat(a); a.lx = NaN; }
@@ -465,15 +534,18 @@ export function LiveScene3D(props: Props) {
           else if (a.seat) leaveSeat(a);
           if (wasOn) {
             const target = seat ?? (box === undefined ? { x: BENCH.x[a.side], z: BENCH.seatZ } : boxSeat(a.side, 0));
-            const door = doorOf(target);
-            a.off = { fx: from.x, fz: from.z, t0: now, hop: box === undefined && !!seat, dur: clamp(Math.hypot(door.x - from.x, door.z - from.z) / 6.5, .2, 1.6) * 1000 + (seat ? 600 : 0) };
+            // at a whistle the bench's doors (on the fly over the boards)
+            const viaDoor = box === undefined && !!seat && f.stopped ? benchDoor(a.side, from.x) : undefined;
+            const door = viaDoor ?? doorOf(target), inside = viaDoor ? Math.hypot(target.x - door.x, target.z - door.z) / 2.2 * 1000 : 0;
+            // at skating speed all the way (a man sent off from the far end takes his time, he is not slid there)
+            a.off = { fx: from.x, fz: from.z, t0: now, hop: box === undefined && !!seat && !viaDoor, dur: clamp(Math.hypot(door.x - from.x, door.z - from.z) / 6.8, .25, 5) * 1000 + (seat ? (box === undefined ? 600 + inside : 900) : 0), door: viaDoor };
           }
           if (a.off) {
             // the trip: to the door at skating speed, then through it (or over the boards) onto the seat
-            const tr = a.off, target = seat ?? (box === undefined ? { x: BENCH.x[a.side], y: 0, z: BENCH.seatZ } : boxSeat(a.side, 0)), door = doorOf(target);
+            const tr = a.off, target = seat ?? (box === undefined ? { x: BENCH.x[a.side], y: 0, z: BENCH.seatZ } : boxSeat(a.side, 0)), door = tr.door ?? doorOf(target);
             const u = (now - tr.t0) / tr.dur;
             if (u < 1) {
-              const split = seat ? 1 - 600 / tr.dur : 1;
+              const split = seat ? 1 - (box === undefined ? 600 + (tr.door ? Math.hypot(target.x - door.x, target.z - door.z) / 2.2 * 1000 : 0) : 900) / tr.dur : 1;
               let x: number, y = 0, z: number, head: number;
               if (u < split) { const v = smooth01(u / split * .85 + .15 * (u / split)); x = tr.fx + (door.x - tr.fx) * v; z = tr.fz + (door.z - tr.fz) * v; head = Math.atan2(-(door.z - tr.fz), door.x - tr.fx); }
               else { const v = smooth01((u - split) / (1 - split)); x = door.x + (target.x - door.x) * v; z = door.z + (target.z - door.z) * v; y = (tr.hop ? Math.sin(Math.PI * v) * .95 : 0) + (seat?.y ?? 0) * v; head = angleLerp(Math.atan2(-(target.z - door.z), target.x - door.x), seat?.heading ?? 0, v * v); }
@@ -488,6 +560,13 @@ export function LiveScene3D(props: Props) {
           a.group.visible = true;
           a.group.position.set(seat.x, seat.y, seat.z); a.group.rotation.set(0, seat.heading, 0);
           if (!a.figure) return;
+          // the fist bumps: the bench is up at the boards, a glove out over them as the line passes
+          if (bumpNow && box === undefined && a.side === tv!.side) {
+            a.group.position.z = seat.z + .85; a.group.updateMatrixWorld(true);
+            a.figure.sit({ seat: BENCH.seatTop, look: 0, up: 1, reach: bumpReach(bumpNow, seat.x), t: now / 1000 + a.phase });
+            a.sitAt = undefined; a.figure.castShadows(false);
+            return;
+          }
           // the seated pose follows the play a few times a second (and the bench gets up for its team's goal)
           if (a.sitAt !== undefined && now - a.sitAt < 220 + (a.phase % 1) * 160) return;
           if (a.sitAt === undefined) a.figure.castShadows(false);
@@ -512,10 +591,20 @@ export function LiveScene3D(props: Props) {
             const tr = a.enter, u = (now - tr.t0) / tr.dur;
             if (u >= 1) a.enter = undefined;
             else {
-              const door = doorOf({ x: tr.fx, z: tr.fz });
+              const door = tr.door ?? doorOf({ x: tr.fx, z: tr.fz });
               if (u < .45) { const v = smooth01(u / .45); w.x = tr.fx + (door.x - tr.fx) * v; w.z = tr.fz + (door.z - tr.fz) * v; lift = tr.hop ? Math.sin(Math.PI * v) * .95 : 0; }
               else { const v = smooth01((u - .45) / .55); w.x = door.x + (w.x - door.x) * v; w.z = door.z + (w.z - door.z) * v; }
             }
+          }
+          const bp = bumpNow?.get(p.id);
+          if (bp) {
+            // in the fist-bump line along the bench
+            a.group.position.set(bp.x, 0, bp.z); a.group.rotation.order = 'YXZ'; a.group.rotation.set(0, bp.heading, 0);
+            a.phase += bp.speed * realDt / STRIDE * Math.PI * 2; a.heading = bp.heading; a.lx = bp.x; a.lz = bp.z;
+            if (!a.figure) continue;
+            a.group.updateMatrixWorld(true);
+            a.figure.skate(a.phase, .42, undefined, .2 * (1 - bp.bump), { bump: bp.bump, t: now / 1000 });
+            continue;
           }
           a.group.position.set(w.x, lift, w.z);
           a.group.rotation.order = 'YXZ';
@@ -590,7 +679,10 @@ export function LiveScene3D(props: Props) {
           let reach: T.Vector3 | null = null, reachWeight = 0;
           const near = Math.hypot(local.x + .3 * hand, local.z - .85);
           if (p.move === 'reach' && pw.y < .4 && local.z > .2 && Math.hypot(local.x, local.z) < 2.8) reach = local.clone();
-          if (pw.y < .25 && local.z > .1 && local.z < 1.8 && Math.abs(local.x) < 1.3 && near < 1.4 && !(shot !== undefined && shot > 0)) {
+          // the centres battling for the dropped puck: both blades on it, fighting
+          const battle = f.faceoff && pw.y < .06 && local.z > 0 && Math.hypot(local.x, local.z) < 1.9;
+          if (battle) { reach = local.clone().add(new T.Vector3(Math.sin(tau * 29 + a.phase) * .12, 0, Math.sin(tau * 23) * .06)); reachWeight = 1; carrierW = Math.max(carrierW, 1); }
+          if (!battle && pw.y < .25 && local.z > .1 && local.z < 1.8 && Math.abs(local.x) < 1.3 && near < 1.4 && !(shot !== undefined && shot > 0)) {
             reachWeight = (f.carrier === p.id ? 1 : .6) * (1 - smooth01((near - .55) / .85));
             carrierW = Math.max(carrierW, reachWeight);
             reach = local.clone();
@@ -643,11 +735,20 @@ export function LiveScene3D(props: Props) {
             o.group.updateMatrixWorld(true);
             o.figure.officiate({ phase: o.ph, amp: clamp(p.speed / 6, 0, 1), gesture: p.gesture, t: it, look: 0 });
           });
+          // the coaches walk out of the tunnel after their players (a gentle bob for the steps)
+          introCoaches(plan, it).forEach(c => {
+            const g = arena.coaches.filter(x => x.side === c.side)[c.i];
+            if (!g) return;
+            g.group.visible = c.visible;
+            const step = c.speed > 0 ? Math.abs(Math.sin(it * 5.2 + c.i)) : 0;
+            g.group.position.set(c.x, .025 * step, c.z); g.group.rotation.set(0, c.speed > 0 ? c.heading + Math.PI / 2 : g.yaw, .025 * Math.sin(it * 5.2 + c.i) * (c.speed > 0 ? 1 : 0));
+            g.group.updateMatrix();
+          });
           puck.visible = puckShadow.visible = trail.visible = false; carrierRing.visible = ctrlRing.visible = ctrlArrow.visible = aimMark.visible = false;
-          // the captions: the chapter, and whose close-up it is
+          // the captions: the chapter, and whose close-up it is (with his season)
           const shot = introShotAt(plan, it), who = shot ? players[shot.id] : undefined;
-          const team = shot ? (shot.side ? away : home) : null;
-          showUi({ mode: 'intro', title: introChapter(plan, it), name: who ? `${who.number ? `#${who.number} ` : ''}${who.name}` : undefined, sub: shot && team ? `${SHOT_LABEL[shot.kind]} · ${team.name}` : undefined, color: team?.primaryColor });
+          const team = shot ? (shot.side ? away : home) : null, line = shot ? seasonLine(who) : undefined;
+          showUi({ mode: 'intro', title: introChapter(plan, it), name: who ? `${who.number ? `#${who.number} ` : ''}${who.name}` : undefined, sub: shot && team ? `${SHOT_LABEL[shot.kind]} · ${team.name}` : undefined, color: team?.primaryColor, lines: line ? [line] : undefined });
         } else {
           puck.visible = true; officials.forEach(o => { o.group.visible = true; });
           if (replaying) { carrierRing.visible = ctrlRing.visible = ctrlArrow.visible = aimMark.visible = false; }
@@ -667,33 +768,74 @@ export function LiveScene3D(props: Props) {
         settled = Math.hypot(lead.x - focus.x, lead.z - focus.z) < .01 && Math.abs(Math.min(pSpeed, 30) - camSpeed) < .05;
         const pose = liveCameraPose(live.current.camera, focus, live.current.zoom, aspect(), { attack: ai.attack ?? (ai.flipped ? -1 : 1), speed: camSpeed });
         if (tv) {
-          // the broadcast's own pictures: the scorer in close-up, the replay's angles (smoothed on the puck, cut between angles)
+          // the broadcast's own pictures: the scorer in close-up, the fist bumps, the referee's call, the replay's
+          // angles (smoothed on the puck, cut between angles), the man skating to the box
           let c;
+          const follow = (w: { x: number; z: number }, rate: number) => {
+            if (!tvFocus.init) { tvFocus.x = w.x; tvFocus.z = w.z; tvFocus.init = true; }
+            else { const k = 1 - Math.exp(-realDt * rate); tvFocus.x += (w.x - tvFocus.x) * k; tvFocus.z += (w.z - tvFocus.z) * k; }
+            return tvFocus;
+          };
           if (tv.phase === 'celebrate') {
             const sc = shown.find(p => p.id === tv!.spec.player) ?? shown.filter(p => goal && p.side === goal.side && !p.goalie).sort((p, q) => { const a = toWorld(p.pos), b = toWorld(q.pos); return Math.hypot(a.x - pw.x, a.z - pw.z) - Math.hypot(b.x - pw.x, b.z - pw.z); })[0];
-            const w = sc ? toWorld(sc.pos) : pw;
-            if (!tvFocus.init) { tvFocus.x = w.x; tvFocus.z = w.z; tvFocus.init = true; }
-            else { const k = 1 - Math.exp(-realDt * 5); tvFocus.x += (w.x - tvFocus.x) * k; tvFocus.z += (w.z - tvFocus.z) * k; }
-            c = celebrateCamera((now - tv.t0) / 1000, tvFocus);
+            c = celebrateCamera((now - tv.t0) / 1000, follow(sc ? toWorld(sc.pos) : pw, 5));
+          } else if (tv.phase === 'bump' && bumpNow && tv.bump) {
+            const lead = bumpNow.get(tv.bump.ids[0])!;
+            c = bumpCamera(follow({ x: Math.max(lead.x, tv.bump.x1 - 1), z: lead.z }, 3));
+          } else if (tv.phase === 'call') {
+            const r = crew[tv.ref ?? 0];
+            c = announceCamera({ x: r.x, z: r.z, heading: r.heading }, (now - tv.t0) / 1000);
+          } else if (tv.phase === 'box') {
+            const a = tv.player ? actors.get(tv.player) : undefined;
+            c = boxCamera(follow(a ? { x: a.group.position.x, z: a.group.position.z } : tv.box ?? pw, 3.5));
           } else {
             const angle = replayAngle(tv.spec, tau);
             if (angle !== lastAngle) { lastAngle = angle; tvFocus.init = false; }
-            if (!tvFocus.init) { tvFocus.x = pw.x; tvFocus.z = pw.z; tvFocus.init = true; }
-            else { const k = 1 - Math.exp(-realDt * 4.5); tvFocus.x += (pw.x - tvFocus.x) * k; tvFocus.z += (pw.z - tvFocus.z) * k; }
-            c = replayCamera(tv.spec, tau, tvFocus);
+            c = replayCamera(tv.spec, tau, follow(pw, 4.5));
           }
           pose.pos = c.pos; pose.look = c.look; pose.fov = c.fov;
-          const who = tv.spec.player ? players[tv.spec.player] : undefined, side = goal?.side;
-          const team = tv.kind === 'goal' && side !== undefined ? (side ? away : home) : null;
-          if (tv.phase === 'celebrate') showUi({ mode: 'celebrate', title: 'ГОЛ!', name: who ? `${who.number ? `#${who.number} ` : ''}${who.name}` : tv.spec.text.replace(/^ГОЛ!\s*/, ''), sub: team?.name, color: team?.primaryColor });
-          else showUi({ mode: 'replay', title: RE_LABEL[tv.spec.kind], name: tv.kind === 'goal' ? (who ? `${who.number ? `#${who.number} ` : ''}${who.name}` : undefined) : tv.spec.text });
+          const who = tv.spec.player ? players[tv.spec.player] : undefined, side = tv.kind === 'goal' ? goal?.side ?? tv.side : tv.side;
+          const team = side !== undefined ? (side ? away : home) : null;
+          const named = who ? `${who.number ? `#${who.number} ` : ''}${who.name}` : undefined;
+          if (tv.phase === 'celebrate') {
+            // the scorer's numbers: this match and the season
+            const id = tv.spec.player, n = id ? ai.plays.filter(p => p.kind === 'goal' && p.player === id && p.tau <= tv!.goalTau + 1e-6).length : 0;
+            showUi({ mode: 'celebrate', title: 'ГОЛ!', name: named ?? tv.spec.text.replace(/^ГОЛ!\s*/, ''), sub: team?.name, color: team?.primaryColor, lines: goalLines(who, n) });
+          } else if (tv.phase === 'bump') showUi({ mode: 'celebrate', title: 'ГОЛ!', name: named, sub: 'Поздравления со скамейкой', color: team?.primaryColor });
+          else if (tv.phase === 'call') showUi({ mode: 'call', title: 'Удаление', name: named ?? tv.caption?.name, sub: tv.caption?.reason, color: team?.primaryColor });
+          else if (tv.phase === 'box') showUi({ mode: 'call', title: 'Штрафная скамья', name: named ?? tv.caption?.name, sub: tv.caption?.reason, color: team?.primaryColor });
+          else showUi({ mode: 'replay', title: RE_LABEL[tv.spec.kind], name: tv.kind !== 'moment' ? named ?? (tv.kind === 'penalty' ? tv.caption?.name : undefined) : tv.spec.text, sub: tv.kind === 'penalty' ? tv.caption?.reason : undefined });
+        } else if (foCam && !intro) {
+          // the faceoff: down from high over the circle while they take their places, the match camera after the drop
+          const fc = faceoffCamera(foCam.dot, (now - foCam.t0) / 1000 / FACEOFF_CAM.descend);
+          if (Number.isNaN(foCam.playAt) && !f.stopped) foCam.playAt = now;
+          const k = Number.isNaN(foCam.playAt) ? 0 : smooth01((now - foCam.playAt) / 1000 / FACEOFF_CAM.handover);
+          const m = mixCam(fc, { pos: pose.pos, look: pose.look, fov: pose.fov }, k);
+          pose.pos = m.pos; pose.look = m.look; pose.fov = m.fov;
+          if (k >= 1 || now - foCam.t0 > 20000) foCam = null;
         }
         if (intro && sh) {
           // the entrance's own camera, handing over to the match camera as everybody skates to his place
-          const ic = introCamera(intro.plan, it, ip!), k = smooth01((it - intro.plan.t.settle - .3) / 2.2);
-          pose.pos = { x: ic.pos.x + (pose.pos.x - ic.pos.x) * k, y: ic.pos.y + (pose.pos.y - ic.pos.y) * k, z: ic.pos.z + (pose.pos.z - ic.pos.z) * k };
-          pose.look = { x: ic.look.x + (pose.look.x - ic.look.x) * k, y: ic.look.y + (pose.look.y - ic.look.y) * k, z: ic.look.z + (pose.look.z - ic.look.z) * k };
-          pose.fov = ic.fov + (pose.fov - ic.fov) * k;
+          const ic = introCamera(intro.plan, it, ip!);
+          pose.pos = ic.pos; pose.look = ic.look; pose.fov = ic.fov;
+        }
+        // waiting for the entrance to start: an empty arena (nobody pops up and vanishes again)
+        if (introWanted && !introStarted) {
+          actors.forEach(a => { a.group.visible = false; }); officials.forEach(o => { o.group.visible = false; });
+          puck.visible = puckShadow.visible = trail.visible = false; carrierRing.visible = ctrlRing.visible = ctrlArrow.visible = aimMark.visible = false;
+          arena.coaches.forEach(c => { c.group.visible = false; });
+        }
+        // the doors in the boards open for whoever walks or skates through them (and close behind him)
+        {
+          const users: { x: number; z: number }[] = [];
+          if (intro && ip) { ip.forEach(p => { if (p.visible) users.push(p); }); officials.forEach(o => { if (o.group.visible) users.push(o.group.position); }); }
+          actors.forEach(a => { if (a.off || a.enter) users.push(a.group.position); });
+          if (f.stopped) for (const p of shown) users.push(toWorld(p.pos));
+          for (const d of arena.doors) {
+            const want = users.some(u => Math.abs(u.x - d.x) < 1.25 && Math.abs(u.z - d.z) < 1.7) ? 1 : 0;
+            const v = d.open + clamp(want - d.open, -realDt * 2.2, realDt * 3.2);
+            if (v !== d.open) { d.set(v); dirty = true; }
+          }
         }
         camera.position.set(pose.pos.x, pose.pos.y, pose.pos.z);
         camera.lookAt(pose.look.x, pose.look.y, pose.look.z);
@@ -701,7 +843,7 @@ export function LiveScene3D(props: Props) {
         camera.updateMatrixWorld(); arena.view(camera); arena.tick(now); arena.lights(1 - .88 * L);
         // the skinned figures are never culled by three: the seated ones out of the picture are skipped here
         frustum.setFromProjectionMatrix(projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
-        actors.forEach(a => { if (a.seat) { seatBall.center.set(a.group.position.x, .8, a.group.position.z); a.group.visible = frustum.intersectsSphere(seatBall); } });
+        if (!(introWanted && !introStarted)) actors.forEach(a => { if (a.seat) { seatBall.center.set(a.group.position.x, .8, a.group.position.z); a.group.visible = frustum.intersectsSphere(seatBall); } });
         sun.position.set(pose.look.x + 8, 25, pose.look.z + 12); sun.target.position.set(pose.look.x, 0, pose.look.z); sun.target.updateMatrixWorld();
         camera.updateMatrixWorld();
         // the aim marker always faces the camera (seen from the side the net's plane would hide it)
@@ -785,6 +927,9 @@ export function LiveScene3D(props: Props) {
         {ui && (ui.name || ui.mode !== 'intro') && <div className="flex items-stretch max-w-[92%] overflow-hidden rounded-sm shadow-lg" data-live-caption>
           <span className="px-2.5 py-1 text-xs sm:text-sm font-black uppercase tracking-wide text-white" style={{ background: ui.color ?? (ui.mode === 'replay' ? '#b91c1c' : '#0f2a44') }}>{ui.title}</span>
           {ui.name && <span className="px-2.5 py-1 bg-black/70 text-white text-xs sm:text-sm font-semibold truncate backdrop-blur-sm">{ui.name}{ui.sub && <span className="ml-2 text-white/60 font-normal text-[11px]">{ui.sub}</span>}</span>}
+        </div>}
+        {ui?.lines && ui.lines.length > 0 && <div className="flex flex-col items-center gap-0.5 max-w-[92%] rounded-sm bg-black/65 px-2.5 py-1 text-[11px] sm:text-xs text-white backdrop-blur-sm shadow-lg" data-live-stats>
+          {ui.lines.map((l, i) => <span key={i} className={i ? 'text-white/80' : 'font-semibold'}>{l}</span>)}
         </div>}
         {introOn && !(ui && ui.name) && <span className="text-[11px] font-bold uppercase tracking-[.2em] text-white/90 drop-shadow">{ui?.title ?? 'Выход команд'}</span>}
         {introOn

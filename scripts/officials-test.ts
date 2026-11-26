@@ -10,8 +10,8 @@ import { RinkAI, type RinkPlay } from '../src/game/rinkAI';
 import { PlayRink } from '../src/game/playRink';
 import type { LiveFrame } from '../src/game/rinkPlayback';
 import { BLUE, GOAL, OfficialCrew, insideRink, penaltyGesture, type Gesture } from '../src/components/officialCrew';
-import { INTRO_PACE, gateOf, introCamera, introOfficials, introPoses, introShow, lineup, planIntro, type IntroSkater } from '../src/components/matchIntro';
-import { benchSeat } from '../src/components/arenaBenches';
+import { INTRO_PACE, OFFICIALS_ZONE, gateOf, introCamera, introChapter, introCoaches, introOfficials, introPoses, introShow, lineup, planIntro, type IntroSkater } from '../src/components/matchIntro';
+import { benchSeat, BENCH, COACH_Z, OFFICIALS_DOOR_X, TUNNEL } from '../src/components/arenaBenches';
 import { GOAL_SHOW, SLOW, goalReplay, momentReplay, pickMoment, replayAngle, replayCamera, replayLength, replayTau, celebrateCamera } from '../src/components/liveShow';
 import { toWorld } from '../src/components/replayCameras';
 
@@ -109,8 +109,10 @@ test('goal, icing, offside, faceoff: the referee points at the net, the linesman
   assert.ok(dropper && dropper.role === 'line', 'a linesman drops the puck in the zone');
   const d = toWorld(dot);
   assert.ok(Math.hypot(dropper!.x - d.x, dropper!.z - d.z) < 1.2, 'at the dot');
-  // the drop as the puck leaves his hand
-  run(crew, held(.9), plays, tau + 1 / 30, .2);
+  // the windup lifts the puck: still set; the throw as it comes back down out of his hand
+  tau = run(crew, held(1.32), plays, tau + 1 / 30, .2);
+  assert.equal(dropper!.gesture, 'ready', 'the windup: still holding it');
+  run(crew, held(1.0), plays, tau + 1 / 30, .2);
   assert.equal(dropper!.gesture, 'drop');
   // centre ice: a referee
   const crew2 = new OfficialCrew();
@@ -215,6 +217,7 @@ test('benches stay in the arena when the teams switch ends: changes go through t
 
 // ---- the entrance ----
 /** Two dressed teams: the starting goalie and five, 16 more skaters, the backup goalie; the visitors' captain is not in the starting five. */
+const RINK_HW = 15;
 const dressed = (): IntroSkater[] => {
   const out: IntroSkater[] = [];
   for (const side of [0, 1] as const) {
@@ -227,44 +230,81 @@ const dressed = (): IntroSkater[] => {
   }
   return out;
 };
-test('the entrance: the whole team out (visitors first), warm-up laps at an easy pace, the reserves to the bench, the starters and the captain in line', () => {
-  const s = dressed(), plan = planIntro(s), T = plan.t;
+test('the entrance: officials out of their corridor, each team out of its tunnel (visitors first) with its coaches behind, the anthem, goalies and officials to their places, the captains\' handshake, the close-ups', () => {
+  const s = dressed(), plan = planIntro(s), T = plan.t, [H, A] = plan.teams;
   const at = (t: number) => introPoses(plan, t);
   const out = (t: number, side: 0 | 1) => s.filter(x => x.side === side && at(t).get(x.id)!.visible).length;
+  const places = [{ x: 10, z: -12 }, { x: -10, z: 12 }, { x: 8, z: 13 }, { x: -8, z: -13 }];
+  // the order of the show
+  assert.ok(T.officials < T.away && T.away < T.home && T.home < T.anthem && T.anthem < T.posts && T.posts < T.hands && T.hands < T.present && T.present < T.settle, JSON.stringify(T));
+  assert.deepEqual([T.officials + .5, T.away + 1, T.anthem + 1, T.posts + 1, T.hands + 1, T.present + 1, T.settle + 1].map(t => introChapter(plan, t)),
+    ['Выход судей', 'Выход команд', 'Гимн', 'Судьи и вратари на местах', 'Приветствие капитанов', 'Стартовые составы', 'На вбрасывание']);
+  // the officials walk out of their own corridor (across the ice from the benches) before the teams
+  const o0 = introOfficials(plan, T.officials + .1, places);
+  assert.ok(o0[0].visible && o0[0].z > RINK_HW && Math.abs(o0[0].x - OFFICIALS_DOOR_X) < .3, 'the referee out of the officials\' corridor');
   assert.equal(out(T.away - .1, 1), 0); assert.equal(out(T.away - .1, 0), 0);
+  // the visitors walk out of their tunnel (nobody appears out of thin air), the home team after them
+  const firstA = s.filter(x => x.side === 1).map(x => plan.route.get(x.id)!.walk).sort((p, q) => p - q)[0];
+  const p0 = at(firstA + .05).get(lineup(s, 1)[0].id)!;
+  assert.ok(p0.visible && Math.abs(p0.z - TUNNEL.z) < .5, `out of the tunnel (${p0.z.toFixed(1)})`);
   assert.ok(out(T.away + 1, 1) >= 2 && out(T.away + 1, 0) === 0, 'the visitors come out first');
-  assert.equal(out(T.home - .1, 0), 0, 'the home team after them');
+  assert.equal(out(H.walk - .1, 0), 0, 'the home team after them');
+  assert.ok(H.walk > A.out, 'the home team starts walking once the visitors are on the ice');
   // everybody dressed comes out, one after another (the starting goalie first, the backup last)
   assert.equal(lineup(s, 1)[0].id, '1-0'); assert.equal(lineup(s, 1).at(-1)!.id, '1-22');
-  const away = s.filter(x => x.side === 1);
-  for (const x of away) { const r = plan.route.get(x.id)!; assert.ok(at(r.out + .3).get(x.id)!.visible, `${x.id} skates out`); }
+  for (const x of s.filter(x => x.side === 1)) { const r = plan.route.get(x.id)!; assert.ok(at(r.out + .3).get(x.id)!.visible, `${x.id} skates out`); }
   const first = at(plan.route.get('1-0')!.out + .05).get('1-0')!, gate = gateOf(1);
   assert.ok(Math.hypot(first.x - gate.x, first.z - gate.z) < 1, 'out of the gate');
-  // an easy pace: never a sprint, and long strides (the scene paces the legs by the distance)
+  // the coaches: out of the tunnel after their last player, then behind the bench
+  for (const team of [A, H]) {
+    const lastWalk = Math.max(...team.order.map(x => plan.route.get(x.id)!.walk));
+    const before = introCoaches(plan, lastWalk + .5).filter(c => c.side === team.side);
+    assert.ok(before.every(c => !c.visible), 'the coaches after the players');
+    const walking = introCoaches(plan, lastWalk + 2.4).filter(c => c.side === team.side)[0];
+    assert.ok(walking.visible && Math.abs(walking.z - TUNNEL.z) < 1.2, `the head coach walks out of the tunnel (${walking.z.toFixed(1)})`);
+    for (const c of introCoaches(plan, T.anthem).filter(c => c.side === team.side)) assert.ok(c.visible && c.speed === 0 && Math.abs(c.z - COACH_Z) < .05 && Math.abs(c.x - BENCH.x[team.side]) < 3, 'the coaches behind the bench for the anthem');
+  }
+  // an easy pace: never a sprint (the walk out of the tunnel at a walk)
   let top = 0;
   for (const x of s) { let prev = at(0).get(x.id)!; for (let t = 1 / 30; t < T.length; t += 1 / 30) { const p = at(t).get(x.id)!; if (prev.visible && p.visible && !p.sit && !prev.sit && p.y < .02 && prev.y < .02) { const v = Math.hypot(p.x - prev.x, p.z - prev.z) * 30; top = Math.max(top, v); assert.ok(v < 8.5, `${x.id} at ${t.toFixed(2)}: ${v.toFixed(1)} m/s`); } prev = p; } }
-  assert.ok(INTRO_PACE.lap < 6 && top > 3, `pace ${top.toFixed(1)}`);
-  // before the presentation: the reserves on their seats, the starters (and the captain who does not start) in line on the blue lines
-  const lined = at(T.present + .1);
+  assert.ok(INTRO_PACE.lap < 6 && INTRO_PACE.walk < 3 && top > 3, `pace ${top.toFixed(1)}`);
+  // the anthem: the starting goalie and five and the captain in line on the blue lines, the reserves on the bench,
+  // the officials on the red line
+  const anthem = at(T.anthem + 1);
   for (const x of s) {
-    const p = lined.get(x.id)!;
+    const p = anthem.get(x.id)!;
     if (x.start || x.captain) { assert.ok(p.visible && !p.sit && Math.abs(Math.abs(p.x) - (BLUE + .9)) < .3 && p.speed === 0, `${x.id} in line: ${p.x.toFixed(1)}`); assert.equal(Math.sign(p.x), x.side ? 1 : -1); }
     else { assert.ok(p.sit, `${x.id} on the bench`); assert.ok(Math.hypot(p.x - x.seat!.x, p.z - x.seat!.z) < .05); }
   }
   const inLine = s.filter(x => x.start || x.captain);
-  for (const a of inLine) for (const b of inLine) if (a !== b) { const p = lined.get(a.id)!, q = lined.get(b.id)!; assert.ok(Math.hypot(p.x - q.x, p.z - q.z) > 1.2); }
+  for (const a of inLine) for (const b of inLine) if (a !== b) { const p = anthem.get(a.id)!, q = anthem.get(b.id)!; assert.ok(Math.hypot(p.x - q.x, p.z - q.z) > 1.2); }
+  for (const o of introOfficials(plan, T.anthem + 1, places)) assert.ok(o.visible && Math.abs(o.x) < .3 && o.speed < .05, 'the officials on the red line for the anthem');
+  // after the anthem: the starting goalies to their nets (the five stay in line), the officials to their zone by the
+  // timekeepers — the referees in the middle, a linesman on either side
+  const posted = at(T.hands);
+  for (const x of inLine) {
+    const p = posted.get(x.id)!;
+    if (x.goalie) assert.ok(Math.hypot(p.x - x.x, p.z - x.z) < .05, `${x.id} at his net`);
+    else if (!x.captain) assert.ok(Math.abs(Math.abs(p.x) - (BLUE + .9)) < .3, `${x.id} still in line`);
+  }
+  const zone = introOfficials(plan, T.hands, places);
+  zone.forEach((o, i) => assert.ok(Math.hypot(o.x - OFFICIALS_ZONE[i].x, o.z - OFFICIALS_ZONE[i].z) < .05, `official ${i} in the zone`));
+  assert.ok(Math.abs(OFFICIALS_ZONE[0].x) < Math.abs(OFFICIALS_ZONE[2].x) && Math.abs(OFFICIALS_ZONE[1].x) < Math.abs(OFFICIALS_ZONE[3].x) && Math.sign(OFFICIALS_ZONE[2].x) !== Math.sign(OFFICIALS_ZONE[3].x), 'the referees between the linesmen');
+  assert.ok(OFFICIALS_ZONE.every(z => z.z > RINK_HW - 1.5), 'by the boards on the timekeepers\' side');
+  // only then the captains: they meet at centre ice and shake hands (the officials stay in their zone)
+  let met = false, early = false;
+  for (let t = T.anthem; t < T.settle; t += .1) {
+    const p = at(t), ch = p.get('0-3')!, ca = p.get('1-9')!;
+    const shaking = Math.hypot(ch.x - ca.x, ch.z - ca.z) < 1.2 && ch.shake > .6 && ca.shake > .6;
+    if (shaking && t >= T.hands) met = true;
+    if ((ch.shake > 0 || ca.shake > 0) && t < T.hands) early = true;
+    if (t >= T.hands) introOfficials(plan, t, places).forEach((o, i) => assert.ok(Math.hypot(o.x - OFFICIALS_ZONE[i].x, o.z - OFFICIALS_ZONE[i].z) < .05 && o.gesture === 'none'));
+  }
+  assert.ok(met && !early, 'the captains shake hands after the goalies and the officials are in place');
   // the close-ups: the visitors' goalie, captain and leader, then the home team's
   assert.deepEqual(plan.shots.map(x => `${x.side}:${x.kind}`), ['1:goalie', '1:captain', '1:leader', '0:goalie', '0:captain', '0:leader']);
   assert.equal(plan.shots[1].id, '1-9'); assert.equal(plan.shots[4].id, '0-3');
-  // the captains shake hands with both referees and with each other
-  const places = [{ x: 10, z: -12 }, { x: -10, z: 12 }, { x: 8, z: 13 }, { x: -8, z: -13 }];
-  const met = new Set<string>();
-  for (let t = T.hands; t < T.settle; t += .1) {
-    const p = at(t), refs = introOfficials(plan, t, places), ch = p.get('0-3')!, ca = p.get('1-9')!;
-    for (const [c, n] of [[ch, 'h'], [ca, 'a']] as const) refs.slice(0, 2).forEach((r, i) => { if (Math.hypot(c.x - r.x, c.z - r.z) < 1.1 && c.shake > .6 && r.gesture === 'shake') met.add(`${n}${i}`); });
-    if (Math.hypot(ch.x - ca.x, ch.z - ca.z) < 1.2 && ch.shake > .6 && ca.shake > .6) met.add('caps');
-  }
-  assert.deepEqual([...met].sort(), ['a0', 'a1', 'caps', 'h0', 'h1'], [...met].join(' '));
+  assert.ok(plan.shots[0].t0 >= T.present && plan.shots.at(-1)!.t1 <= T.settle);
   // at the end: the starters exactly at the faceoff places, the visitors' captain on the bench, the officials at their places
   const end = at(T.length);
   for (const x of s) {
@@ -273,14 +313,18 @@ test('the entrance: the whole team out (visitors first), warm-up laps at an easy
     else assert.ok(p.sit, `${x.id} seated at the end`);
   }
   introOfficials(plan, T.length, places).forEach((p, i) => assert.ok(Math.hypot(p.x - places[i].x, p.z - places[i].z) < .05));
-  // a smooth skate: no jumps between 30 fps frames (stepping over the boards included)
+  // a smooth walk and skate: no jumps between 30 fps frames (players, officials, coaches)
   for (const x of s) { let prev = at(0).get(x.id)!; for (let t = 1 / 30; t < T.length; t += 1 / 30) { const p = at(t).get(x.id)!; if (prev.visible && p.visible) assert.ok(Math.hypot(p.x - prev.x, p.z - prev.z) < .4, `${x.id} at ${t.toFixed(2)}`); prev = p; } }
+  { let prev = introOfficials(plan, 0, places); for (let t = 1 / 30; t < T.length; t += 1 / 30) { const o = introOfficials(plan, t, places); o.forEach((q, i) => { if (q.visible && prev[i].visible) assert.ok(Math.hypot(q.x - prev[i].x, q.z - prev[i].z) < .4, `official ${i} at ${t.toFixed(2)}`); }); prev = o; } }
+  { let prev = introCoaches(plan, 0); for (let t = 1 / 30; t < T.length; t += 1 / 30) { const c = introCoaches(plan, t); c.forEach((q, i) => { if (q.visible && prev[i].visible) assert.ok(Math.hypot(q.x - prev[i].x, q.z - prev[i].z) < .2, `coach ${i} at ${t.toFixed(2)}`); }); prev = c; } }
   // the show: dark through the entrance, the lights back for the faceoff; whose colours
   assert.ok(introShow(plan, T.home + 1).level > .95 && introShow(plan, T.length).level < .01);
-  assert.equal(introShow(plan, T.away + 1).team, 1); assert.equal(introShow(plan, T.home + 1).team, 0);
-  // the camera: inside the arena; close to the man in his close-up
+  assert.equal(introShow(plan, T.away + 4).team, 1); assert.equal(introShow(plan, T.home + 1).team, 0);
+  // the camera: inside the arena; close to the man in his close-up; at the end high over the centre circle coming down
   for (let t = 0; t < T.length; t += .25) { const c = introCamera(plan, t); assert.ok(c.pos.y > 1 && Math.abs(c.pos.x) < 40 && Math.abs(c.pos.z) < 32, `camera at ${t}`); }
   for (const shot of plan.shots) { const t = (shot.t0 + shot.t1) / 2, c = introCamera(plan, t), p = at(t).get(shot.id)!; assert.ok(Math.hypot(c.pos.x - p.x, c.pos.z - p.z) < 4.5 && c.fov < 34, shot.kind); }
+  const hi = introCamera(plan, T.settle + .05), lo = introCamera(plan, T.length);
+  assert.ok(hi.pos.y > 12 && Math.hypot(hi.look.x, hi.look.z) < 1 && lo.pos.y < 5, `the faceoff camera comes down (${hi.pos.y.toFixed(1)} → ${lo.pos.y.toFixed(1)})`);
   assert.ok(T.length > 45, `a proper show (${T.length.toFixed(0)} s), skippable`);
 });
 
