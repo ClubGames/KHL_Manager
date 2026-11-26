@@ -1,7 +1,7 @@
 import * as T from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Team } from '../types';
-import { FACEOFF_SPOTS, RINK } from '../game/rinkGeometry';
+import { FACEOFF_SPOTS, RINK, glassTop as glassTopAt, inBenchFront } from '../game/rinkGeometry';
 import { getClubLogoSources } from '../game/clubColors';
 import { LG } from '../brand';
 import { buildBenches, type BenchKit } from './arenaBenches';
@@ -381,18 +381,28 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
   ], 12, 20), mat(new T.MeshStandardMaterial({ map: boardTex, roughness: .5, side: T.DoubleSide })));
   boards.castShadow = false;
   // Glass: 1.8 m along the sides, rising through the corners to 2.4 m behind the nets (as in KHL arenas).
-  const glassTop = (x: number) => 1.07 + 1.8 + .6 * T.MathUtils.smoothstep(Math.abs(x), HALF_L - CORNER - 1, HALF_L - CORNER * .35);
+  // (none in front of the players' benches: they step over the boards there — rinkGeometry.glassTop)
+  const glassTop = (x: number, z: number) => glassTopAt(x, z);
   bowl(mesh(sweep([[{ o: .1, y: 1.07, v: 0 }, { o: .1, y: glassTop, v: 1 }]], 10, 20), mat(new T.MeshStandardMaterial({ color: '#cfe8f4', transparent: true, opacity: .12, roughness: .05, metalness: .1, depthWrite: false, side: T.DoubleSide })), false));
   // Thin aluminium top rail along the glass edge.
   bowl(mesh(sweep([[{ o: .07, y: glassTop, v: 0 }, { o: .13, y: glassTop, v: 1 }]], 10, 20), mat(new T.MeshStandardMaterial({ color: '#c3ced6', metalness: .5, roughness: .35, side: T.DoubleSide })), false));
   // Glass stanchions: one instanced mesh, each as tall as the glass where it stands.
   const ring = outline(.1, 20), posts: { x: number; z: number; top: number }[] = [];
-  for (let i = 1, acc = 0; i < ring.length; i++) { acc += ring[i].u - ring[i - 1].u; if (acc > 2.4) { acc = 0; posts.push({ x: ring[i].x, z: ring[i].z, top: glassTop(ring[i].x) }); } }
+  for (let i = 1, acc = 0; i < ring.length; i++) { acc += ring[i].u - ring[i - 1].u; if (acc > 2.4) { acc = 0; if (!inBenchFront(ring[i].x, ring[i].z)) posts.push({ x: ring[i].x, z: ring[i].z, top: glassTop(ring[i].x, ring[i].z) }); } }
   const postGeo = new T.BoxGeometry(.05, 1, .05); own.geometries.push(postGeo);
   const stanchions = new T.InstancedMesh(postGeo, mat(new T.MeshStandardMaterial({ color: '#b7c4cc', metalness: .4, roughness: .4 })), posts.length);
   const m4 = new T.Matrix4();
   posts.forEach((p, i) => { const hgt = p.top - 1.07; stanchions.setMatrixAt(i, m4.makeScale(1, hgt, 1).setPosition(p.x, 1.07 + hgt / 2, p.z)); });
   group.add(stanchions);
+  // Protective netting above the end glass (a puck that flies into it is out of play): a fine dark mesh, 5 m up.
+  {
+    const net = canvas(64, 64);
+    if (net.ctx) { net.ctx.strokeStyle = 'rgba(20,24,30,.55)'; net.ctx.lineWidth = 2; for (let i = 0; i <= 64; i += 8) { net.ctx.beginPath(); net.ctx.moveTo(i, 0); net.ctx.lineTo(i, 64); net.ctx.moveTo(0, i); net.ctx.lineTo(64, i); net.ctx.stroke(); } }
+    const nt = tex(net.c, true); nt.wrapT = T.RepeatWrapping; nt.repeat.set(160, 22);
+    // full height behind the nets, fading out round the corners (zero height along the sides)
+    const top = (x: number, z: number) => glassTop(x, z) + 4.9 * T.MathUtils.smoothstep(Math.abs(x), HALF_L - CORNER * 1.2, HALF_L - CORNER * .5);
+    bowl(mesh(sweep([[{ o: .1, y: glassTop, v: 0 }, { o: .1, y: top, v: 1 }]], 10, 20), mat(new T.MeshBasicMaterial({ map: nt, transparent: true, opacity: .5, depthWrite: false, side: T.DoubleSide, alphaTest: .02 })), false));
+  }
   // Stands: two crowd tiers (seats in the club colour, stair aisles) above a dark wall with an LED ribbon,
   // a ring of lit VIP boxes between the tiers, a dark upper wall and the roof.
   const crowdCanvas = canvas(1024 * K, 256 * K);

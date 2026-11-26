@@ -6,7 +6,7 @@ import type { PadState } from '../game/playRink';
  * Keys are read by their physical code (KeyW, not «w»), so the controls do not depend on the keyboard layout —
  * a Russian layout works the same.
  */
-export type Action = 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff';
+export type Action = 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff' | 'mod' | 'lift' | 'pin' | 'push' | 'vision' | 'hustle';
 export type Command = 'pause' | 'pull' | 'change' | 'replay' | 'changeF' | 'changeD' | 'forecheck' | 'breakout';
 
 export const KEYS: Record<Action, string[]> = {
@@ -16,6 +16,15 @@ export const KEYS: Record<Action, string[]> = {
   swap: ['KeyC', 'Tab'],
   sprint: ['ShiftLeft', 'ShiftRight'],
   faceoff: ['KeyF'],
+  // the gamepad's NHL buttons on the keyboard: the modifier (LB: block on defence; with the puck a saucer pass with
+  // the pass key, special dekes with the deke key), a stick lift (A), a board pin (Y), a push check (the right stick
+  // up), vision control (LT), hustle (L3) — right hand round J K L, left hand next to W A S D
+  mod: ['KeyU', 'KeyZ'],
+  lift: ['KeyI', 'KeyX'],
+  pin: ['KeyO', 'KeyY'],
+  push: ['KeyH', 'Digit1'],
+  vision: ['KeyM', 'Digit3'],
+  hustle: ['KeyN', 'Digit2'],
 };
 export const COMMAND_KEYS: Record<Command, string[]> = {
   pause: ['Escape', 'KeyP'],
@@ -45,11 +54,13 @@ export const CAPTURED = new Set([...Object.keys(MOVE), ...Object.values(KEYS).fl
  * draw. Back pulls the goalie, Start pauses.
  */
 export const PAD = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, L3: 10, R3: 11, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 } as const;
-export const PAD_BUTTONS: Record<Action, number[]> = { shoot: [PAD.B], pass: [PAD.RT], deke: [], swap: [], sprint: [], faceoff: [PAD.RB, PAD.R3] };
+export const PAD_BUTTONS: Record<Action, number[]> = { shoot: [PAD.B], pass: [PAD.RT], deke: [], swap: [], sprint: [], faceoff: [PAD.RB, PAD.R3], mod: [PAD.LB], lift: [PAD.A], pin: [PAD.Y], push: [], vision: [PAD.LT], hustle: [PAD.L3] };
 export const PAD_COMMANDS: Partial<Record<Command, number[]>> = { pause: [PAD.START], pull: [PAD.BACK], changeF: [PAD.RIGHT], changeD: [PAD.LEFT], forecheck: [PAD.UP], breakout: [PAD.DOWN] };
 
-export interface TouchState { mx: number; my: number; sx: number; sy: number; shoot: boolean; pass: boolean; deke: boolean; swap: boolean; sprint: boolean; faceoff: boolean }
-export const emptyTouch = (): TouchState => ({ mx: 0, my: 0, sx: 0, sy: 0, shoot: false, pass: false, deke: false, swap: false, sprint: false, faceoff: false });
+/** The touch screen: the sticks, the main buttons, and the extra ones (lb — the modifier, lift, pin, push, vision, hustle). */
+export interface TouchState { mx: number; my: number; sx: number; sy: number; shoot: boolean; pass: boolean; deke: boolean; swap: boolean; sprint: boolean; faceoff: boolean;
+  lb: boolean; lift: boolean; pin: boolean; push: boolean; vision: boolean; hustle: boolean }
+export const emptyTouch = (): TouchState => ({ mx: 0, my: 0, sx: 0, sy: 0, shoot: false, pass: false, deke: false, swap: false, sprint: false, faceoff: false, lb: false, lift: false, pin: false, push: false, vision: false, hustle: false });
 
 export function keyboardPad(down: ReadonlySet<string>): PadState {
   let mx = 0, my = 0;
@@ -57,7 +68,8 @@ export function keyboardPad(down: ReadonlySet<string>): PadState {
   const m = Math.hypot(mx, my);
   if (m > 1) { mx /= m; my /= m; }
   const on = (a: Action) => KEYS[a].some(k => down.has(k));
-  return { mx, my, shoot: on('shoot'), pass: on('pass'), deke: on('deke'), swap: on('swap'), sprint: on('sprint'), faceoff: on('faceoff') };
+  return { mx, my, shoot: on('shoot'), pass: on('pass'), deke: on('deke'), swap: on('swap'), sprint: on('sprint'), faceoff: on('faceoff'),
+    lb: on('mod'), lift: on('lift'), pin: on('pin'), push: on('push'), vision: on('vision'), hustle: on('hustle') };
 }
 
 type PadLike = { axes: readonly number[]; buttons: readonly { pressed: boolean; value: number }[] };
@@ -78,7 +90,7 @@ export function gamepadPad(pads: readonly (PadLike | null)[] | null | undefined)
       mx, my, sx, sy, shoot: on('shoot'), pass: on('pass'), deke: false, swap: false, sprint: false,
       // a draw is also won with the right stick, as in NHL
       faceoff: on('faceoff') || Math.hypot(sx, sy) > 0.6,
-      nhl: true, poke: btn(PAD.RB), lift: btn(PAD.A), pin: btn(PAD.Y), lb: btn(PAD.LB), vision: btn(PAD.LT), hustle: btn(PAD.L3),
+      nhl: true, poke: btn(PAD.RB), lift: on('lift'), pin: on('pin'), lb: on('mod'), vision: on('vision'), hustle: on('hustle'),
     },
     commands, connected: true,
   };
@@ -100,8 +112,9 @@ export function mergePads(...pads: PadState[]): PadState {
   if (sm > 1) { sx /= sm; sy /= sm; }
   const any = (k: keyof PadState) => pads.some(p => !!p[k]);
   const out: PadState = { mx, my, sx, sy, shoot: any('shoot'), pass: any('pass'), deke: any('deke'), swap: any('swap'), sprint: any('sprint'), faceoff: any('faceoff') };
-  // the gamepad's NHL buttons (only a gamepad sets them)
-  if (any('nhl')) Object.assign(out, { nhl: true, poke: any('poke'), lift: any('lift'), pin: any('pin'), lb: any('lb'), vision: any('vision'), hustle: any('hustle') });
+  // the extra buttons (every device has them now); the NHL scheme itself only when a gamepad is in use
+  Object.assign(out, { poke: any('poke'), lift: any('lift'), pin: any('pin'), lb: any('lb'), vision: any('vision'), hustle: any('hustle'), push: any('push') });
+  if (any('nhl')) out.nhl = true;
   return out;
 }
 
