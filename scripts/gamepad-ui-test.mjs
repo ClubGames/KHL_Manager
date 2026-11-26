@@ -15,6 +15,7 @@ const errors = [];
 try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
   page.on('pageerror', e => errors.push(e.message));
+  page.on('console', m => { if (/gamepad navigation stopped/.test(m.text())) errors.push(m.text()); });
   await page.addInitScript(s => {
     localStorage.setItem('khl.settings', JSON.stringify(s));
     const pad = { id: 'Test pad', index: 0, connected: true, axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) };

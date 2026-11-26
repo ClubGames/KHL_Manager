@@ -187,6 +187,6 @@ export function initPlatform() {
       const overlay = document.querySelector('div.fixed.inset-0, [role="dialog"]');
       if (overlay) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
       else void App.minimizeApp();
-    }));
+    })).catch((e) => console.warn('back button handler:', e));
   }
 }

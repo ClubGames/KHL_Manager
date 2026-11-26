@@ -133,7 +133,7 @@ export function ReplayScene(props: Props) {
       const { sun, lamp } = addStageLights(scene, preset.shadow, preset.radius);
       const taken = takeArena(home, away, preset.detail, Math.min(preset.detail === 'hi' ? 16 : 8, renderer.capabilities.getMaxAnisotropy()));
       const arena = taken.arena;
-      scene.add(arena.group);
+      scene.add(arena.group); arena.benchCrowd.visible = true;
       releaseArena = () => { arena.iceReflection.texture.value = null; arena.iceReflection.strength.value = 0; taken.release(); };
       arena.iceReflection.texture.value = null; arena.iceReflection.strength.value = 0;
       // Planar ice reflection (high/ultra): the players, goals and boards mirrored in the ice, rendered at a
@@ -379,6 +379,7 @@ export function ReplayScene(props: Props) {
         sun.position.set(pose.look.x + 8, 25, pose.look.z + 12); sun.target.position.set(pose.look.x, 0, pose.look.z); sun.target.updateMatrixWorld();
         camera.updateMatrixWorld();
         renderReflection();
+        arena.view(camera);
         renderer.render(scene, camera);
       };
       const resize = () => {

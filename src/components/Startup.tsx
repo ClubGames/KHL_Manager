@@ -409,10 +409,31 @@ function TeamSelect({ roster, onStart }: { roster: NormalizedRoster; onStart: (t
   );
 }
 
+/** One-time flag set by the boot watchdog's «Безопасный запуск» (index.html). */
+function takeSafeStart(): boolean {
+  try {
+    if (localStorage.getItem('khl.safe') !== '1') return false;
+    localStorage.removeItem('khl.safe');
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** This launch is a safe start: the start screen opens no league by itself (read once per page load). */
+const SAFE_START = takeSafeStart();
+
+function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error(msg)), ms);
+    p.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+  });
+}
+
 export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: string) => void }) {
   const ui = useUI();
   const [saveCount, setSaveCount] = useState<number | null>(null);
-  const [stage, setStage] = useState<'loading' | 'error' | 'empty' | 'select' | 'format'>('loading');
+  const [stage, setStage] = useState<'loading' | 'error' | 'empty' | 'select' | 'format' | 'pick'>('loading');
   const [roster, setRoster] = useState<NormalizedRoster | null>(null);
   const [err, setErr] = useState('');
   const [fileErr, setFileErr] = useState('');
@@ -430,7 +451,7 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
     setErr('');
     setFileErr('');
     setContractMsg('');
-    loadMod(m)
+    withTimeout(loadMod(m), 30000, `лига «${m.name}» не загрузилась за 30 секунд`)
       .then((r) => {
         if (seq !== loadSeq.current) return;
         rememberMod(m.id);
@@ -461,6 +482,8 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
     listMods()
       .then((list) => {
         setMods(list);
+        // «Безопасный запуск» from the boot screen: no league is opened by itself this time, the player picks one
+        if (SAFE_START) { setModId(null); setRoster(null); setStage(list.length ? 'pick' : 'empty'); return; }
         const want = modId || lastModId();
         const m = list.find((x) => x.id === want) ?? list.find((x) => x.id === DEFAULT_MOD_ID) ?? list[0];
         if (m) openMod(m);
@@ -547,6 +570,12 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
             {mods && <ModPicker mods={mods} current={modId ?? '\u0000'} busy={stage === 'loading'} onPick={openMod} onFile={() => fileRef.current?.click()} onReload={load} onInstalled={afterInstall} />}
             <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={(e) => { if (e.target.files?.[0]) void onFile(e.target.files[0]); e.target.value = ''; }} />
           </>
+        )}
+
+        {stage === 'pick' && (
+          <Panel className="border-ice/40">
+            <div className="text-sm text-text/90 py-2" data-safe-start>Безопасный запуск: лига не открыта автоматически. Выберите мод выше — или продолжите сохранённую карьеру.</div>
+          </Panel>
         )}
 
         {stage === 'loading' && (

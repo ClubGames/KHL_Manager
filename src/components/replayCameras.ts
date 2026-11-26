@@ -82,13 +82,14 @@ export function cameraPose(clip: ReplayClip, time: number, view: ReplayView, zoo
     case 'broadcast': {
       // Zooms in as the shot comes: wide for the build-up, tight on the release and the goal.
       const tight = smooth01((time - (clip.release - s(1.2))) / s(.9)) * (1 - smooth01((time - (clip.goal + s(1.2))) / s(.8)));
-      const d = (17 - 5.5 * tight) * wide * z;
-      return { pos: { x: focus.x, y: d * .56, z: focus.z + d * .83 }, look: { x: focus.x, y: .4, z: focus.z }, fov: 40 };
+      // (it stays inside the building: past 27 m back a portrait screen or a wide zoom-out widens the lens instead)
+      const raw = (17 - 5.5 * tight) * wide * z, d = Math.min(raw, 27);
+      return { pos: { x: focus.x, y: d * .56, z: focus.z + d * .83 }, look: { x: focus.x, y: .4, z: focus.z }, fov: clamp(40 * raw / d, 40, 76) };
     }
     case 'ice': {
-      // Low rink-side camera behind the glass that pans with the play.
+      // Low rink-side camera at the near boards that pans with the play (inside the glass, over the boards).
       const x = clamp(focus.x * .85, -24, 24);
-      return { pos: { x, y: 2.3, z: RINK.width / 2 + 2.6 }, look: { x: focus.x, y: .7, z: focus.z }, fov: clamp(42 * z * Math.min(1.3, wide), 16, 75) };
+      return { pos: { x, y: 2.5, z: RINK.width / 2 - .35 }, look: { x: focus.x, y: .6, z: focus.z - 1.2 }, fov: clamp(44 * z * Math.min(1.3, wide), 16, 78) };
     }
     case 'sky': {
       const h = 24 * wide * z;
@@ -96,8 +97,9 @@ export function cameraPose(clip: ReplayClip, time: number, view: ReplayView, zoo
     }
     case 'net': {
       // Low in the corner next to the attacked net, looking across the crease.
-      const look = { x: dir * 21.5, y: .6, z: focus.z * .45 }, base = { x: dir * 28.6, y: 2.1, z: 8.2 };
-      return { pos: { x: look.x + (base.x - look.x) * z, y: look.y + (base.y - look.y) * Math.sqrt(z), z: look.z + (base.z - look.z) * z }, look, fov: 46 };
+      // (it stays inside the corner boards: a wider zoom-out widens the lens)
+      const look = { x: dir * 21.5, y: .6, z: focus.z * .45 }, base = { x: dir * 27.4, y: 2.1, z: 7.4 }, k = Math.min(z, 1.05);
+      return { pos: { x: look.x + (base.x - look.x) * k, y: look.y + (base.y - look.y) * Math.sqrt(k), z: look.z + (base.z - look.z) * k }, look, fov: clamp(46 * z / k, 30, 78) };
     }
     case 'goal': {
       // Inside the net, behind the goalie, looking out at the shooter (the netting in the foreground).
@@ -106,8 +108,9 @@ export function cameraPose(clip: ReplayClip, time: number, view: ReplayView, zoo
     }
     case 'end': {
       // High behind the attacked net, looking down the ice.
-      const look = { x: dir * 14, y: 0, z: focus.z * .6 }, base = { x: dir * 37, y: 10.5, z: 0 };
-      return { pos: { x: look.x + (base.x - look.x) * z, y: base.y * Math.sqrt(z), z: look.z + (base.z - look.z) * z }, look, fov: 42 };
+      // (it stays in front of the end stands: a wider zoom-out widens the lens)
+      const look = { x: dir * 14, y: 0, z: focus.z * .6 }, base = { x: dir * 35, y: 12, z: 0 }, k = Math.min(z, 1.1);
+      return { pos: { x: look.x + (base.x - look.x) * k, y: base.y * Math.sqrt(k), z: look.z + (base.z - look.z) * k }, look, fov: clamp(42 * z / k, 30, 76) };
     }
     case 'chase': {
       // Behind the scorer, on the line from the net through him: shooter and goal in one frame.
@@ -130,14 +133,14 @@ export function cameraPose(clip: ReplayClip, time: number, view: ReplayView, zoo
       return { pos: { x: dir * 19.5, y: 21, z: 2.6 }, look: { x: dir * 19.5, y: 0, z: 0 }, fov: clamp(52 * z * Math.min(1.25, wide), 18, 80) };
     }
     case 'blue': {
-      // On the far boards at the blue line, glass height, looking in at the net.
-      return { pos: { x: dir * 7.2, y: 3.1, z: -(RINK.width / 2 + 1.8) }, look: { x: dir * 24, y: .6, z: 1.5 }, fov: clamp(38 * z * Math.min(1.3, wide), 14, 75) };
+      // On the far boards at the blue line, glass height (inside the glass, in front of the benches), looking in at the net.
+      return { pos: { x: dir * 7.2, y: 2.7, z: -(RINK.width / 2 - .35) }, look: { x: dir * 24, y: .6, z: 1.5 }, fov: clamp(38 * z * Math.min(1.3, wide), 14, 75) };
     }
     /* moving cameras */
     case 'rail': {
-      // A rail camera in the dasher boards at ice level: it slides with the puck and looks straight across.
+      // A rail camera on the dasher boards at ice level: it slides with the puck and looks straight across.
       const p = puckSmooth(clip, time);
-      return { pos: { x: clamp(p.x, -27, 27), y: .85, z: RINK.width / 2 + .45 }, look: { x: clamp(p.x, -27, 27), y: .45, z: p.z * .5 - 2 }, fov: clamp(56 * z * Math.min(1.3, wide), 20, 80) };
+      return { pos: { x: clamp(p.x, -22, 22), y: .8, z: RINK.width / 2 - .25 }, look: { x: clamp(p.x, -27, 27), y: .45, z: p.z * .5 - 2 }, fov: clamp(56 * z * Math.min(1.3, wide), 20, 80) };
     }
     case 'puck': {
       // Right behind the puck along its path, low: the pass, the shot and the net ahead.
@@ -193,13 +196,14 @@ export function liveCameraPose(mode: LiveCamera, focus: { x: number; z: number }
       return { pos: { x: fx * .7, y: h, z: fz + h * .42 }, look: { x: fx * .7, y: 0, z: fz * .5 }, fov: clamp(42 * Math.max(1, k / 1.5), 30, 75) };
     }
     case 'ice': {
-      // Low behind the glass, panning with the play.
-      return { pos: { x: clamp(fx * .85, -24, 24), y: 2.4, z: RINK.width / 2 + 2.8 }, look: { x: fx, y: .7, z: fz }, fov: clamp(46 * z * Math.min(1.3, wide), 18, 78) };
+      // Low at the near boards, just above the glass line, panning with the play (inside the glass: the boards and
+      // the penalty boxes behind it never cut into the picture).
+      return { pos: { x: clamp(fx * .85, -24, 24), y: 2.6, z: RINK.width / 2 - .35 }, look: { x: fx, y: .6, z: fz - 1.5 }, fov: clamp(48 * z * Math.min(1.3, wide), 18, 80) };
     }
     case 'end': {
       // High behind the net of the zone the puck is in, looking down the ice.
       const dir = focus.x >= 0 ? 1 : -1;
-      const look = { x: dir * 12 + (fx - dir * 12) * .35, y: 0, z: fz * .6 }, base = { x: dir * 37, y: 11, z: 0 };
+      const look = { x: dir * 12 + (fx - dir * 12) * .35, y: 0, z: fz * .6 }, base = { x: dir * 35, y: 12.5, z: 0 };
       const k = Math.min(z, 1.15);
       return { pos: { x: look.x + (base.x - look.x) * k, y: base.y * Math.sqrt(k), z: look.z + (base.z - look.z) * k }, look, fov: clamp(44 * Math.max(1, z / 1.15) * Math.min(1.3, wide), 30, 72) };
     }

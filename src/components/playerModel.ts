@@ -498,6 +498,36 @@ export class PlayerFigure {
     if (m > 0) this.arms(left, g.top, gp, bp); else this.arms(g.top, left, bp, gp);
   }
 
+  /**
+   * On the bench or in the penalty box: seated (the root stands on the bench floor), leaning on the stick held
+   * upright between the knees, head and shoulders turned toward the play. o.seat: height of the seat above the
+   * floor; o.look: turn toward the play (rad, + to his left); o.up 0..1: standing up (a goal of his team).
+   */
+  sit(o: { seat?: number; look?: number; up?: number } = {}) {
+    this.reset();
+    const seat = o.seat ?? .48, up = smooth(clamp01(o.up ?? 0)), look = Math.max(-1.1, Math.min(1.1, o.look ?? 0));
+    const hip = this.restRig.get('UpperLegL')?.pos.y ?? .9;
+    this.rig.position.set(0, lerp(seat + .1 - hip, LIFT, up), lerp(-.1, 0, up));
+    const lean = lerp(.32, .12, up);
+    this.turn('Abdomen', _t1.setFromAxisAngle(X, lean * .6));
+    this.turn('Torso', _t1.setFromAxisAngle(Y, look * .3).multiply(_t2.setFromAxisAngle(X, lean * .3)));
+    this.turn('Chest', _t1.setFromAxisAngle(Y, look * .25));
+    this.turn('Neck', _t1.setFromAxisAngle(X, -lean * .8).multiply(_t2.setFromAxisAngle(Y, look * .45)));
+    this.root.updateMatrixWorld(true);
+    const fy = .025 + LIFT * .2, fz = lerp(.36, .04, up);
+    this.legs([vec(.16, fy, fz), vec(-.16, fy, fz)], [vec(.2, lerp(.6, 0, up), 1), vec(-.2, lerp(.6, 0, up), 1)], [.12, -.12]);
+    // the stick: blade on the floor out in front, the knob up by the chin, both gloves on the shaft
+    const heel = mixV(vec(-.04, 0, 1.25), vec(-.3, 0, .62), up), top = mixV(vec(-.02, .74, .58), vec(-.2, 1.2, .3), up);
+    this.grip(heel, top, vec(.9, -.5, -.1), vec(-.9, -.6, -.1));
+  }
+
+  private shadowCasters: T.Object3D[] | null = null;
+  /** Off the ice the figure needs no shadow (the bench is outside the shadow map anyway): saves the shadow pass. */
+  castShadows(on: boolean) {
+    if (!this.shadowCasters) { this.shadowCasters = []; this.root.traverse(o => { if ((o as T.Mesh).isMesh && o.castShadow) this.shadowCasters!.push(o); }); }
+    this.shadowCasters.forEach(o => { o.castShadow = on; });
+  }
+
   dispose() {
     this.owned.geometries.forEach(g => g.dispose()); this.owned.materials.forEach(m => m.dispose()); this.owned.textures.forEach(t => t.dispose());
     this.root.removeFromParent();
