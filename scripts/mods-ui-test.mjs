@@ -16,7 +16,7 @@ const ok = (m) => console.log('ok', m);
 const shot = async (page, name, opts = {}) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png`, timeout: 15000, ...opts }).catch((e) => console.log('shot failed', name, e.message)); };
 
 const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
-await context.addInitScript(() => localStorage.setItem('khl.settings', JSON.stringify({ autoReplay: 'off', replay3d: false, replayPrewarm: false })));
+await context.addInitScript(() => localStorage.setItem('khl.settings', JSON.stringify({ autoReplay: 'off', replay3d: false, replayPrewarm: false, matchIntro: false })));
 const page = await context.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
 const fetched = [];

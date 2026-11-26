@@ -10,7 +10,7 @@ const errors = [];
 const ok = (m) => console.log('ok', m);
 try {
   const context = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
-  await context.addInitScript(() => localStorage.setItem('khl.settings', JSON.stringify({ autoReplay: 'off', replay3d: false, replayPrewarm: false })));
+  await context.addInitScript(() => localStorage.setItem('khl.settings', JSON.stringify({ autoReplay: 'off', replay3d: false, replayPrewarm: false, matchIntro: false })));
   const page = await context.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(process.env.BASE_URL ?? 'http://localhost:5173');

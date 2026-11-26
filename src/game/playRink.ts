@@ -193,6 +193,8 @@ interface Sk {
   x: number; y: number; vx: number; vy: number; fa: number;
   max: number; acc: number; shoot: number; pass: number; hands: number; check: number; def: number; bal: number; fo: number; endur: number; ovr: number; rebound: number;
   energy: number; on: 'ice' | 'bench' | 'box'; leaving: boolean; boxUntil: number;
+  /** called for a penalty: still skating to the penalty box door (off the play already, drawn on the ice) */
+  boxGo?: boolean;
   stun: number; fall: number; act: Act | null; cool: number;
   /** desired velocity direction from the stick (manual) or the AI target */
   manual: boolean; wx: number; wy: number; sprint: boolean;
@@ -284,6 +286,11 @@ export class PlayRink {
   private readonly P: Record<string, Player>;
   private clips: { e: { tau: number; scorer: string; side: Side; kind: ShotKind; release: number; strength: Strength }; clip: ReplayClip | null }[] = [];
 
+  /** The benches and the penalty boxes stay where they are in the arena when the teams switch ends: in the
+   *  simulation's own (unflipped) frame they swap sides in the periods the picture is mirrored. */
+  private sides?: { bench: [V2, V2]; box: [V2, V2] };
+  private get bench(): [V2, V2] { return (this.sides ??= this.opts.flip ? { bench: [BENCH[1], BENCH[0]], box: [BOX[1], BOX[0]] } : { bench: BENCH, box: BOX }).bench; }
+  private get box(): [V2, V2] { return (this.sides ??= this.opts.flip ? { bench: [BENCH[1], BENCH[0]], box: [BOX[1], BOX[0]] } : { bench: BENCH, box: BOX }).box; }
   constructor(opts: PlayRinkOptions) {
     this.opts = opts;
     this.P = opts.players;
@@ -484,14 +491,14 @@ export class PlayRink {
     const kindD = !goalie && (Lu.D.some(x => x.includes(id)) || Lu.u20D === id || (!Lu.F.some(x => x.includes(id)) && p?.position === 'D'));
     a = {
       id, side, goalie, name: p?.name ?? id, hand: p?.hand === 'L' ? -1 : 1, kindD, role: goalie ? 'G' : kindD ? 'LD' : 'C',
-      x: BENCH[side].x, y: BENCH[side].y, vx: 0, vy: 0, fa: side ? Math.PI : 0,
+      x: this.bench[side].x, y: this.bench[side].y, vx: 0, vy: 0, fa: side ? Math.PI : 0,
       max: goalie ? 4.4 : 7.0 + (skate - 60) * 0.05, acc: goalie ? 14 : 5.4 + (skate - 60) * 0.045,
       shoot: sk(p, 'shooting'), pass: sk(p, 'passing'), hands: sk(p, 'puckControl', sk(p, 'puckHandling')), check: sk(p, 'checking'), def: sk(p, 'defense'),
       bal: sk(p, 'checking') * 0.5 + skate * 0.3 + sk(p, 'endurance', 70) * 0.2,
       fo: sk(p, 'puckControl', 62) * 0.45 + sk(p, 'checking') * 0.3 + sk(p, 'passing') * 0.25,
       endur: sk(p, 'endurance', 70), ovr: p?.overall ?? 70, rebound: sk(p, 'reboundControl', 70),
       energy: 1, on: 'bench', leaving: false, boxUntil: 0, stun: 0, fall: 0, act: null, cool: 0, ownAt: -9, fallK: 'back', fallS: 1, fallAt: -9,
-      manual: false, wx: 0, wy: 0, sprint: false, tx: BENCH[side].x, ty: BENCH[side].y, urg: 0.6, back: false,
+      manual: false, wx: 0, wy: 0, sprint: false, tx: this.bench[side].x, ty: this.bench[side].y, urg: 0.6, back: false,
       decideAt: 0, carryT: null, lastPuck: -9, spot: -1, rolled: -1, oneTimer: false, dekeBeat: -9, dekeF: 1.6, dekeR: 6, stagger: 0,
     };
     this.agents.set(id, a);
@@ -515,7 +522,7 @@ export class PlayRink {
   }
   private boxSeat(a: Sk): V2 {
     const n = [...this.agents.values()].filter(b => b.side === a.side && b.on === 'box' && b !== a).length;
-    return { x: BOX[a.side].x + (a.side ? 1 : -1) * (0.8 + n * 1.0), y: 31.4 };
+    return { x: this.box[a.side].x + (a.side ? 1 : -1) * (0.8 + n * 1.0), y: 31.4 };
   }
 
   /** The unit side s should have on the ice for the current manpower: ids, forwards first. */
@@ -549,7 +556,7 @@ export class PlayRink {
     const cur = this.skaters(s);
     if (!force && cur.length === want.length + (extra ? 1 : 0) && want.every(id => cur.some(a => a.id === id))) return;
     for (const a of cur) if (!want.includes(a.id)) { a.on = 'bench'; a.leaving = false; a.act = null; }
-    for (const id of want) { const a = this.agents.get(id)!; if (a.on !== 'ice') { a.on = 'ice'; a.x = BENCH[s].x; a.y = BENCH[s].y + 1; a.vx = 0; a.vy = 0; } a.leaving = false; }
+    for (const id of want) { const a = this.agents.get(id)!; if (a.on !== 'ice') { a.on = 'ice'; a.x = this.bench[s].x; a.y = this.bench[s].y + 1; a.vx = 0; a.vy = 0; } a.leaving = false; }
     if (extra) this.addExtra(s);
     this.assignRoles(s);
   }
@@ -558,7 +565,7 @@ export class PlayRink {
     const id = [...Lu.F.flat(), ...Lu.D.flat()].find(x => this.validSkater(x) && this.agents.get(x)?.on === 'bench');
     if (!id) return;
     const a = this.agents.get(id)!;
-    a.on = 'ice'; a.leaving = false; a.x = BENCH[s].x; a.y = BENCH[s].y + 1; a.vx = 0; a.vy = 2;
+    a.on = 'ice'; a.leaving = false; a.x = this.bench[s].x; a.y = this.bench[s].y + 1; a.vx = 0; a.vy = 2;
   }
   private assignRoles(s: Side) {
     const list = this.skaters(s, false);
@@ -586,7 +593,8 @@ export class PlayRink {
     const a = pen.player;
     if (a.on !== 'ice') return;
     a.on = 'box'; a.leaving = false; a.act = null; a.boxUntil = this.clock + pen.min * 60;
-    const seat = this.boxSeat(a); a.x = seat.x; a.y = seat.y; a.vx = 0; a.vy = 0;
+    // he skates to the penalty box door himself (out of the play at once), then sits down
+    a.boxGo = true; a.stun = 0; a.fall = 0;
     if (this.puck.carrier === a) this.puck.carrier = null;
     this.out.push({ type: 'penalty', side: pen.side, player: a.id, min: pen.min, reason: pen.reason });
     this.play('penalty', pen.side, `Удаление: ${a.name} — ${pen.reason} (${pen.min} мин)`, a);
@@ -720,6 +728,7 @@ export class PlayRink {
     this.prevPad = { ...pad };
     if (press.shoot) this.pressAt.shoot = this.tau;
     if (press.pass) this.pressAt.pass = this.tau;
+    this.boxWalk();
     if (this.mode === 'end') { this.record(); return; }
     if (this.mode === 'stop') { this.stepStop(); this.record(); return; }
     if (this.mode === 'faceoff') { this.stepFaceoff(press); this.record(); return; }
@@ -745,10 +754,22 @@ export class PlayRink {
   }
 
   /* ---------------- penalty box, legs, changes ---------------- */
+  /** Players called for a penalty skate to their box door (5.5 m/s, easing in), then take a seat. */
+  private boxWalk() {
+    for (const a of this.agents.values()) {
+      if (a.on !== 'box' || !a.boxGo) continue;
+      const door = { x: this.box[a.side].x, y: this.box[a.side].y }, dx = door.x - a.x, dy = door.y - a.y, d = Math.hypot(dx, dy);
+      if (d < 0.35) { a.boxGo = false; const seat = this.boxSeat(a); a.x = seat.x; a.y = seat.y; a.vx = 0; a.vy = 0; a.fa = -Math.PI / 2; continue; }
+      const v = Math.min(5.5, 1.2 + d * 1.6), k = Math.min(1, STEP * 5);
+      a.vx += (dx / d * v - a.vx) * k; a.vy += (dy / d * v - a.vy) * k;
+      a.x += a.vx * STEP; a.y += a.vy * STEP;
+      a.fa = Math.atan2(a.vy, a.vx);
+    }
+  }
   private boxes() {
     for (const a of this.agents.values()) {
       if (a.on !== 'box' || this.clock < a.boxUntil - 1e-6) continue;
-      a.on = 'ice'; a.x = BOX[a.side].x; a.y = BOX[a.side].y - 0.4; a.vx = 0; a.vy = -2; a.leaving = false; a.fa = -Math.PI / 2;
+      a.on = 'ice'; a.boxGo = false; a.x = this.box[a.side].x; a.y = this.box[a.side].y - 0.4; a.vx = 0; a.vy = -2; a.leaving = false; a.fa = -Math.PI / 2;
       this.play('change', a.side, `${a.name} возвращается после удаления`, a);
       this.assignRoles(a.side);
     }
@@ -778,15 +799,15 @@ export class PlayRink {
       if (!g) continue;
       if (this.pulled[s] && g.on === 'ice' && !g.leaving) { g.leaving = true; this.play('change', s, `${this.teams[s].short ?? this.teams[s].name}: вратарь уходит на скамейку — шестой полевой!`, g); }
       if (!this.pulled[s] && g.leaving && g.on === 'ice') g.leaving = false;
-      if (g.leaving && g.on === 'ice' && dist(g, BENCH[s]) < 2.4) { g.on = 'bench'; g.leaving = false; this.addExtra(s); this.assignRoles(s); }
+      if (g.leaving && g.on === 'ice' && dist(g, this.bench[s]) < 2.4) { g.on = 'bench'; g.leaving = false; this.addExtra(s); this.assignRoles(s); }
       // the goalie comes back on the fly: the extra attacker heads off first
       if (!this.pulled[s] && g.on === 'bench' && this.mode === 'play') {
         const extra = this.skaters(s).length - this.manpower(s);
         if (extra > 0) {
-          const off = this.skaters(s).filter(a => a !== this.puck.carrier && a.id !== this.ctl).sort((a, b) => dist(a, BENCH[s]) - dist(b, BENCH[s]))[0];
+          const off = this.skaters(s).filter(a => a !== this.puck.carrier && a.id !== this.ctl).sort((a, b) => dist(a, this.bench[s]) - dist(b, this.bench[s]))[0];
           if (off && !off.leaving) off.leaving = true;
-          if (off && dist(off, BENCH[s]) < 2.4) { off.on = 'bench'; off.leaving = false; g.on = 'ice'; g.x = BENCH[s].x; g.y = BENCH[s].y + 1; g.vx = 0; g.vy = 0; }
-        } else { g.on = 'ice'; g.x = BENCH[s].x; g.y = BENCH[s].y + 1; }
+          if (off && dist(off, this.bench[s]) < 2.4) { off.on = 'bench'; off.leaving = false; g.on = 'ice'; g.x = this.bench[s].x; g.y = this.bench[s].y + 1; g.vx = 0; g.vy = 0; }
+        } else { g.on = 'ice'; g.x = this.bench[s].x; g.y = this.bench[s].y + 1; }
       }
     }
   }
@@ -805,7 +826,7 @@ export class PlayRink {
   private changes() {
     if (this.tau < this.changeCheck) {
       // finish changes in progress: a man at the bench door is replaced at once
-      for (const a of this.skaters(0).concat(this.skaters(1))) if (a.leaving && dist(a, BENCH[a.side]) < 2.6) this.swapAtBench(a);
+      for (const a of this.skaters(0).concat(this.skaters(1))) if (a.leaving && dist(a, this.bench[a.side]) < 2.6) this.swapAtBench(a);
       return;
     }
     this.changeCheck = this.tau + 0.5;
@@ -835,7 +856,7 @@ export class PlayRink {
     const max = this.manpower(s) + (this.pulled[s] && !this.goalieOf(s) ? 1 : 0);
     if (pick && onIce.length < max) {
       const b = this.agents.get(pick)!;
-      b.on = 'ice'; b.leaving = false; b.x = BENCH[s].x + (this.rand() - 0.5); b.y = BENCH[s].y + 0.6; b.vx = 0; b.vy = 2.5; b.fa = Math.PI / 2; b.act = null;
+      b.on = 'ice'; b.leaving = false; b.x = this.bench[s].x + (this.rand() - 0.5); b.y = this.bench[s].y + 0.6; b.vx = 0; b.vy = 2.5; b.fa = Math.PI / 2; b.act = null;
     }
     this.assignRoles(s);
     if (this.ctl === a.id) this.pickControl(true);
@@ -1139,7 +1160,7 @@ export class PlayRink {
     if (update) this.aiTick = this.tau + 0.1;
     for (const a of this.onIce()) if (a.goalie) this.goalieTarget(a);
     if (!update) { if (p.carrier && !p.carrier.manual) this.carrierAct(p.carrier, false); return; }
-    for (const a of this.onIce()) if (a.leaving && !a.manual) { a.tx = BENCH[a.side].x; a.ty = BENCH[a.side].y + 0.5; a.urg = 1; a.back = false; }
+    for (const a of this.onIce()) if (a.leaving && !a.manual) { a.tx = this.bench[a.side].x; a.ty = this.bench[a.side].y + 0.5; a.urg = 1; a.back = false; }
     const carrier = p.carrier;
     if (carrier && !carrier.manual) this.carrierAct(carrier, true);
     // the man a pass is meant for skates onto it
@@ -1469,7 +1490,7 @@ export class PlayRink {
   /* ---------------- goalies ---------------- */
   private goalieTarget(g: Sk) {
     g.manual = false;
-    if (g.leaving) { g.tx = BENCH[g.side].x; g.ty = BENCH[g.side].y + 0.5; g.urg = 1; return; }
+    if (g.leaving) { g.tx = this.bench[g.side].x; g.ty = this.bench[g.side].y + 0.5; g.urg = 1; return; }
     const s = g.side, p = this.puck, P = loc(s, p);
     let t: V2;
     if (P.x < GOAL + 0.3) t = { x: GOAL + 0.35, y: MID + (P.y < MID ? -0.7 : 0.7) };
@@ -2368,7 +2389,7 @@ export class PlayRink {
       tau: this.tau, clock: this.clock, px: this.puck.x, py: this.puck.y, ph: this.puck.h,
       carrier: this.puck.carrier ? ids.indexOf(this.puck.carrier.id) : -1, ids,
       sk: list.map(a => ({
-        id: a.id, side: a.side, goalie: a.goalie, box: a.on === 'box', x: a.x, y: a.y, fa: a.fa, ctrl: a.id === this.ctl,
+        id: a.id, side: a.side, goalie: a.goalie, box: a.on === 'box' && !a.boxGo, x: a.x, y: a.y, fa: a.fa, ctrl: a.id === this.ctl,
         // going down takes a moment (the body tips over), getting up the last 0.35 s
         fall: a.fall > 0 ? smooth01(Math.min(1, (this.tau - a.fallAt) / 0.28)) * smooth01(Math.min(1, a.fall / 0.35)) : 0, fk: a.fallK, fs: a.fallS,
         check: a.act?.k === 'check' ? Math.sin(Math.PI * clamp((this.tau - a.act.t0) / 0.42, 0, 1)) : 0,

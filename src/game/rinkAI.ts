@@ -162,6 +162,11 @@ export class RinkAI {
   private ppLow = true;
   private readonly teams: [Team, Team];
 
+  /** The benches and the penalty boxes stay where they are in the arena when the teams switch ends: in the
+   *  simulation's own (unflipped) frame they swap sides in the periods the picture is mirrored. */
+  private sides?: { bench: [V2, V2]; box: [V2, V2] };
+  private get bench(): [V2, V2] { return (this.sides ??= this.opts.flip ? { bench: [BENCH[1], BENCH[0]], box: [BOX[1], BOX[0]] } : { bench: BENCH, box: BOX }).bench; }
+  private get box(): [V2, V2] { return (this.sides ??= this.opts.flip ? { bench: [BENCH[1], BENCH[0]], box: [BOX[1], BOX[0]] } : { bench: BENCH, box: BOX }).box; }
   constructor(events: GameEvent[], home: Team, away: Team, private readonly players: Record<string, Player>, readonly start: number, public end: number, private readonly opts: RinkAIOptions = {}) {
     this.teams = [home, away];
     this.g = start;
@@ -352,7 +357,7 @@ export class RinkAI {
       const p = this.players[id];
       const skate = sk(p, 'skating');
       a = {
-        id, side, goalie, role: 'X', name: p?.name ?? id, x: BENCH[side].x, y: BENCH[side].y, vx: 0, vy: 0, fx: side ? -1 : 1, fy: 0,
+        id, side, goalie, role: 'X', name: p?.name ?? id, x: this.bench[side].x, y: this.bench[side].y, vx: 0, vy: 0, fx: side ? -1 : 1, fy: 0,
         on: 'bench', leave: null, boxUntil: 0, pim: 0, stun: 0,
         max: goalie ? 3.4 : 6.9 + (skate - 50) * 0.045, acc: goalie ? 9 : 4.4 + (skate - 50) * 0.035,
         pass: sk(p, 'passing'), shoot: sk(p, 'shooting'), hands: sk(p, 'puckControl', sk(p, 'puckHandling')), check: sk(p, 'checking'),
@@ -366,7 +371,7 @@ export class RinkAI {
   private spawn(id: string, side: Side, at: V2 | null, goalie = false) {
     const a = this.agent(id, side, goalie || this.players[id]?.position === 'G');
     a.on = 'ice'; a.leave = null; a.stun = 0; a.vx = 0; a.vy = 0;
-    const p = at ?? BENCH[side];
+    const p = at ?? this.bench[side];
     a.x = p.x; a.y = p.y;
     return a;
   }
@@ -503,7 +508,7 @@ export class RinkAI {
     for (const s of [0, 1] as Side[]) {
       // Penalised players return when their time is served.
       for (const a of this.agents.values()) if (a.side === s && a.on === 'box' && this.g >= a.boxUntil - 1e-9) {
-        a.on = 'ice'; a.x = BOX[s].x; a.y = BOX[s].y - 0.6; a.vx = 0; a.vy = 0; a.leave = null; this.play('change', s, `${a.name} возвращается после удаления`, a);
+        a.on = 'ice'; a.x = this.box[s].x; a.y = this.box[s].y - 0.6; a.vx = 0; a.vy = 0; a.leave = null; this.play('change', s, `${a.name} возвращается после удаления`, a);
         // The team gets its man back (the box timeline says how many it may have) — never a sixth skater
         // (seventh with a pulled goalie): someone heads for the bench.
         this.trimSkaters(s, this.lastGoalie[s] === null, a);
@@ -513,7 +518,7 @@ export class RinkAI {
       if (gNow && gNow.id !== gWant && !gNow.leave) gNow.leave = 'bench';
       if (gWant && !this.onIce(s).some(a => a.goalie && a.id === gWant)) {
         const old = this.onIce(s).find(a => a.goalie && a.leave);
-        if (!old || dist(old, BENCH[s]) < 7) this.spawn(gWant, s, BENCH[s], true);
+        if (!old || dist(old, this.bench[s]) < 7) this.spawn(gWant, s, this.bench[s], true);
       }
       if (gWant !== this.lastGoalie[s] && (gWant === null || this.onIce(s).some(a => a.id === gWant))) this.lastGoalie[s] = gWant;
       // A goalie back in the net sends the extra attacker off at once, change or no change.
@@ -532,12 +537,12 @@ export class RinkAI {
       const P = this.puck, oppAttacks = (P.carrier?.side ?? P.last) === 1 - s && loc(s, P).x < RED - 4;
       for (const a of this.skaters(s)) {
         if (want.includes(a.id) || a === P.carrier) continue;
-        if (!urgent && oppAttacks && dist(a, BENCH[s]) > 20) continue;
+        if (!urgent && oppAttacks && dist(a, this.bench[s]) > 20) continue;
         a.leave = 'bench'; changed = true;
       }
       // A change on the fly: the new man jumps over the boards only when the one he replaces is through the bench
       // door (no sixth man on the ice, not even for a moment); at a whistle the change is made at once.
-      const active = this.onIce(s).filter(a => !a.goalie && !(a.leave && stopped && dist(a, a.leave === 'box' ? BOX[s] : BENCH[s]) < 2.6));
+      const active = this.onIce(s).filter(a => !a.goalie && !(a.leave && stopped && dist(a, a.leave === 'box' ? this.box[s] : this.bench[s]) < 2.6));
       let count = active.length;
       for (const id of want) {
         if (count >= want.length) break;
@@ -545,13 +550,13 @@ export class RinkAI {
         if (a?.on === 'ice' && !a.leave) continue;
         if (a?.on === 'box') continue;
         if (a?.on === 'ice' && a.leave) { a.leave = null; count++; continue; }
-        this.spawn(id, s, BENCH[s]); count++; changed = true;
+        this.spawn(id, s, this.bench[s]); count++; changed = true;
       }
       if (changed) { this.assignRoles(s); if (!stopped) this.play('change', s, `Смена на ходу: ${this.teamShort(s)}`); }
     }
     for (const a of this.onIce()) {
       if (!a.leave) continue;
-      const gate = a.leave === 'box' ? BOX[a.side] : BENCH[a.side];
+      const gate = a.leave === 'box' ? this.box[a.side] : this.bench[a.side];
       if (dist(a, gate) < 1.8) {
         if (a.leave === 'box') { a.on = 'box'; const seat = this.boxSeat(a); a.x = seat.x; a.y = seat.y; }
         else a.on = 'bench';
@@ -566,13 +571,13 @@ export class RinkAI {
     const allowed = this.baseSkaters[s] + (pulled ? 1 : 0);
     let excess = this.skaters(s).length - allowed;
     if (excess <= 0) return;
-    const out = this.skaters(s).filter(b => b !== keep && b !== this.puck.carrier && !this.plan?.chain.includes(b)).sort((p, q) => dist(p, BENCH[s]) - dist(q, BENCH[s]));
+    const out = this.skaters(s).filter(b => b !== keep && b !== this.puck.carrier && !this.plan?.chain.includes(b)).sort((p, q) => dist(p, this.bench[s]) - dist(q, this.bench[s]));
     while (excess-- > 0 && out.length) out.shift()!.leave = 'bench';
     this.assignRoles(s);
   }
   private boxSeat(a: Agent): V2 {
     const others = [...this.agents.values()].filter(b => b.side === a.side && b.on === 'box' && b !== a).length;
-    return { x: BOX[a.side].x + (a.side ? 1 : -1) * (1 + others * 1.1), y: 31.4 };
+    return { x: this.box[a.side].x + (a.side ? 1 : -1) * (1 + others * 1.1), y: 31.4 };
   }
   /**
    * Roles from the lineup card: the slot a man is dressed in (line = [C, LW, RW], pair = [left D, right D]);
@@ -636,7 +641,7 @@ export class RinkAI {
     if (st.phase !== 'whistle' && st.phase !== 'celebrate') this.updateRoster();
     for (const a of this.onIce()) {
       a.scripted = false; a.arrive = NaN;
-      if (a.leave) { const gate = a.leave === 'box' ? BOX[a.side] : BENCH[a.side]; this.setT(a, gate, 0.75); continue; }
+      if (a.leave) { const gate = a.leave === 'box' ? this.box[a.side] : this.bench[a.side]; this.setT(a, gate, 0.75); continue; }
       if (st.phase === 'whistle' || (st.phase === 'celebrate' && (!st.scorer || a.side !== st.scorer.side || a.goalie))) {
         if (a.goalie) this.setT(a, loc(a.side, { x: GOAL + 0.9, y: MID }), 0.5);
         else this.setT(a, { x: a.x + a.vx * 0.5, y: a.y + a.vy * 0.5 }, 0.3);
@@ -754,7 +759,9 @@ export class RinkAI {
     this.baseSkaters = this.menNow();
     if (a.on === 'ice') { a.leave = 'box'; if (this.puck.carrier === a) this.loosePuck(0, 0); }
     else { a.on = 'box'; const seat = this.boxSeat(a); a.x = seat.x; a.y = seat.y; }
-    this.play('penalty', s, `Удаление: ${a.name}, ${pim} мин`, a);
+    // the infraction (the engine writes it after a dash): the referee shows its signal
+    const reason = e.text.includes('—') ? e.text.split('—').pop()!.trim() : '';
+    this.play('penalty', s, `Удаление: ${a.name}${reason ? ` — ${reason}` : ''}, ${pim} мин`, a);
     if (this.mode === 'play') this.startStop('penalty', zoneDot(s, this.puck.y));
   }
   private doHit(e: GameEvent) {
@@ -784,7 +791,7 @@ export class RinkAI {
   }
   private makePlan(n: GameEvent) {
     const T: Side = n.team === this.teams[1].id ? 1 : 0;
-    const ensure = (id: string) => { let a = this.agents.get(id); if (!a || a.on !== 'ice' || a.side !== T) a = this.spawn(id, T, BENCH[T]); a.leave = null; return a; };
+    const ensure = (id: string) => { let a = this.agents.get(id); if (!a || a.on !== 'ice' || a.side !== T) a = this.spawn(id, T, this.bench[T]); a.leave = null; return a; };
     const S = ensure(n.player!);
     let helpers: Agent[] = [];
     if (n.type === 'goal') helpers = (n.players ?? []).filter(id => this.valid(id) && this.sideOf(id) === T).slice(0, 2).map(ensure);
@@ -792,7 +799,7 @@ export class RinkAI {
     const chain = [...helpers].reverse().concat(S);
     // The engine's players jump on if they are not out there yet: as many teammates head for the bench, never too many men.
     const allowed = this.baseSkaters[T] + (this.lastGoalie[T] === null ? 1 : 0);
-    const spare = this.skaters(T).filter(a => !chain.includes(a) && a !== this.puck.carrier).sort((p, q) => dist(p, BENCH[T]) - dist(q, BENCH[T]));
+    const spare = this.skaters(T).filter(a => !chain.includes(a) && a !== this.puck.carrier).sort((p, q) => dist(p, this.bench[T]) - dist(q, this.bench[T]));
     for (let excess = this.skaters(T).length - allowed; excess > 0 && spare.length; excess--) spare.shift()!.leave = 'bench';
     const type = n.shotType ?? 'wrist';
     const sl = loc(T, { x: (n.x ?? (T ? 19 : 81)) * 0.6, y: (n.y ?? 50) * 0.3 });
@@ -1045,7 +1052,7 @@ export class RinkAI {
     const p = this.puck, pl = this.plan, du = this.duel;
     for (const a of this.onIce()) { a.scripted = false; a.arrive = NaN; }
     for (const a of this.onIce()) {
-      if (a.leave) { this.setT(a, a.leave === 'box' ? BOX[a.side] : BENCH[a.side], a.leave === 'bench' ? 1 : 0.8); a.scripted = true; }
+      if (a.leave) { this.setT(a, a.leave === 'box' ? this.box[a.side] : this.bench[a.side], a.leave === 'bench' ? 1 : 0.8); a.scripted = true; }
       else if (a.goalie) { this.goalieTarget(a); a.scripted = true; }
     }
     if (pl) pl.chain.forEach((a, i) => {

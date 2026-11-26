@@ -9,7 +9,7 @@ const ok = (m) => console.log('ok', m);
 try {
   const context = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
   await context.addInitScript(() => {
-    localStorage.setItem('khl.settings', JSON.stringify({ autoReplay: 'off', replay3d: false, replayPrewarm: false }));
+    localStorage.setItem('khl.settings', JSON.stringify({ autoReplay: 'off', replay3d: false, replayPrewarm: false, matchIntro: false }));
     const calls = (window.__installCalls = []);
     window.khlDesktop = {
       platform: 'windows',
