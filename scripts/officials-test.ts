@@ -10,7 +10,9 @@ import { RinkAI, type RinkPlay } from '../src/game/rinkAI';
 import { PlayRink } from '../src/game/playRink';
 import type { LiveFrame } from '../src/game/rinkPlayback';
 import { BLUE, GOAL, OfficialCrew, insideRink, penaltyGesture, type Gesture } from '../src/components/officialCrew';
-import { INTRO, gateOf, introCamera, introOfficials, introPoses, introShow, lineup, type IntroSkater } from '../src/components/matchIntro';
+import { INTRO_PACE, gateOf, introCamera, introOfficials, introPoses, introShow, lineup, planIntro, type IntroSkater } from '../src/components/matchIntro';
+import { benchSeat } from '../src/components/arenaBenches';
+import { GOAL_SHOW, SLOW, goalReplay, momentReplay, pickMoment, replayAngle, replayCamera, replayLength, replayTau, celebrateCamera } from '../src/components/liveShow';
 import { toWorld } from '../src/components/replayCameras';
 
 const r = parseRosterText(readFileSync('scripts/fixtures/test-roster.json', 'utf8'));
@@ -101,17 +103,19 @@ test('goal, icing, offside, faceoff: the referee points at the net, the linesman
   // an end-zone faceoff: a linesman skates to the dot, bends over with the puck, drops it on the faceoff play
   tau = run(crew, frame(-20, 7), plays, tau + 1 / 30, 3);
   const dot = { x: -20 / 60 * 100 + 50 + 1.5, y: 7 / 30 * 100 + 50 + 5.3, h: 0 };
-  tau = run(crew, frame(-20, 7, [], { faceoff: true, stopped: true, official: dot }), plays, tau + 1 / 30, 4);
+  const held = (h: number) => { const f = frame(-20, 7, [], { faceoff: true, stopped: true, official: dot }); f.puck.h = h; return f; };
+  tau = run(crew, held(1.1), plays, tau + 1 / 30, 4);
   const dropper = crew.officials.find(o => o.gesture === 'ready');
   assert.ok(dropper && dropper.role === 'line', 'a linesman drops the puck in the zone');
   const d = toWorld(dot);
   assert.ok(Math.hypot(dropper!.x - d.x, dropper!.z - d.z) < 1.2, 'at the dot');
-  plays.push(play(tau + .05, 'faceoff', 'Вбрасывание', 0));
-  run(crew, frame(-20, 7, [], { faceoff: true, stopped: true, official: dot }), plays, tau + 1 / 30, .2);
+  // the drop as the puck leaves his hand
+  run(crew, held(.9), plays, tau + 1 / 30, .2);
   assert.equal(dropper!.gesture, 'drop');
   // centre ice: a referee
   const crew2 = new OfficialCrew();
-  run(crew2, frame(0, 0, [], { faceoff: true, stopped: true, official: { x: 51.5, y: 55.3, h: 0 } }), [], 0, 4);
+  const c = frame(0, 0, [], { faceoff: true, stopped: true, official: { x: 51.5, y: 55.3, h: 0 } }); c.puck.h = 1.1;
+  run(crew2, c, [], 0, 4);
   assert.equal(crew2.officials.find(o => o.gesture === 'ready')?.role, 'ref');
 });
 
@@ -161,12 +165,12 @@ const periods: { evs: ReturnType<GameSim['simPeriod']>; start: number; end: numb
   for (let k = 0; k < 3; k++) { const start = sim.sec, evs = sim.simPeriod(); periods.push({ evs, start, end: sim.sec, flip: k === 1 }); }
 }
 test('spectator match: over whole periods the officials stay on the ice, out of the way, signal the penalties and drop the pucks', () => {
-  let near = 0, samples = 0, signals = new Set<Gesture>(), drops = 0, penalties = 0;
+  let near = 0, samples = 0, signals = new Set<Gesture>(), drops = 0, penalties = 0, late = 0;
   for (const per of periods) {
     const ai = new RinkAI(per.evs, H, A, r.players, per.start, per.end, { flip: per.flip }).runToEnd();
     penalties += ai.plays.filter(p => p.kind === 'penalty').length;
     const crew = new OfficialCrew();
-    let wasDrop = false;
+    let wasDrop = false, readySince = NaN;
     for (let tau = 0; tau < ai.lastTau; tau += 1 / 20) {
       const f = ai.frameAt(tau);
       crew.update(f, ai.plays, tau);
@@ -178,12 +182,16 @@ test('spectator match: over whole periods the officials stay on the ice, out of 
         if (o.gesture !== 'none' && o.gesture !== 'ready') signals.add(o.gesture);
       }
       const drop = crew.officials.some(o => o.gesture === 'drop');
-      if (drop && !wasDrop) drops++;
+      const ready = crew.officials.some(o => o.gesture === 'ready');
+      if (ready && Number.isNaN(readySince)) readySince = tau;
+      if (drop && !wasDrop) { drops++; if (Number.isNaN(readySince) || tau - readySince < .35) late++; }
+      if (!ready && !drop) readySince = NaN;
       wasDrop = drop;
     }
   }
   assert.ok(near / samples < .06, `officials within 1 m of a skater ${(near / samples * 100).toFixed(1)}% of the time`);
   assert.ok(drops >= 10, `pucks dropped: ${drops}`);
+  assert.ok(late / Math.max(1, drops) < .1, `the official at the dot, set, before the puck drops: late ${late} of ${drops}`);
   if (penalties) assert.ok([...signals].some(g => ['trip', 'hook', 'hold', 'slash', 'interference', 'boarding', 'charging', 'highstick', 'fist'].includes(g)), `penalty signals: ${[...signals].join(', ')}`);
   assert.ok(signals.has('point') || signals.has('goal') || signals.has('armUp'));
 });
@@ -206,41 +214,102 @@ test('benches stay in the arena when the teams switch ends: changes go through t
 });
 
 // ---- the entrance ----
-const starters = (): IntroSkater[] => {
+/** Two dressed teams: the starting goalie and five, 16 more skaters, the backup goalie; the visitors' captain is not in the starting five. */
+const dressed = (): IntroSkater[] => {
   const out: IntroSkater[] = [];
-  for (const side of [0, 1] as const) for (let i = 0; i < 6; i++) out.push({ id: `${side}-${i}`, side, goalie: i === 0, x: (side ? 1 : -1) * (i === 0 ? 26 : 2 + i * 1.5), z: i === 0 ? 0 : (i - 3) * 3 });
+  for (const side of [0, 1] as const) {
+    const end = side ? 1 : -1;
+    for (let i = 0; i < 23; i++) {
+      const start = i < 6, goalie = i === 0 || i === 22;
+      out.push({ id: `${side}-${i}`, side, goalie, start, x: start ? end * (i === 0 ? 26 : 2 + i * 1.5) : 0, z: start ? (i === 0 ? 0 : (i - 3) * 3) : 0,
+        seat: start ? null : benchSeat(side, i - 6), captain: side ? i === 9 : i === 3, rating: 60 + ((i * 7) % 23) });
+    }
+  }
   return out;
 };
-test('the entrance: visitors first, then the home team, one by one out of their gates, into line on their blue lines, then to their places', () => {
-  const s = starters();
-  const at = (t: number) => introPoses(s, t);
-  const visible = (t: number, side: 0 | 1) => s.filter(x => x.side === side && at(t).get(x.id)!.visible).length;
-  assert.equal(visible(INTRO.away - .1, 1), 0); assert.equal(visible(INTRO.away - .1, 0), 0);
-  assert.ok(visible(INTRO.away + 1, 1) >= 2 && visible(INTRO.away + 1, 0) === 0, 'the visitors come out first');
-  assert.equal(visible(INTRO.home - .1, 0), 0, 'the home team after them');
-  assert.ok(visible(INTRO.home + 1.2, 0) >= 3);
-  // the first man out of the gate is the goalie
-  assert.equal(lineup(s, 1)[0].goalie, true);
-  const first = at(INTRO.away + .05).get(lineup(s, 1)[0].id)!, gate = gateOf(1);
-  assert.ok(Math.hypot(first.x - gate.x, first.z - gate.z) < 1.5, 'out of the gate');
-  // lined up on their blue lines before the lights come up, facing centre ice, nobody on top of anybody
-  const lined = at(INTRO.settle - .1);
-  for (const x of s) { const p = lined.get(x.id)!; assert.ok(p.visible && Math.abs(Math.abs(p.x) - (BLUE + .9)) < .3, `${x.id} at ${p.x.toFixed(1)}`); assert.equal(p.speed, 0); }
-  for (const a of s) for (const b of s) if (a !== b) { const p = lined.get(a.id)!, q = lined.get(b.id)!; assert.ok(Math.hypot(p.x - q.x, p.z - q.z) > 1.2); }
-  // every team in its own half
-  assert.ok(s.every(x => Math.sign(lined.get(x.id)!.x) === (x.side ? 1 : -1)));
-  // at the end exactly at the faceoff places the match starts from
-  const end = at(INTRO.length);
-  for (const x of s) { const p = end.get(x.id)!; assert.ok(Math.hypot(p.x - x.x, p.z - x.z) < .05, x.id); }
-  // a smooth skate: no jumps between 30 fps frames
-  for (const x of s) { let prev = at(0).get(x.id)!; for (let t = 1 / 30; t < INTRO.length; t += 1 / 30) { const p = at(t).get(x.id)!; if (prev.visible && p.visible) assert.ok(Math.hypot(p.x - prev.x, p.z - prev.z) < .5, `${x.id} at ${t.toFixed(2)}`); prev = p; } }
-  // the show: dark during the entrance, the lights back for the faceoff; the officials end at their places
-  assert.ok(introShow(INTRO.home + 1, s).level > .95 && introShow(INTRO.length, s).level < .01);
-  assert.equal(introShow(INTRO.away + 1, s).team, 1); assert.equal(introShow(INTRO.home + 1, s).team, 0);
+test('the entrance: the whole team out (visitors first), warm-up laps at an easy pace, the reserves to the bench, the starters and the captain in line', () => {
+  const s = dressed(), plan = planIntro(s), T = plan.t;
+  const at = (t: number) => introPoses(plan, t);
+  const out = (t: number, side: 0 | 1) => s.filter(x => x.side === side && at(t).get(x.id)!.visible).length;
+  assert.equal(out(T.away - .1, 1), 0); assert.equal(out(T.away - .1, 0), 0);
+  assert.ok(out(T.away + 1, 1) >= 2 && out(T.away + 1, 0) === 0, 'the visitors come out first');
+  assert.equal(out(T.home - .1, 0), 0, 'the home team after them');
+  // everybody dressed comes out, one after another (the starting goalie first, the backup last)
+  assert.equal(lineup(s, 1)[0].id, '1-0'); assert.equal(lineup(s, 1).at(-1)!.id, '1-22');
+  const away = s.filter(x => x.side === 1);
+  for (const x of away) { const r = plan.route.get(x.id)!; assert.ok(at(r.out + .3).get(x.id)!.visible, `${x.id} skates out`); }
+  const first = at(plan.route.get('1-0')!.out + .05).get('1-0')!, gate = gateOf(1);
+  assert.ok(Math.hypot(first.x - gate.x, first.z - gate.z) < 1, 'out of the gate');
+  // an easy pace: never a sprint, and long strides (the scene paces the legs by the distance)
+  let top = 0;
+  for (const x of s) { let prev = at(0).get(x.id)!; for (let t = 1 / 30; t < T.length; t += 1 / 30) { const p = at(t).get(x.id)!; if (prev.visible && p.visible && !p.sit && !prev.sit && p.y < .02 && prev.y < .02) { const v = Math.hypot(p.x - prev.x, p.z - prev.z) * 30; top = Math.max(top, v); assert.ok(v < 8.5, `${x.id} at ${t.toFixed(2)}: ${v.toFixed(1)} m/s`); } prev = p; } }
+  assert.ok(INTRO_PACE.lap < 6 && top > 3, `pace ${top.toFixed(1)}`);
+  // before the presentation: the reserves on their seats, the starters (and the captain who does not start) in line on the blue lines
+  const lined = at(T.present + .1);
+  for (const x of s) {
+    const p = lined.get(x.id)!;
+    if (x.start || x.captain) { assert.ok(p.visible && !p.sit && Math.abs(Math.abs(p.x) - (BLUE + .9)) < .3 && p.speed === 0, `${x.id} in line: ${p.x.toFixed(1)}`); assert.equal(Math.sign(p.x), x.side ? 1 : -1); }
+    else { assert.ok(p.sit, `${x.id} on the bench`); assert.ok(Math.hypot(p.x - x.seat!.x, p.z - x.seat!.z) < .05); }
+  }
+  const inLine = s.filter(x => x.start || x.captain);
+  for (const a of inLine) for (const b of inLine) if (a !== b) { const p = lined.get(a.id)!, q = lined.get(b.id)!; assert.ok(Math.hypot(p.x - q.x, p.z - q.z) > 1.2); }
+  // the close-ups: the visitors' goalie, captain and leader, then the home team's
+  assert.deepEqual(plan.shots.map(x => `${x.side}:${x.kind}`), ['1:goalie', '1:captain', '1:leader', '0:goalie', '0:captain', '0:leader']);
+  assert.equal(plan.shots[1].id, '1-9'); assert.equal(plan.shots[4].id, '0-3');
+  // the captains shake hands with both referees and with each other
   const places = [{ x: 10, z: -12 }, { x: -10, z: 12 }, { x: 8, z: 13 }, { x: -8, z: -13 }];
-  introOfficials(INTRO.length, places).forEach((p, i) => assert.ok(Math.hypot(p.x - places[i].x, p.z - places[i].z) < .05));
-  // the camera stays inside the arena, above the ice
-  for (let t = 0; t < INTRO.length; t += .5) { const c = introCamera(t, introShow(t, s).focus); assert.ok(c.pos.y > 5 && Math.abs(c.pos.x) < 40 && Math.abs(c.pos.z) < 32); }
+  const met = new Set<string>();
+  for (let t = T.hands; t < T.settle; t += .1) {
+    const p = at(t), refs = introOfficials(plan, t, places), ch = p.get('0-3')!, ca = p.get('1-9')!;
+    for (const [c, n] of [[ch, 'h'], [ca, 'a']] as const) refs.slice(0, 2).forEach((r, i) => { if (Math.hypot(c.x - r.x, c.z - r.z) < 1.1 && c.shake > .6 && r.gesture === 'shake') met.add(`${n}${i}`); });
+    if (Math.hypot(ch.x - ca.x, ch.z - ca.z) < 1.2 && ch.shake > .6 && ca.shake > .6) met.add('caps');
+  }
+  assert.deepEqual([...met].sort(), ['a0', 'a1', 'caps', 'h0', 'h1'], [...met].join(' '));
+  // at the end: the starters exactly at the faceoff places, the visitors' captain on the bench, the officials at their places
+  const end = at(T.length);
+  for (const x of s) {
+    const p = end.get(x.id)!;
+    if (x.start) assert.ok(Math.hypot(p.x - x.x, p.z - x.z) < .05, x.id);
+    else assert.ok(p.sit, `${x.id} seated at the end`);
+  }
+  introOfficials(plan, T.length, places).forEach((p, i) => assert.ok(Math.hypot(p.x - places[i].x, p.z - places[i].z) < .05));
+  // a smooth skate: no jumps between 30 fps frames (stepping over the boards included)
+  for (const x of s) { let prev = at(0).get(x.id)!; for (let t = 1 / 30; t < T.length; t += 1 / 30) { const p = at(t).get(x.id)!; if (prev.visible && p.visible) assert.ok(Math.hypot(p.x - prev.x, p.z - prev.z) < .4, `${x.id} at ${t.toFixed(2)}`); prev = p; } }
+  // the show: dark through the entrance, the lights back for the faceoff; whose colours
+  assert.ok(introShow(plan, T.home + 1).level > .95 && introShow(plan, T.length).level < .01);
+  assert.equal(introShow(plan, T.away + 1).team, 1); assert.equal(introShow(plan, T.home + 1).team, 0);
+  // the camera: inside the arena; close to the man in his close-up
+  for (let t = 0; t < T.length; t += .25) { const c = introCamera(plan, t); assert.ok(c.pos.y > 1 && Math.abs(c.pos.x) < 40 && Math.abs(c.pos.z) < 32, `camera at ${t}`); }
+  for (const shot of plan.shots) { const t = (shot.t0 + shot.t1) / 2, c = introCamera(plan, t), p = at(t).get(shot.id)!; assert.ok(Math.hypot(c.pos.x - p.x, c.pos.z - p.z) < 4.5 && c.fov < 34, shot.kind); }
+  assert.ok(T.length > 45, `a proper show (${T.length.toFixed(0)} s), skippable`);
 });
 
-console.log(`\n${pass} officials / entrance checks passed`);
+// ---- the broadcast between the plays: goal celebrations and replays ----
+test('replays: the real frames again with slow motion around the key moment; the moments worth one; TV angles', () => {
+  const g = goalReplay(100, 26.6, 'ГОЛ! Петров', 'p');
+  assert.equal(replayTau(g, 0), g.from); assert.ok(Math.abs(replayTau(g, replayLength(g)) - g.to) < 1e-9);
+  let prev = -Infinity;
+  for (let t = 0; t <= replayLength(g); t += .02) { const v = replayTau(g, t); assert.ok(v >= prev - 1e-9); prev = v; }
+  // slow around the goal, real time in the build-up
+  assert.ok(Math.abs((replayTau(g, 1.1) - replayTau(g, 1)) / .1 - 1) < 1e-6);
+  const k = replayLength(g) - (g.to - g.key - SLOW.after) - SLOW.after / SLOW.rate - .1;
+  assert.ok(Math.abs((replayTau(g, k + .05) - replayTau(g, k)) / .05 - SLOW.rate) < 1e-6);
+  assert.ok(replayLength(g) > GOAL_SHOW.before + GOAL_SHOW.after + 2);
+  // which moment: a shot off the post beats a save; nothing when a goal is in the window, nor for routine plays
+  const plays: RinkPlay[] = [play(10, 'save', 'Сейв: Иванов', 1), play(11, 'wide', 'Штанга!', 0), play(12, 'freeze', 'Иванов накрывает шайбу', 1)];
+  assert.equal(pickMoment(plays, 5, 13)?.kind2, 'post');
+  assert.equal(pickMoment([...plays, play(12.5, 'goal', 'ГОЛ!', 0)], 5, 13), null);
+  assert.equal(pickMoment([play(10, 'takeaway', 'Отбор', 0), play(11, 'block', 'Блок-шот', 1)], 5, 13), null);
+  assert.equal(pickMoment([play(10, 'hit', 'Силовой приём — соперник на льду', 0)], 5, 13)?.kind2, 'hit');
+  const m = momentReplay(pickMoment(plays, 5, 13)!, 26.6, 12.4);
+  assert.ok(m.from < m.key && m.to <= 12.4 && m.key === 11);
+  // the angles: along the play from the side, then the close one behind the net
+  assert.equal(replayAngle(g, g.from + .5), 'side'); assert.equal(replayAngle(g, g.key), 'close');
+  const side = replayCamera(g, g.from + .5, { x: 10, z: 2 }), close = replayCamera(g, g.key, { x: 24, z: 1 });
+  assert.ok(side.pos.z > 12 && side.pos.y < 6, 'a low side camera');
+  assert.ok(close.pos.x > 27 && close.pos.x < 30, 'behind the net, inside the glass');
+  const c = celebrateCamera(1, { x: 20, z: -5 });
+  assert.ok(Math.hypot(c.pos.x - 20, c.pos.z + 5) < 5 && c.pos.y < 2.5, 'the scorer in close-up');
+});
+
+console.log(`\n${pass} officials / entrance / replay checks passed`);

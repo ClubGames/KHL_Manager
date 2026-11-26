@@ -4,9 +4,11 @@ import type { Player, Team } from '../types';
 import { clamp } from '../game/rinkPlayback';
 import type { PlayerFigure } from './playerModel';
 import { acquireRenderer, addStageLights, compileScene, kitFor, loadModel, officialKit, onCacheRedraw, releaseRenderer, sharedProps, takeArena, takeFigures, type FigureRequest } from './replayCache';
-import { crewFor } from './officialCrew';
+import { crewFor, type Official } from './officialCrew';
 import { buildArenaShow } from './arenaShow';
-import { INTRO, introCamera, introOfficials, introPoses, introShow, type IntroSkater } from './matchIntro';
+import { INTRO_STRIDE, introCamera, introChapter, introOfficials, introPoses, introShotAt, introShow, planIntro, type IntroPlan, type IntroSkater } from './matchIntro';
+import { celebrateCamera, GOAL_SHOW, goalReplay, MOMENT_GAP, momentReplay, pickMoment, replayAngle, replayCamera, replayLength, replayTau, type ReplaySpec } from './liveShow';
+import { NET_X } from './replayMotion';
 import { liveCameraPose, toWorld, ZOOM, type LiveCamera } from './replayCameras';
 import { RINK } from '../game/rinkGeometry';
 import { benchSeat, boxSeat, BENCH } from './arenaBenches';
@@ -45,8 +47,15 @@ type Trip = { fx: number; fz: number; t0: number; hop: boolean; dur: number };
 /** The door (or the top of the boards) a seat is reached through: on the ice edge in front of it. */
 const doorOf = (seat: { x: number; z: number }) => ({ x: seat.x, z: Math.sign(seat.z) * (RINK.width / 2 - .45) });
 
+/** What the 3D view tells the match loop: wait for the first picture, hold the clock (the entrance, a replay), play
+ *  in real time (a goal celebration), and that it shows the goals' replays itself (no replay window then). */
+export type LiveTicker = { tau?: number; wait?: boolean; hold?: boolean; slow?: boolean; shows?: boolean };
+/** The broadcast captions over the picture. */
+type Ui = { mode: 'intro' | 'celebrate' | 'replay'; title: string; name?: string; sub?: string; color?: string };
+const SHOT_LABEL = { goalie: 'Вратарь', captain: 'Капитан', leader: 'Лидер команды' } as const;
+const RE_LABEL = { goal: 'Повтор гола', save: 'Опасный момент', post: 'Штанга!', hit: 'Силовой приём', miss: 'Опасный момент' } as const;
 type Props = {
-  ai: LiveSource; ticker: { tau?: number; wait?: boolean; intro?: boolean }; home: Team; away: Team; players: Record<string, Player>;
+  ai: LiveSource; ticker: LiveTicker; home: Team; away: Team; players: Record<string, Player>;
   /** everyone who may come on the ice (dressed players, both goalies): their figures are prepared up front */
   roster: FigureRequest[];
   camera: LiveCamera; quality: ReplayQuality;
@@ -54,6 +63,8 @@ type Props = {
   onFail: () => void;
   /** the start of the match: the teams' entrance with the laser show plays first (once per rink) */
   intro?: boolean;
+  /** goal celebrations with their replays, replays of big moments at stoppages */
+  replays?: boolean;
 };
 /** Rinks whose entrance has been shown (switching the camera or the quality must not replay it). */
 const introPlayed = new WeakSet<object>();
@@ -64,8 +75,10 @@ export function LiveScene3D(props: Props) {
   live.current.ai = props.ai; live.current.camera = props.camera;
   const [ready, setReady] = useState(false);
   const [introOn, setIntroOn] = useState(false);
-  const skipIntro = useRef(false);
+  const [ui, setUi] = useState<Ui | null>(null);
+  const skipIntro = useRef(false), skipShow = useRef(false);
   const introRef = useRef(props.intro); introRef.current = props.intro;
+  const replaysRef = useRef(!!props.replays); replaysRef.current = !!props.replays;
   const failRef = useRef(props.onFail); failRef.current = props.onFail;
   const { quality } = props;
   // Clubs and players are read when the scene is built: a store update during the match must not rebuild it.
@@ -90,10 +103,11 @@ export function LiveScene3D(props: Props) {
     // the teams' entrance: the match clock waits for it (from the first picture with the real figures)
     const introSource = live.current.ai;
     const introWanted = !!introRef.current && !introPlayed.has(introSource) && (tickerRef.current.tau ?? 0) < .01;
-    if (introWanted) tickerRef.current.intro = true;
-    skipIntro.current = false;
+    if (introWanted) tickerRef.current.hold = true;
+    tickerRef.current.shows = replaysRef.current;
+    skipIntro.current = false; skipShow.current = false;
     const dispose = () => {
-      tickerRef.current.wait = false; tickerRef.current.intro = false;
+      tickerRef.current.wait = false; tickerRef.current.hold = false; tickerRef.current.slow = false; tickerRef.current.shows = false;
       stopped = true; cancelAnimationFrame(raf); observer?.disconnect(); unbind.forEach(f => f()); releases.forEach(f => f()); releaseArena();
       geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose());
       if (renderer) { renderer.domElement.remove(); releaseRenderer(renderer); }
@@ -158,7 +172,7 @@ export function LiveScene3D(props: Props) {
         [l, b, h].forEach(m => { m.castShadow = true; standIn.add(m); });
         if (role === 'ref') { const band = new T.Mesh(offGeo.band, armMat); band.position.y = 1.36; standIn.add(band); }
         group.add(standIn); scene.add(group);
-        return { role, group, standIn, figure: null as PlayerFigure | null };
+        return { role, group, standIn, figure: null as PlayerFigure | null, ph: 0, lx: NaN, lz: NaN };
       });
       const ownFigures: PlayerFigure[] = [];
       unbind.push(() => ownFigures.forEach(f => f.dispose()));
@@ -246,30 +260,131 @@ export function LiveScene3D(props: Props) {
       const puckWorld = new T.Vector3(), local = new T.Vector3(), puckOff = { x: 0, z: 0 };
       const aspect = () => camera.aspect;
       let settled = false, camSpeed = 0;
-      // the teams' entrance (see matchIntro): who skates out, from when
-      let intro: { t0: number; skaters: IntroSkater[] } | null = null, introStarted = false;
+      // the captions over the picture: React state, set only when they change
+      let uiKey = '';
+      const showUi = (u: Ui | null) => { const k = u ? `${u.mode}|${u.title}|${u.name ?? ''}|${u.sub ?? ''}` : ''; if (k !== uiKey) { uiKey = k; setUi(u); } };
+      const forget = () => { actors.forEach(a => { a.lx = NaN; a.save = null; a.on = undefined; a.off = a.enter = undefined; }); focus.init = false; lastTau = NaN; dirty = true; };
+      // the teams' entrance (see matchIntro): everybody dressed skates out, the reserves end on their seats
+      let intro: { t0: number; plan: IntroPlan; ids: Set<string> } | null = null, introStarted = false;
+      const introSeats = new Map<string, number>();
       const mountAt = performance.now();
       const endIntro = () => {
-        intro = null; tickerRef.current.intro = false; setIntroOn(false);
+        if (!intro) return;
+        // the reserves keep the seats they skated to
+        introSeats.forEach((slot, id) => { const a = actors.get(id); if (a && !a.seat) { a.seat = `b${slot}`; a.sitAt = undefined; } });
+        introSeats.clear();
+        intro = null; tickerRef.current.hold = false; setIntroOn(false); showUi(null);
         hemi.intensity = lit.hemi; sun.intensity = lit.sun; fill.intensity = lit.fill; scene.environmentIntensity = lit.env;
-        actors.forEach(a => { a.lx = NaN; });
-        focus.init = false; dirty = true;
+        officials.forEach(o => { o.lx = NaN; });
+        forget();
       };
       unbind.push(() => { if (intro) endIntro(); });
+      const beginIntro = (now: number, ai: LiveSource) => {
+        introStarted = true; introPlayed.add(introSource);
+        const f0 = ai.frameAt(tickerRef.current.tau ?? 0);
+        const captains = [home.captainId ?? null, away.captainId ?? null];
+        const list: IntroSkater[] = [], ids = new Set<string>();
+        for (const p of shownSkaters(f0)) {
+          if (ids.has(p.id)) continue;
+          const w = toWorld(p.pos); ids.add(p.id);
+          list.push({ id: p.id, side: p.side, goalie: !!p.goalie, start: true, x: w.x, z: w.z, captain: captains[p.side] === p.id, rating: players[p.id]?.overall });
+          const a = actorFor(p.id, p.side, !!p.goalie); if (a.seat) leaveSeat(a);
+        }
+        for (const r of rosterRef.current) {
+          if (ids.has(r.id)) continue;
+          ids.add(r.id);
+          const a = actorFor(r.id, r.side, r.goalie);
+          let seat: IntroSkater['seat'] = null;
+          // the higher presets seat the real figures: each reserve skates to the seat he keeps afterwards
+          if (realBench) { const slot = benchSlot(a); introSeats.set(a.id, slot); a.seat = undefined; seat = benchSeat(r.side, slot); }
+          else if (a.seat) leaveSeat(a);
+          list.push({ id: r.id, side: r.side, goalie: r.goalie, start: false, x: 0, z: 0, seat, captain: captains[r.side] === r.id, rating: players[r.id]?.overall });
+        }
+        intro = { t0: now, plan: planIntro(list), ids };
+        actors.forEach(a => { a.off = a.enter = undefined; a.on = undefined; a.lx = NaN; });
+        setIntroOn(true);
+      };
+
+      // The broadcast between the plays (see liveShow): a goal — the celebration in close-up, then its replay; a
+      // stoppage after a big moment — its replay. The replays read the rink's own frames again; the clock holds.
+      type Tv = { kind: 'goal' | 'moment'; phase: 'celebrate' | 'replay'; t0: number; spec: ReplaySpec; goalTau: number };
+      let tv: Tv | null = null, lastAngle = '';
+      const seenGoals = new Set<number>();
+      let lastMomentClock = -Infinity, stopSeen = NaN, stopChecked = false;
+      const tvFocus = { x: 0, z: 0, init: false };
+      const startReplay = () => { tickerRef.current.hold = true; tickerRef.current.slow = false; lastAngle = ''; tvFocus.init = false; forget(); };
+      const endTv = () => { tv = null; tickerRef.current.hold = false; tickerRef.current.slow = false; showUi(null); forget(); };
+      unbind.push(() => { if (tv) endTv(); });
+      // the officials as they were (a replay shows them where they stood then)
+      const crewHist: { tau: number; crew: Official[] }[] = [];
+      const recordCrew = (tau: number, crew: readonly Official[]) => {
+        const last = crewHist.at(-1);
+        if (last && tau < last.tau) crewHist.length = 0;
+        if (last && tau - last.tau < .04) return;
+        crewHist.push({ tau, crew: crew.map(o => ({ role: o.role, x: o.x, z: o.z, vx: o.vx, vz: o.vz, heading: o.heading, phase: o.phase, gesture: o.gesture, gt: o.gt, aim: o.aim ? { ...o.aim } : null })) });
+        while (crewHist.length > 2 && tau - crewHist[0].tau > 24) crewHist.shift();
+      };
+      const crewAt = (tau: number): readonly Official[] => {
+        if (!crewHist.length) return crewFor(live.current.ai).officials;
+        let lo = 0, hi = crewHist.length - 1;
+        if (tau <= crewHist[0].tau) return crewHist[0].crew;
+        if (tau >= crewHist[hi].tau) return crewHist[hi].crew;
+        while (hi - lo > 1) { const m = (lo + hi) >> 1; if (crewHist[m].tau <= tau) lo = m; else hi = m; }
+        const a = crewHist[lo], b = crewHist[hi], u = (tau - a.tau) / (b.tau - a.tau || 1);
+        return a.crew.map((o, i) => { const q = b.crew[i]; return { ...o, x: o.x + (q.x - o.x) * u, z: o.z + (q.z - o.z) * u, heading: angleLerp(o.heading, q.heading, u), phase: o.phase + (q.phase - o.phase) * u, gt: o.gt + (tau - a.tau) }; });
+      };
+      const goalPlay = (ai: LiveSource, tau: number) => { for (let i = ai.plays.length - 1; i >= 0; i--) { const p = ai.plays[i]; if (p.kind === 'goal' && Math.abs(p.tau - tau) < 1e-6) return p; if (p.tau < tau - 1) break; } return undefined; };
 
       const update = (now: number) => {
         if (!renderer) return;
         const ai = live.current.ai;
-        if (introWanted && !introStarted && (figuresDone || now - mountAt > 8000)) {
-          introStarted = true; introPlayed.add(introSource);
-          const f0 = ai.frameAt(tickerRef.current.tau ?? 0);
-          intro = { t0: now, skaters: shownSkaters(f0).map(p => { const w = toWorld(p.pos); return { id: p.id, side: p.side, goalie: !!p.goalie, x: w.x, z: w.z }; }) };
-          setIntroOn(true);
-        }
-        if (intro && (skipIntro.current || (now - intro.t0) / 1000 >= INTRO.length)) endIntro();
+        if (introWanted && !introStarted && (figuresDone || now - mountAt > 8000)) beginIntro(now, ai);
+        if (intro && (skipIntro.current || (now - intro.t0) / 1000 >= intro.plan.t.length)) endIntro();
         if (intro) dirty = true;
-        if (!motion || motionOf !== ai) { motion = ai.motion ?? new LiveMotion(ai); motionOf = ai; focus.init = false; actors.forEach(a => { a.lx = NaN; a.save = null; a.on = undefined; a.off = a.enter = undefined; }); }
-        const tau = tickerRef.current.tau ?? 0;
+        if (!motion || motionOf !== ai) { motion = ai.motion ?? new LiveMotion(ai); motionOf = ai; focus.init = false; actors.forEach(a => { a.lx = NaN; a.save = null; a.on = undefined; a.off = a.enter = undefined; }); if (tv) endTv(); crewHist.length = 0; }
+        const liveTau = tickerRef.current.tau ?? 0;
+        if (tv && (skipShow.current || !replaysRef.current)) endTv();
+        skipShow.current = false;
+        if (replaysRef.current && !intro && (introStarted || !introWanted)) {
+          // a goal just scored: the celebration (the match plays on in real time), then its replay
+          const g = tv ? null : motion.goalAt(liveTau);
+          if (g && !seenGoals.has(g.tau)) {
+            seenGoals.add(g.tau);
+            if (liveTau - g.tau < 1.5) {
+              const p = goalPlay(ai, g.tau);
+              tv = { kind: 'goal', phase: 'celebrate', t0: now, spec: goalReplay(g.tau, g.netX, p?.text ?? 'ГОЛ!', p?.player), goalTau: g.tau };
+              tickerRef.current.slow = true; tvFocus.init = false;
+            }
+          }
+          if (tv?.phase === 'celebrate' && (liveTau >= tv.goalTau + GOAL_SHOW.celebrate || now - tv.t0 > 7000)) { tv.phase = 'replay'; tv.t0 = now; startReplay(); }
+          // a stoppage: a replay of the big moment just before the whistle (now and then)
+          if (!tv) {
+            const fl = ai.frameAt(liveTau);
+            if (!fl.stopped) stopSeen = NaN;
+            else if (Number.isNaN(stopSeen)) { stopSeen = liveTau; stopChecked = false; }
+            else if (!stopChecked && liveTau - stopSeen > .9) {
+              stopChecked = true;
+              const clock = ai.clockAt?.(liveTau) ?? NaN;
+              const due = Number.isNaN(clock) || clock - lastMomentClock >= MOMENT_GAP || clock < lastMomentClock;
+              if (due && !(ai as { ended?: boolean }).ended && !motion.goalAt(liveTau)) {
+                const m = pickMoment(ai.plays, stopSeen - 9, stopSeen + .3);
+                if (m) {
+                  const pk = toWorld(ai.frameAt(m.tau).puck);
+                  tv = { kind: 'moment', phase: 'replay', t0: now, spec: momentReplay(m, Math.sign(pk.x || 1) * NET_X, stopSeen + .8), goalTau: NaN };
+                  if (!Number.isNaN(clock)) lastMomentClock = clock;
+                  startReplay();
+                }
+              }
+            }
+          }
+        }
+        let tau = liveTau;
+        if (tv?.phase === 'replay') {
+          const real = (now - tv.t0) / 1000;
+          if (real >= replayLength(tv.spec)) endTv(); else tau = replayTau(tv.spec, real);
+        }
+        const replaying = tv?.phase === 'replay';
+        if (tv) dirty = true;
         const realDt = Math.min(.1, (now - lastNow) / 1000); lastNow = now;
         const camKey = `${live.current.camera}|${live.current.zoom}|${camera.aspect}`;
         // Paused (or a whistle with nothing moving) and the camera at rest: nothing to draw.
@@ -289,7 +404,9 @@ export function LiveScene3D(props: Props) {
         for (let i = 0; i < 14; i++) { const v = toWorld(ai.frameAt(tau - i * .012).puck); tr.setXYZ(i, v.x, Math.max(0, v.y) + PUCK_H, v.z); }
         tr.needsUpdate = true; trail.visible = pSpeed > 14;
         // the officials: positions and signals from the crew both rinks share
-        const crew = crewFor(ai).update(f, ai.plays, tau);
+        let crew: readonly Official[];
+        if (replaying) crew = crewAt(tau);
+        else { crew = crewFor(ai).update(f, ai.plays, tau); recordCrew(tau, crew); }
         crew.forEach((c, i) => {
           const o = officials[i];
           o.group.position.set(c.x, 0, c.z); o.group.rotation.set(0, c.heading, 0);
@@ -325,6 +442,7 @@ export function LiveScene3D(props: Props) {
         for (const p of f.skaters) if (p.box) { boxOf.set(p.id, boxCount[p.side]++); actorFor(p.id, p.side, !!p.goalie); }
         const dressed = new Set(rosterRef.current.map(r => r.id));
         actors.forEach(a => {
+          if (intro?.ids.has(a.id)) return; // the entrance poses everybody itself
           if (onIce.has(a.id)) {
             // back onto the ice: out of the seat, through the door (over the boards from the bench)
             if (a.on === false) {
@@ -382,7 +500,9 @@ export function LiveScene3D(props: Props) {
         const alpha = 1 - Math.exp(-dTau * 9);
         let carrierW = 0;
         const poses: { figure: PlayerFigure; args: Parameters<PlayerFigure['skate']> ; w: number; carrier: boolean }[] = [];
+        const gp = goal ? goalPlay(ai, goal.tau) : undefined;
         for (const p of shown) {
+          if (intro?.ids.has(p.id)) continue;
           const a = actorFor(p.id, p.side, !!p.goalie);
           const w = toWorld(p.pos), b = toWorld(prevOf.get(p.id) ?? p.pos), b2 = toWorld(prev2Of.get(p.id) ?? prevOf.get(p.id) ?? p.pos);
           a.group.visible = true;
@@ -458,7 +578,14 @@ export function LiveScene3D(props: Props) {
           const bank = clamp(turn * speed * .03, -.4, .4);
           const amp = clamp(speed / 7, 0, 1) * (1 - .4 * (rel?.aim ?? 0) - .45 * turnAway);
           const shot = rel && rel.s >= -1 && rel.s <= 1.9 ? rel.s : undefined;
-          const cheer = goal && goal.side === p.side ? clamp((tau - goal.tau) / .3, 0, 1) * (1 - smooth01((tau - goal.tau - 4) / 1.5)) * .7 : 0;
+          const cheer = goal && goal.side === p.side ? clamp((tau - goal.tau) / .3, 0, 1) * (1 - smooth01((tau - goal.tau - 4) / 1.5)) * (gp?.player === p.id ? 1 : .7) : 0;
+          // the scorer himself: a fist pump, and (some of them) down on one knee sliding
+          let pump = 0, kneel = 0;
+          if (goal && gp?.player === p.id) {
+            const gt = tau - goal.tau, style = [...p.id].reduce((h, c) => h + c.charCodeAt(0), 0) % 2;
+            pump = smooth01((gt - .45) / .3) * (1 - smooth01((gt - 3.6) / .6));
+            if (style) kneel = smooth01((gt - .3) / .35) * (1 - smooth01((gt - 2.4) / .5));
+          }
           local.copy(puckWorld); a.figure.root.worldToLocal(local);
           let reach: T.Vector3 | null = null, reachWeight = 0;
           const near = Math.hypot(local.x + .3 * hand, local.z - .85);
@@ -468,7 +595,7 @@ export function LiveScene3D(props: Props) {
             carrierW = Math.max(carrierW, reachWeight);
             reach = local.clone();
           }
-          poses.push({ figure: a.figure, args: [a.phase, amp * (1 - fall), shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind, deke: p.deke, check: p.check, poke: p.poke, move: p.move, moveT: p.moveT, stagger: p.stagger, down: fall }], w: reachWeight, carrier: f.carrier === p.id });
+          poses.push({ figure: a.figure, args: [a.phase, amp * (1 - fall), shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind, deke: p.deke, check: p.check, poke: p.poke, move: p.move, moveT: p.moveT, stagger: p.stagger, down: fall, pump, kneel, t: tau - (goal?.tau ?? 0) }], w: reachWeight, carrier: f.carrier === p.id });
         }
         let blade: { x: number; z: number; w: number } | null = null;
         for (const { figure, args, w, carrier } of poses) {
@@ -486,33 +613,46 @@ export function LiveScene3D(props: Props) {
           puckShadow.position.x = puck.position.x; puckShadow.position.z = puck.position.z;
         }
         firstFrame = false;
-        // The entrance: the skaters of the opening faceoff skate out on their own routes (the rink waits at its first frame)
+        // The entrance: everybody dressed skates out on his own route (the rink waits at its first frame)
         const it = intro ? (now - intro.t0) / 1000 : -1;
-        if (intro) {
-          const ip = introPoses(intro.skaters, it);
-          for (const s of intro.skaters) {
+        const ip = intro ? introPoses(intro.plan, it) : null;
+        if (intro && ip) {
+          const plan = intro.plan;
+          for (const s of plan.skaters) {
             const a = actors.get(s.id), p = ip.get(s.id);
             if (!a || !p) continue;
             a.group.visible = p.visible;
-            const moved = Number.isNaN(a.lx) ? 0 : Math.hypot(p.x - a.lx, p.z - a.lz);
-            a.phase += moved / STRIDE * Math.PI * 2; a.lx = p.x; a.lz = p.z;
-            a.group.position.set(p.x, 0, p.z); a.group.rotation.set(0, p.heading, 0); a.heading = p.heading;
+            if (!p.visible) { a.lx = NaN; continue; }
+            const fresh = Number.isNaN(a.lx), moved = fresh ? 0 : Math.hypot(p.x - a.lx, p.z - a.lz);
+            // long, easy strides: the stride phase from the distance skated
+            a.phase += moved / INTRO_STRIDE * Math.PI * 2; a.lx = p.x; a.lz = p.z;
+            const turn = fresh || realDt <= 0 ? 0 : angleDiff(a.heading, p.heading) / realDt;
+            a.group.position.set(p.x, p.y, p.z); a.group.rotation.set(0, p.heading, 0); a.heading = p.heading;
             if (!a.figure) continue;
             a.group.updateMatrixWorld(true);
+            if (p.sit) { a.figure.sit({ seat: BENCH.seatTop, look: 0 }); continue; }
             if (s.goalie && p.speed < .5) a.figure.goalie({ drop: 0, look: 0 });
-            else a.figure.skate(a.phase, clamp(p.speed / 8, 0, 1), undefined, p.wave, { bank: 0 });
+            else a.figure.skate(a.phase, clamp(p.speed / 9, 0, 1), undefined, p.wave, { bank: clamp(turn * p.speed * .03, -.3, .3), shake: p.shake, t: it });
           }
           const crewNow = crewFor(ai).officials;
-          introOfficials(it, crewNow.map(c => ({ x: c.x, z: c.z }))).forEach((p, i) => {
+          introOfficials(plan, it, crewNow.map(c => ({ x: c.x, z: c.z }))).forEach((p, i) => {
             const o = officials[i];
             o.group.visible = p.visible; o.group.position.set(p.x, 0, p.z); o.group.rotation.set(0, p.heading, 0);
+            const moved = Number.isNaN(o.lx) ? 0 : Math.hypot(p.x - o.lx, p.z - o.lz); o.lx = p.x; o.lz = p.z; o.ph += moved / 3.4 * Math.PI * 2;
             if (!o.figure) return;
             o.group.updateMatrixWorld(true);
-            o.figure.officiate({ phase: now / 1000 * 4.5 * clamp(p.speed / 6, 0, 1), amp: clamp(p.speed / 6, 0, 1), gesture: 'none', t: 0 });
+            o.figure.officiate({ phase: o.ph, amp: clamp(p.speed / 6, 0, 1), gesture: p.gesture, t: it, look: 0 });
           });
           puck.visible = puckShadow.visible = trail.visible = false; carrierRing.visible = ctrlRing.visible = ctrlArrow.visible = aimMark.visible = false;
-        } else { puck.visible = true; officials.forEach(o => { o.group.visible = true; }); }
-        const sh = intro ? introShow(it, intro.skaters) : null;
+          // the captions: the chapter, and whose close-up it is
+          const shot = introShotAt(plan, it), who = shot ? players[shot.id] : undefined;
+          const team = shot ? (shot.side ? away : home) : null;
+          showUi({ mode: 'intro', title: introChapter(plan, it), name: who ? `${who.number ? `#${who.number} ` : ''}${who.name}` : undefined, sub: shot && team ? `${SHOT_LABEL[shot.kind]} · ${team.name}` : undefined, color: team?.primaryColor });
+        } else {
+          puck.visible = true; officials.forEach(o => { o.group.visible = true; });
+          if (replaying) { carrierRing.visible = ctrlRing.visible = ctrlArrow.visible = aimMark.visible = false; }
+        }
+        const sh = intro && ip ? introShow(intro.plan, it, ip) : null;
         const L = sh?.level ?? 0;
         // a home goal: the arena lights flash and the lasers fire for a few seconds
         const party = !intro && goal && goal.side === 0 ? Math.max(0, Math.sin(Math.PI * clamp((tau - goal.tau) / 4.5, 0, 1))) : 0;
@@ -526,9 +666,31 @@ export function LiveScene3D(props: Props) {
         camSpeed += (Math.min(pSpeed, 30) - camSpeed) * (1 - Math.exp(-realDt * 1.6));
         settled = Math.hypot(lead.x - focus.x, lead.z - focus.z) < .01 && Math.abs(Math.min(pSpeed, 30) - camSpeed) < .05;
         const pose = liveCameraPose(live.current.camera, focus, live.current.zoom, aspect(), { attack: ai.attack ?? (ai.flipped ? -1 : 1), speed: camSpeed });
+        if (tv) {
+          // the broadcast's own pictures: the scorer in close-up, the replay's angles (smoothed on the puck, cut between angles)
+          let c;
+          if (tv.phase === 'celebrate') {
+            const sc = shown.find(p => p.id === tv!.spec.player) ?? shown.filter(p => goal && p.side === goal.side && !p.goalie).sort((p, q) => { const a = toWorld(p.pos), b = toWorld(q.pos); return Math.hypot(a.x - pw.x, a.z - pw.z) - Math.hypot(b.x - pw.x, b.z - pw.z); })[0];
+            const w = sc ? toWorld(sc.pos) : pw;
+            if (!tvFocus.init) { tvFocus.x = w.x; tvFocus.z = w.z; tvFocus.init = true; }
+            else { const k = 1 - Math.exp(-realDt * 5); tvFocus.x += (w.x - tvFocus.x) * k; tvFocus.z += (w.z - tvFocus.z) * k; }
+            c = celebrateCamera((now - tv.t0) / 1000, tvFocus);
+          } else {
+            const angle = replayAngle(tv.spec, tau);
+            if (angle !== lastAngle) { lastAngle = angle; tvFocus.init = false; }
+            if (!tvFocus.init) { tvFocus.x = pw.x; tvFocus.z = pw.z; tvFocus.init = true; }
+            else { const k = 1 - Math.exp(-realDt * 4.5); tvFocus.x += (pw.x - tvFocus.x) * k; tvFocus.z += (pw.z - tvFocus.z) * k; }
+            c = replayCamera(tv.spec, tau, tvFocus);
+          }
+          pose.pos = c.pos; pose.look = c.look; pose.fov = c.fov;
+          const who = tv.spec.player ? players[tv.spec.player] : undefined, side = goal?.side;
+          const team = tv.kind === 'goal' && side !== undefined ? (side ? away : home) : null;
+          if (tv.phase === 'celebrate') showUi({ mode: 'celebrate', title: 'ГОЛ!', name: who ? `${who.number ? `#${who.number} ` : ''}${who.name}` : tv.spec.text.replace(/^ГОЛ!\s*/, ''), sub: team?.name, color: team?.primaryColor });
+          else showUi({ mode: 'replay', title: RE_LABEL[tv.spec.kind], name: tv.kind === 'goal' ? (who ? `${who.number ? `#${who.number} ` : ''}${who.name}` : undefined) : tv.spec.text });
+        }
         if (intro && sh) {
           // the entrance's own camera, handing over to the match camera as everybody skates to his place
-          const ic = introCamera(it, sh.focus), k = smooth01((it - INTRO.settle - .3) / 2.2);
+          const ic = introCamera(intro.plan, it, ip!), k = smooth01((it - intro.plan.t.settle - .3) / 2.2);
           pose.pos = { x: ic.pos.x + (pose.pos.x - ic.pos.x) * k, y: ic.pos.y + (pose.pos.y - ic.pos.y) * k, z: ic.pos.z + (pose.pos.z - ic.pos.z) * k };
           pose.look = { x: ic.look.x + (pose.look.x - ic.look.x) * k, y: ic.look.y + (pose.look.y - ic.look.y) * k, z: ic.look.z + (pose.look.z - ic.look.z) * k };
           pose.fov = ic.fov + (pose.fov - ic.fov) * k;
@@ -614,9 +776,21 @@ export function LiveScene3D(props: Props) {
   return <div className="absolute inset-0" data-live-3d={ready ? 'ready' : 'loading'}>
     <div ref={host} className="w-full h-full" />
     {!ready && <div className="absolute inset-0 flex items-center justify-center text-xs text-white/70 bg-[#081421]">Загрузка 3D…</div>}
-    {introOn && <div className="absolute inset-x-0 bottom-3 flex flex-col items-center gap-1.5 pointer-events-none z-20" data-live-intro>
-      <span className="text-[11px] font-bold uppercase tracking-[.2em] text-white/90 drop-shadow">Выход команд</span>
-      <button type="button" onClick={() => { skipIntro.current = true; }} className="pointer-events-auto rounded-sm bg-black/55 hover:bg-black/75 text-white text-xs font-semibold px-3 py-1 backdrop-blur-sm" data-live-intro-skip>Пропустить ▸</button>
+    {/* the broadcast's captions: a lower third (the entrance's chapters and close-ups, the scorer), the replay bug */}
+    {(introOn || ui) && <div className="absolute inset-0 pointer-events-none z-20" data-live-intro={introOn || undefined} data-live-show={ui && ui.mode !== 'intro' ? ui.mode : undefined}>
+      {ui?.mode === 'replay' && <div className="absolute top-2 right-2 flex items-center gap-1.5 rounded-sm bg-black/60 px-2 py-1 text-[11px] font-black uppercase tracking-[.18em] text-white backdrop-blur-sm">
+        <i className="inline-block w-2 h-2 rounded-full bg-red-500 animate-pulse" />Повтор
+      </div>}
+      <div className="absolute inset-x-0 bottom-3 flex flex-col items-center gap-1.5 px-3">
+        {ui && (ui.name || ui.mode !== 'intro') && <div className="flex items-stretch max-w-[92%] overflow-hidden rounded-sm shadow-lg" data-live-caption>
+          <span className="px-2.5 py-1 text-xs sm:text-sm font-black uppercase tracking-wide text-white" style={{ background: ui.color ?? (ui.mode === 'replay' ? '#b91c1c' : '#0f2a44') }}>{ui.title}</span>
+          {ui.name && <span className="px-2.5 py-1 bg-black/70 text-white text-xs sm:text-sm font-semibold truncate backdrop-blur-sm">{ui.name}{ui.sub && <span className="ml-2 text-white/60 font-normal text-[11px]">{ui.sub}</span>}</span>}
+        </div>}
+        {introOn && !(ui && ui.name) && <span className="text-[11px] font-bold uppercase tracking-[.2em] text-white/90 drop-shadow">{ui?.title ?? 'Выход команд'}</span>}
+        {introOn
+          ? <button type="button" onClick={() => { skipIntro.current = true; }} className="pointer-events-auto rounded-sm bg-black/55 hover:bg-black/75 text-white text-xs font-semibold px-3 py-1 backdrop-blur-sm" data-live-intro-skip>Пропустить ▸</button>
+          : ui && <button type="button" onClick={() => { skipShow.current = true; }} className="pointer-events-auto rounded-sm bg-black/55 hover:bg-black/75 text-white text-xs font-semibold px-3 py-1 backdrop-blur-sm" data-live-show-skip>Пропустить ▸</button>}
+      </div>
     </div>}
   </div>;
 }

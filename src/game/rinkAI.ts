@@ -105,6 +105,9 @@ const inBox = (p: V2, c: { x0: number; x1: number; y0: number; y1: number }, m: 
 const SHOT_SPEED: Record<string, number> = { slap: 36, snap: 30, wrist: 26, backhand: 21, tip: 24, rebound: 18 };
 const CATCH: Record<string, number> = { slap: 0.3, snap: 0.25, wrist: 0.65, backhand: 0.8, tip: 0.05, rebound: 0.15 };
 const FACEOFF_DOTS = { center: { x: 30, y: 15 } };
+/** Least time from the end of the whistle to the players set for a faceoff, and set → drop (the official skates
+ *  to the dot, bends over, holds the puck out; see officialCrew). */
+export const FACEOFF_GATHER = 2.6, FACEOFF_SET = 1.1;
 /** End-zone dot of side s's defensive zone, on the half where the puck is. */
 const zoneDot = (s: Side, y: number): V2 => loc(s, { x: RINK.endDot, y: loc(s, { x: 0, y }).y < MID ? MID - RINK.dotOffset : MID + RINK.dotOffset });
 /** Neutral-zone dot just outside side s's attacking blue line (offside faceoffs), on the puck's half. */
@@ -292,7 +295,7 @@ export class RinkAI {
       puck: { x: this.px(a.px + (b.px - a.px) * u), y: (a.py + (b.py - a.py) * u) / 0.3, h: a.ph + (b.ph - a.ph) * u },
       skaters, faceoff: a.stop === 1 || undefined, stopped: a.stop > 0 || undefined,
       carrier: a.carrier >= 0 ? a.ids[a.carrier] : null, caption: caption?.text,
-      official: a.stop === 1 ? { x: this.px(a.ox), y: a.oy / 0.3, h: 0 } : undefined,
+      official: a.stop ? { x: this.px(a.ox), y: a.oy / 0.3, h: 0 } : undefined,
     };
   }
   /** The goal sequence as the 3D viewer consumes it — exactly the frames shown on the 2D rink. */
@@ -662,8 +665,9 @@ export class RinkAI {
     }
     if (st.phase === 'gather') {
       const ready = this.onIce().every(a => !a.leave && dist(a, this.slot(a)) < 0.9) && dist(p, st.dot) < 0.05;
-      if ((ready && since > 1.2) || since > 14) { st.phase = 'set'; st.phaseAt = this.tau; }
-    } else if (st.phase === 'set' && since > 0.8) { st.phase = 'drop'; st.phaseAt = this.tau; }
+      // the linesman (the referee at centre ice) has to reach the dot and get set too: never in a rush
+      if ((ready && since > FACEOFF_GATHER) || since > 14) { st.phase = 'set'; st.phaseAt = this.tau; }
+    } else if (st.phase === 'set' && since > FACEOFF_SET) { st.phase = 'drop'; st.phaseAt = this.tau; }
     else if (st.phase === 'drop' && since >= 0.45) this.dropPuck();
   }
   private dropPuck() {
@@ -744,7 +748,7 @@ export class RinkAI {
   private forceOutcome(e: GameEvent) {
     this.delivered.add(e);
     const T: Side = e.team === this.teams[1].id ? 1 : 0;
-    if (e.type === 'goal') { this.play('goal', T, `ГОЛ! ${this.players[e.player!]?.name ?? ''}`); this.startStop('goal', FACEOFF_DOTS.center, this.agents.get(e.player!)); }
+    if (e.type === 'goal') { this.play('goal', T, `ГОЛ! ${this.players[e.player!]?.name ?? ''}`, this.agents.get(e.player!)); this.startStop('goal', FACEOFF_DOTS.center, this.agents.get(e.player!)); }
     else if (e.type === 'shot' && this.mode === 'play') { this.play('save', (1 - T) as Side, 'Сейв'); }
   }
   private doPenalty(e: GameEvent) {

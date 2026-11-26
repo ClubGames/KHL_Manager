@@ -23,6 +23,8 @@ export interface LiveSource {
   readonly plays: readonly RinkPlay[];
   frameAt(tau: number): LiveFrame;
   ensure(tau: number): void;
+  /** the game clock at presentation time (the replays of moments keep a few game minutes apart) */
+  clockAt?(tau: number): number;
   /** releases known as they happen (the played match): used instead of reading them back from the frames */
   readonly motion?: LiveMotionLike;
   /** the played match: the aim marker on the net (world metres, the charge of the shot 0…1) */
@@ -38,6 +40,8 @@ export interface LiveMotionLike {
 }
 
 const HOLD_BACK = 1.5;
+/** Seconds of releases kept behind the picture: a replay goes back up to about this far. */
+export const REPLAY_KEEP = 18;
 
 export class LiveMotion implements LiveMotionLike {
   readonly releases: LiveRelease[] = [];
@@ -100,10 +104,10 @@ export class LiveMotion implements LiveMotionLike {
     return releaseAt(this.plan, id, tau, 1);
   }
 
-  /** Forget releases long gone (presentation time only moves forward within a period). */
+  /** Forget releases long gone (kept long enough for the replays, which read the last seconds again). */
   prune(tau: number) {
     let n = 0;
-    while (n < this.releases.length && this.releases[n].t < tau - 3) n++;
+    while (n < this.releases.length && this.releases[n].t < tau - REPLAY_KEEP) n++;
     if (n) this.releases.splice(0, n);
   }
 

@@ -32,7 +32,7 @@ export type Kit = {
 /** What an official's arms do (see officialCrew): the IIHF signals, the faceoff drop, a point. */
 export type OfficialPose = {
   phase: number; amp: number;
-  gesture: 'none' | 'armUp' | 'point' | 'goal' | 'trip' | 'hook' | 'hold' | 'slash' | 'interference' | 'boarding' | 'charging' | 'highstick' | 'fist' | 'icing' | 'washout' | 'ready' | 'drop';
+  gesture: 'none' | 'armUp' | 'point' | 'goal' | 'trip' | 'hook' | 'hold' | 'slash' | 'interference' | 'boarding' | 'charging' | 'highstick' | 'fist' | 'icing' | 'washout' | 'ready' | 'drop' | 'shake';
   /** seconds into the gesture */ t: number;
   /** a pointing arm's target in character space */ aim?: T.Vector3 | null;
   /** head turn toward the play (rad, + to his left) */ look?: number;
@@ -326,9 +326,12 @@ export class PlayerFigure {
    * blade, the body lunging after it); opts.stagger 0..1: knocked off balance after a hit — a wobble, arms out;
    * opts.down 0..1: on the ice after a fall (the group itself is tipped over by the caller) — knees bent, arms
    * thrown out to break the fall, the stick flung wide, the head up.
+   * opts.shake 0..1: the right hand out for a handshake (the stick stays in the other one), shaking with opts.t;
+   * opts.pump 0..1: a goal scorer's fist pump with the free (right) arm, in time with opts.t; opts.kneel 0..1:
+   * down on one knee, sliding (the celebration after a goal).
    * Everything is solved for a right shot and mirrored for a left one.
    */
-  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number; check?: number; poke?: number; move?: LiveMove; moveT?: number; stagger?: number; down?: number } = {}) {
+  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number; check?: number; poke?: number; move?: LiveMove; moveT?: number; stagger?: number; down?: number; shake?: number; pump?: number; kneel?: number; t?: number } = {}) {
     this.reset();
     const m = this.hand, kind = opts.kind ?? 'wrist';
     const chk = smooth(clamp01(opts.check ?? 0)), poke = smooth(clamp01(opts.poke ?? 0));
@@ -339,9 +342,10 @@ export class PlayerFigure {
     const w = (k: LiveMove) => (mv === k ? bell : 0);
     const toe = w('toe'), btw = w('between'), spin = w('spin'), fake = w('fake'), hip = w('hip'), pin = w('pin'), lift = w('lift'), rch = w('reach');
     const stag = clamp01(opts.stagger ?? 0), wob = stag * Math.sin(stag * 18), down = smooth(clamp01(opts.down ?? 0));
+    const kneel = smooth(clamp01(opts.kneel ?? 0));
     // Deeper knee bend on a hard stride, a little bob with every push.
     const crouch = lerp(.1 + .07 * amp + .012 * amp * Math.cos(phase * 2), .02, cheer) + Math.abs(bank) * .08 + Math.abs(deke) * .06 + chk * .1 + poke * .07
-      + toe * .08 + btw * .16 + spin * .12 + hip * .14 - pin * .04 + lift * .05 - stag * .03 + rch * .14 + down * .22;
+      + toe * .08 + btw * .16 + spin * .12 + hip * .14 - pin * .04 + lift * .05 - stag * .03 + rch * .14 + down * .22 + kneel * .42;
     this.rig.position.set(.035 * Math.sin(phase) * amp * (1 - cheer) + bank * .1 + (opts.deke ?? 0) * .12 + wob * .08 + hip * .12 * m, LIFT - crouch, 0);
     // Shot profile: load (stick back, shoulders closed), whip through the puck, follow through.
     const s = shot === undefined ? -9 : shot;
@@ -371,6 +375,8 @@ export class PlayerFigure {
       const lift = .065 * amp * smooth(Math.max(0, -Math.sin(ph + .5)));
       feet[i].set(wide, .023 + LIFT * .2 + lift, .08 - .28 * amp * backS);
       yaw[i] = side * (.1 + .32 * amp * push) + bank * .3;
+      // on one knee: the left skate planted ahead, the right shin flat on the ice behind
+      if (kneel > 0) feet[i].lerp(i ? vec(-.16, .1, -.62) : vec(.2, .023 + LIFT * .2, .38), kneel);
     });
     this.legs(feet, [vec(.25, -.1, 1), vec(-.25, -.1, 1)], yaw);
     // Stick (right-shot frame): blade on the ice at the forehand side, ≈1 m ahead, 0.55 m right.
@@ -446,6 +452,16 @@ export class PlayerFigure {
     }
     if (cheer > 0) { heel = mixV(heel, vec(-.2, 2.25, .45), smooth(cheer)); top = mixV(top, vec(.2, 1.12, .3), smooth(cheer)); }
     this.grip(heel, top, vec(1, -.6, -.6), vec(-1, -.8, -.3));
+    // the free right hand: out for a handshake, or a fist pumped after a goal (the stick stays in the other hand)
+    const shake = smooth(clamp01(opts.shake ?? 0)), pump = smooth(clamp01(opts.pump ?? 0)), tt = opts.t ?? 0;
+    if (shake > 0 || pump > 0) {
+      const b = this.bones;
+      const now = this.root.worldToLocal(b.HandR.getWorldPosition(new T.Vector3()));
+      const hand = shake >= pump
+        ? vec(-.12, 1.02 - crouch + .035 * Math.sin(tt * 13), .52)
+        : vec(-.3, 1.42 - crouch + .36 * Math.pow(Math.max(0, Math.sin(tt * 6.5)), .6), .22);
+      solveLimb(b.UpperArmR, b.LowerArmR, b.HandR, this.world(now.lerp(hand, Math.max(shake, pump))), this.dirWorld(shake >= pump ? vec(-1, -.8, -.2) : vec(-1, -.2, -.6)));
+    }
   }
 
   /**
@@ -601,6 +617,7 @@ export class PlayerFigure {
       case 'fist': R = vec(-sx - .55, sy + .05, sz + .25); PR = vec(0, -1, -.3); break;
       case 'icing': L = vec(-.12, sy - .08, front - .1); R = vec(.12, sy - .1, front - .08); PL = poleDown(1); PR = poleDown(-1); break;
       case 'washout': { const k = osc(7); L = vec(sx + .25 + .3 * k, sy - .05, front); R = vec(-sx - .25 - .3 * k, sy - .05, front); PL = vec(.3, -1, -.3); PR = vec(-.3, -1, -.3); break; }
+      case 'shake': R = vec(-.1, chest - .14 + .035 * osc(13), front + .42); PR = poleDown(-1); break;
       case 'ready': case 'drop': { const d = g === 'drop' ? smooth(Math.min(1, t / .18)) : 0; R = vec(-.06, sy - .3 - .2 * d, front + .3); PR = poleDown(-1); L = vec(.22, sy - .55, sz + .25); break; }
       default: break;
     }

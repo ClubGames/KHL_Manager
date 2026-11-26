@@ -219,19 +219,23 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   useEffect(() => {
     if (status !== 'playing' || paused || replayEvent) return;
     let raf = 0;
-    let last = performance.now(), waited = 0;
+    let last = performance.now(), waited = 0, held = 0;
     const loop = (t: number) => {
       const dt = Math.min(0.1, (t - last) / 1000);
       last = t;
       // The match waits while the 3D picture is being prepared (at most a few seconds), so nothing is missed.
-      // … and for the teams' entrance before the first period (it can be skipped; capped all the same)
-      if ((ticker.wait && waited < 8) || (ticker.intro && waited < 40)) { waited += dt; raf = requestAnimationFrame(loop); return; }
+      if (ticker.wait && waited < 8) { waited += dt; raf = requestAnimationFrame(loop); return; }
+      // … and while the 3D picture holds the clock: the teams' entrance, a replay (skippable; a safety cap all the same)
+      if (ticker.hold && held < 240) { held += dt; raf = requestAnimationFrame(loop); return; }
+      if (!ticker.hold) held = 0;
       const ai = rinkAI.current;
       if (ai) {
         // Highlights play near real time, routine skating is fast-forwarded; the change of pace is eased.
         const want = ai.paceAt(tauRef.current);
         paceRef.current += (want - paceRef.current) * Math.min(1, dt * 5);
-        tauRef.current = Math.min(tauRef.current + dt * speed * paceRef.current, ai.ended ? ai.lastTau : Infinity);
+        // a goal celebration on the 3D picture plays in real time, whatever the match speed
+        const rate = speed * paceRef.current;
+        tauRef.current = Math.min(tauRef.current + dt * (ticker.slow ? Math.min(rate, 1) : rate), ai.ended ? ai.lastTau : Infinity);
         ai.ensure(tauRef.current);
         // The game clock comes from the rink: it stands still from every whistle until the puck is dropped.
         clockRef.current = Math.max(clockRef.current, ai.clockAt(tauRef.current));
@@ -269,7 +273,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           c = e.sec; clockRef.current = c;
           if (rinkAI.current) tauRef.current = rinkAI.current.tauOf(e) ?? tauRef.current;
           // Auto-replay (a setting): the match freezes on the goal while its replay is open.
-          if (autoReplayFor(getSettings(), e.team, s.userTeamId)) { setReplayEvent(e); hitGoal = true; }
+          // (the 3D picture shows the celebration and the replay itself, without a window)
+          if (autoReplayFor(getSettings(), e.team, s.userTeamId) && !ticker.shows) { setReplayEvent(e); hitGoal = true; }
           break;
         }
       }
@@ -1494,8 +1499,12 @@ class Ticker {
   tau = 0;
   /** set by the 3D view while its first picture is not ready yet */
   wait = false;
-  /** set by the 3D view while the teams skate out before the first period */
-  intro = false;
+  /** set by the 3D view while it holds the clock: the teams' entrance, a replay */
+  hold = false;
+  /** set by the 3D view during a goal celebration: the rink plays in real time */
+  slow = false;
+  /** set by the 3D view while it shows the goals' celebrations and replays itself */
+  shows = false;
   private subs = new Set<() => void>();
   subscribe = (f: () => void) => {
     this.subs.add(f);

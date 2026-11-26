@@ -90,7 +90,9 @@ class PlayTicker {
   sec = 0;
   tau = 0;
   wait = false;
-  intro = false;
+  hold = false;
+  slow = false;
+  shows = false;
 }
 
 export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => void }) {
@@ -284,7 +286,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   // The game loop: input → rink (fixed 1/60 s steps inside) → books → HUD.
   useEffect(() => {
     if (phase !== 'playing' || paused || replay || busy) return;
-    let raf = 0, last = performance.now(), hudAt = 0, waited = 0;
+    let raf = 0, last = performance.now(), hudAt = 0, waited = 0, held = 0;
     // a button still held from the menu (Start that resumed the match) is not a new press
     prevCommands.current = gamepadPad(pads()).commands;
     const loop = (now: number) => {
@@ -298,7 +300,10 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       prevCommands.current = gp.commands;
       // the 3D picture is being prepared: the match waits (a few seconds at most)
       // … and the teams' entrance before the first period (skippable, capped)
-      if ((ticker.wait && waited < 8) || (ticker.intro && waited < 40)) { waited += dt; raf = requestAnimationFrame(loop); return; }
+      if (ticker.wait && waited < 8) { waited += dt; raf = requestAnimationFrame(loop); return; }
+      // … while it holds the clock: the teams' entrance, a replay (skippable; a safety cap all the same)
+      if (ticker.hold && held < 240) { held += dt; raf = requestAnimationFrame(loop); return; }
+      if (!ticker.hold) held = 0;
       const t = touch.current;
       let pad: PadState = mergePads(keyboardPad(keys.current), gp.pad, t, mousePad(mouse.current, now));
       // the sticks are read in screen terms: the camera of the 3D picture turns them into rink terms (the skill

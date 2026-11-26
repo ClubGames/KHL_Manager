@@ -23,7 +23,7 @@ import { RINK } from '../game/rinkGeometry';
  * convention (0 = facing +x, angle = atan2(−dz, dx)). Pure (no three.js): the tests run it in Node.
  */
 export type Gesture = 'none' | 'armUp' | 'point' | 'goal' | 'trip' | 'hook' | 'hold' | 'slash' | 'interference' | 'boarding' | 'charging'
-  | 'highstick' | 'fist' | 'icing' | 'washout' | 'ready' | 'drop';
+  | 'highstick' | 'fist' | 'icing' | 'washout' | 'ready' | 'drop' | 'shake';
 export type OfficialRole = 'ref' | 'line';
 export type Official = {
   role: OfficialRole; x: number; z: number; vx: number; vz: number;
@@ -82,7 +82,8 @@ export class OfficialCrew {
   readonly crew: Inner[];
   private lastTau = NaN;
   private dropper = -1;
-  private wasFaceoff = false;
+  private wasStop = false;
+  private dropped = false;
   private stoppedAt = NaN;
 
   constructor() {
@@ -137,24 +138,29 @@ export class OfficialCrew {
         const o = nearest('ref', puck);
         if (!o.hold) signal(o, [{ g: 'armUp', dur: 1.1 }]);
       } else if (p.kind === 'faceoff' && this.dropper >= 0) {
-        const o = this.crew[this.dropper];
-        signal(o, [{ g: 'drop', dur: .55 }]);
+        // (the drop itself is signalled as the puck leaves his hand, see below)
+        if (!this.dropped) signal(this.crew[this.dropper], [{ g: 'drop', dur: .55 }]);
         this.dropper = -1;
       }
     }
 
-    // the faceoff: who drops the puck
-    const dot = f.faceoff ? (f.official ? toW(f.official) : { x: puck.x + .9 * (puck.x > 0 ? -1 : 1), z: puck.z + 1.6 }) : null;
-    if (dot && !this.wasFaceoff) {
-      const centre = Math.abs(puck.x) < 2 && Math.abs(puck.z) < 2;
+    // the next faceoff: known from the whistle on, so the man who drops the puck skates there at once (signalling
+    // on the way if he has a call to show) and is at the dot, set, before the players are
+    const dot = f.stopped && f.official ? toW(f.official) : f.faceoff ? { x: puck.x + .9 * (puck.x > 0 ? -1 : 1), z: puck.z + 1.6 } : null;
+    if (dot && (!this.wasStop || this.dropper < 0) && !this.dropped) {
+      const centre = Math.abs(dot.x) < 3 && Math.abs(dot.z) < 3.5;
       this.dropper = this.crew.indexOf(nearest(centre ? 'ref' : 'line', dot));
     }
-    if (!f.faceoff && this.wasFaceoff && this.dropper >= 0) {
-      // the puck is in play (the drop went unannounced): he backs off
-      const o = this.crew[this.dropper]; if (o.gesture === 'ready') signal(o, [{ g: 'drop', dur: .4 }]);
-      this.dropper = -1;
+    // the drop: as the puck leaves his hand
+    if (f.faceoff && this.dropper >= 0 && !this.dropped && f.puck.h < 1.06) {
+      signal(this.crew[this.dropper], [{ g: 'drop', dur: .55 }]); this.dropped = true;
     }
-    this.wasFaceoff = !!f.faceoff;
+    if (!f.stopped && this.wasStop) {
+      // the puck is in play: he backs off (also when the drop went unannounced)
+      if (this.dropper >= 0) { const o = this.crew[this.dropper]; if (o.gesture === 'ready') signal(o, [{ g: 'drop', dur: .4 }]); }
+      this.dropper = -1; this.dropped = false;
+    }
+    this.wasStop = !!f.stopped;
     if (f.stopped && Number.isNaN(this.stoppedAt)) this.stoppedAt = tau;
     if (!f.stopped) this.stoppedAt = NaN;
 
@@ -190,7 +196,7 @@ export class OfficialCrew {
       if (fresh) { o.x = tx; o.z = tz; o.vx = o.vz = 0; }
       else if (dt > 0) {
         const dx = tx - o.x, dz = tz - o.z, d = Math.hypot(dx, dz);
-        const top = dropping ? 8 : 7.5, want = d > .05 ? Math.min(top, d * (dropping ? 2.2 : 1.4)) : 0;
+        const top = dropping ? (d > 6 ? 10.5 : 8) : 7.5, want = d > .05 ? Math.min(top, d * (dropping ? 2.2 : 1.4)) : 0;
         const k = 1 - Math.exp(-dt * (dropping ? 5 : 3.2));
         o.vx += ((d > 0 ? dx / d : 0) * want - o.vx) * k; o.vz += ((d > 0 ? dz / d : 0) * want - o.vz) * k;
         o.x += o.vx * dt; o.z += o.vz * dt;
@@ -212,8 +218,9 @@ export class OfficialCrew {
         const next = o.queue.shift();
         if (next) this.begin(o, next, tau); else { o.gesture = 'none'; o.aim = null; }
       }
-      if (dropping && o.gesture === 'none' && Math.hypot(o.x - tx, o.z - tz) < 1.2) this.begin(o, { g: 'ready', dur: 1e9 }, tau);
-      if (!dropping && o.gesture === 'ready') { o.gesture = 'none'; }
+      // at the dot: upright until the players are set, then bent over with the puck held out
+      if (dropping && f.faceoff && !this.dropped && o.gesture === 'none' && Math.hypot(o.x - tx, o.z - tz) < 1.2) this.begin(o, { g: 'ready', dur: 1e9 }, tau);
+      if ((!dropping || !f.faceoff) && o.gesture === 'ready') { o.gesture = 'none'; }
       o.gt = tau - o.since;
     });
     return this.crew;
