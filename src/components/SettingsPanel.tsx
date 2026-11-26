@@ -119,6 +119,9 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
         <Row label="Мини-карта 2D поверх 3D" hint="Маленькая площадка сверху в углу 3D-картинки.">
           <Toggle id="matchMinimap" value={s.matchMinimap} onChange={(v) => set({ matchMinimap: v })} />
         </Row>
+        <Row label="Выход команд и лазерное шоу" hint="Перед первым периодом в 3D: свет гаснет, идёт лазерное шоу, на лёд выезжают сначала гости, потом хозяева. Можно пропустить кнопкой на картинке.">
+          <Toggle id="matchIntro" value={s.matchIntro} onChange={(v) => set({ matchIntro: v })} />
+        </Row>
         <Row label="Подсказки тренерского штаба на остановках" hint="Когда нужен тайм-аут, замена вратаря или игра без вратаря, матч встаёт на паузу при свистке и предлагает решение, а потом продолжается сам.">
           <Toggle id="matchAdvice" value={s.matchAdvice} onChange={(v) => set({ matchAdvice: v })} />
         </Row>

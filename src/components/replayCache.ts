@@ -195,6 +195,13 @@ let loaded = false;
 /** The rigged model is decoded already (figures can be had right away). */
 export const modelLoaded = () => loaded;
 /** Loaded on demand (keeps the GLB out of node-side imports of the replay components). */
+/** The officials' kit: black-and-white stripes, black helmet, pants and socks; referees with orange armbands. */
+export function officialKit(role: 'ref' | 'line'): Kit {
+  const black = '#121418';
+  return { jersey: '#f2f4f6', trim: black, trim2: '#ff6a1a', pants: black, socks: black, sockTrim: black, helmet: black, glove: black,
+    number: '', numberFill: black, numberStroke: '#ffffff', official: role, hand: 'R' };
+}
+
 export function loadModel() {
   if (!model) {
     model = import('./playerModel').then(mod => mod.loadPlayerTemplate().then(template => { loaded = true; return { mod, template }; }));
@@ -237,7 +244,7 @@ export function takeFigures(mod: Model, template: Awaited<ReturnType<Model['load
 /** The lights of the replay arena (also used to compile shaders ahead with the exact same light setup). */
 export function addStageLights(scene: T.Scene, shadowSize: number, shadowRadius: number) {
   scene.fog = new T.Fog('#081421', 70, 150);
-  scene.add(new T.HemisphereLight('#e6f4ff', '#26384c', 1.5));
+  const hemi = new T.HemisphereLight('#e6f4ff', '#26384c', 1.5); scene.add(hemi);
   const env = sharedEnvMap();
   if (env) { scene.environment = env; scene.environmentIntensity = .45; }
   // One shadow-casting key light that follows the play (tight, sharp shadow map) and a fill.
@@ -248,7 +255,7 @@ export function addStageLights(scene: T.Scene, shadowSize: number, shadowRadius:
   const fill = new T.DirectionalLight('#dbe8ff', .9); fill.position.set(-14, 20, -18); scene.add(fill);
   // Goal lamp behind the net (switched on when the puck goes in).
   const lamp = new T.PointLight('#ff2847', 0, 15); scene.add(lamp);
-  return { sun, fill, lamp };
+  return { sun, fill, lamp, hemi };
 }
 
 const idle = (fn: () => void) => {

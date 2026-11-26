@@ -169,6 +169,15 @@ try {
   await match.locator('[data-match-mode="watch"]').click();
   await match.getByRole('button', { name: 'Начать матч', exact: true }).click();
   await match.locator('[data-live-rink]').waitFor();
+  // The teams' entrance before the first period (3D): the match waits for it; the four officials are on the
+  // minimap; «Пропустить» ends it and the match starts.
+  const intro = match.locator('[data-live-intro]');
+  await intro.waitFor({ timeout: 90000 });
+  assert.equal(await match.locator('[data-rink-minimap] [data-rink-official]').count(), 4, 'four officials');
+  assert.equal(await match.locator('[data-rink-minimap] [data-rink-official="ref"]').count(), 2, 'two referees');
+  await match.locator('[data-live-intro-skip]').click();
+  await intro.waitFor({ state: 'detached', timeout: 30000 });
+  console.log('ok the teams\' entrance: shown before the first period, four officials, skippable');
   for (let i = 0; i < 4; i++) { await match.waitForTimeout(200); const close = match.getByRole('button', { name: 'Закрыть повтор', exact: true }); if (await close.count()) await close.click(); }
   await match.getByRole('button', { name: 'Пауза', exact: true }).click();
   const rink = match.locator('[data-live-rink]');

@@ -113,12 +113,16 @@ test('offside: early entries are whistled, stay rare and restart at a neutral-zo
   assert.equal(neutral, offsides, 'offside faceoffs are taken at a neutral-zone dot');
 });
 
-test('teams switch ends: a flipped period is the same hockey mirrored lengthwise', () => {
+test('teams switch ends: a flipped period is the same hockey mirrored lengthwise (the benches stay where they are)', () => {
   const { evs, start, end, ai } = periods[1];
   const flipped = new RinkAI(evs, H, A, r.players, start, end, { flip: true }).runToEnd();
-  const a = ai.frameAt(250), b = flipped.frameAt(250);
+  // the opening faceoff is the same formation mirrored; later the line changes go to the team's own bench (it
+  // does not move in the arena), so the hockey differs in detail — the engine's events stay the same
+  const a = ai.frameAt(0), b = flipped.frameAt(0);
   assert.ok(Math.abs(a.puck.x + b.puck.x - 100) < 1e-6 && Math.abs(a.puck.y - b.puck.y) < 1e-6);
   a.skaters.forEach((p, i) => assert.ok(Math.abs(p.pos.x + b.skaters[i].pos.x - 100) < 1e-6));
+  const goals = (x: RinkAI) => x.plays.filter(p => p.kind === 'goal').map(p => Math.round(p.g));
+  assert.deepEqual(goals(ai), goals(flipped));
   const goal = evs.find(e => e.type === 'goal' && e.player);
   if (goal) {
     const c0 = ai.goalClip(goal)!, c1 = flipped.goalClip(goal)!;

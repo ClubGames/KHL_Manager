@@ -24,7 +24,7 @@ const ok = (m) => console.log('ok', m);
 let page;
 try {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
-  await context.addInitScript(() => localStorage.setItem('khl.settings', JSON.stringify({ autoReplay: 'off', replay3d: false, replayPrewarm: false })));
+  await context.addInitScript(() => localStorage.setItem('khl.settings', JSON.stringify({ autoReplay: 'off', replay3d: false, replayPrewarm: false, matchIntro: false })));
   page = await context.newPage();
   page.on('pageerror', (e) => errors.push(e.message));
   await page.goto(BASE);

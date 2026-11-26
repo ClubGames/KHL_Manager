@@ -379,7 +379,7 @@ export function ReplayScene(props: Props) {
         sun.position.set(pose.look.x + 8, 25, pose.look.z + 12); sun.target.position.set(pose.look.x, 0, pose.look.z); sun.target.updateMatrixWorld();
         camera.updateMatrixWorld();
         renderReflection();
-        arena.view(camera);
+        arena.view(camera); arena.lights(1); arena.tick(performance.now());
         renderer.render(scene, camera);
       };
       const resize = () => {

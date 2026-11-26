@@ -3,7 +3,10 @@ import * as T from 'three';
 import type { Player, Team } from '../types';
 import { clamp } from '../game/rinkPlayback';
 import type { PlayerFigure } from './playerModel';
-import { acquireRenderer, addStageLights, compileScene, kitFor, loadModel, onCacheRedraw, releaseRenderer, sharedProps, takeArena, takeFigures, type FigureRequest } from './replayCache';
+import { acquireRenderer, addStageLights, compileScene, kitFor, loadModel, officialKit, onCacheRedraw, releaseRenderer, sharedProps, takeArena, takeFigures, type FigureRequest } from './replayCache';
+import { crewFor } from './officialCrew';
+import { buildArenaShow } from './arenaShow';
+import { INTRO, introCamera, introOfficials, introPoses, introShow, type IntroSkater } from './matchIntro';
 import { liveCameraPose, toWorld, ZOOM, type LiveCamera } from './replayCameras';
 import { RINK } from '../game/rinkGeometry';
 import { benchSeat, boxSeat, BENCH } from './arenaBenches';
@@ -32,22 +35,37 @@ type Actor = {
   save: { x: number; y: number; z: number; tau: number } | null;
   /** off the ice: the seat he is on ('b3' bench, 'p1' penalty box) and when his seated pose was last refreshed */
   seat?: string; sitAt?: number;
+  /** skating off to the bench / the penalty box (from where he left the ice) and stepping in — or back out onto the ice */
+  off?: Trip; enter?: Trip;
+  /** on the ice in the last picture (undefined: not known — the first picture, a new period) */
+  on?: boolean;
 };
+/** A walk between the ice and a seat: from (fx, fz), through the door in the boards (or over the boards, `hop`). */
+type Trip = { fx: number; fz: number; t0: number; hop: boolean; dur: number };
+/** The door (or the top of the boards) a seat is reached through: on the ice edge in front of it. */
+const doorOf = (seat: { x: number; z: number }) => ({ x: seat.x, z: Math.sign(seat.z) * (RINK.width / 2 - .45) });
 
 type Props = {
-  ai: LiveSource; ticker: { tau?: number; wait?: boolean }; home: Team; away: Team; players: Record<string, Player>;
+  ai: LiveSource; ticker: { tau?: number; wait?: boolean; intro?: boolean }; home: Team; away: Team; players: Record<string, Player>;
   /** everyone who may come on the ice (dressed players, both goalies): their figures are prepared up front */
   roster: FigureRequest[];
   camera: LiveCamera; quality: ReplayQuality;
   /** WebGL unavailable / context lost: the parent shows the 2D rink instead */
   onFail: () => void;
+  /** the start of the match: the teams' entrance with the laser show plays first (once per rink) */
+  intro?: boolean;
 };
+/** Rinks whose entrance has been shown (switching the camera or the quality must not replay it). */
+const introPlayed = new WeakSet<object>();
 
 export function LiveScene3D(props: Props) {
   const host = useRef<HTMLDivElement>(null);
   const live = useRef({ ai: props.ai, camera: props.camera, zoom: 1 });
   live.current.ai = props.ai; live.current.camera = props.camera;
   const [ready, setReady] = useState(false);
+  const [introOn, setIntroOn] = useState(false);
+  const skipIntro = useRef(false);
+  const introRef = useRef(props.intro); introRef.current = props.intro;
   const failRef = useRef(props.onFail); failRef.current = props.onFail;
   const { quality } = props;
   // Clubs and players are read when the scene is built: a store update during the match must not rebuild it.
@@ -69,8 +87,13 @@ export function LiveScene3D(props: Props) {
     let releaseArena = () => {};
     let observer: ResizeObserver | undefined;
     tickerRef.current.wait = true;
+    // the teams' entrance: the match clock waits for it (from the first picture with the real figures)
+    const introSource = live.current.ai;
+    const introWanted = !!introRef.current && !introPlayed.has(introSource) && (tickerRef.current.tau ?? 0) < .01;
+    if (introWanted) tickerRef.current.intro = true;
+    skipIntro.current = false;
     const dispose = () => {
-      tickerRef.current.wait = false;
+      tickerRef.current.wait = false; tickerRef.current.intro = false;
       stopped = true; cancelAnimationFrame(raf); observer?.disconnect(); unbind.forEach(f => f()); releases.forEach(f => f()); releaseArena();
       geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose());
       if (renderer) { renderer.domElement.remove(); releaseRenderer(renderer); }
@@ -89,7 +112,11 @@ export function LiveScene3D(props: Props) {
       unbind.push(() => canvas.removeEventListener('webglcontextlost', lost));
       const scene = new T.Scene();
       const camera = new T.PerspectiveCamera(40, 2, .05, 220);
-      const { sun, lamp } = addStageLights(scene, preset.shadow, preset.radius);
+      const { sun, lamp, hemi, fill } = addStageLights(scene, preset.shadow, preset.radius);
+      const lit = { hemi: hemi.intensity, sun: sun.intensity, fill: fill.intensity, env: scene.environmentIntensity };
+      // the arena show: lasers, the ice projection, follow spots, the crowd's flashes
+      const show = buildArenaShow([home.primaryColor, away.primaryColor], preset.detail);
+      scene.add(show.group); unbind.push(() => show.dispose());
       const taken = takeArena(home, away, preset.detail, Math.min(preset.detail === 'hi' ? 16 : 8, renderer.capabilities.getMaxAnisotropy()));
       const arena = taken.arena;
       arena.iceReflection.texture.value = null; arena.iceReflection.strength.value = 0;
@@ -98,7 +125,7 @@ export function LiveScene3D(props: Props) {
       // players who are not on the ice sit there (and come and go with the line changes).
       const realBench = quality !== 'standard';
       arena.benchCrowd.visible = !realBench;
-      releaseArena = () => { arena.benchCrowd.visible = true; taken.release(); };
+      releaseArena = () => { arena.benchCrowd.visible = true; arena.lights(1); taken.release(); };
       const benchUsed = [new Set<number>(), new Set<number>()];
       const frustum = new T.Frustum(), projView = new T.Matrix4(), seatBall = new T.Sphere(new T.Vector3(), 1.1);
       const leaveSeat = (a: Actor) => { if (a.seat?.startsWith('b')) benchUsed[a.side].delete(Number(a.seat.slice(1))); a.seat = undefined; a.figure?.castShadows(true); };
@@ -120,14 +147,21 @@ export function LiveScene3D(props: Props) {
       const puckShadow = new T.Mesh(shadowGeo, propMats.puckShadow); puckShadow.rotation.x = -Math.PI / 2; scene.add(puckShadow);
       const trailGeo = new T.BufferGeometry().setFromPoints(Array.from({ length: 14 }, () => new T.Vector3())); geometries.push(trailGeo);
       const trail = new T.Line(trailGeo, propMats.trail); trail.frustumCulled = false; scene.add(trail);
-      // The referee at faceoffs (a simple figure: black and white).
-      const refMat = new T.MeshStandardMaterial({ color: '#16191f', roughness: .7 }), refShirt = new T.MeshStandardMaterial({ color: '#f1f3f5', roughness: .7 });
-      materials.push(refMat, refShirt);
-      const official = new T.Group();
-      { const legs = new T.CylinderGeometry(.15, .13, .85, 8), body = new T.CylinderGeometry(.24, .2, .62, 10), head = new T.SphereGeometry(.15, 10, 8); geometries.push(legs, body, head);
-        const l = new T.Mesh(legs, refMat); l.position.y = .45; const b = new T.Mesh(body, refShirt); b.position.y = 1.18; const h = new T.Mesh(head, refMat); h.position.y = 1.65;
-        [l, b, h].forEach(m => { m.castShadow = true; official.add(m); }); }
-      official.visible = false; scene.add(official);
+      // The four officials (two referees, two linesmen): simple striped stand-ins until the rigged figures are in.
+      const refMat = new T.MeshStandardMaterial({ color: '#16191f', roughness: .7 }), refShirt = new T.MeshStandardMaterial({ color: '#f1f3f5', roughness: .7 }), armMat = new T.MeshStandardMaterial({ color: '#ff6a1a', roughness: .6 });
+      materials.push(refMat, refShirt, armMat);
+      const offGeo = { legs: new T.CylinderGeometry(.15, .13, .85, 8), body: new T.CylinderGeometry(.24, .2, .62, 10), head: new T.SphereGeometry(.15, 10, 8), band: new T.CylinderGeometry(.25, .25, .08, 10) };
+      geometries.push(...Object.values(offGeo));
+      const officials = (['ref', 'ref', 'line', 'line'] as const).map(role => {
+        const group = new T.Group(), standIn = new T.Group();
+        const l = new T.Mesh(offGeo.legs, refMat); l.position.y = .45; const b = new T.Mesh(offGeo.body, refShirt); b.position.y = 1.18; const h = new T.Mesh(offGeo.head, refMat); h.position.y = 1.65;
+        [l, b, h].forEach(m => { m.castShadow = true; standIn.add(m); });
+        if (role === 'ref') { const band = new T.Mesh(offGeo.band, armMat); band.position.y = 1.36; standIn.add(band); }
+        group.add(standIn); scene.add(group);
+        return { role, group, standIn, figure: null as PlayerFigure | null };
+      });
+      const ownFigures: PlayerFigure[] = [];
+      unbind.push(() => ownFigures.forEach(f => f.dispose()));
       // The played match: a ring on the ice under the skater the manager controls (and an arrow above him).
       const ringGeo = new T.RingGeometry(.52, .66, 40), arrowGeo = new T.ConeGeometry(.16, .3, 4);
       const ringMat = new T.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: .9, depthWrite: false, side: T.DoubleSide });
@@ -192,13 +226,17 @@ export function LiveScene3D(props: Props) {
         let t: ReturnType<typeof takeFigures>;
         try { t = takeFigures(m.mod, m.template, home, away, players, list.map(a => ({ id: a.id, side: a.side, goalie: a.goalie }))); } catch { figuresIn(); return; }
         releases.push(t.release);
+        // the officials: their own figures (striped shirts, no stick), built with the players
+        const offFigures = officials.map(o => { try { const f = new m.mod.PlayerFigure(m.template, officialKit(o.role)); f.root.rotation.y = Math.PI / 2; ownFigures.push(f); return f; } catch { return null; } });
         const go = () => {
           if (stopped) return;
           t.figures.forEach((f, i) => { const a = list[i]; a.figure = f; a.group.add(f.root); a.standIn.visible = false; });
+          offFigures.forEach((f, i) => { if (!f) return; const o = officials[i]; o.figure = f; o.group.add(f.root); o.standIn.visible = false; });
           dirty = true; figuresIn();
         };
-        if (!t.fresh.length) { go(); return; }
-        const staging = new T.Scene(); t.fresh.forEach(f => staging.add(f.root));
+        const fresh = [...t.fresh, ...offFigures.filter((f): f is PlayerFigure => !!f)];
+        if (!fresh.length) { go(); return; }
+        const staging = new T.Scene(); fresh.forEach(f => staging.add(f.root));
         compileScene(renderer, staging, camera, scene, false).then(go);
       }).catch(() => { figuresIn(); /* stand-ins stay */ });
 
@@ -208,11 +246,29 @@ export function LiveScene3D(props: Props) {
       const puckWorld = new T.Vector3(), local = new T.Vector3(), puckOff = { x: 0, z: 0 };
       const aspect = () => camera.aspect;
       let settled = false, camSpeed = 0;
+      // the teams' entrance (see matchIntro): who skates out, from when
+      let intro: { t0: number; skaters: IntroSkater[] } | null = null, introStarted = false;
+      const mountAt = performance.now();
+      const endIntro = () => {
+        intro = null; tickerRef.current.intro = false; setIntroOn(false);
+        hemi.intensity = lit.hemi; sun.intensity = lit.sun; fill.intensity = lit.fill; scene.environmentIntensity = lit.env;
+        actors.forEach(a => { a.lx = NaN; });
+        focus.init = false; dirty = true;
+      };
+      unbind.push(() => { if (intro) endIntro(); });
 
       const update = (now: number) => {
         if (!renderer) return;
         const ai = live.current.ai;
-        if (!motion || motionOf !== ai) { motion = ai.motion ?? new LiveMotion(ai); motionOf = ai; focus.init = false; actors.forEach(a => { a.lx = NaN; a.save = null; }); }
+        if (introWanted && !introStarted && (figuresDone || now - mountAt > 8000)) {
+          introStarted = true; introPlayed.add(introSource);
+          const f0 = ai.frameAt(tickerRef.current.tau ?? 0);
+          intro = { t0: now, skaters: shownSkaters(f0).map(p => { const w = toWorld(p.pos); return { id: p.id, side: p.side, goalie: !!p.goalie, x: w.x, z: w.z }; }) };
+          setIntroOn(true);
+        }
+        if (intro && (skipIntro.current || (now - intro.t0) / 1000 >= INTRO.length)) endIntro();
+        if (intro) dirty = true;
+        if (!motion || motionOf !== ai) { motion = ai.motion ?? new LiveMotion(ai); motionOf = ai; focus.init = false; actors.forEach(a => { a.lx = NaN; a.save = null; a.on = undefined; a.off = a.enter = undefined; }); }
         const tau = tickerRef.current.tau ?? 0;
         const realDt = Math.min(.1, (now - lastNow) / 1000); lastNow = now;
         const camKey = `${live.current.camera}|${live.current.zoom}|${camera.aspect}`;
@@ -232,7 +288,17 @@ export function LiveScene3D(props: Props) {
         const tr = trailGeo.getAttribute('position');
         for (let i = 0; i < 14; i++) { const v = toWorld(ai.frameAt(tau - i * .012).puck); tr.setXYZ(i, v.x, Math.max(0, v.y) + PUCK_H, v.z); }
         tr.needsUpdate = true; trail.visible = pSpeed > 14;
-        if (f.official) { const o = toWorld(f.official); official.visible = true; official.position.set(o.x, 0, o.z); official.rotation.y = Math.atan2(pw.x - o.x, pw.z - o.z); } else official.visible = false;
+        // the officials: positions and signals from the crew both rinks share
+        const crew = crewFor(ai).update(f, ai.plays, tau);
+        crew.forEach((c, i) => {
+          const o = officials[i];
+          o.group.position.set(c.x, 0, c.z); o.group.rotation.set(0, c.heading, 0);
+          if (!o.figure) return;
+          o.group.updateMatrixWorld(true);
+          const aim = c.aim ? o.figure.root.worldToLocal(new T.Vector3(c.aim.x, 1.2, c.aim.z)) : null;
+          const look = angleDiff(c.heading, Math.atan2(-(pw.z - c.z), pw.x - c.x));
+          o.figure.officiate({ phase: c.phase, amp: clamp(Math.hypot(c.vx, c.vz) / 6, 0, 1), gesture: c.gesture, t: c.gt, aim, look });
+        });
 
         const goal = motion.goalAt(tau);
         lamp.intensity = goal && tau - goal.tau < 3 ? 14 : 0;
@@ -259,13 +325,47 @@ export function LiveScene3D(props: Props) {
         for (const p of f.skaters) if (p.box) { boxOf.set(p.id, boxCount[p.side]++); actorFor(p.id, p.side, !!p.goalie); }
         const dressed = new Set(rosterRef.current.map(r => r.id));
         actors.forEach(a => {
-          if (onIce.has(a.id)) { if (a.seat) { leaveSeat(a); a.lx = NaN; } return; }
-          a.lx = NaN;
+          if (onIce.has(a.id)) {
+            // back onto the ice: out of the seat, through the door (over the boards from the bench)
+            if (a.on === false) {
+              // from his seat, from where he was going, or (the light preset seats nobody) from the bench
+              const p = a.seat || a.off ? a.group.position : { x: BENCH.x[a.side] + (a.phase % 1 - .5) * 4, z: BENCH.seatZ };
+              a.enter = { fx: p.x, fz: p.z, t0: now, hop: !a.seat?.startsWith('p') && p.z < 0, dur: 750 };
+            }
+            a.on = true; a.off = undefined;
+            if (a.seat) { leaveSeat(a); a.lx = NaN; }
+            return;
+          }
+          // just left the ice (the frame before he was on it): he skates the rest of the way himself
+          const wasOn = a.on === true && !Number.isNaN(a.lx);
+          const from = { x: a.lx, z: a.lz };
+          a.lx = NaN; a.on = false;
           const box = boxOf.get(a.id);
           let seat: ReturnType<typeof benchSeat> | null = null;
           if (box !== undefined) { const key = `p${box}`; if (a.seat !== key) { leaveSeat(a); a.seat = key; a.sitAt = undefined; } seat = boxSeat(a.side, box); }
           else if (realBench && dressed.has(a.id)) seat = benchSeat(a.side, benchSlot(a));
           else if (a.seat) leaveSeat(a);
+          if (wasOn) {
+            const target = seat ?? (box === undefined ? { x: BENCH.x[a.side], z: BENCH.seatZ } : boxSeat(a.side, 0));
+            const door = doorOf(target);
+            a.off = { fx: from.x, fz: from.z, t0: now, hop: box === undefined && !!seat, dur: clamp(Math.hypot(door.x - from.x, door.z - from.z) / 6.5, .2, 1.6) * 1000 + (seat ? 600 : 0) };
+          }
+          if (a.off) {
+            // the trip: to the door at skating speed, then through it (or over the boards) onto the seat
+            const tr = a.off, target = seat ?? (box === undefined ? { x: BENCH.x[a.side], y: 0, z: BENCH.seatZ } : boxSeat(a.side, 0)), door = doorOf(target);
+            const u = (now - tr.t0) / tr.dur;
+            if (u < 1) {
+              const split = seat ? 1 - 600 / tr.dur : 1;
+              let x: number, y = 0, z: number, head: number;
+              if (u < split) { const v = smooth01(u / split * .85 + .15 * (u / split)); x = tr.fx + (door.x - tr.fx) * v; z = tr.fz + (door.z - tr.fz) * v; head = Math.atan2(-(door.z - tr.fz), door.x - tr.fx); }
+              else { const v = smooth01((u - split) / (1 - split)); x = door.x + (target.x - door.x) * v; z = door.z + (target.z - door.z) * v; y = (tr.hop ? Math.sin(Math.PI * v) * .95 : 0) + (seat?.y ?? 0) * v; head = angleLerp(Math.atan2(-(target.z - door.z), target.x - door.x), seat?.heading ?? 0, v * v); }
+              a.group.visible = true; a.group.position.set(x, y, z); a.group.rotation.set(0, head, 0);
+              if (a.figure) { a.phase += realDt * 6; a.group.updateMatrixWorld(true); a.figure.skate(a.phase, u < split ? .8 : .3, undefined, 0, { bank: 0 }); a.figure.castShadows(true); }
+              a.sitAt = undefined;
+              return;
+            }
+            a.off = undefined;
+          }
           if (!seat) { a.group.visible = false; return; }
           a.group.visible = true;
           a.group.position.set(seat.x, seat.y, seat.z); a.group.rotation.set(0, seat.heading, 0);
@@ -286,7 +386,18 @@ export function LiveScene3D(props: Props) {
           const a = actorFor(p.id, p.side, !!p.goalie);
           const w = toWorld(p.pos), b = toWorld(prevOf.get(p.id) ?? p.pos), b2 = toWorld(prev2Of.get(p.id) ?? prevOf.get(p.id) ?? p.pos);
           a.group.visible = true;
-          a.group.position.set(w.x, 0, w.z);
+          // stepping onto the ice from a seat: through the door / over the boards, then he blends into his track
+          let lift = 0;
+          if (a.enter) {
+            const tr = a.enter, u = (now - tr.t0) / tr.dur;
+            if (u >= 1) a.enter = undefined;
+            else {
+              const door = doorOf({ x: tr.fx, z: tr.fz });
+              if (u < .45) { const v = smooth01(u / .45); w.x = tr.fx + (door.x - tr.fx) * v; w.z = tr.fz + (door.z - tr.fz) * v; lift = tr.hop ? Math.sin(Math.PI * v) * .95 : 0; }
+              else { const v = smooth01((u - .45) / .55); w.x = door.x + (w.x - door.x) * v; w.z = door.z + (w.z - door.z) * v; }
+            }
+          }
+          a.group.position.set(w.x, lift, w.z);
           a.group.rotation.order = 'YXZ';
           const jumped = Number.isNaN(a.lx) || Math.hypot(w.x - a.lx, w.z - a.lz) > 4;
           const moved = Math.hypot(w.x - b.x, w.z - b.z), speed = moved / .1;
@@ -375,6 +486,39 @@ export function LiveScene3D(props: Props) {
           puckShadow.position.x = puck.position.x; puckShadow.position.z = puck.position.z;
         }
         firstFrame = false;
+        // The entrance: the skaters of the opening faceoff skate out on their own routes (the rink waits at its first frame)
+        const it = intro ? (now - intro.t0) / 1000 : -1;
+        if (intro) {
+          const ip = introPoses(intro.skaters, it);
+          for (const s of intro.skaters) {
+            const a = actors.get(s.id), p = ip.get(s.id);
+            if (!a || !p) continue;
+            a.group.visible = p.visible;
+            const moved = Number.isNaN(a.lx) ? 0 : Math.hypot(p.x - a.lx, p.z - a.lz);
+            a.phase += moved / STRIDE * Math.PI * 2; a.lx = p.x; a.lz = p.z;
+            a.group.position.set(p.x, 0, p.z); a.group.rotation.set(0, p.heading, 0); a.heading = p.heading;
+            if (!a.figure) continue;
+            a.group.updateMatrixWorld(true);
+            if (s.goalie && p.speed < .5) a.figure.goalie({ drop: 0, look: 0 });
+            else a.figure.skate(a.phase, clamp(p.speed / 8, 0, 1), undefined, p.wave, { bank: 0 });
+          }
+          const crewNow = crewFor(ai).officials;
+          introOfficials(it, crewNow.map(c => ({ x: c.x, z: c.z }))).forEach((p, i) => {
+            const o = officials[i];
+            o.group.visible = p.visible; o.group.position.set(p.x, 0, p.z); o.group.rotation.set(0, p.heading, 0);
+            if (!o.figure) return;
+            o.group.updateMatrixWorld(true);
+            o.figure.officiate({ phase: now / 1000 * 4.5 * clamp(p.speed / 6, 0, 1), amp: clamp(p.speed / 6, 0, 1), gesture: 'none', t: 0 });
+          });
+          puck.visible = puckShadow.visible = trail.visible = false; carrierRing.visible = ctrlRing.visible = ctrlArrow.visible = aimMark.visible = false;
+        } else { puck.visible = true; officials.forEach(o => { o.group.visible = true; }); }
+        const sh = intro ? introShow(it, intro.skaters) : null;
+        const L = sh?.level ?? 0;
+        // a home goal: the arena lights flash and the lasers fire for a few seconds
+        const party = !intro && goal && goal.side === 0 ? Math.max(0, Math.sin(Math.PI * clamp((tau - goal.tau) / 4.5, 0, 1))) : 0;
+        if (intro) { hemi.intensity = lit.hemi * (1 - .9 * L); sun.intensity = lit.sun * (1 - .88 * L); fill.intensity = lit.fill * (1 - .92 * L); scene.environmentIntensity = lit.env * (1 - .88 * L); }
+        show.update(now, { level: Math.max(L, party * .55), team: sh?.team ?? 0, focus: sh?.focus ?? { x: goal ? goal.netX * .6 : 0, z: 0 }, burst: Math.max(sh?.burst ?? 0, party), flashes: 1, scale: renderer.domElement.height / (2 * Math.tan(T.MathUtils.degToRad(camera.fov) / 2)) });
+        if (party > 0) dirty = true;
         // Camera: follows a smoothed point of play, slightly ahead of the puck, in real time (not rink time).
         const lead = { x: pw.x + clamp(pv.x * .25, -4, 4), z: pw.z };
         if (!focus.init) { focus.x = lead.x; focus.z = lead.z; focus.init = true; }
@@ -382,10 +526,17 @@ export function LiveScene3D(props: Props) {
         camSpeed += (Math.min(pSpeed, 30) - camSpeed) * (1 - Math.exp(-realDt * 1.6));
         settled = Math.hypot(lead.x - focus.x, lead.z - focus.z) < .01 && Math.abs(Math.min(pSpeed, 30) - camSpeed) < .05;
         const pose = liveCameraPose(live.current.camera, focus, live.current.zoom, aspect(), { attack: ai.attack ?? (ai.flipped ? -1 : 1), speed: camSpeed });
+        if (intro && sh) {
+          // the entrance's own camera, handing over to the match camera as everybody skates to his place
+          const ic = introCamera(it, sh.focus), k = smooth01((it - INTRO.settle - .3) / 2.2);
+          pose.pos = { x: ic.pos.x + (pose.pos.x - ic.pos.x) * k, y: ic.pos.y + (pose.pos.y - ic.pos.y) * k, z: ic.pos.z + (pose.pos.z - ic.pos.z) * k };
+          pose.look = { x: ic.look.x + (pose.look.x - ic.look.x) * k, y: ic.look.y + (pose.look.y - ic.look.y) * k, z: ic.look.z + (pose.look.z - ic.look.z) * k };
+          pose.fov = ic.fov + (pose.fov - ic.fov) * k;
+        }
         camera.position.set(pose.pos.x, pose.pos.y, pose.pos.z);
         camera.lookAt(pose.look.x, pose.look.y, pose.look.z);
         if (Math.abs(camera.fov - pose.fov) > .01) { camera.fov = pose.fov; camera.updateProjectionMatrix(); }
-        camera.updateMatrixWorld(); arena.view(camera);
+        camera.updateMatrixWorld(); arena.view(camera); arena.tick(now); arena.lights(1 - .88 * L);
         // the skinned figures are never culled by three: the seated ones out of the picture are skipped here
         frustum.setFromProjectionMatrix(projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
         actors.forEach(a => { if (a.seat) { seatBall.center.set(a.group.position.x, .8, a.group.position.z); a.group.visible = frustum.intersectsSphere(seatBall); } });
@@ -463,5 +614,9 @@ export function LiveScene3D(props: Props) {
   return <div className="absolute inset-0" data-live-3d={ready ? 'ready' : 'loading'}>
     <div ref={host} className="w-full h-full" />
     {!ready && <div className="absolute inset-0 flex items-center justify-center text-xs text-white/70 bg-[#081421]">Загрузка 3D…</div>}
+    {introOn && <div className="absolute inset-x-0 bottom-3 flex flex-col items-center gap-1.5 pointer-events-none z-20" data-live-intro>
+      <span className="text-[11px] font-bold uppercase tracking-[.2em] text-white/90 drop-shadow">Выход команд</span>
+      <button type="button" onClick={() => { skipIntro.current = true; }} className="pointer-events-auto rounded-sm bg-black/55 hover:bg-black/75 text-white text-xs font-semibold px-3 py-1 backdrop-blur-sm" data-live-intro-skip>Пропустить ▸</button>
+    </div>}
   </div>;
 }

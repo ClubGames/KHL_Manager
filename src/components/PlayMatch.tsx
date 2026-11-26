@@ -90,6 +90,7 @@ class PlayTicker {
   sec = 0;
   tau = 0;
   wait = false;
+  intro = false;
 }
 
 export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => void }) {
@@ -296,7 +297,8 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       for (const c of gp.commands) if (!prevCommands.current.has(c)) commandRef.current(c);
       prevCommands.current = gp.commands;
       // the 3D picture is being prepared: the match waits (a few seconds at most)
-      if (ticker.wait && waited < 8) { waited += dt; raf = requestAnimationFrame(loop); return; }
+      // … and the teams' entrance before the first period (skippable, capped)
+      if ((ticker.wait && waited < 8) || (ticker.intro && waited < 40)) { waited += dt; raf = requestAnimationFrame(loop); return; }
       const t = touch.current;
       let pad: PadState = mergePads(keyboardPad(keys.current), gp.pad, t, mousePad(mouse.current, now));
       // the sticks are read in screen terms: the camera of the 3D picture turns them into rink terms (the skill
@@ -405,7 +407,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
         onPointerCancel={() => { mouse.current = { ...newMouse(), x: mouse.current.x, y: mouse.current.y, at: mouse.current.at }; }}
         onContextMenu={(e) => { if (phase === 'playing') e.preventDefault(); }}>
         {phase === 'playing' && k ? (
-          <LiveRink fill className="flex-1 min-h-0 rounded-none border-0" ticker={ticker} ids={[[], []]} goalies={[null, null]} event={null} home={H} away={A} players={P} ai={k} running={!paused && !replay} roster={roster3d} allow3d={!replay} bare minimap={!touchUI} />
+          <LiveRink fill className="flex-1 min-h-0 rounded-none border-0" ticker={ticker} ids={[[], []]} goalies={[null, null]} event={null} home={H} away={A} players={P} ai={k} running={!paused && !replay} roster={roster3d} allow3d={!replay} bare minimap={!touchUI} intro={sim.period === 1 && !carry.current} />
         ) : (
           <div className="flex-1 bg-[#0a1828]" />
         )}

@@ -224,7 +224,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       const dt = Math.min(0.1, (t - last) / 1000);
       last = t;
       // The match waits while the 3D picture is being prepared (at most a few seconds), so nothing is missed.
-      if (ticker.wait && waited < 8) { waited += dt; raf = requestAnimationFrame(loop); return; }
+      // … and for the teams' entrance before the first period (it can be skipped; capped all the same)
+      if ((ticker.wait && waited < 8) || (ticker.intro && waited < 40)) { waited += dt; raf = requestAnimationFrame(loop); return; }
       const ai = rinkAI.current;
       if (ai) {
         // Highlights play near real time, routine skating is fast-forwarded; the change of pace is eased.
@@ -1081,7 +1082,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       {land ? (
         <div className="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)_minmax(270px,36%)] grid-rows-[minmax(0,1fr)] gap-2 py-1.5 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.375rem,env(safe-area-inset-bottom))]" data-match-land>
           <div className="min-h-0 flex flex-col">
-            {kind === 'so' && status !== 'intro' ? <ShootoutBoard events={soEvents} home={H} away={A} players={P} live className="flex-1 min-h-0 overflow-y-auto" /> : <LiveRink fill className="flex-1 min-h-0" ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} roster={roster3d} allow3d={!replayEvent} />}
+            {kind === 'so' && status !== 'intro' ? <ShootoutBoard events={soEvents} home={H} away={A} players={P} live className="flex-1 min-h-0 overflow-y-auto" /> : <LiveRink fill className="flex-1 min-h-0" ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} roster={roster3d} allow3d={!replayEvent} intro={kind === 'reg' && period === 1} />}
           </div>
           {/* Only this side list scrolls; the rink, score and controls stay put. */}
           <div ref={mobileTab === 'live' ? feedRef : undefined} className="min-h-0 overflow-y-auto overscroll-contain rounded-md border border-line bg-panel" data-land-side data-feed={mobileTab === 'live' || undefined}>
@@ -1099,7 +1100,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           <div className={cn(mobileTab !== 'live' && 'hidden lg:block')}>
             <button type="button" className="text-xs text-ice mb-2" aria-expanded={showRink} onClick={() => setShowRink(v => !v)}>{showRink ? 'Скрыть площадку' : 'Показать площадку'}</button>
             {kind === 'so' && status !== 'intro' && <ShootoutBoard events={soEvents} home={H} away={A} players={P} live className="mb-2" />}
-            {showRink && kind !== 'so' && <LiveRink ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} roster={roster3d} allow3d={!replayEvent} />}
+            {showRink && kind !== 'so' && <LiveRink ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} roster={roster3d} allow3d={!replayEvent} intro={kind === 'reg' && period === 1} />}
           </div>
           <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-2', mobileTab !== 'live' && 'hidden lg:grid')}>
             {renderOnIce(0)}
@@ -1493,6 +1494,8 @@ class Ticker {
   tau = 0;
   /** set by the 3D view while its first picture is not ready yet */
   wait = false;
+  /** set by the 3D view while the teams skate out before the first period */
+  intro = false;
   private subs = new Set<() => void>();
   subscribe = (f: () => void) => {
     this.subs.add(f);

@@ -25,6 +25,17 @@ export type Kit = {
   goalie?: boolean; pads?: string; crest?: T.Material;
   /** Skaters: the stick hand (L — blade on the left). Goalies: the catching hand (L — glove on the left). Default L. */
   hand?: 'L' | 'R';
+  /** an on-ice official instead of a player: black-and-white stripes, no stick; referees wear orange armbands */
+  official?: 'ref' | 'line';
+};
+
+/** What an official's arms do (see officialCrew): the IIHF signals, the faceoff drop, a point. */
+export type OfficialPose = {
+  phase: number; amp: number;
+  gesture: 'none' | 'armUp' | 'point' | 'goal' | 'trip' | 'hook' | 'hold' | 'slash' | 'interference' | 'boarding' | 'charging' | 'highstick' | 'fist' | 'icing' | 'washout' | 'ready' | 'drop';
+  /** seconds into the gesture */ t: number;
+  /** a pointing arm's target in character space */ aim?: T.Vector3 | null;
+  /** head turn toward the play (rad, + to his left) */ look?: number;
 };
 
 /** Goalie pose. Points are in character space (+x the goalie's left, +z out of the net). */
@@ -70,8 +81,9 @@ function prepare(scene: T.Object3D): Template {
   return { scene, rest };
 }
 
-/** Kit shader: base colour + bands defined in rest-pose space. kind 0 jersey, 1 socks, 2 pants. */
-function kitMaterial(kind: 0 | 1 | 2, base: string, trim: string, trim2: string) {
+/** Kit shader: base colour + bands defined in rest-pose space. kind 0 jersey, 1 socks, 2 pants, 3 referee's
+ *  shirt (stripes, orange armbands), 4 linesman's shirt (stripes). */
+function kitMaterial(kind: 0 | 1 | 2 | 3 | 4, base: string, trim: string, trim2: string) {
   const material = new T.MeshStandardMaterial({ color: base, roughness: kind === 2 ? .55 : .72 });
   const uniforms = { uTrim: { value: new T.Color(trim) }, uTrim2: { value: new T.Color(trim2) }, uKind: { value: kind } };
   material.onBeforeCompile = shader => {
@@ -84,7 +96,12 @@ function kitMaterial(kind: 0 | 1 | 2, base: string, trim: string, trim2: string)
       .replace('#include <common>', '#include <common>\nvarying vec3 vRest;\nuniform vec3 uTrim;\nuniform vec3 uTrim2;\nuniform float uKind;\nfloat band(float v, float a, float b) { return step(a, v) * step(v, b); }')
       .replace('#include <color_fragment>', `#include <color_fragment>
         float ax = abs(vRest.x), y = vRest.y;
-        if (uKind < .5) {
+        if (uKind > 2.5) {
+          // officials: 5 cm black stripes down the shirt, a black collar; the referee's orange armbands
+          float st = step(.5, fract(ax * 9.0 + .25)) * step(ax, .3) + step(.5, fract(y * 9.0)) * step(.3, ax);
+          diffuseColor.rgb = mix(diffuseColor.rgb, uTrim, clamp(st + step(1.46, y) * step(ax, .29) * step(.03, ax), 0., 1.));
+          if (uKind < 3.5) diffuseColor.rgb = mix(diffuseColor.rgb, uTrim2, band(ax, .3, .36));
+        } else if (uKind < .5) {
           float t1 = band(y, 1.065, 1.115) * step(ax, .3) + band(ax, .435, .48) + step(1.475, y) * step(ax, .29) * step(.04, ax);
           float t2 = band(y, 1.13, 1.15) * step(ax, .3) + band(ax, .495, .512);
           diffuseColor.rgb = mix(mix(diffuseColor.rgb, uTrim, clamp(t1, 0., 1.)), uTrim2, clamp(t2, 0., 1.));
@@ -159,7 +176,7 @@ export class PlayerFigure {
     this.rig.position.y = LIFT;
     const own = <M extends T.Material>(m: M) => { this.owned.materials.push(m); return m; };
     const std = (color: string, extra: T.MeshStandardMaterialParameters = {}) => own(new T.MeshStandardMaterial({ color, roughness: .6, ...extra }));
-    const jersey = own(kitMaterial(0, kit.jersey, kit.trim, kit.trim2));
+    const jersey = own(kitMaterial(kit.official === 'ref' ? 3 : kit.official ? 4 : 0, kit.jersey, kit.trim, kit.trim2));
     const socks = own(kitMaterial(1, kit.socks, kit.sockTrim, kit.trim2));
     const pants = own(kitMaterial(2, kit.pants, kit.trim, kit.trim2));
     const boot = std('#16191f', { roughness: .45 });
@@ -197,6 +214,7 @@ export class PlayerFigure {
       const gloveSide = kit.hand === 'R' ? 'R' : 'L';
       if (kit.goalie && side === gloveSide) { part(hand, new T.SphereGeometry(.13, 10, 8), glove, s * .09, 0, .02).scale.set(1.15, .72, 1.25); part(hand, new T.BoxGeometry(.1, .13, .15), trim, s * -.01, 0, .01); }
       else if (kit.goalie) { part(hand, new T.BoxGeometry(.28, .2, .035), glove, s * .08, .02, -.07); part(hand, new T.BoxGeometry(.12, .1, .12), glove, s * .03, 0, 0); }
+      else if (kit.official) part(hand, new T.BoxGeometry(.12, .09, .1), glove, s * .07, 0, .01); // thin gloves
       else { part(hand, new T.BoxGeometry(.19, .11, .12), glove, s * .1, 0, .01); part(hand, new T.BoxGeometry(.08, .13, .14), trim, s * -.02, 0, .01); }
       const foot = holder('Foot' + side);
       part(foot, new T.BoxGeometry(.018, .04, .32), steel, 0, -LIFT * .55, .115);
@@ -215,7 +233,7 @@ export class PlayerFigure {
     const chest = holder('Chest');
     const canvas = document.createElement('canvas'); canvas.width = 128; canvas.height = 128;
     const ctx = canvas.getContext('2d');
-    if (ctx) {
+    if (ctx && !kit.official) {
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
       if (kit.name) { ctx.font = 'bold 19px Oswald, sans-serif'; ctx.fillStyle = kit.numberFill; ctx.strokeStyle = kit.numberStroke; ctx.lineWidth = 4; ctx.strokeText(kit.name.toUpperCase(), 64, 18, 120); ctx.fillText(kit.name.toUpperCase(), 64, 18, 120); }
       ctx.font = 'bold 82px Oswald, sans-serif'; ctx.lineWidth = 9; ctx.fillStyle = kit.numberFill; ctx.strokeStyle = kit.numberStroke;
@@ -230,6 +248,7 @@ export class PlayerFigure {
     this.shaft = part(this.root, new T.CylinderGeometry(.016, .016, 1, 6), black);
     this.blade = part(this.root, kit.goalie ? new T.BoxGeometry(.38, .09, .02) : new T.BoxGeometry(.31, .065, .018), black);
     if (kit.goalie) this.paddle = part(this.root, new T.BoxGeometry(.08, .62, .025), black);
+    if (kit.official) this.shaft.visible = this.blade.visible = false;
     this.rig.updateMatrixWorld(true);
   }
 
@@ -519,6 +538,74 @@ export class PlayerFigure {
     // the stick: blade on the floor out in front, the knob up by the chin, both gloves on the shaft
     const heel = mixV(vec(-.04, 0, 1.25), vec(-.3, 0, .62), up), top = mixV(vec(-.02, .74, .58), vec(-.2, 1.2, .3), up);
     this.grip(heel, top, vec(.9, -.5, -.1), vec(-.9, -.6, -.1));
+  }
+
+  /**
+   * An on-ice official: an easy upright stride (or standing, knees soft), the head on the play, and the arms
+   * giving the signals of the IIHF rule book — the arm straight up (delayed call, whistle), tripping (a chop at
+   * the leg below the knee), hooking (a tug toward the stomach), holding (one wrist clasped), slashing (a chop
+   * across the forearm), interference (arms crossed), boarding (a fist into the palm), charging (fists rolling),
+   * high-sticking (both fists stacked at the forehead), roughing (a fist out from the shoulder), icing (arms folded
+   * high on the chest), a wash-out, a point (to the penalty box, at the net); at a faceoff bent over with the
+   * puck held out, then the drop.
+   */
+  officiate(o: OfficialPose) {
+    this.reset();
+    const t = o.t, g = o.gesture, amp = clamp01(o.amp);
+    const into = smooth(Math.min(1, t / .22)); // arms swing into a signal
+    const ready = g === 'ready' ? smooth(Math.min(1, t / .4)) : g === 'drop' ? 1 - smooth((t - .25) / .3) : 0;
+    const crouch = .06 + .05 * amp + ready * .14 + (g === 'trip' ? .08 * into : 0);
+    this.rig.position.set(.03 * Math.sin(o.phase) * amp, LIFT - crouch, 0);
+    const lean = .1 + .12 * amp + ready * .45 + (g === 'trip' ? .3 * into : 0) + (g === 'goal' ? .08 : 0);
+    const look = Math.max(-1.2, Math.min(1.2, o.look ?? 0));
+    const swing = .06 * amp * Math.sin(o.phase);
+    this.turn('Abdomen', _t1.setFromAxisAngle(X, lean * .5));
+    this.turn('Torso', _t1.setFromAxisAngle(Y, swing + look * .15).multiply(_t2.setFromAxisAngle(X, lean * .3)));
+    this.turn('Chest', _t1.setFromAxisAngle(Y, look * .2).multiply(_t2.setFromAxisAngle(X, lean * .2)));
+    this.turn('Neck', _t1.setFromAxisAngle(X, -lean * .75).multiply(_t2.setFromAxisAngle(Y, look * .55)));
+    this.root.updateMatrixWorld(true);
+    const feet: [T.Vector3, T.Vector3] = [vec(0, 0, 0), vec(0, 0, 0)], yaw: [number, number] = [0, 0];
+    [1, -1].forEach((side, i) => {
+      const ph = o.phase + (i ? Math.PI : 0), push = Math.max(0, Math.sin(ph)), back = Math.sin(ph);
+      feet[i].set((.16 + .16 * push * amp + ready * .1) * side, .023 + LIFT * .2 + .05 * amp * smooth(Math.max(0, -Math.sin(ph + .5))), .05 - .22 * amp * back);
+      yaw[i] = side * (.12 + .25 * amp * push);
+    });
+    this.legs(feet, [vec(.25, -.1, 1), vec(-.25, -.1, 1)], yaw);
+    // shoulders (character space) — the arms are solved onto targets around them
+    const sh = this.restRig.get('UpperArmL')?.pos ?? vec(.17, 1.42, 0);
+    const sy = sh.y - crouch - lean * .12, sx = Math.abs(sh.x), sz = lean * .32;
+    const rest = (side: 1 | -1) => vec(side * (sx + .1), sy - .5 + .04 * Math.sin(o.phase + (side > 0 ? Math.PI : 0)) * amp, sz + .08 + .1 * side * swing);
+    let L = rest(1), R = rest(-1);
+    const poleOut = (side: 1 | -1) => vec(side, -.7, -.5), poleDown = (side: 1 | -1) => vec(side * .8, -1, -.2);
+    let PL = poleOut(1), PR = poleOut(-1);
+    const chest = sy - .18, front = sz + .32;
+    const osc = (f: number) => Math.sin(t * f);
+    const pointAt = (target: T.Vector3 | null | undefined, down = 0) => {
+      const s0 = vec(-sx, sy, sz);
+      const d = target ? target.clone().sub(s0) : vec(-1, 0, 1);
+      d.y = Math.max(-.5, Math.min(.35, d.y * .2)) - down; d.normalize();
+      return s0.addScaledVector(d, .62);
+    };
+    switch (g) {
+      case 'armUp': R = vec(-sx + .04, sy + .62, sz + .05); PR = vec(-1, 0, -.2); break;
+      case 'point': R = pointAt(o.aim); PR = vec(-.3, -1, 0); break;
+      case 'goal': R = pointAt(o.aim, .25); PR = vec(-.3, -1, 0); L = vec(sx + .05, sy - .45, sz + .2); break;
+      case 'trip': R = vec(-.12, .55 + .06 * osc(10), sz + .32); PR = poleDown(-1); break;
+      case 'hook': { const k = (osc(7) + 1) / 2; L = vec(.12, chest - .12, front + .12 - .2 * k); R = vec(-.12, chest - .12, front + .12 - .2 * k); PL = poleDown(1); PR = poleDown(-1); break; }
+      case 'hold': L = vec(.02, chest - .05, front + .02); R = vec(-.06, chest - .05, front + .05); PL = poleDown(1); PR = poleDown(-1); break;
+      case 'slash': L = vec(.18, chest, front + .05); R = vec(-.02, chest + .07 + .16 * Math.abs(osc(6)), front + .1); PL = poleDown(1); PR = vec(-1, -.3, -.3); break;
+      case 'interference': L = vec(-.16, chest + .02, front - .06); R = vec(.16, chest + .05, front - .04); PL = poleDown(1); PR = poleDown(-1); break;
+      case 'boarding': L = vec(.04, chest, front + .02); R = vec(-.04, chest + .02, front + .12 - .1 * Math.abs(osc(6))); PL = poleDown(1); PR = poleDown(-1); break;
+      case 'charging': { const a = t * 9, c = vec(0, chest, front + .02); L = c.clone().add(vec(.09 * Math.cos(a), .09 * Math.sin(a), 0)); R = c.clone().add(vec(-.09 * Math.cos(a), -.09 * Math.sin(a), 0)); PL = poleDown(1); PR = poleDown(-1); break; }
+      case 'highstick': L = vec(.03, sy + .24, front - .04); R = vec(.03, sy + .1, front); PL = vec(1, -.4, -.2); PR = vec(-1, -.4, -.2); break;
+      case 'fist': R = vec(-sx - .55, sy + .05, sz + .25); PR = vec(0, -1, -.3); break;
+      case 'icing': L = vec(-.12, sy - .08, front - .1); R = vec(.12, sy - .1, front - .08); PL = poleDown(1); PR = poleDown(-1); break;
+      case 'washout': { const k = osc(7); L = vec(sx + .25 + .3 * k, sy - .05, front); R = vec(-sx - .25 - .3 * k, sy - .05, front); PL = vec(.3, -1, -.3); PR = vec(-.3, -1, -.3); break; }
+      case 'ready': case 'drop': { const d = g === 'drop' ? smooth(Math.min(1, t / .18)) : 0; R = vec(-.06, sy - .3 - .2 * d, front + .3); PR = poleDown(-1); L = vec(.22, sy - .55, sz + .25); break; }
+      default: break;
+    }
+    if (g !== 'none' && g !== 'ready' && g !== 'drop') { L = rest(1).lerp(L, into); R = rest(-1).lerp(R, into); }
+    this.arms(L, R, PL, PR);
   }
 
   private shadowCasters: T.Object3D[] | null = null;

@@ -10,6 +10,7 @@ import { LIVE_CAMERAS } from './replayCameras';
 import type { FigureRequest } from './replayCache';
 import { resolveReplayQuality } from './ReplayScene';
 import { LiveScene3D } from './LiveScene3D';
+import { crewFor } from './officialCrew';
 
 export { clipFrame };
 /** Static ice markings in real IIHF/KHL proportions (viewBox 100 × 50 = 60 × 30 m, 1 m = 5/3 units). */
@@ -45,7 +46,10 @@ function RinkMarkings() {
     <text x="50" y="26" textAnchor="middle" fontSize="2" fill="#7c9cac" fontFamily="sans-serif">{LG()}</text>
   </>;
 }
-export function RinkSvg({ frame, home, away, players, aim }: { frame: LiveFrame; home: Team; away: Team; players: Record<string, Player>; aim?: { x: number; y: number; charge: number } | null }) {
+/** An official on the 2D rink: rink percent, a referee (orange armband) or a linesman, and whether he is signalling. */
+export type RinkOfficial = { x: number; y: number; ref: boolean; signal: boolean; heading: number };
+const officialLabel = (o: RinkOfficial) => (o.ref ? 'Главный судья' : 'Линейный судья');
+export function RinkSvg({ frame, home, away, players, aim, officials }: { frame: LiveFrame; home: Team; away: Team; players: Record<string, Player>; aim?: { x: number; y: number; charge: number } | null; officials?: readonly RinkOfficial[] }) {
   return <svg viewBox="0 0 100 50" className="w-full h-full" role="img" aria-label="Площадка сверху: хоккеисты и шайба" data-rink-svg>
     <RinkMarkings />
     {frame.skaters.map(p => <g key={`${p.side}-${p.id}`} transform={`translate(${p.pos.x} ${p.pos.y / 2})`} data-rink-player={p.id}>
@@ -57,14 +61,18 @@ export function RinkSvg({ frame, home, away, players, aim }: { frame: LiveFrame;
       {p.goalie ? <rect x="-1.4" y="-1" width="2.8" height="2" rx=".5" fill={p.side ? '#f7fafc' : home.primaryColor} stroke={p.side ? away.primaryColor : '#fff'} strokeWidth=".35" /> : <circle r="1.3" fill={p.side ? '#f7fafc' : home.primaryColor} stroke={p.side ? away.primaryColor : '#0b1726'} strokeWidth={p.side ? '.5' : '.35'} />}
       <text y=".4" textAnchor="middle" fontSize="1.2" fontWeight="bold" fill={p.side ? away.primaryColor : '#fff'} stroke={p.side ? '#fff' : '#000'} strokeWidth=".15" paintOrder="stroke" fontFamily="sans-serif">{players[p.id]?.number ?? ''}</text>
     </g>)}
-    {frame.faceoff && <g transform={frame.official ? `translate(${frame.official.x} ${frame.official.y / 2})` : `translate(${frame.puck.x + 1} ${frame.puck.y / 2 + 3})`} aria-label="Судья на вбрасывании" data-rink-official><circle r="1" fill="#202a34" /><path d="M-.6 -.7 V.7 M0 -.9 V.9 M.6 -.7 V.7" stroke="#fff" strokeWidth=".2" /></g>}
+    {officials?.map((o, i) => <g key={i} transform={`translate(${o.x} ${o.y / 2})`} aria-label={officialLabel(o)} data-rink-official={o.ref ? 'ref' : 'line'} data-rink-signal={o.signal || undefined}>
+      <circle r="1" fill="#f4f6f8" stroke={o.ref ? '#ff6a1a' : '#202a34'} strokeWidth=".32" /><path d="M-.5 -.8 V.8 M0 -.95 V.95 M.5 -.8 V.8" stroke="#202a34" strokeWidth=".22" />
+      {o.signal && <path d={`M0 0 L${(Math.cos(o.heading) * 2).toFixed(2)} ${(-Math.sin(o.heading) * 2).toFixed(2)}`} stroke="#ff6a1a" strokeWidth=".35" strokeLinecap="round" />}
+    </g>)}
+    {!officials && frame.faceoff && <g transform={frame.official ? `translate(${frame.official.x} ${frame.official.y / 2})` : `translate(${frame.puck.x + 1} ${frame.puck.y / 2 + 3})`} aria-label="Судья на вбрасывании" data-rink-official><circle r="1" fill="#202a34" /><path d="M-.6 -.7 V.7 M0 -.9 V.9 M.6 -.7 V.7" stroke="#fff" strokeWidth=".2" /></g>}
     <circle cx={frame.puck.x} cy={frame.puck.y / 2} r="1.2" fill="none" stroke="#e68c22" strokeWidth=".25" opacity=".7" />
     {aim && <g transform={`translate(${aim.x} ${aim.y / 2})`} data-rink-aim><circle r={0.8 + aim.charge * 0.5} fill="none" stroke={aim.charge > 0.6 ? '#ff3b30' : '#ffd23f'} strokeWidth=".3" /><circle r=".22" fill={aim.charge > 0.6 ? '#ff3b30' : '#ffd23f'} /></g>}
     <circle data-rink-puck cx={frame.puck.x} cy={frame.puck.y / 2 - frame.puck.h * 1.5} r=".5" fill="#0a1321" stroke="#fff" strokeWidth=".12" />
   </svg>;
 }
 
-export function LiveRink({ ticker, ids, goalies, event, home, away, players, running, ai = null, className, fill = false, roster, allow3d = true, bare = false, minimap = true }: {
+export function LiveRink({ ticker, ids, goalies, event, home, away, players, running, ai = null, className, fill = false, roster, allow3d = true, bare = false, minimap = true, intro = false }: {
   ticker: { sec: number; tau?: number }; ids: [string[], string[]]; goalies: [string | null, string | null]; event: GameEvent | null;
   home: Team; away: Team; players: Record<string, Player>; running: boolean; ai?: LiveSource | null; className?: string; fill?: boolean;
   /** everyone who may come on the ice: the 3D view prepares their figures up front */
@@ -75,6 +83,8 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
   bare?: boolean;
   /** false: no 2D minimap over the 3D picture (the touch controls need the corner) */
   minimap?: boolean;
+  /** the start of the match: the 3D picture shows the teams' entrance (if the settings want it) */
+  intro?: boolean;
 }) {
   const settings = useSettings();
   const [failed3d, setFailed3d] = useState(false);
@@ -111,7 +121,9 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
   // the played match: the aim marker on the net, also in 2D
   const am = ai?.aimMarker?.() ?? null;
   const aim = am ? { x: am.x / RINK.length * 100 + 50, y: am.z / RINK.width * 100 + 50, charge: am.charge } : null;
-  const svg = <RinkSvg frame={frame} home={home} away={away} players={players} aim={aim} />;
+  // the four officials (the same crew the 3D picture shows)
+  const officials: RinkOfficial[] | undefined = ai ? crewFor(ai).update(frame, ai.plays, t).map(o => ({ x: o.x / RINK.length * 100 + 50, y: o.z / RINK.width * 100 + 50, ref: o.role === 'ref', signal: o.gesture !== 'none', heading: o.heading })) : undefined;
+  const svg = <RinkSvg frame={frame} home={home} away={away} players={players} aim={aim} officials={officials} />;
   const viewToggle = can3d && <span className="flex rounded-sm border border-line overflow-hidden shrink-0" role="radiogroup" aria-label="Вид площадки" data-rink-view={show3d ? '3d' : '2d'}>
     {(['2d', '3d'] as const).map(v => <button key={v} type="button" role="radio" aria-checked={settings.matchView === v} onClick={() => setSettings({ matchView: v })}
       className={cn('px-1.5 py-0.5 text-[10px] font-bold uppercase', settings.matchView === v ? 'bg-ice text-bg' : 'text-muted hover:text-text')} data-rink-view-button={v}>{v}</button>)}
@@ -131,7 +143,7 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
     </div>}
     {show3d ? (
       <div className={cn('relative bg-[#081421] overflow-hidden', fill ? 'flex-1 min-h-0' : 'w-full')} style={fill ? undefined : { aspectRatio: '16 / 9' }} data-rink-3d>
-        <LiveScene3D ai={ai!} ticker={ticker} home={home} away={away} players={players} roster={roster ?? []} camera={settings.matchCamera} quality={resolveReplayQuality(settings.replayQuality)} onFail={() => setFailed3d(true)} />
+        <LiveScene3D ai={ai!} ticker={ticker} home={home} away={away} players={players} roster={roster ?? []} camera={settings.matchCamera} quality={resolveReplayQuality(settings.replayQuality)} onFail={() => setFailed3d(true)} intro={intro && settings.matchIntro} />
         <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1 z-20">
           {/* the camera: one button with the current view; it opens the list (eight NHL-style cameras) */}
           <span className="relative">

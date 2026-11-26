@@ -45,6 +45,10 @@ export type Arena = {
   benchCrowd: T.Group;
   /** Call before each render (after the reflection pass): hides what would stand between this camera and the ice (the scoreboard under the high cameras). */
   view: (camera: T.Camera) => void;
+  /** Animates the LED ribbons (call once per frame with performance.now()). */
+  tick: (now: number) => void;
+  /** The house lights: 1 normal, down to 0 (the entrance show) — the roof lamps, their glints in the ice and glow. */
+  lights: (k: number) => void;
 };
 /** Texture detail of the static arena: `hi` doubles the ice/crowd/board canvases (sharper markings and ads). */
 export type ArenaOptions = { detail?: 'normal' | 'hi'; /** kit colours of the low-poly bench players (home, away) */ benchKits?: [BenchKit, BenchKit] };
@@ -295,15 +299,48 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
   paint();
   // Ice material: the painted texture, plus an optional planar reflection of the players (blurred, fresnel-weighted).
   const iceReflection = { texture: { value: null as T.Texture | null }, matrix: { value: new T.Matrix4() }, strength: { value: 0 } };
+  const iceLamps = { value: 1 }, iceBoards = { value: null as T.Texture | null };
   const iceMat = mat(new T.MeshStandardMaterial({ map: iceTex, roughness: .3, metalness: 0 }));
   iceMat.onBeforeCompile = shader => {
-    shader.uniforms.uRefl = iceReflection.texture; shader.uniforms.uReflMat = iceReflection.matrix; shader.uniforms.uReflOn = iceReflection.strength;
+    shader.uniforms.uRefl = iceReflection.texture; shader.uniforms.uReflMat = iceReflection.matrix; shader.uniforms.uReflOn = iceReflection.strength; shader.uniforms.uLamps = iceLamps; shader.uniforms.uBoards = iceBoards;
     shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform mat4 uReflMat;\nvarying vec4 vRefl;')
-      .replace('#include <fog_vertex>', '#include <fog_vertex>\nvRefl = uReflMat * modelMatrix * vec4(transformed, 1.0);');
+      .replace('#include <common>', '#include <common>\nuniform mat4 uReflMat;\nvarying vec4 vRefl;\nvarying vec3 vIceW;')
+      .replace('#include <fog_vertex>', '#include <fog_vertex>\nvRefl = uReflMat * modelMatrix * vec4(transformed, 1.0);\nvIceW = (modelMatrix * vec4(transformed, 1.0)).xyz;');
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', '#include <common>\nuniform sampler2D uRefl;\nuniform float uReflOn;\nvarying vec4 vRefl;')
-      .replace('#include <opaque_fragment>', `if (uReflOn > 0.0) {
+      .replace('#include <common>', '#include <common>\nuniform sampler2D uRefl;\nuniform sampler2D uBoards;\nuniform float uReflOn;\nuniform float uLamps;\nvarying vec4 vRefl;\nvarying vec3 vIceW;')
+      .replace('#include <opaque_fragment>', `{
+          // Polished ice, cheap and on every preset: what the ice mirrors is worked out analytically — the rows of
+          // roof lamps (soft glints, blurrier with distance), the boards with their yellow kick plate near the
+          // boards, and the darker stands at grazing angles.
+          vec3 V = normalize(vIceW - cameraPosition);
+          vec3 R = vec3(V.x, -V.y, V.z);
+          float graze = pow(1.0 - clamp(R.y, 0.0, 1.0), 4.0);
+          vec3 tint = mix(vec3(.95, .965, .98), vec3(.78, .84, .94), graze * .6);
+          outgoingLight *= tint;
+          if (R.y > .015) {
+            float t = (19.15 - vIceW.y) / R.y;
+            vec2 P = vIceW.xz + R.xz * t;
+            float blur = 1.0 + t * .035;
+            float dx = mod(P.x + 25.5 + 2.55, 5.1) - 2.55;
+            float dz = min(abs(P.y - 7.5), abs(P.y + 7.5));
+            float glint = step(abs(P.x), 28.0) * exp(-(dx * dx) / (.35 * blur) - (dz * dz) / (.25 * blur));
+            outgoingLight += vec3(1.0, .96, .88) * glint * .85 * uLamps * (.3 + .7 * graze);
+          }
+          float tz = (sign(R.z) * ${HALF_W.toFixed(1)} - vIceW.z) / max(abs(R.z), 1e-3);
+          float tx = (sign(R.x) * ${HALF_L.toFixed(1)} - vIceW.x) / max(abs(R.x), 1e-3);
+          float tb = min(tz, tx), yb = vIceW.y + R.y * tb;
+          if (yb < 1.07 && yb > 0.0) {
+            // the boards' own picture (ads, the kick plate), blurred: u runs along the rink outline (see sweep)
+            vec2 Hb = vIceW.xz + R.xz * tb;
+            float u = tz < tx
+              ? (R.z > 0.0 ? 13.35 + (21.5 - Hb.x) : 96.05 + (Hb.x + 21.5))
+              : (R.x < 0.0 ? 69.7 + (6.5 - Hb.y) : 152.4 + (Hb.y + 6.5));
+            vec3 board = texture2D(uBoards, vec2(u / 12.0, yb / 1.07), 2.5).rgb;
+            float near = 1.0 - smoothstep(1.0, 16.0, tb);
+            outgoingLight = mix(outgoingLight, board * (.5 + .5 * uLamps), (.1 + .38 * graze) * near);
+          }
+        }
+        if (uReflOn > 0.0) {
           vec2 ruv = vRefl.xy / vRefl.w;
           vec4 r = texture2D(uRefl, ruv) * .36
             + (texture2D(uRefl, ruv + vec2(.0025, .0)) + texture2D(uRefl, ruv - vec2(.0025, .0))
@@ -314,7 +351,7 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
         }
         #include <opaque_fragment>`);
   };
-  iceMat.customProgramCacheKey = () => 'khl-ice-reflect-1';
+  iceMat.customProgramCacheKey = () => 'khl-ice-reflect-3';
   const ice = mesh(new T.ShapeGeometry(shape, 24), iceMat);
   ice.rotation.x = -Math.PI / 2;
   // Home logo at centre ice once it has loaded (same-origin logos only: a tainted canvas cannot be uploaded).
@@ -336,6 +373,7 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
   const boardCanvas = canvas(1536 * K, 136 * K);
   if (boardCanvas.ctx) paintBoards(boardCanvas.ctx, 1536 * K, 136 * K, home, away);
   const boardTex = tex(boardCanvas.c, true);
+  iceBoards.value = boardTex;
   const boards = mesh(sweep([
     [{ o: 0, y: 0, v: 0 }, { o: 0, y: 1.07, v: 1 }],
     [{ o: 0, y: 1.07, v: .985 }, { o: .2, y: 1.07, v: .985 }],
@@ -367,7 +405,20 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
   if (suiteCanvas.ctx) paintSuites(suiteCanvas.ctx, 1024 * K, 64 * K, home);
   const suiteTex = tex(suiteCanvas.c, true);
   bowl(mesh(sweep([[{ o: 5, y: -.02, v: 0 }, { o: 5, y: 1.4, v: 1 }]], 20), mat(new T.MeshStandardMaterial({ color: '#0d1620', roughness: .8, side: T.DoubleSide }))));
-  bowl(mesh(sweep([[{ o: 5, y: 1.4, v: 0 }, { o: 5.2, y: 1.9, v: 1 }]], 20), mat(new T.MeshBasicMaterial({ color: home.primaryColor, side: T.DoubleSide })), false));
+  // the LED ribbon along the front of the stands: club colours and messages scrolling round the bowl
+  const ribbonCanvas = canvas(1024, 48);
+  if (ribbonCanvas.ctx) {
+    const c = ribbonCanvas.ctx, w = 1024, h = 48;
+    const grad = c.createLinearGradient(0, 0, w, 0);
+    grad.addColorStop(0, home.primaryColor); grad.addColorStop(.5, mix(home.primaryColor, '#000000', .35)); grad.addColorStop(1, home.primaryColor);
+    c.fillStyle = grad; c.fillRect(0, 0, w, h);
+    c.fillStyle = 'rgba(255,255,255,.12)'; for (let x = 0; x < w; x += 4) c.fillRect(x, 0, 1, h); // the LED pitch
+    c.font = 'bold 30px Oswald, sans-serif'; c.textBaseline = 'middle'; c.textAlign = 'center';
+    const words = [home.short ?? home.name, LG(), `${home.short ?? home.name} — ${away.short ?? away.name}`, 'ХОККЕЙ'];
+    words.forEach((t, i) => { c.fillStyle = i % 2 ? '#ffffff' : '#f3f6fa'; c.fillText(t.toUpperCase(), (i + .5) * w / words.length, h / 2 + 1, w / words.length - 24); });
+  }
+  const ribbonTex = tex(ribbonCanvas.c, true);
+  bowl(mesh(sweep([[{ o: 5, y: 1.4, v: 0 }, { o: 5.2, y: 1.9, v: 1 }]], 20), mat(new T.MeshBasicMaterial({ map: ribbonTex, side: T.DoubleSide })), false));
   bowl(mesh(sweep([[{ o: 5.2, y: 1.9, v: 0 }, { o: 12.6, y: 6.9, v: 1 }]], 20, 20), mat(new T.MeshStandardMaterial({ map: crowdTex, roughness: .95, side: T.DoubleSide })), false));
   bowl(mesh(sweep([
     [{ o: 12.6, y: 6.9, v: 0 }, { o: 12.6, y: 7.25, v: 0 }], // front rail of the lower tier
@@ -392,7 +443,16 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
   const rigGeo = mergeGeometries(rig, false)!, lampGeo = mergeGeometries(lamps, false)!;
   [...rig, ...lamps].forEach(b => b.dispose());
   bowl(mesh(rigGeo, mat(new T.MeshBasicMaterial({ color: '#141b24' })), false));
-  bowl(mesh(lampGeo, mat(new T.MeshBasicMaterial({ color: '#fff6e0' })), false));
+  const lampMat = mat(new T.MeshBasicMaterial({ color: '#fff6e0' }));
+  bowl(mesh(lampGeo, lampMat, false));
+  // a soft glow round every lamp (seen from the low cameras looking up)
+  const glowPos: number[] = [];
+  for (const z of [-7.5, 7.5]) for (let x = -HALF_L * .85; x <= HALF_L * .85 + .01; x += HALF_L * .85 / 5) glowPos.push(x, 19.05, z);
+  const glowGeo = new T.BufferGeometry(); glowGeo.setAttribute('position', new T.Float32BufferAttribute(glowPos, 3)); own.geometries.push(glowGeo);
+  const glowTexCanvas = canvas(64, 64);
+  if (glowTexCanvas.ctx) { const c = glowTexCanvas.ctx, g = c.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,248,230,1)'); g.addColorStop(.25, 'rgba(255,240,210,.45)'); g.addColorStop(1, 'rgba(255,240,210,0)'); c.fillStyle = g; c.fillRect(0, 0, 64, 64); }
+  const glowMat = mat(new T.PointsMaterial({ map: tex(glowTexCanvas.c), size: 3.2, sizeAttenuation: true, transparent: true, depthWrite: false, blending: T.AdditiveBlending, opacity: .8 }));
+  const glow = new T.Points(glowGeo, glowMat); glow.frustumCulled = false; group.add(glow); hidden.push(glow);
 
   // Team benches with the coaches and the players who are not on the ice, the penalty boxes and the timekeepers.
   const benches = new T.Group(), benchCrowd = new T.Group();
@@ -460,6 +520,8 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
     iceReflection,
     benchCrowd,
     view: camera => { const show = !scoreboardBlocks(camera, boardBox); scoreboard.forEach(o => { o.visible = show; }); },
+    tick: now => { ribbonTex.offset.x = (now / 1000 * .045) % 1; ledTex.offset.x = (now / 1000 * .06) % 1; },
+    lights: k => { iceLamps.value = k; lampMat.color.setRGB(1, .965, .88).multiplyScalar(.12 + .88 * k); glowMat.opacity = .8 * k; glow.visible = k > .02; },
     dispose: () => { disposed = true; own.geometries.forEach(g => g.dispose()); own.materials.forEach(m => m.dispose()); own.textures.forEach(t => t.dispose()); group.removeFromParent(); },
   };
 }
