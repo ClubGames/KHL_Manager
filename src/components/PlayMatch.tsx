@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { Game, GameEvent } from '../types';
+import { pads } from '../padSource';
 import type { BlockKind } from '../game/engine';
 import { fmtClock } from '../game/engine';
 import { commitUserResult, makeUserSim, useGame } from '../game/state';
@@ -44,6 +45,7 @@ const KEY_HELP: [string, string][] = [
   ['F', 'вбрасывание: нажмите, когда судья бросает шайбу (Пробел и K тоже работают, но окно уже)'],
   ['C / Tab', 'сменить игрока (к шайбе или в сторону стика); в обороне смена на защитника идёт сама'],
   ['V', 'смена звена'],
+  ['T / B', 'тактика: форчекинг / выход из зоны (переключение)'],
   ['G', 'снять / вернуть вратаря'],
   ['R', 'повтор последнего гола'],
   ['Esc / P', 'пауза'],
@@ -53,18 +55,34 @@ const KEY_HELP: [string, string][] = [
   ['Мышь: ПКМ', 'пас к курсору (держать — верхом); в обороне — смена на игрока у курсора'],
   ['Колесо / средняя', 'колесо — приблизить / отдалить камеру; средняя кнопка — финт'],
 ];
+/** The gamepad: the NHL 25/26 scheme (playInput.ts). */
 const PAD_HELP: [string, string][] = [
-  ['Левый стик', 'катиться'],
-  ['B / RT', 'бросок (держать — сильнее), в обороне — силовой'],
-  ['A', 'пас (держать — верхом), в обороне — смена игрока'],
-  ['Правый стик', 'клюшка, как в NHL: вниз и вверх — щелчок (дольше вниз — сильнее, полная сила за треть секунды), рывок вверх — кистевой, вбок и вверх — кистевой с протяжкой; держать вбок — ведение шайбы, рывок вбок — финт, вниз и вбок — протяжка, вбок туда-обратно — между ног, круг — вертушка, вниз и отпустить — ложный замах; в обороне — отбор / подбить клюшку'],
-  ['Левый стик + бросок', 'прицел: куда наклонён стик, туда и бросок (метка на воротах); прямо — в сторону, открытую вратарём'],
-  ['X', 'финт / отбор клюшкой'],
-  ['RB / R3', 'вбрасывание: нажмите, когда судья бросает шайбу'],
-  ['LB', 'сменить игрока (в обороне смена на защитника идёт сама)'],
-  ['RB / LT', 'рывок'],
-  ['Y', 'смена звена'],
-  ['Back', 'снять вратаря'],
+  ['Атака', ''],
+  ['Левый стик', 'катиться и целиться: куда наклонён в момент броска или паса — туда и летит (метка на воротах)'],
+  ['Правый стик влево / вправо', 'ведение шайбы, прикрыть шайбу (держите стик в сторону от защитника)'],
+  ['Правый стик: вбок и вверх', 'кистевой / с неудобной руки (вбок к удобной или неудобной стороне и рывком к воротам)'],
+  ['Правый стик: вниз и вверх', 'щелчок (дольше вниз — сильнее)'],
+  ['Правый стик: рывки и круги', 'финты: рывок вбок — финт, вбок туда-обратно — между ног, круг — вертушка, вниз и отпустить — ложный замах'],
+  ['LB + правый стик', 'особые финты: вбок — протяжка, вниз — между ног, вверх — ложный бросок'],
+  ['RT', 'пас: коротко — мягкий, держать — сильнее; LB + RT — пас верхом'],
+  ['RT держать + правый стик', 'быстрое ведение без случайных финтов (отпустите RT со стиком в центре — пас)'],
+  ['L3', 'ускорение (пока катитесь)'],
+  ['D-pad вправо', 'смена звена нападения'],
+  ['B', 'бросок кнопкой (держать — сильнее), дополнительно'],
+  ['Оборона', ''],
+  ['LT', 'контроль обзора: игрок смотрит на шайбу, отходит спиной'],
+  ['LB', 'блокировать бросок (держать): шире и надёжнее, но медленнее'],
+  ['RB', 'отбор клюшкой'],
+  ['RT', 'сменить игрока (ближе к шайбе или в сторону левого стика)'],
+  ['Y', 'прижать к борту'],
+  ['A', 'подбить клюшку'],
+  ['Правый стик вверх', 'толчок'],
+  ['Правый стик вниз и вверх', 'силовой приём плечом'],
+  ['D-pad вверх / вниз', 'форчекинг / выход из зоны (переключение тактики)'],
+  ['D-pad влево', 'смена пары защитников'],
+  ['Прочее', ''],
+  ['RB / R3 / правый стик', 'вбрасывание: в момент, когда судья бросает шайбу'],
+  ['Back', 'снять / вернуть вратаря'],
   ['Start', 'пауза'],
 ];
 
@@ -107,7 +125,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   const device: InputDevice = detectDevice(padOn, touchUI);
   useEffect(() => {
     if (phase === 'playing' && !paused) return;
-    const read = () => { const on = typeof navigator !== 'undefined' && !!navigator.getGamepads && anyGamepad(navigator.getGamepads()); if (on !== padOnRef.current) { padOnRef.current = on; setPadOn(on); } };
+    const read = () => { const on = anyGamepad(pads()); if (on !== padOnRef.current) { padOnRef.current = on; setPadOn(on); } };
     read();
     const id = window.setInterval(read, 500);
     window.addEventListener('gamepadconnected', read); window.addEventListener('gamepaddisconnected', read);
@@ -225,6 +243,10 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
     if (!k || paused || phase !== 'playing') return;
     if (c === 'pull') { const on = !k.pulled[userIdx]; k.setPulled(userIdx, on); toast(on ? 'Вратарь уходит — шестой полевой' : 'Вратарь возвращается в ворота'); }
     if (c === 'change') { k.requestChange(userIdx); toast('Смена звена'); }
+    if (c === 'changeF') { k.requestChange(userIdx, 'F'); toast('Смена звена нападения'); }
+    if (c === 'changeD') { k.requestChange(userIdx, 'D'); toast('Смена пары защитников'); }
+    if (c === 'forecheck') toast(`Форчекинг: ${k.cycleForecheck(userIdx)}`);
+    if (c === 'breakout') toast(`Выход из зоны: ${k.cycleBreakout(userIdx)}`);
     if (c === 'replay') { const g = goals.current[goals.current.length - 1]; if (g) openReplay(g); }
   };
   const commandRef = useRef(command); commandRef.current = command;
@@ -263,13 +285,13 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
     if (phase !== 'playing' || paused || replay || busy) return;
     let raf = 0, last = performance.now(), hudAt = 0, waited = 0;
     // a button still held from the menu (Start that resumed the match) is not a new press
-    prevCommands.current = gamepadPad(typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : null).commands;
+    prevCommands.current = gamepadPad(pads()).commands;
     const loop = (now: number) => {
       const dt = Math.min(0.1, (now - last) / 1000);
       last = now;
       const k = rink.current;
       if (!k) return;
-      const gp = gamepadPad(typeof navigator !== 'undefined' && navigator.getGamepads ? navigator.getGamepads() : null);
+      const gp = gamepadPad(pads());
       if (gp.connected !== padOnRef.current) { padOnRef.current = gp.connected; setPadOn(gp.connected); }
       for (const c of gp.commands) if (!prevCommands.current.has(c)) commandRef.current(c);
       prevCommands.current = gp.commands;
@@ -371,7 +393,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
           {hud.delayed !== null && <span className="rounded-sm px-1.5 bg-gold/20 text-gold font-semibold" data-play-delayed>Отложенный штраф</span>}
           {hud.pulled && <span className="rounded-sm px-1.5 bg-accent/15 text-accent font-semibold">Без вратаря</span>}
           {hud.faceoff && !hud.foCue && <span className="text-ice font-semibold">Вбрасывание</span>}
-          {hud.foCue === 'ready' && <span className="text-ice font-semibold" data-play-fo-cue="ready">Вбрасывание: {device === 'gamepad' ? 'RB' : device === 'touch' ? 'кнопка «Вбрасывание»' : 'F'} — когда шайба падает</span>}
+          {hud.foCue === 'ready' && <span className="text-ice font-semibold" data-play-fo-cue="ready">Вбрасывание: {device === 'gamepad' ? 'RB или правый стик' : device === 'touch' ? 'кнопка «Вбрасывание»' : 'F'} — когда шайба падает</span>}
         </div>
       )}
 
@@ -571,7 +593,9 @@ function Controls({ device }: { device: InputDevice }) {
         </>
       ) : (
         <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-          {(view === 'gamepad' ? PAD_HELP : KEY_HELP).map(([k, v]) => <Fragment key={k}><kbd className="font-mono text-[11px] text-ice whitespace-nowrap">{k}</kbd><span className="text-muted">{v}</span></Fragment>)}
+          {(view === 'gamepad' ? PAD_HELP : KEY_HELP).map(([k, v], i) => v
+            ? <Fragment key={i}><kbd className="font-mono text-[11px] text-ice whitespace-nowrap">{k}</kbd><span className="text-muted">{v}</span></Fragment>
+            : <div key={i} className="col-span-2 mt-1.5 first:mt-0 text-[10px] uppercase tracking-wider text-text/80 font-semibold" data-help-section>{k}</div>)}
         </div>
       )}
       {view === 'gamepad' && device !== 'gamepad' && <p className="mt-1 text-[11px] text-muted">Геймпад не найден: подключите его и нажмите любую кнопку.</p>}

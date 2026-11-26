@@ -6,6 +6,7 @@ import type { PlayerFigure } from './playerModel';
 import { acquireRenderer, addStageLights, compileScene, kitFor, loadModel, onCacheRedraw, releaseRenderer, sharedProps, takeArena, takeFigures, type FigureRequest } from './replayCache';
 import { liveCameraPose, toWorld, ZOOM, type LiveCamera } from './replayCameras';
 import { RINK } from '../game/rinkGeometry';
+import { benchSeat, boxSeat, BENCH } from './arenaBenches';
 
 export { LIVE_CAMERAS, type LiveCamera } from './replayCameras';
 import { releaseHeading } from './replayMotion';
@@ -29,6 +30,8 @@ type Actor = {
   id: string; side: 0 | 1; goalie: boolean; group: T.Group; figure: PlayerFigure | null; standIn: T.Object3D;
   heading: number; phase: number; lx: number; lz: number; known: boolean;
   save: { x: number; y: number; z: number; tau: number } | null;
+  /** off the ice: the seat he is on ('b3' bench, 'p1' penalty box) and when his seated pose was last refreshed */
+  seat?: string; sitAt?: number;
 };
 
 type Props = {
@@ -91,7 +94,22 @@ export function LiveScene3D(props: Props) {
       const arena = taken.arena;
       arena.iceReflection.texture.value = null; arena.iceReflection.strength.value = 0;
       scene.add(arena.group);
-      releaseArena = () => taken.release();
+      // The bench: on the light preset the arena's low-poly players; above it the real figures of the dressed
+      // players who are not on the ice sit there (and come and go with the line changes).
+      const realBench = quality !== 'standard';
+      arena.benchCrowd.visible = !realBench;
+      releaseArena = () => { arena.benchCrowd.visible = true; taken.release(); };
+      const benchUsed = [new Set<number>(), new Set<number>()];
+      const frustum = new T.Frustum(), projView = new T.Matrix4(), seatBall = new T.Sphere(new T.Vector3(), 1.1);
+      const leaveSeat = (a: Actor) => { if (a.seat?.startsWith('b')) benchUsed[a.side].delete(Number(a.seat.slice(1))); a.seat = undefined; a.figure?.castShadows(true); };
+      const benchSlot = (a: Actor) => {
+        if (a.seat?.startsWith('b')) return Number(a.seat.slice(1));
+        leaveSeat(a);
+        // fill from the middle of the bench out; the backup goalie at the far end
+        const order = Array.from({ length: BENCH.slots }, (_, i) => i).sort((x, y) => Math.abs(x - 7.5) - Math.abs(y - 7.5));
+        const slot = a.goalie ? (benchUsed[a.side].has(BENCH.slots - 1) ? order.find(i => !benchUsed[a.side].has(i)) : BENCH.slots - 1) : order.find(i => !benchUsed[a.side].has(i));
+        const s = slot ?? 0; benchUsed[a.side].add(s); a.seat = `b${s}`; a.sitAt = undefined; return s;
+      };
       let dirty = true;
       unbind.push(onCacheRedraw(() => { dirty = true; }));
 
@@ -236,7 +254,30 @@ export function LiveScene3D(props: Props) {
         carrierRing.visible = !!holder;
         if (holder) { const c = toWorld(holder.pos); carrierRing.position.set(c.x, .017, c.z); const pulse = 1 + Math.sin(now / 160) * .05; carrierRing.scale.set(pulse, pulse, 1); }
         const onIce = new Set(shown.map(p => p.id));
-        actors.forEach(a => { if (!onIce.has(a.id)) { a.group.visible = false; a.lx = NaN; } });
+        // Off the ice: the penalty box (everyone, every preset) or the bench (the real figures on the higher presets).
+        const boxCount = [0, 0], boxOf = new Map<string, number>();
+        for (const p of f.skaters) if (p.box) { boxOf.set(p.id, boxCount[p.side]++); actorFor(p.id, p.side, !!p.goalie); }
+        const dressed = new Set(rosterRef.current.map(r => r.id));
+        actors.forEach(a => {
+          if (onIce.has(a.id)) { if (a.seat) { leaveSeat(a); a.lx = NaN; } return; }
+          a.lx = NaN;
+          const box = boxOf.get(a.id);
+          let seat: ReturnType<typeof benchSeat> | null = null;
+          if (box !== undefined) { const key = `p${box}`; if (a.seat !== key) { leaveSeat(a); a.seat = key; a.sitAt = undefined; } seat = boxSeat(a.side, box); }
+          else if (realBench && dressed.has(a.id)) seat = benchSeat(a.side, benchSlot(a));
+          else if (a.seat) leaveSeat(a);
+          if (!seat) { a.group.visible = false; return; }
+          a.group.visible = true;
+          a.group.position.set(seat.x, seat.y, seat.z); a.group.rotation.set(0, seat.heading, 0);
+          if (!a.figure) return;
+          // the seated pose follows the play a few times a second (and the bench gets up for its team's goal)
+          if (a.sitAt !== undefined && now - a.sitAt < 220 + (a.phase % 1) * 160) return;
+          if (a.sitAt === undefined) a.figure.castShadows(false);
+          a.sitAt = now;
+          const up = goal && goal.side === a.side && box === undefined ? clamp((tau - goal.tau) / .5, 0, 1) * (1 - smooth01((tau - goal.tau - 4) / 1.2)) : 0;
+          a.group.updateMatrixWorld(true);
+          a.figure.sit({ seat: BENCH.seatTop, look: clamp(angleDiff(seat.heading, Math.atan2(-(pw.z - seat.z), pw.x - seat.x)), -1.1, 1.1), up });
+        });
         const prevOf = new Map(fb.skaters.map(p => [p.id, p.pos])), prev2Of = new Map(fb2.skaters.map(p => [p.id, p.pos]));
         const alpha = 1 - Math.exp(-dTau * 9);
         let carrierW = 0;
@@ -344,6 +385,10 @@ export function LiveScene3D(props: Props) {
         camera.position.set(pose.pos.x, pose.pos.y, pose.pos.z);
         camera.lookAt(pose.look.x, pose.look.y, pose.look.z);
         if (Math.abs(camera.fov - pose.fov) > .01) { camera.fov = pose.fov; camera.updateProjectionMatrix(); }
+        camera.updateMatrixWorld(); arena.view(camera);
+        // the skinned figures are never culled by three: the seated ones out of the picture are skipped here
+        frustum.setFromProjectionMatrix(projView.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+        actors.forEach(a => { if (a.seat) { seatBall.center.set(a.group.position.x, .8, a.group.position.z); a.group.visible = frustum.intersectsSphere(seatBall); } });
         sun.position.set(pose.look.x + 8, 25, pose.look.z + 12); sun.target.position.set(pose.look.x, 0, pose.look.z); sun.target.updateMatrixWorld();
         camera.updateMatrixWorld();
         // the aim marker always faces the camera (seen from the side the net's plane would hide it)

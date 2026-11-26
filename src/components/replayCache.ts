@@ -140,7 +140,8 @@ export function takeArena(home: Team, away: Team, detail: 'normal' | 'hi', aniso
   const s = useMatch(home, away);
   const entry = s.arenas.get(detail);
   if (entry && !entry.inUse) { entry.inUse = true; return { arena: entry.arena, release: () => { entry.inUse = false; entry.arena.group.removeFromParent(); } }; }
-  const arena = buildArena(new T.Group(), home, away, anisotropy, notify, { detail });
+  const bench = (team: Team, side: 0 | 1) => { const k = kitFor(team, side, false); return { jersey: k.jersey, trim: k.trim, pants: k.pants, socks: k.socks, helmet: k.helmet, glove: k.glove }; };
+  const arena = buildArena(new T.Group(), home, away, anisotropy, notify, { detail, benchKits: [bench(home, 0), bench(away, 1)] });
   arena.group.removeFromParent();
   if (entry) return { arena, release: () => arena.dispose() }; // a second scene at the same time: its own copy
   const own: ArenaEntry = { arena, inUse: true };

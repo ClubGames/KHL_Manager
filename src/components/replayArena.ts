@@ -4,6 +4,26 @@ import type { Team } from '../types';
 import { FACEOFF_SPOTS, RINK } from '../game/rinkGeometry';
 import { getClubLogoSources } from '../game/clubColors';
 import { LG } from '../brand';
+import { buildBenches, type BenchKit } from './arenaBenches';
+
+const _ray = new T.Ray(), _pt = new T.Vector3(), _frustum = new T.Frustum(), _pv = new T.Matrix4(), _origin = new T.Vector3();
+/**
+ * Does the box stand between the camera and the ice? Lines of sight from the camera to a grid of points over the
+ * rink (those in the picture): one that crosses the box is a piece of the play the box would hide.
+ */
+export function scoreboardBlocks(camera: T.Camera, box: T.Box3): boolean {
+  camera.updateMatrixWorld();
+  _origin.setFromMatrixPosition(camera.matrixWorld);
+  if (_origin.y < box.min.y - 6) return false; // from below it hides nothing but the roof
+  _frustum.setFromProjectionMatrix(_pv.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
+  for (let i = 0; i <= 20; i++) for (let j = 0; j <= 10; j++) {
+    _pt.set(-RINK.length / 2 + i * RINK.length / 20, 0, -RINK.width / 2 + j * RINK.width / 10);
+    if (!_frustum.containsPoint(_pt)) continue;
+    _ray.set(_origin, _pt.sub(_origin).normalize());
+    if (_ray.intersectsBox(box)) return true;
+  }
+  return false;
+}
 
 /**
  * Static arena for the 3D goal replay, built for few draw calls:
@@ -21,9 +41,13 @@ export type Arena = {
   reflectionHidden: T.Object3D[];
   /** Ice reflection inputs: texture, world → reflection-texture matrix, strength (0 = off). */
   iceReflection: { texture: { value: T.Texture | null }; matrix: { value: T.Matrix4 }; strength: { value: number } };
+  /** The low-poly players on the benches (the live match on the higher presets seats the real figures instead). */
+  benchCrowd: T.Group;
+  /** Call before each render (after the reflection pass): hides what would stand between this camera and the ice (the scoreboard under the high cameras). */
+  view: (camera: T.Camera) => void;
 };
 /** Texture detail of the static arena: `hi` doubles the ice/crowd/board canvases (sharper markings and ads). */
-export type ArenaOptions = { detail?: 'normal' | 'hi' };
+export type ArenaOptions = { detail?: 'normal' | 'hi'; /** kit colours of the low-poly bench players (home, away) */ benchKits?: [BenchKit, BenchKit] };
 
 type Owned = { geometries: T.BufferGeometry[]; materials: T.Material[]; textures: T.Texture[] };
 
@@ -370,22 +394,13 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
   bowl(mesh(rigGeo, mat(new T.MeshBasicMaterial({ color: '#141b24' })), false));
   bowl(mesh(lampGeo, mat(new T.MeshBasicMaterial({ color: '#fff6e0' })), false));
 
-  // Team benches (the side the 2D rink draws them on) and the penalty boxes opposite, merged per material.
-  const boxes: Record<string, T.BufferGeometry[]> = {};
-  const block = (color: string, sx: number, sy: number, sz: number, x: number, y: number, z: number) => {
-    const b = new T.BoxGeometry(sx, sy, sz); b.translate(x, y, z); (boxes[color] ??= []).push(b);
-  };
-  for (const [x, team] of [[-6, home], [6, away]] as const) {
-    block('#1d2731', 9, .05, 2.2, x, .02, -(HALF_W + 1.4));
-    block('#3a4654', 8.6, .45, .45, x, .23, -(HALF_W + 2.2));
-    block(team.primaryColor, 9, 1.2, .1, x, .6, -(HALF_W + 2.55));
-  }
-  for (const x of [-2.6, 2.6]) {
-    block('#1d2731', 3.6, .05, 1.8, x, .02, HALF_W + 1.2);
-    block('#3a4654', 3.2, .45, .45, x, .23, HALF_W + 1.9);
-    block('#16304d', 3.6, 1.2, .1, x, .6, HALF_W + 2.2);
-  }
-  Object.entries(boxes).forEach(([color, list]) => { const g = mergeGeometries(list, false)!; list.forEach(b => b.dispose()); mesh(g, mat(new T.MeshStandardMaterial({ color, roughness: .8 }))); });
+  // Team benches with the coaches and the players who are not on the ice, the penalty boxes and the timekeepers.
+  const benches = new T.Group(), benchCrowd = new T.Group();
+  benches.add(benchCrowd); group.add(benches); hidden.push(benches);
+  buildBenches({
+    home, away, kits: options.benchKits, group: benches, crowd: benchCrowd, mat, canvas, texture: c => tex(c),
+    mesh: (geo, m, parent) => { own.geometries.push(geo); const x = new T.Mesh(geo, m); x.receiveShadow = true; parent.add(x); return x; },
+  });
 
   // Scoreboard cube over centre ice.
   const scoreCanvas = canvas(512, 256);
@@ -408,7 +423,8 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
   }
   const ledTex = tex(ledCanvas.c, true); ledTex.repeat.set(2, 1);
   const led = mat(new T.MeshBasicMaterial({ map: ledTex }));
-  for (const y of [17.45, 13.55]) { const ringMesh = mesh(new T.BoxGeometry(6.6, .42, 4.6), [led, led, frame, frame, led, led] as unknown as T.Material, false); ringMesh.position.set(0, y, 0); hidden.push(ringMesh); }
+  const rings: T.Mesh[] = [];
+  for (const y of [17.45, 13.55]) { const ringMesh = mesh(new T.BoxGeometry(6.6, .42, 4.6), [led, led, frame, frame, led, led] as unknown as T.Material, false); ringMesh.position.set(0, y, 0); hidden.push(ringMesh); rings.push(ringMesh); }
   const lowCanvas = canvas(256, 64);
   if (lowCanvas.ctx) {
     const c = lowCanvas.ctx; c.fillStyle = '#05080d'; c.fillRect(0, 0, 256, 64);
@@ -418,6 +434,9 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
   const lowScreen = mat(new T.MeshBasicMaterial({ map: tex(lowCanvas.c) }));
   const low = mesh(new T.CylinderGeometry(2.1, 2.1, 1, 8, 1, true), lowScreen, false); low.position.set(0, 12.75, 0); hidden.push(low);
   const hoist = mesh(new T.CylinderGeometry(.06, .06, 4.6, 6), frame, false); hoist.position.set(0, 19.9, 0); hidden.push(hoist);
+  // The scoreboard hangs over centre ice: from the high cameras it would hide the play, so it steps aside then.
+  const scoreboard = [cube, low, hoist, ...rings];
+  const boardBox = new T.Box3(new T.Vector3(-3.35, 12.2, -2.35), new T.Vector3(3.35, 22.3, 2.35));
 
   // Goals.
   const netCanvas = canvas(64, 64);
@@ -439,6 +458,8 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
     refresh: paint,
     reflectionHidden: hidden,
     iceReflection,
+    benchCrowd,
+    view: camera => { const show = !scoreboardBlocks(camera, boardBox); scoreboard.forEach(o => { o.visible = show; }); },
     dispose: () => { disposed = true; own.geometries.forEach(g => g.dispose()); own.materials.forEach(m => m.dispose()); own.textures.forEach(t => t.dispose()); group.removeFromParent(); },
   };
 }

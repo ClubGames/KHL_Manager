@@ -9,7 +9,7 @@
  * gives it back on the pause menu, the intermission and the final screen.
  */
 
-type PadLike = { axes: readonly number[]; buttons: readonly { pressed: boolean; value: number }[] };
+import { pads } from './padSource';
 type Dir = 'up' | 'down' | 'left' | 'right';
 
 const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 } as const;
@@ -174,7 +174,7 @@ function section(d: 1 | -1) {
 }
 
 export function initGamepadNav() {
-  if (started || typeof window === 'undefined' || typeof navigator === 'undefined' || !navigator.getGamepads) return;
+  if (started || typeof window === 'undefined' || typeof navigator === 'undefined' || typeof navigator.getGamepads !== 'function') return;
   started = true;
   const prev: boolean[] = [];
   const hold: Partial<Record<Dir, number>> = {};
@@ -185,7 +185,10 @@ export function initGamepadNav() {
   window.addEventListener('mousemove', (e) => { if (Math.abs(e.movementX) + Math.abs(e.movementY) > 3) off(); }, true);
 
   const frame = (now: number) => {
-    const gp = [...navigator.getGamepads()].find((p): p is Gamepad => !!p) as PadLike | undefined;
+    try { step(now); } catch (e) { running = false; console.warn('gamepad navigation stopped:', e); }
+  };
+  const step = (now: number) => {
+    const gp = pads()[0];
     if (!gp) { running = false; prev.length = 0; return; }
     const btn = (i: number) => !!gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5);
     const down = gp.buttons.map((_, i) => btn(i));
@@ -216,6 +219,7 @@ export function initGamepadNav() {
   const start = () => { if (running) return; running = true; cancelAnimationFrame(raf); raf = requestAnimationFrame(frame); };
   window.addEventListener('gamepadconnected', start);
   // some browsers list a pad only after a button press and fire no event for an already connected one
-  setInterval(() => { if (!running && [...navigator.getGamepads()].some((p) => !!p)) start(); }, 1000);
+  // (phones list a fingerprint sensor and the like as "gamepads": padSource skips them and ignores stuck controls)
+  setInterval(() => { if (!running && pads().length) start(); }, 1000);
   start();
 }

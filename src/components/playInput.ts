@@ -7,7 +7,7 @@ import type { PadState } from '../game/playRink';
  * a Russian layout works the same.
  */
 export type Action = 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff';
-export type Command = 'pause' | 'pull' | 'change' | 'replay';
+export type Command = 'pause' | 'pull' | 'change' | 'replay' | 'changeF' | 'changeD' | 'forecheck' | 'breakout';
 
 export const KEYS: Record<Action, string[]> = {
   shoot: ['Space', 'KeyJ'],
@@ -22,6 +22,11 @@ export const COMMAND_KEYS: Record<Command, string[]> = {
   pull: ['KeyG'],
   change: ['KeyV'],
   replay: ['KeyR'],
+  // the gamepad's d-pad calls (keys for the keyboard too)
+  changeF: [],
+  changeD: [],
+  forecheck: ['KeyT'],
+  breakout: ['KeyB'],
 };
 const MOVE: Record<string, [number, number]> = {
   KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1],
@@ -30,9 +35,18 @@ const MOVE: Record<string, [number, number]> = {
 /** Keys whose browser default (scrolling, focus moves) is suppressed during play. */
 export const CAPTURED = new Set([...Object.keys(MOVE), ...Object.values(KEYS).flat()]);
 
-/** Gamepad buttons (standard mapping): A pass · B / RT shoot · X deke · LB switch · LT / RB / L3 sprint · RB / R3 faceoff (at a draw) · Y line change · Back pull goalie · Start pause. */
-export const PAD_BUTTONS: Record<Action, number[]> = { shoot: [1, 7], pass: [0], deke: [2], swap: [4], sprint: [5, 6, 10], faceoff: [5, 11] };
-export const PAD_COMMANDS: Partial<Record<Command, number[]>> = { pause: [9], change: [3], pull: [8] };
+/**
+ * Gamepad buttons (standard mapping), the NHL 25/26 scheme. Offence: left stick skates and aims, the right stick is
+ * the skill stick (shots, dekes, stickhandling), RT pass (tap soft, hold harder; held while the right stick moves —
+ * stickhandling without dekes), LB + right stick special dekes, LB + RT saucer pass, L3 hustle, d-pad right an
+ * offensive line change. Defence: RT switch player, RB poke check, A stick lift, Y board pin, LB block shot, LT vision
+ * control, right stick up a push check / down then up a shoulder check, d-pad up forecheck, d-pad down breakout, d-pad
+ * left a defensive line change. B shoots on offence (an extra, not in the NHL list). RB / R3 / the right stick win a
+ * draw. Back pulls the goalie, Start pauses.
+ */
+export const PAD = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, L3: 10, R3: 11, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 } as const;
+export const PAD_BUTTONS: Record<Action, number[]> = { shoot: [PAD.B], pass: [PAD.RT], deke: [], swap: [], sprint: [], faceoff: [PAD.RB, PAD.R3] };
+export const PAD_COMMANDS: Partial<Record<Command, number[]>> = { pause: [PAD.START], pull: [PAD.BACK], changeF: [PAD.RIGHT], changeD: [PAD.LEFT], forecheck: [PAD.UP], breakout: [PAD.DOWN] };
 
 export interface TouchState { mx: number; my: number; sx: number; sy: number; shoot: boolean; pass: boolean; deke: boolean; swap: boolean; sprint: boolean; faceoff: boolean }
 export const emptyTouch = (): TouchState => ({ mx: 0, my: 0, sx: 0, sy: 0, shoot: false, pass: false, deke: false, swap: false, sprint: false, faceoff: false });
@@ -52,15 +66,22 @@ export function gamepadPad(pads: readonly (PadLike | null)[] | null | undefined)
   const gp = pads ? pads.find((p): p is PadLike => !!p) : undefined;
   const none = { mx: 0, my: 0, shoot: false, pass: false, deke: false, swap: false, sprint: false };
   if (!gp) return { pad: none, commands: new Set(), connected: false };
-  let [mx, my] = deadZone(gp.axes[0] ?? 0, gp.axes[1] ?? 0);
+  const [mx, my] = deadZone(gp.axes[0] ?? 0, gp.axes[1] ?? 0);
   const [sx, sy] = deadZone(gp.axes[2] ?? 0, gp.axes[3] ?? 0);
-  // the d-pad steers as well
+  // (the d-pad is the line changes and the tactics in the NHL scheme, it does not skate)
   const btn = (i: number) => !!gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5);
-  if (btn(12)) my = -1; if (btn(13)) my = 1; if (btn(14)) mx = -1; if (btn(15)) mx = 1;
   const on = (a: Action) => PAD_BUTTONS[a].some(btn);
   const commands = new Set<Command>();
   for (const [c, list] of Object.entries(PAD_COMMANDS) as [Command, number[]][]) if (list.some(btn)) commands.add(c);
-  return { pad: { mx, my, sx, sy, shoot: on('shoot'), pass: on('pass'), deke: on('deke'), swap: on('swap'), sprint: on('sprint'), faceoff: on('faceoff') }, commands, connected: true };
+  return {
+    pad: {
+      mx, my, sx, sy, shoot: on('shoot'), pass: on('pass'), deke: false, swap: false, sprint: false,
+      // a draw is also won with the right stick, as in NHL
+      faceoff: on('faceoff') || Math.hypot(sx, sy) > 0.6,
+      nhl: true, poke: btn(PAD.RB), lift: btn(PAD.A), pin: btn(PAD.Y), lb: btn(PAD.LB), vision: btn(PAD.LT), hustle: btn(PAD.L3),
+    },
+    commands, connected: true,
+  };
 }
 
 function deadZone(x: number, y: number): [number, number] {
@@ -78,7 +99,10 @@ export function mergePads(...pads: PadState[]): PadState {
   if (m > 1) { mx /= m; my /= m; }
   if (sm > 1) { sx /= sm; sy /= sm; }
   const any = (k: keyof PadState) => pads.some(p => !!p[k]);
-  return { mx, my, sx, sy, shoot: any('shoot'), pass: any('pass'), deke: any('deke'), swap: any('swap'), sprint: any('sprint'), faceoff: any('faceoff') };
+  const out: PadState = { mx, my, sx, sy, shoot: any('shoot'), pass: any('pass'), deke: any('deke'), swap: any('swap'), sprint: any('sprint'), faceoff: any('faceoff') };
+  // the gamepad's NHL buttons (only a gamepad sets them)
+  if (any('nhl')) Object.assign(out, { nhl: true, poke: any('poke'), lift: any('lift'), pin: any('pin'), lb: any('lb'), vision: any('vision'), hustle: any('hustle') });
+  return out;
 }
 
 /** The touch stick: the thumb's offset from where it touched down, as a vector of length ≤ 1 (radius in px). */

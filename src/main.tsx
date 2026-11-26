@@ -1,12 +1,20 @@
-import { Component, type ErrorInfo, type ReactNode, StrictMode } from "react";
+import "./polyfills";
+import { Component, type ErrorInfo, type ReactNode, StrictMode, useEffect } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App";
 import { initPlatform } from "./platform";
 import { initGamepadNav } from "./gamepadNav";
 
-initPlatform();
-initGamepadNav();
+// neither may keep the interface from starting (a WebView without some API, a phone sensor listed as a gamepad…)
+try { initPlatform(); } catch (e) { console.error("platform init failed:", e); }
+try { initGamepadNav(); } catch (e) { console.error("gamepad navigation init failed:", e); }
+
+/** Tells the boot watchdog in index.html that React has drawn the interface. */
+function Mounted({ children }: { children: ReactNode }) {
+  useEffect(() => { (window as Window & { __khlMounted?: boolean }).__khlMounted = true; }, []);
+  return <>{children}</>;
+}
 
 class RootErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };
@@ -46,7 +54,9 @@ class RootErrorBoundary extends Component<{ children: ReactNode }, { error: Erro
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
     <RootErrorBoundary>
-      <App />
+      <Mounted>
+        <App />
+      </Mounted>
     </RootErrorBoundary>
   </StrictMode>
 );

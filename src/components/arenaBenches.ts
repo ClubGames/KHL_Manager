@@ -1,0 +1,309 @@
+import * as T from 'three';
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import type { Team } from '../types';
+import { RINK } from '../game/rinkGeometry';
+
+/**
+ * The team benches and the penalty boxes of the 3D arena: rubber floor, the bench with club-colour cushions,
+ * the back wall with the club name, glass, doors in the boards, a ledge with water bottles and towels, a stick
+ * rack, the tunnel to the dressing room and the coaches standing behind the players; across the ice the two
+ * penalty boxes in glass with the timekeepers' desk between them.
+ *
+ * Everything is low-poly geometry merged per colour (a couple of dozen draw calls in all). The seated players
+ * (`crowd`) are a separate group: the replays and the light preset show them; the live 3D match on the higher
+ * presets hides them and seats the real rigged figures of the dressed players instead (`benchSeat`, `boxSeat`).
+ *
+ * World space as in replayArena: metres, origin at centre ice, +x along the rink, +z across it, +y up. The benches
+ * are on the far side (−z), the penalty boxes on the near one (+z).
+ */
+
+const HW = RINK.width / 2;
+/** Bench layout: home bench centred at x −6, visitors at +6 (the side the 2D rink draws them on). */
+export const BENCH = { x: [-6, 6] as const, length: 9, seatZ: -(HW + 1.35), seatTop: .48, floor: .05, slots: 16 };
+/** Penalty boxes across the ice from the benches: home at x −2.6, visitors at +2.6. */
+export const BOX = { x: [-2.6, 2.6] as const, seatZ: HW + 1.85, slots: 3 };
+
+/** Where the n-th seat of a team's bench is (world metres) and the heading that faces the ice (the live scene's convention: 0 = facing +x). */
+export function benchSeat(side: 0 | 1, slot: number) {
+  const span = BENCH.length - .9, i = ((slot % BENCH.slots) + BENCH.slots) % BENCH.slots;
+  return { x: BENCH.x[side] - span / 2 + span * (i + .5) / BENCH.slots, y: BENCH.floor, z: BENCH.seatZ - .08, heading: -Math.PI / 2 };
+}
+/** A seat in a team's penalty box, facing the ice. */
+export function boxSeat(side: 0 | 1, slot: number) {
+  const i = ((slot % BOX.slots) + BOX.slots) % BOX.slots;
+  return { x: BOX.x[side] + (i - 1) * .85, y: BENCH.floor, z: BOX.seatZ + .08, heading: Math.PI / 2 };
+}
+
+/** Kit colours of the low-poly bench players. */
+export type BenchKit = { jersey: string; trim: string; pants: string; socks: string; helmet: string; glove: string };
+export function defaultBenchKit(team: Team, side: 0 | 1): BenchKit {
+  return side === 0
+    ? { jersey: team.primaryColor, trim: team.secondaryColor, pants: '#1a1f27', socks: team.primaryColor, helmet: team.primaryColor, glove: '#1a1f27' }
+    : { jersey: '#f4f7fa', trim: team.primaryColor, pants: '#1a1f27', socks: '#f4f7fa', helmet: '#f4f7fa', glove: team.primaryColor };
+}
+
+type V = [number, number, number];
+const ONE = new T.Vector3(1, 1, 1), UP = new T.Vector3(0, 1, 0);
+
+/** Geometry collected per material key and merged at the end. Keys: '#hex' (matte), 'lit:#hex' (unlit), 'metal:#hex', 'glass'. */
+class Parts {
+  private by = new Map<string, T.BufferGeometry[]>();
+  private frame = new T.Matrix4();
+  /** Following parts are placed in a local frame: at (x, y, z), turned by yaw (local +z faces the ice when yaw makes it so). */
+  at(x: number, y: number, z: number, yaw = 0) { this.frame.compose(new T.Vector3(x, y, z), new T.Quaternion().setFromAxisAngle(UP, yaw), ONE); return this; }
+  world() { this.frame.identity(); return this; }
+  add(key: string, g: T.BufferGeometry, p: V, r: V = [0, 0, 0], s: V = [1, 1, 1]) {
+    g.applyMatrix4(new T.Matrix4().compose(new T.Vector3(...p), new T.Quaternion().setFromEuler(new T.Euler(...r)), new T.Vector3(...s)));
+    g.applyMatrix4(this.frame);
+    (this.by.get(key) ?? this.by.set(key, []).get(key)!).push(g);
+  }
+  box(key: string, sx: number, sy: number, sz: number, p: V, r?: V) { this.add(key, new T.BoxGeometry(sx, sy, sz), p, r); }
+  ball(key: string, rad: number, p: V, s: V = [1, 1, 1]) { this.add(key, new T.SphereGeometry(rad, 10, 7), p, [0, 0, 0], s); }
+  cyl(key: string, rt: number, rb: number, h: number, p: V, r?: V, s?: V, seg = 8) { this.add(key, new T.CylinderGeometry(rt, rb, h, seg), p, r, s); }
+  /** A round limb from a to b (local coordinates). */
+  limb(key: string, rad: number, a: V, b: V, rb = rad) {
+    const va = new T.Vector3(...a), vb = new T.Vector3(...b), d = vb.clone().sub(va), len = d.length();
+    if (len < 1e-4) return;
+    const g = new T.CylinderGeometry(rb, rad, len, 7);
+    g.applyQuaternion(new T.Quaternion().setFromUnitVectors(UP, d.normalize()));
+    g.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
+    g.applyMatrix4(this.frame);
+    (this.by.get(key) ?? this.by.set(key, []).get(key)!).push(g);
+  }
+  build(parent: T.Object3D, mesh: (g: T.BufferGeometry, m: T.Material, parent: T.Object3D) => T.Mesh, material: (key: string) => T.Material) {
+    this.by.forEach((list, key) => {
+      const g = mergeGeometries(list, false); list.forEach(x => x.dispose());
+      if (g) mesh(g, material(key), parent);
+    });
+    this.by.clear();
+  }
+}
+
+const SKIN = ['#e3b796', '#d6a585', '#c48f6c', '#ebc3a4'], HAIR = ['#3b2a20', '#8f8f8f', '#1c1c1c', '#6b4a2e', '#c9c2b8'];
+const SUIT = ['#1d222b', '#2a2f3a', '#23272f'];
+
+/** A coach in a suit, standing (feet at the local origin, facing local +z). */
+function coach(p: Parts, o: { suit: string; tie: string; skin: string; hair: string; pose: 'cross' | 'clip' | 'hands' | 'point' }) {
+  const { suit, skin } = o;
+  for (const s of [-1, 1]) {
+    p.box('#0e1013', .11, .07, .27, [s * .1, .035, .04]);
+    p.limb(suit, .068, [s * .1, .08, 0], [s * .105, .95, 0], .072);
+  }
+  p.box(suit, .37, .2, .23, [0, .99, 0]);
+  p.cyl(suit, .215, .18, .62, [0, 1.38, 0], [0, 0, 0], [1, 1, .64], 10);
+  p.box('#eef1f4', .11, .22, .02, [0, 1.55, .128]);
+  p.box(o.tie, .045, .3, .016, [0, 1.46, .138]);
+  for (const s of [-1, 1]) p.ball(suit, .1, [s * .2, 1.62, 0], [1, .85, 1]);
+  p.cyl(skin, .048, .055, .1, [0, 1.71, 0]);
+  p.ball(skin, .108, [0, 1.83, .005], [1, 1.12, 1.05]);
+  p.box(skin, .035, .05, .04, [0, 1.81, .115]);
+  p.ball(o.hair, .113, [0, 1.875, -.025], [1.02, .78, 1.02]);
+  const sh = (s: number): V => [s * .22, 1.6, 0];
+  const arm = (s: number, elbow: V, hand: V) => { p.limb(suit, .056, sh(s), elbow, .05); p.limb(suit, .05, elbow, hand, .045); p.ball(skin, .045, hand); };
+  if (o.pose === 'cross') { arm(-1, [-.25, 1.33, .08], [.13, 1.33, .17]); arm(1, [.25, 1.3, .08], [-.13, 1.29, .18]); }
+  else if (o.pose === 'clip') {
+    arm(1, [.25, 1.34, .05], [.24, 1.13, .1]);
+    arm(-1, [-.25, 1.32, .08], [-.15, 1.22, .3]);
+    p.box('#6b4e2e', .25, .34, .015, [-.08, 1.27, .33], [-1.05, 0, 0]);
+    p.box('#f4f6f8', .21, .27, .004, [-.08, 1.275, .336], [-1.05, 0, 0]);
+  } else if (o.pose === 'point') { arm(1, [.27, 1.42, .2], [.34, 1.52, .5]); arm(-1, [-.25, 1.34, .02], [-.26, 1.1, .05]); }
+  else { arm(1, [.25, 1.34, -.04], [.14, 1.08, -.16]); arm(-1, [-.25, 1.34, -.04], [-.14, 1.08, -.16]); }
+}
+
+/** A seated person (penalty box timekeeper): suit, at a desk. Seat surface at y = seat. */
+function official(p: Parts, o: { suit: string; skin: string; hair: string; seat: number }) {
+  const y = o.seat;
+  for (const s of [-1, 1]) {
+    p.limb(o.suit, .07, [s * .11, y + .07, -.02], [s * .12, y + .03, .4]);
+    p.limb(o.suit, .062, [s * .12, y + .03, .4], [s * .12, .1, .44]);
+    p.box('#0e1013', .1, .07, .25, [s * .12, .035, .5]);
+  }
+  p.box(o.suit, .36, .16, .3, [0, y + .08, -.02]);
+  p.cyl(o.suit, .21, .18, .58, [0, y + .44, -.04], [.08, 0, 0], [1, 1, .64], 10);
+  p.box('#eef1f4', .1, .2, .02, [0, y + .6, .1]);
+  p.cyl(o.skin, .048, .055, .1, [0, y + .76, -.01]);
+  p.ball(o.skin, .108, [0, y + .88, .0], [1, 1.12, 1.05]);
+  p.ball(o.hair, .113, [0, y + .925, -.03], [1.02, .78, 1.02]);
+  for (const s of [-1, 1]) { p.limb(o.suit, .055, [s * .21, y + .66, -.04], [s * .23, y + .42, .12], .05); p.limb(o.suit, .05, [s * .23, y + .42, .12], [s * .12, y + .43, .38], .045); p.ball(o.skin, .045, [s * .1, y + .44, .42]); }
+}
+
+/** A seated hockey player in full kit, stick upright between the knees (low poly). */
+function benchPlayer(p: Parts, k: BenchKit, skin: string, seat: number, v: number) {
+  const y = seat, lean = .18 + v * .14, sp = .13 + v * .03;
+  for (const s of [-1, 1]) {
+    const hip: V = [s * .12, y + .1, .02], knee: V = [s * sp, y + .08, .44], ankle: V = [s * (sp + .01), .13, .5];
+    p.limb(k.pants, .1, hip, knee, .095);
+    p.limb(k.socks, .078, knee, ankle, .065);
+    p.ball(k.socks, .08, knee);
+    p.box('#111418', .1, .11, .3, [ankle[0], .085, ankle[2] + .05]);
+    p.box('metal:#c9d6de', .016, .035, .3, [ankle[0], .018, ankle[2] + .05]);
+  }
+  p.box(k.pants, .42, .26, .36, [0, y + .14, .02]);
+  p.cyl(k.trim, .222, .222, .06, [0, y + .3, .03], [lean * .5, 0, 0], [1, 1, .72], 10);
+  p.cyl(k.jersey, .25, .215, .52, [0, y + .55, .07], [lean, 0, 0], [1, 1, .72], 10);
+  for (const s of [-1, 1]) p.ball(k.jersey, .135, [s * .21, y + .76, .14], [1, .82, 1]);
+  p.ball(skin, .1, [0, y + .93, .2], [1, 1.08, 1]);
+  p.ball(k.helmet, .128, [0, y + .97, .18], [1, .9, 1.1]);
+  p.box('#1b2430', .19, .055, .02, [0, y + .93, .31]);
+  // stick: blade on the floor in front, the knob up at the chin, both gloves on it
+  const blade: V = [.02, .03, .86], knob: V = [0, y + .78, .4];
+  p.limb('#15181c', .016, blade, knob);
+  p.box('#15181c', .3, .06, .018, [.13, .035, .87]);
+  p.box('#f2f4f6', .035, .06, .035, [knob[0], knob[1] - .02, knob[2] + .005]);
+  const g1: V = [0, y + .66, .45], g2: V = [.01, y + .5, .52];
+  p.box(k.glove, .13, .12, .14, g1); p.box(k.glove, .13, .12, .14, g2);
+  p.limb(k.jersey, .07, [.22, y + .74, .15], [.2, y + .5, .3], .065); p.limb(k.jersey, .062, [.2, y + .5, .3], g2, .06);
+  p.limb(k.jersey, .07, [-.22, y + .74, .15], [-.2, y + .6, .32], .065); p.limb(k.jersey, .062, [-.2, y + .6, .32], g1, .06);
+}
+
+/** A player standing at the bench boards, waiting for the change (gloves on the top of the boards). */
+function standingPlayer(p: Parts, k: BenchKit, skin: string) {
+  for (const s of [-1, 1]) {
+    p.limb(k.pants, .1, [s * .12, .98, 0], [s * .13, .56, .06], .09);
+    p.limb(k.socks, .078, [s * .13, .56, .06], [s * .14, .14, 0], .065);
+    p.box('#111418', .1, .11, .3, [s * .14, .085, .05]);
+  }
+  p.box(k.pants, .42, .28, .34, [0, 1.0, 0]);
+  p.cyl(k.jersey, .25, .215, .52, [0, 1.4, .06], [.3, 0, 0], [1, 1, .72], 10);
+  for (const s of [-1, 1]) p.ball(k.jersey, .135, [s * .21, 1.6, .15], [1, .82, 1]);
+  p.ball(skin, .1, [0, 1.76, .24], [1, 1.08, 1]);
+  p.ball(k.helmet, .128, [0, 1.8, .22], [1, .9, 1.1]);
+  p.box('#1b2430', .19, .055, .02, [0, 1.76, .35]);
+  for (const s of [-1, 1]) { p.limb(k.jersey, .07, [s * .22, 1.58, .16], [s * .3, 1.25, .3], .065); p.limb(k.jersey, .062, [s * .3, 1.25, .3], [s * .22, 1.1, .5], .06); p.box(k.glove, .13, .12, .15, [s * .22, 1.1, .52]); }
+  p.limb('#15181c', .016, [.24, 1.14, .52], [.42, .03, .22]); p.box('#15181c', .26, .055, .016, [.53, .035, .2], [0, -.4, 0]);
+}
+
+export type BenchBuild = {
+  home: Team; away: Team; kits?: [BenchKit, BenchKit];
+  /** the static part (benches, boxes, coaches, officials) */ group: T.Group;
+  /** the low-poly seated players */ crowd: T.Group;
+  mesh: (g: T.BufferGeometry, m: T.Material, parent: T.Object3D) => T.Mesh;
+  mat: <M extends T.Material>(m: M) => M;
+  texture: (c: HTMLCanvasElement) => T.Texture;
+  canvas: (w: number, h: number) => { c: HTMLCanvasElement; ctx: CanvasRenderingContext2D | null };
+};
+
+export function buildBenches(b: BenchBuild) {
+  const { home, away } = b;
+  const kits = b.kits ?? [defaultBenchKit(home, 0), defaultBenchKit(away, 1)];
+  const cache = new Map<string, T.Material>();
+  const material = (key: string) => {
+    let m = cache.get(key);
+    if (m) return m;
+    if (key === 'glass') m = new T.MeshStandardMaterial({ color: '#cfe8f4', transparent: true, opacity: .14, roughness: .05, metalness: .1, depthWrite: false, side: T.DoubleSide });
+    else if (key.startsWith('lit:')) m = new T.MeshBasicMaterial({ color: key.slice(4) });
+    else if (key.startsWith('metal:')) m = new T.MeshStandardMaterial({ color: key.slice(6), metalness: .6, roughness: .35 });
+    else m = new T.MeshStandardMaterial({ color: key, roughness: .75 });
+    b.mat(m); cache.set(key, m); return m;
+  };
+  const p = new Parts(), crowd = new Parts();
+  const D = '#1b232c', FLOOR = '#20272f', SEAT = '#2d3743', CAP = '#d8dee4';
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const pick = <X,>(list: X[]) => list[Math.floor(rnd() * list.length) % list.length];
+
+  /* ---------- the benches (far side) ---------- */
+  const bz = -(HW + 1.4), wallZ = -(HW + 2.62);
+  BENCH.x.forEach((x0, side) => {
+    const team = side ? away : home, L = BENCH.length;
+    p.world();
+    p.box(FLOOR, L, .05, 2.45, [x0, .025, bz]);
+    p.box(SEAT, L - .4, .4, .42, [x0, .2, BENCH.seatZ]);
+    p.box(team.primaryColor, L - .4, .08, .45, [x0, .44, BENCH.seatZ]);
+    p.box(D, L, 1.25, .12, [x0, .625, wallZ]);
+    p.box(CAP, L + .04, .05, .18, [x0, 1.275, wallZ]);
+    p.box('glass', L, 1.1, .03, [x0, 1.85, wallZ]);
+    for (const s of [-1, 1]) {
+      p.box(D, .1, 1.25, 2.45, [x0 + s * L / 2, .625, bz]);
+      p.box('glass', .03, 1.15, 2.45, [x0 + s * L / 2, 1.85, bz]);
+      p.box('metal:#b7c4cc', .06, 1.15, .06, [x0 + s * L / 2, 1.85, wallZ + .05]);
+      // the two doors in the boards (white frames on the ice side) and their hinges
+      for (const e of [-.45, .45]) p.box('#f4f6f8', .05, 1.0, .014, [x0 + s * 3.7 + e, .53, -HW + .008]);
+      p.box('#c9d3db', .9, .03, .012, [x0 + s * 3.7, 1.0, -HW + .009]);
+    }
+    // the ledge on the inside of the boards: water bottles and towels
+    p.box('#cfd8df', L - .3, .04, .2, [x0, 1.02, -(HW + .31)]);
+    for (let i = 0; i < 9; i++) {
+      const bx = x0 - L / 2 + .9 + i * .95 + (rnd() - .5) * .2;
+      p.cyl('#e9eef2', .034, .036, .22, [bx, 1.15, -(HW + .3)], [0, 0, 0], [1, 1, 1], 8);
+      p.cyl(team.primaryColor, .024, .03, .05, [bx, 1.285, -(HW + .3)]);
+      if (i % 3 === 1) p.box('#f6f7f8', .32, .025, .17, [bx + .4, 1.053, -(HW + .31)], [0, (rnd() - .5) * .5, 0]);
+    }
+    // the club name along the back wall, the stick rack at the end of the bench
+    const tag = b.canvas(1024, 96);
+    if (tag.ctx) {
+      const c = tag.ctx; c.fillStyle = team.primaryColor; c.fillRect(0, 0, 1024, 96);
+      c.fillStyle = team.secondaryColor; c.fillRect(0, 0, 1024, 8); c.fillRect(0, 88, 1024, 8);
+      c.fillStyle = '#ffffff'; c.font = 'bold 54px Oswald, sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle';
+      for (const cx of [256, 768]) c.fillText((team.short ?? team.name).toUpperCase(), cx, 50, 480);
+    }
+    const plate = b.mesh(new T.PlaneGeometry(L - .2, .7), b.mat(new T.MeshBasicMaterial({ map: b.texture(tag.c) })), b.group);
+    plate.position.set(x0, .78, wallZ + .065); plate.updateMatrix();
+    const rackX = x0 + (side ? -1 : 1) * (L / 2 - .55);
+    p.box(D, .9, .08, .2, [rackX, 1.45, wallZ + .14]);
+    for (let i = 0; i < 12; i++) {
+      const sx = rackX - .4 + i * .072;
+      p.limb('#15181c', .013, [sx + .06, .07, wallZ + .2], [sx, 1.52, wallZ + .17]);
+      p.box(i % 4 ? '#15181c' : '#f2f4f6', .26, .055, .016, [sx + .18, .05, wallZ + .22]);
+      p.box('#f2f4f6', .03, .07, .03, [sx, 1.5, wallZ + .17]);
+    }
+    // the tunnel to the dressing room in the stands wall behind the bench
+    p.box('#04060a', 2.4, 2.25, .05, [x0, 1.125, -(HW + 4.97)]);
+    p.box(team.primaryColor, 2.6, .2, .06, [x0, 2.33, -(HW + 4.96)]);
+    p.box(FLOOR, 2.4, .04, 2.3, [x0, .02, -(HW + 3.8)]);
+    // coaches: the head coach arms crossed, an assistant with the line card, one with the tablet / pointing
+    const poses = ['clip', 'cross', 'point'] as const;
+    [-2.4, .3, 2.5].forEach((dx, i) => {
+      p.at(x0 + dx + (rnd() - .5) * .3, BENCH.floor, -(HW + 2.15), (rnd() - .5) * .3);
+      coach(p, { suit: SUIT[(i + side) % SUIT.length], tie: i === 1 ? team.primaryColor : pick(['#7a1f2b', '#22426b', team.secondaryColor]), skin: pick(SKIN), hair: pick(HAIR), pose: poses[i] });
+    });
+    // the players who are not on the ice (light preset and the replays): seated, one standing at the door
+    const k = kits[side];
+    for (let i = 0; i < BENCH.slots; i++) {
+      if (i === 0 || i === BENCH.slots - 1 || i === 7) continue; // room at the doors and in the middle
+      const s = benchSeat(side as 0 | 1, i);
+      crowd.at(s.x + (rnd() - .5) * .06, BENCH.floor, s.z + .08, (rnd() - .5) * .4);
+      benchPlayer(crowd, k, pick(SKIN), BENCH.seatTop, rnd());
+    }
+    crowd.at(x0 + (side ? -1 : 1) * 3.7, BENCH.floor, -(HW + .62), (rnd() - .5) * .3);
+    standingPlayer(crowd, k, pick(SKIN));
+  });
+  p.world();
+  // between the benches: a solid divider with glass on top
+  p.box(D, 3, 1.25, 2.45, [0, .625, bz]);
+  p.box(CAP, 3, .05, 2.45, [0, 1.275, bz]);
+
+  /* ---------- the penalty boxes and the timekeepers (near side) ---------- */
+  const pz = HW + 1.25, pwall = HW + 2.3;
+  p.box(FLOOR, 8.8, .05, 2.1, [0, .025, pz]);
+  p.box('#16304d', 8.8, 1.25, .1, [0, .625, pwall]);
+  p.box(CAP, 8.84, .05, .16, [0, 1.275, pwall]);
+  p.box('glass', 8.8, 1.15, .03, [0, 1.85, pwall]);
+  for (const x of [-4.4, -.8, .8, 4.4]) {
+    p.box(Math.abs(x) > 1 ? D : '#2a3440', .08, 1.25, 2.1, [x, .625, pz]);
+    p.box('glass', .03, 1.15, 2.1, [x, 1.85, pz]);
+    p.box('metal:#b7c4cc', .05, 2.42, .05, [x, 1.21, pwall - .05]);
+  }
+  BOX.x.forEach((x0, side) => {
+    p.box(SEAT, 3.2, .4, .4, [x0, .2, BOX.seatZ]);
+    p.box('#2b4a6b', 3.2, .08, .42, [x0, .44, BOX.seatZ]);
+    for (const e of [-.45, .45]) p.box('#f4f6f8', .05, 1.0, .014, [x0 + e, .53, HW - .008]);
+    // the penalty clock on the back glass
+    p.box('#0b0d10', .62, .26, .08, [x0, 2.55, pwall]);
+    p.box('lit:#ff3b30', .5, .14, .01, [x0, 2.55, pwall - .045]);
+    p.box(side ? away.primaryColor : home.primaryColor, .62, .04, .085, [x0, 2.7, pwall]);
+  });
+  // the timekeepers' desk: two officials, a laptop, the horn
+  p.box('#2a3440', 1.5, .75, .5, [0, .375, HW + .7]);
+  p.box('#cfd8df', 1.54, .03, .54, [0, .765, HW + .7]);
+  p.box('#15181c', .34, .015, .23, [-.3, .79, HW + .72]);
+  p.box('lit:#9fd0ff', .32, .2, .01, [-.3, .89, HW + .62], [.25, 0, 0]);
+  p.box('#15181c', .14, .08, .1, [.35, .82, HW + .72]);
+  p.box('#cf2a2a', .1, .06, .1, [.35, .88, HW + .72]);
+  [-.35, .35].forEach((dx, i) => { p.at(dx, BENCH.floor, HW + 1.55, Math.PI); official(p, { suit: i ? '#1d222b' : '#2a2f3a', skin: pick(SKIN), hair: pick(HAIR), seat: .48 }); });
+  p.world();
+  p.box(SEAT, 1.4, .45, .4, [0, .225, HW + 1.6]);
+
+  p.build(b.group, b.mesh, material);
+  crowd.build(b.crowd, b.mesh, material);
+}
