@@ -268,7 +268,9 @@ export function LiveScene3D(props: Props) {
           a.heading = jumped || firstFrame ? target : angleLerp(a.heading, target, Math.max(alpha, rel ? .35 : 0));
           // knocked down: he goes over backwards and slides, then gets back up (the rink's fall 0…1)
           const fall = p.fall ?? 0;
-          a.group.rotation.set(-fall * 1.35, a.heading, 0);
+          // a spin-o-rama: the whole body turns a full circle (toward his backhand side) and comes out facing ahead again
+          const spinYaw = p.move === 'spin' ? -hand * Math.PI * 2 * smooth01(p.moveT ?? 0) : 0;
+          a.group.rotation.set(-fall * 1.35, a.heading + spinYaw, 0);
           if (fall > 0) a.group.position.y = -.05 * fall;
           if (!a.figure) { a.group.position.y = Math.abs(Math.sin(a.phase)) * .04 * clamp(speed / 7, 0, 1); continue; }
           a.group.updateMatrixWorld(true);
@@ -286,7 +288,7 @@ export function LiveScene3D(props: Props) {
             carrierW = Math.max(carrierW, reachWeight);
             reach = local.clone();
           }
-          poses.push({ figure: a.figure, args: [a.phase, amp * (1 - fall), shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind, deke: p.deke, check: p.check, poke: p.poke }], w: reachWeight, carrier: f.carrier === p.id });
+          poses.push({ figure: a.figure, args: [a.phase, amp * (1 - fall), shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind, deke: p.deke, check: p.check, poke: p.poke, move: p.move, moveT: p.moveT, stagger: p.stagger }], w: reachWeight, carrier: f.carrier === p.id });
         }
         let blade: { x: number; z: number; w: number } | null = null;
         for (const { figure, args, w, carrier } of poses) {

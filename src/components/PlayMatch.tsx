@@ -38,7 +38,7 @@ const KEY_HELP: [string, string][] = [
   ['Shift', 'рывок (тратит силы)'],
   ['Пробел / J', 'бросок: держать — сильнее (щелчок), отпустить — бросок; без шайбы в обороне — силовой приём'],
   ['K / E', 'пас в сторону стика; держать — пас верхом; в обороне — смена игрока; в атаке без шайбы — «дай пас»'],
-  ['L / Q', 'финт; в обороне — отбор клюшкой'],
+  ['L / Q', 'финт (с рывком — вертушка, стик назад — протяжка, дважды — между ног); в замахе — ложный замах; в обороне — отбор клюшкой (сзади — подбить клюшку)'],
   ['C / Tab', 'сменить игрока (к шайбе или в сторону стика)'],
   ['V', 'смена звена'],
   ['G', 'снять / вернуть вратаря'],
@@ -49,6 +49,7 @@ const PAD_HELP: [string, string][] = [
   ['Левый стик', 'катиться'],
   ['B / RT', 'бросок (держать — сильнее), в обороне — силовой'],
   ['A', 'пас (держать — верхом), в обороне — смена игрока'],
+  ['Правый стик', 'клюшка: назад и вперёд — щелчок / заряженный бросок, рывок вперёд — кистевой, вбок — финт, назад и вбок — протяжка, вбок туда-обратно — между ног, круг — вертушка, назад и отпустить — ложный замах; в обороне — отбор / подбить клюшку'],
   ['X', 'финт / отбор клюшкой'],
   ['LB', 'сменить игрока'],
   ['RB / LT', 'рывок'],
@@ -480,7 +481,10 @@ function Controls({ touchUI, padOn }: { touchUI: boolean; padOn: boolean }) {
   return (
     <div className="w-full text-left text-xs" data-play-controls>
       {touchUI && (
-        <p className="mb-2 text-muted">На экране: слева — стик (коснитесь и ведите пальцем), справа — кнопки <b className="text-text">Бросок</b> (держать — сильнее), <b className="text-text">Пас</b>, <b className="text-text">Финт</b>, <b className="text-text">Смена</b> и <b className="text-text">Рывок</b>. Подписи кнопок меняются: в обороне «Бросок» — силовой приём, «Финт» — отбор клюшкой.</p>
+        <>
+          <p className="mb-1 text-muted">На экране: слева — стик (коснитесь и ведите пальцем), в центре справа — <b className="text-text">клюшка</b>, как правый стик в NHL, у края — кнопки <b className="text-text">Бросок</b> (держать — сильнее), <b className="text-text">Пас</b>, <b className="text-text">Финт</b>, <b className="text-text">Смена</b> и <b className="text-text">Рывок</b>. Подписи кнопок меняются: в обороне «Бросок» — силовой приём, «Финт» — отбор клюшкой.</p>
+          <p className="mb-2 text-muted" data-play-skill-help>Клюшка: оттяните палец назад (от ворот соперника) и резко вперёд — <b className="text-text">щелчок</b> (чем дольше держали — тем сильнее); короткий рывок вперёд — <b className="text-text">кистевой</b>; рывок вбок — <b className="text-text">финт</b>, вбок и сразу обратно — <b className="text-text">между ног</b>, назад и вбок — <b className="text-text">протяжка</b>, круг — <b className="text-text">вертушка</b>, оттянуть и отпустить — <b className="text-text">ложный замах</b>. В обороне рывок клюшкой — отбор (сбоку и сзади — подбить клюшку); без шайбы в атаке клюшка назад — готов к броску в одно касание.</p>
+        </>
       )}
       <div className="text-[11px] text-muted mb-1">{padOn ? 'Геймпад подключён' : 'Клавиатура (геймпад тоже работает — просто нажмите любую кнопку)'}</div>
       <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
@@ -520,28 +524,46 @@ function GoalList({ goals, P, onReplay }: { goals: GoalItem[]; P: Record<string,
   );
 }
 
-/** The phone controls: a floating stick on the left half, the action buttons on the right. */
-function TouchControls({ touch, labels, onCommand, pulled }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean }) {
+/** A floating touch stick: it appears where the thumb lands inside its zone and reports a vector of length ≤ 1. */
+function FloatStick({ className, R, hint, onVec, data }: { className: string; R: number; hint: React.ReactNode; onVec: (x: number, y: number) => void; data: string }) {
   const [stick, setStick] = useState<{ ox: number; oy: number; x: number; y: number } | null>(null);
   const stickId = useRef<number | null>(null);
-  const R = 56;
-  useEffect(() => () => { touch.current = emptyTouch(); }, [touch]);
   const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (stickId.current !== null) return;
     stickId.current = e.pointerId;
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* not an active pointer */ }
-    setStick({ ox: e.clientX, oy: e.clientY, x: 0, y: 0 });
+    const r = e.currentTarget.getBoundingClientRect();
+    setStick({ ox: e.clientX - r.left, oy: e.clientY - r.top, x: 0, y: 0 });
   };
   const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerId !== stickId.current || !stick) return;
-    const v = stickVector(e.clientX - stick.ox, e.clientY - stick.oy, R);
-    touch.current.mx = v.x; touch.current.my = v.y;
+    const r = e.currentTarget.getBoundingClientRect();
+    const v = stickVector(e.clientX - r.left - stick.ox, e.clientY - r.top - stick.oy, R);
+    onVec(v.x, v.y);
     setStick({ ...stick, x: v.x, y: v.y });
   };
   const onUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerId !== stickId.current) return;
-    stickId.current = null; touch.current.mx = 0; touch.current.my = 0; setStick(null);
+    stickId.current = null; onVec(0, 0); setStick(null);
   };
+  return (
+    <div className={cn('absolute pointer-events-auto touch-none', className)} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} {...{ [data]: '' }}>
+      {stick ? (
+        <div className="absolute rounded-full border-2 border-white/35 bg-white/10" style={{ left: stick.ox - R, top: stick.oy - R, width: R * 2, height: R * 2 }}>
+          <div className="absolute rounded-full bg-white/70 shadow" style={{ left: R - 24 + stick.x * R, top: R - 24 + stick.y * R, width: 48, height: 48 }} />
+        </div>
+      ) : hint}
+    </div>
+  );
+}
+
+/**
+ * The phone controls: a floating skating stick on the left, the skill stick (NHL style: pull back and flick
+ * for a slap / snap shot, flick for a wrist shot, sideways for dekes, a poke check on defence) in the middle of
+ * the right half, and the buttons at the right edge.
+ */
+function TouchControls({ touch, labels, onCommand, pulled }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean }) {
+  useEffect(() => () => { touch.current = emptyTouch(); }, [touch]);
   const hold = (key: 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint') => ({
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => { e.preventDefault(); try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* not an active pointer */ } touch.current[key] = true; },
     onPointerUp: () => { touch.current[key] = false; },
@@ -551,21 +573,16 @@ function TouchControls({ touch, labels, onCommand, pulled }: { touch: React.Muta
   const btn = 'rounded-full border-2 border-white/40 bg-black/45 active:bg-white/35 text-white font-semibold backdrop-blur-sm flex items-center justify-center shadow-lg touch-none';
   return (
     <div className="absolute inset-0 z-20 pointer-events-none" data-play-touch>
-      <div className="absolute left-0 top-[18%] bottom-0 w-[45%] pointer-events-auto touch-none" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} data-play-stick-zone>
-        {stick ? (
-          <div className="absolute rounded-full border-2 border-white/35 bg-white/10" style={{ left: stick.ox - R, top: stick.oy - R, width: R * 2, height: R * 2 }}>
-            <div className="absolute rounded-full bg-white/70 shadow" style={{ left: R - 24 + stick.x * R, top: R - 24 + stick.y * R, width: 48, height: 48 }} />
-          </div>
-        ) : (
-          <div className="absolute left-[max(1.25rem,env(safe-area-inset-left))] bottom-6 w-28 h-28 rounded-full border-2 border-dashed border-white/25 flex items-center justify-center text-[10px] text-white/50">стик</div>
-        )}
-      </div>
-      <div className="absolute right-[max(.75rem,env(safe-area-inset-right))] bottom-[max(.75rem,env(safe-area-inset-bottom))] pointer-events-auto grid grid-cols-3 grid-rows-3 gap-2 w-[220px] h-[200px]" data-play-buttons>
-        <button type="button" className={cn(btn, 'col-start-2 row-start-1 text-[11px]')} {...hold('deke')} data-touch="deke">{labels.deke}</button>
-        <button type="button" className={cn(btn, 'col-start-3 row-start-1 text-[11px]')} {...hold('swap')} data-touch="swap">Смена</button>
-        <button type="button" className={cn(btn, 'col-start-1 row-start-2 text-[11px]')} {...hold('pass')} data-touch="pass">{labels.pass}</button>
-        <button type="button" className={cn(btn, 'col-start-2 col-span-2 row-start-2 row-span-2 text-sm bg-accent/60 border-accent/80')} {...hold('shoot')} data-touch="shoot">{labels.shoot}</button>
-        <button type="button" className={cn(btn, 'col-start-1 row-start-3 text-[11px]')} {...hold('sprint')} data-touch="sprint">Рывок</button>
+      <FloatStick className="left-0 top-[18%] bottom-0 w-[44%]" R={56} data="data-play-stick-zone" onVec={(x, y) => { touch.current.mx = x; touch.current.my = y; }}
+        hint={<div className="absolute left-[max(1.25rem,env(safe-area-inset-left))] bottom-6 w-28 h-28 rounded-full border-2 border-dashed border-white/35 bg-black/25 flex items-center justify-center text-[10px] text-white/70">стик</div>} />
+      <FloatStick className="left-[48%] right-[176px] top-[18%] bottom-0" R={60} data="data-play-skill-zone" onVec={(x, y) => { touch.current.sx = x; touch.current.sy = y; }}
+        hint={<div className="absolute right-2 bottom-14 w-28 h-28 rounded-full border-2 border-dashed border-ice/50 bg-black/40 backdrop-blur-[1px] flex flex-col items-center justify-center text-center text-[9px] leading-tight text-white/80 px-2"><b className="text-[10px] text-ice">клюшка</b>назад и вперёд — щелчок<br />рывок вперёд — кистевой<br />вбок — финт</div>} />
+      <div className="absolute right-[max(.75rem,env(safe-area-inset-right))] bottom-[max(.75rem,env(safe-area-inset-bottom))] pointer-events-auto grid grid-cols-2 grid-rows-3 gap-2 w-[160px] h-[210px]" data-play-buttons>
+        <button type="button" className={cn(btn, 'col-start-1 row-start-1 text-[11px]')} {...hold('deke')} data-touch="deke">{labels.deke}</button>
+        <button type="button" className={cn(btn, 'col-start-2 row-start-1 text-[11px]')} {...hold('swap')} data-touch="swap">Смена</button>
+        <button type="button" className={cn(btn, 'col-start-1 row-start-2 text-[11px]')} {...hold('sprint')} data-touch="sprint">Рывок</button>
+        <button type="button" className={cn(btn, 'col-start-2 row-start-2 text-[11px]')} {...hold('pass')} data-touch="pass">{labels.pass}</button>
+        <button type="button" className={cn(btn, 'col-start-1 col-span-2 row-start-3 text-sm bg-accent/60 border-accent/80')} {...hold('shoot')} data-touch="shoot">{labels.shoot}</button>
       </div>
       <div className="absolute right-[max(.75rem,env(safe-area-inset-right))] top-12 pointer-events-auto flex flex-col gap-1.5">
         <button type="button" className="rounded-sm bg-black/50 text-white text-[10px] px-2 py-1 border border-white/25" onClick={() => onCommand('change')} data-touch="change">Смена звена</button>

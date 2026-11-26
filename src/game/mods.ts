@@ -9,6 +9,7 @@ import type { GameState, ModRef } from '../types';
 import { fetchRoster } from './roster';
 import type { NormalizedRoster } from './roster';
 import { parseScheduleFile } from './schedule';
+import { ensureModWorker, storedFile, storedMods } from './modStore';
 
 export const MODS_ROOT = './mods';
 export const DEFAULT_MOD_ID = 'KHL_2627';
@@ -30,6 +31,8 @@ export interface ModEntry {
   cover?: string;
   /** roster.json lying next to index.html, the way the game was modded before `mods/` existed */
   legacy?: boolean;
+  /** installed from a .zip into this browser / the Android app (kept in IndexedDB, served by public/mod-sw.js) */
+  stored?: boolean;
 }
 
 export const modBase = (id: string) => `${MODS_ROOT}/${encodeURIComponent(id)}`;
@@ -115,6 +118,17 @@ export async function listMods(): Promise<ModEntry[]> {
     })
   );
   const mods = found.filter((m): m is ModEntry => m !== null);
+  // mods installed from a .zip on this device (a stored one replaces a shipped mod of the same name)
+  for (const sm of await storedMods()) {
+    let manifest: unknown = { name: sm.name };
+    try {
+      const f = await storedFile(sm.id, 'mod.json');
+      if (f) manifest = JSON.parse((await f.text()).replace(/^\ufeff/, ''));
+    } catch { /* broken mod.json: the stored name */ }
+    const e = { ...entryFrom(sm.id, modBase(sm.id), manifest), stored: true };
+    const at = mods.findIndex((m) => m.id === sm.id);
+    if (at >= 0) mods[at] = e; else mods.push(e);
+  }
   try {
     const legacy = await fetchJson('./roster.json');
     if (legacy && typeof legacy === 'object') {
@@ -149,6 +163,7 @@ export async function loadModRoster(ref: Pick<ModRef, 'base' | 'roster'>): Promi
 
 /** Everything a new career needs from a mod: roster, assets and the league calendar. */
 export async function loadMod(m: ModEntry): Promise<NormalizedRoster> {
+  if (m.stored && !(await ensureModWorker())) throw new Error('мод установлен в память браузера, но служебный обработчик (service worker) не запустился — перезагрузите страницу');
   const rosterUrl = modUrl(m.base, m.roster);
   let r: NormalizedRoster;
   try {

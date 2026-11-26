@@ -1,5 +1,6 @@
 import { Capacitor } from '@capacitor/core';
 import { GAME_NAME_EN } from './brand';
+import { canStoreMods, ensureModWorker, hasStoredMods, initModWorker, storeModZip } from './game/modStore';
 
 /**
  * Where the game runs: the browser, the Windows app (Electron, see `desktop/`) or the Android app
@@ -48,12 +49,31 @@ export const canOpenModsFolder = () => typeof window !== 'undefined' && typeof w
 export async function openModsFolder(): Promise<string | null> {
   try { return (await window.khlDesktop?.openModsFolder?.()) ?? null; } catch { return null; }
 }
-/** «Установить мод» is there (Windows app; the browser and Android have no mods folder to write to). */
-export const canInstallMods = () => typeof window !== 'undefined' && typeof window.khlDesktop?.installMod === 'function';
-/** Install a mod archive: `file` (drag-and-drop) or the system «Open» dialog. null: cancelled. */
+/** The Windows app unpacks mods into its mods folder. */
+export const desktopModInstall = () => typeof window !== 'undefined' && typeof window.khlDesktop?.installMod === 'function';
+/** «Установить мод» is there: the Windows app (its mods folder), the browser and the Android app (the game's own storage). */
+export const canInstallMods = () => desktopModInstall() || canStoreMods();
+/** Where an installed mod goes, for the texts. */
+export const modInstallPlace = () => (desktopModInstall() ? 'в папку mods рядом с игрой' : platform() === 'android' ? 'в память приложения' : 'в память браузера');
+
+/** Install a mod archive: `file` (picked or dropped), or — in the Windows app — the system «Open» dialog. null: cancelled. */
 export async function installModArchive(file?: File): Promise<ModInstallResult | null> {
   const bridge = window.khlDesktop?.installMod;
-  if (!bridge) return null;
+  if (!bridge) {
+    // the browser / Android: the page's own file input picks the archive (see ModPicker)
+    const f = file;
+    if (!canStoreMods() || !f) return null;
+    try {
+      // the name is not checked (phone file pickers often lose the extension): the archive itself is
+      const data = new Uint8Array(await f.arrayBuffer());
+      if (data.length < 22 || data[0] !== 0x50 || data[1] !== 0x4b) return { installed: [], errors: [`${f.name}: нужен архив .zip с папкой мода`], dir: '' };
+      const r = await storeModZip(data, f.name);
+      if (r.installed.length && !(await ensureModWorker())) r.errors.push('Мод сохранён, но служебный обработчик (service worker) не запустился — перезагрузите страницу.');
+      return { ...r, dir: '' };
+    } catch (e) {
+      return { installed: [], errors: [String((e as Error)?.message ?? e)], dir: '' };
+    }
+  }
   try {
     if (!file) return await bridge();
     if (!/\.zip$/i.test(file.name)) return { installed: [], errors: [`${file.name}: нужен архив .zip с папкой мода`], dir: '' };
@@ -157,6 +177,8 @@ export function gpuInfo(): GpuInfo {
  */
 export function initPlatform() {
   const p = platform();
+  // mods installed from a .zip on this device: their service worker is up before a saved career asks for their files
+  if (p !== 'windows') { initModWorker(); if (hasStoredMods()) void navigator.storage?.persist?.().catch(() => false); }
   if (p === 'web') return;
   document.documentElement.dataset.app = p;
   void navigator.storage?.persist?.().catch(() => false);

@@ -110,6 +110,17 @@ try {
   await phone.locator('[data-touch="shoot"]').dispatchEvent('pointerdown', { pointerId: 8, pointerType: 'touch', bubbles: true });
   await phone.waitForTimeout(250);
   await phone.locator('[data-touch="shoot"]').dispatchEvent('pointerup', { pointerId: 8, pointerType: 'touch', bubbles: true });
+  // the skill stick: its own zone between the skating stick and the buttons; a pull back and a flick go through
+  const skill = phone.locator('[data-play-skill-zone]');
+  assert.ok(await skill.isVisible(), 'the skill-stick zone');
+  const kz = await skill.boundingBox(), bz = await phone.locator('[data-play-buttons]').boundingBox(), lz = await phone.locator('[data-play-stick-zone]').boundingBox();
+  assert.ok(kz.x >= lz.x + lz.width - 1 && kz.x + kz.width <= bz.x + 1 && kz.width > 120, `skill zone between the stick and the buttons (${JSON.stringify(kz)})`);
+  const kx = kz.x + kz.width / 2, ky = kz.y + kz.height * 0.6;
+  for (const [x, y, t] of [[kx, ky, 'pointerdown'], [kx - 50, ky, 'pointermove'], [kx - 55, ky, 'pointermove'], [kx + 60, ky, 'pointermove'], [kx + 60, ky, 'pointerup']]) {
+    await skill.dispatchEvent(t, { pointerId: 9, clientX: x, clientY: y, pointerType: 'touch', isPrimary: false, bubbles: true });
+    await phone.waitForTimeout(t === 'pointermove' ? 160 : 40);
+  }
+  await phone.screenshot({ path: '.arena/shots/play-phone-skill.png' }).catch(() => {});
   await phone.close();
 
   assert.deepEqual(errors, []);
