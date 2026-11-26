@@ -28,7 +28,7 @@ import { Match } from '../src/components/Match';
 import { Club } from '../src/components/Club';
 import { facilityUpgradeCost, isUnavailable, normalizeInjury } from '../src/game/medical';
 import { attackRating } from '../src/game/ratings';
-// checks the real data of the KHL_2627 mod, which is not in the repository (the game ships without a league)
+// checks the real data of the KHL_2627 mod, which is not in the repository (the game ships with its own invented league «ХЛ» instead)
 if (!existsSync('public/mods/KHL_2627/roster.json')) {
   console.log('SKIP: put the KHL_2627 mod into public/mods to run this test');
   process.exit(0);

@@ -12,7 +12,10 @@ import { parseScheduleFile } from './schedule';
 import { ensureModWorker, storedFile, storedMods } from './modStore';
 
 export const MODS_ROOT = './mods';
-export const DEFAULT_MOD_ID = 'KHL_2627';
+/** The league that ships with the game: «ХЛ — Хоккейная Лига» (public/mods/HL_2627, built by scripts/make-default-mod.ts). */
+export const DEFAULT_MOD_ID = 'HL_2627';
+/** Folder of the roster careers were started from before mods existed (no longer shipped). */
+export const LEGACY_MOD_ID = 'KHL_2627';
 const LAST_MOD_KEY = 'khl.mod';
 
 export interface ModEntry {
@@ -37,10 +40,10 @@ export interface ModEntry {
 
 export const modBase = (id: string) => `${MODS_ROOT}/${encodeURIComponent(id)}`;
 
-/** Ref of careers saved before mods existed: they were started from the roster that now lives in mods/KHL_2627. */
-export const DEFAULT_MOD_REF: ModRef = { id: DEFAULT_MOD_ID, name: 'КХЛ 2026/27', base: modBase(DEFAULT_MOD_ID), roster: `${modBase(DEFAULT_MOD_ID)}/roster.json` };
+/** Ref of careers saved before mods existed: they were started from the roster that lived in mods/KHL_2627. */
+export const DEFAULT_MOD_REF: ModRef = { id: LEGACY_MOD_ID, name: 'КХЛ 2026/27', base: modBase(LEGACY_MOD_ID), roster: `${modBase(LEGACY_MOD_ID)}/roster.json` };
 
-/** The mod of a career (the default mod for careers saved before mods existed). */
+/** The mod of a career (the pre-mods roster folder for careers saved before mods existed). */
 export function careerMod(s: Pick<GameState, 'mod'> | null | undefined): ModRef {
   return s?.mod ?? DEFAULT_MOD_REF;
 }
@@ -99,11 +102,11 @@ export async function listMods(): Promise<ModEntry[]> {
   try {
     ids = parseModIndex(await fetchJson(`${MODS_ROOT}/index.json`));
   } catch {
-    // no index file at all (a hand-made folder on a static server): look for a mods/KHL_2627 folder, if it is there
+    // no index file at all (a hand-made folder on a static server): look for the built-in league and the old KHL_2627
     indexed = false;
-    ids = [DEFAULT_MOD_ID];
+    ids = [DEFAULT_MOD_ID, LEGACY_MOD_ID];
   }
-  // the game ships without a league: an empty list is fine — the start screen offers to install a mod or pick a roster file
+  // an empty list is fine (a build without public/mods): the start screen offers to install a mod or pick a roster file
   const found = await Promise.all(
     ids.map(async (id): Promise<ModEntry | null> => {
       const base = modBase(id);

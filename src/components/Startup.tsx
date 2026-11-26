@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 const arena = './arena.jpg';
 const gameLogo = './icon-game.png';
 import { downloadExampleRoster, readLocalFile, ROSTER_EXAMPLE, rosterWithContracts, saveRosterFile } from '../game/roster';
-import { lastModId, listMods, loadMod, rememberMod } from '../game/mods';
+import { DEFAULT_MOD_ID, lastModId, listMods, loadMod, rememberMod } from '../game/mods';
 import type { ModEntry } from '../game/mods';
 import { DEFAULT_LEAGUE_FULL_NAME, DEFAULT_LEAGUE_NAME, GAME_NAME_EN, GAME_NAME_RU } from '../brand';
 import type { NormalizedRoster } from '../game/roster';
@@ -30,7 +30,7 @@ export function FormatDoc({ compact }: { compact?: boolean }) {
     ['teams[].conference', 'string', '«Запад» или «Восток» (понимаются также «Восточная конференция», East / West). Если не указано — определяется по дивизиону'],
     ['teams[].division', 'string', 'Необязательное название дивизиона'],
     ['teams[].primaryColor / secondaryColor', 'string', 'Цвета клуба (#RRGGBB) для формы, графиков и резервной эмблемы'],
-    ['teams[].logo', 'string', 'Эмблема клуба: путь внутри папки мода (например "logos/ska.png") или URL. Без эмблемы рисуется щит в цветах клуба'],
+    ['teams[].logo', 'string', 'Эмблема клуба: путь внутри папки мода (например "logos/vyuga.svg") или URL. Без эмблемы рисуется щит в цветах клуба'],
     ['teams[].budget', 'number', 'Бюджет клуба, ₽ (по умолчанию 1,5 млрд)'],
     ['players[].id', 'string', 'Уникальный идентификатор игрока (если нет — сгенерируется)'],
     ['players[].name', 'string', 'ФИО игрока — единственное обязательное поле'],
@@ -98,14 +98,14 @@ const MOD_TREE = `mods/
 │  ├─ mod.json         название и описание мода
 │  ├─ roster.json      лига, клубы, игроки, тренеры
 │  ├─ schedule.json    общий календарь регулярного чемпионата
-│  └─ logos/           эмблемы клубов (teams[].logo = "logos/ska.png")
+│  └─ logos/           эмблемы клубов (teams[].logo = "logos/vyuga.svg")
 └─ OtherLeague/ …`;
 const SCHEDULE_EXAMPLE = `{
   "season": "2026/27",
   "days": 201,
   "games": [
-    { "date": "2026-09-05", "home": "sibir", "away": "cska" },
-    { "date": "2026-09-05", "home": "ska", "away": "lokomotiv" }
+    { "date": "2026-09-05", "home": "kedry", "away": "groza" },
+    { "date": "2026-09-05", "home": "vyuga", "away": "tsunami" }
   ]
 }`;
 
@@ -462,10 +462,10 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
       .then((list) => {
         setMods(list);
         const want = modId || lastModId();
-        const m = list.find((x) => x.id === want) ?? list[0];
+        const m = list.find((x) => x.id === want) ?? list.find((x) => x.id === DEFAULT_MOD_ID) ?? list[0];
         if (m) openMod(m);
         else {
-          // no league ships with the game: nothing is wrong, the player installs a mod or picks a roster file
+          // no mod found at all (a build without public/mods): the player installs a mod or picks a roster file
           setModId(null);
           setRoster(null);
           setStage('empty');
@@ -589,7 +589,7 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
         {stage === 'empty' && (
           <Panel title="Лига не выбрана: моды не установлены" className="border-ice/40">
             <div className="space-y-4 text-sm" data-mods-empty>
-              <p className="text-text/90 m-0">Игра поставляется без встроенной лиги — клубы, игроки и календарь приходят из модов. Чтобы начать карьеру:</p>
+              <p className="text-text/90 m-0">Лиги не найдены: в этой сборке нет папки mods со стандартной лигой ХЛ, а клубы, игроки и календарь приходят из модов. Чтобы начать карьеру:</p>
               <ol className="list-decimal pl-5 space-y-1.5 text-text/90">
                 {canInstallMods() ? (
                   <li>
