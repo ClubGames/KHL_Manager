@@ -64,7 +64,7 @@ export function defaultSettings(): Settings {
   };
 }
 
-const CAMS: ReplayCamera[] = ['auto', 'broadcast', 'ice', 'net', 'goal', 'chase', 'end', 'sky'];
+const CAMS: ReplayCamera[] = ['auto', 'broadcast', 'ice', 'net', 'goal', 'chase', 'end', 'sky', 'stands', 'corner', 'overhead', 'blue', 'rail', 'puck'];
 export const REPLAY_SPEEDS = [.25, .5, .75, 1, 1.5, 2];
 
 /** Keeps only known keys with valid values (anything else falls back to the default). */
@@ -80,7 +80,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     replayCamera: one('replayCamera', CAMS), replayPrewarm: bool('replayPrewarm'),
     videoHeight: one('videoHeight', [720, 1080] as const), videoFps: one('videoFps', [30, 60] as const),
     videoSlowmo: bool('videoSlowmo'), videoGraphics: bool('videoGraphics'), videoQuality: one('videoQuality', ['fast', 'view'] as const),
-    matchSpeed: one('matchSpeed', [1, 2, 4] as const), matchRink2d: bool('matchRink2d'), matchView: one('matchView', ['2d', '3d'] as const), matchCamera: one('matchCamera', ['broadcast', 'high', 'ice', 'end'] as const), matchMinimap: bool('matchMinimap'), matchAdvice: bool('matchAdvice'), simOpenReport: bool('simOpenReport'), simConfirm: bool('simConfirm'),
+    matchSpeed: one('matchSpeed', [1, 2, 4] as const), matchRink2d: bool('matchRink2d'), matchView: one('matchView', ['2d', '3d'] as const), matchCamera: one('matchCamera', ['broadcast', 'high', 'ice', 'end', 'overhead', 'dynamic', 'zone', 'vertical'] as const), matchMinimap: bool('matchMinimap'), matchAdvice: bool('matchAdvice'), simOpenReport: bool('simOpenReport'), simConfirm: bool('simConfirm'),
     playPeriod: one('playPeriod', [3, 5, 8, 12, 20] as const), playDifficulty: one('playDifficulty', ['rookie', 'pro', 'star'] as const), playAutoSwitch: bool('playAutoSwitch'), playTouch: one('playTouch', ['auto', 'on', 'off'] as const),
   };
 }

@@ -17,6 +17,8 @@ export type LiveRelease = Release & { side: 0 | 1 };
 /** What the 3D match reads: the rink AI of a watched match or the playable rink (which brings its own motion). */
 export interface LiveSource {
   readonly flipped: boolean;
+  /** the played match: the way the manager's team attacks on the screen (+1 toward +x) — the vertical camera looks that way */
+  readonly attack?: 1 | -1;
   readonly frames: readonly { tau: number; carrier: number; ids: string[] }[];
   readonly plays: readonly RinkPlay[];
   frameAt(tau: number): LiveFrame;

@@ -116,6 +116,12 @@ export function LiveScene3D(props: Props) {
       const ctrlRing = new T.Mesh(ringGeo, ringMat); ctrlRing.rotation.x = -Math.PI / 2; ctrlRing.renderOrder = 2;
       const ctrlArrow = new T.Mesh(arrowGeo, ringMat); ctrlArrow.rotation.x = Math.PI;
       ctrlRing.visible = ctrlArrow.visible = false; scene.add(ctrlRing, ctrlArrow);
+      // Whoever has the puck (either team): a cyan ring under him, wider than the manager's yellow one.
+      const carrierGeo = new T.RingGeometry(.74, .9, 48);
+      const carrierMat = new T.MeshBasicMaterial({ color: '#2ee6ff', transparent: true, opacity: .85, depthWrite: false, side: T.DoubleSide });
+      geometries.push(carrierGeo); materials.push(carrierMat);
+      const carrierRing = new T.Mesh(carrierGeo, carrierMat); carrierRing.rotation.x = -Math.PI / 2; carrierRing.renderOrder = 2; carrierRing.visible = false;
+      scene.add(carrierRing);
 
       // Stand-ins (until the rigged model is decoded, or if it fails): a capsule in club colours.
       const standGeo = new T.CapsuleGeometry(.27, 1.05, 4, 10), helmetGeo = new T.SphereGeometry(.2, 10, 8);
@@ -174,7 +180,7 @@ export function LiveScene3D(props: Props) {
       let lastTau = NaN, lastNow = performance.now(), lastCam = '', firstFrame = true;
       const puckWorld = new T.Vector3(), local = new T.Vector3(), puckOff = { x: 0, z: 0 };
       const aspect = () => camera.aspect;
-      let settled = false;
+      let settled = false, camSpeed = 0;
 
       const update = (now: number) => {
         if (!renderer) return;
@@ -209,6 +215,9 @@ export function LiveScene3D(props: Props) {
         const ctl = shown.find(p => p.ctrl);
         ctrlRing.visible = ctrlArrow.visible = !!ctl;
         if (ctl) { const c = toWorld(ctl.pos); ctrlRing.position.set(c.x, .015, c.z); ctrlArrow.position.set(c.x, 2.35 + Math.sin(now / 180) * .06, c.z); ctrlArrow.rotation.y = now / 600; }
+        const holder = f.carrier && !f.stopped ? shown.find(p => p.id === f.carrier && !p.goalie) : undefined;
+        carrierRing.visible = !!holder;
+        if (holder) { const c = toWorld(holder.pos); carrierRing.position.set(c.x, .017, c.z); const pulse = 1 + Math.sin(now / 160) * .05; carrierRing.scale.set(pulse, pulse, 1); }
         const onIce = new Set(shown.map(p => p.id));
         actors.forEach(a => { if (!onIce.has(a.id)) { a.group.visible = false; a.lx = NaN; } });
         const prevOf = new Map(fb.skaters.map(p => [p.id, p.pos])), prev2Of = new Map(fb2.skaters.map(p => [p.id, p.pos]));
@@ -266,12 +275,13 @@ export function LiveScene3D(props: Props) {
             target = angleLerp(target, aim, rel.aim);
           }
           a.heading = jumped || firstFrame ? target : angleLerp(a.heading, target, Math.max(alpha, rel ? .35 : 0));
-          // knocked down: he goes over backwards and slides, then gets back up (the rink's fall 0…1)
-          const fall = p.fall ?? 0;
+          // knocked down (the rink's fall 0…1: tipping over, down, getting up): on his back, face first, or sideways
+          // over the hip; the body rests on the ice a little above the skates' pivot
+          const fall = p.fall ?? 0, fk = p.fallKind ?? 'back';
           // a spin-o-rama: the whole body turns a full circle (toward his backhand side) and comes out facing ahead again
           const spinYaw = p.move === 'spin' ? -hand * Math.PI * 2 * smooth01(p.moveT ?? 0) : 0;
-          a.group.rotation.set(-fall * 1.35, a.heading + spinYaw, 0);
-          if (fall > 0) a.group.position.y = -.05 * fall;
+          a.group.rotation.set(fk === 'back' ? -fall * 1.38 : fk === 'front' ? fall * 1.3 : -fall * .25, a.heading + spinYaw, fk === 'side' ? (p.fallSide ?? 1) * fall * 1.42 : 0);
+          if (fall > 0) a.group.position.y = .1 * Math.sin(fall * Math.PI / 2);
           if (!a.figure) { a.group.position.y = Math.abs(Math.sin(a.phase)) * .04 * clamp(speed / 7, 0, 1); continue; }
           a.group.updateMatrixWorld(true);
           const h1 = Math.atan2(-(b.z - b2.z), b.x - b2.x), h2 = motionDir;
@@ -283,12 +293,13 @@ export function LiveScene3D(props: Props) {
           local.copy(puckWorld); a.figure.root.worldToLocal(local);
           let reach: T.Vector3 | null = null, reachWeight = 0;
           const near = Math.hypot(local.x + .3 * hand, local.z - .85);
+          if (p.move === 'reach' && pw.y < .4 && local.z > .2 && Math.hypot(local.x, local.z) < 2.8) reach = local.clone();
           if (pw.y < .25 && local.z > .1 && local.z < 1.8 && Math.abs(local.x) < 1.3 && near < 1.4 && !(shot !== undefined && shot > 0)) {
             reachWeight = (f.carrier === p.id ? 1 : .6) * (1 - smooth01((near - .55) / .85));
             carrierW = Math.max(carrierW, reachWeight);
             reach = local.clone();
           }
-          poses.push({ figure: a.figure, args: [a.phase, amp * (1 - fall), shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind, deke: p.deke, check: p.check, poke: p.poke, move: p.move, moveT: p.moveT, stagger: p.stagger }], w: reachWeight, carrier: f.carrier === p.id });
+          poses.push({ figure: a.figure, args: [a.phase, amp * (1 - fall), shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind, deke: p.deke, check: p.check, poke: p.poke, move: p.move, moveT: p.moveT, stagger: p.stagger, down: fall }], w: reachWeight, carrier: f.carrier === p.id });
         }
         let blade: { x: number; z: number; w: number } | null = null;
         for (const { figure, args, w, carrier } of poses) {
@@ -310,8 +321,9 @@ export function LiveScene3D(props: Props) {
         const lead = { x: pw.x + clamp(pv.x * .25, -4, 4), z: pw.z };
         if (!focus.init) { focus.x = lead.x; focus.z = lead.z; focus.init = true; }
         else { const k = 1 - Math.exp(-realDt * 2.6); focus.x += (lead.x - focus.x) * k; focus.z += (lead.z - focus.z) * k; }
-        settled = Math.hypot(lead.x - focus.x, lead.z - focus.z) < .01;
-        const pose = liveCameraPose(live.current.camera, focus, live.current.zoom, aspect());
+        camSpeed += (Math.min(pSpeed, 30) - camSpeed) * (1 - Math.exp(-realDt * 1.6));
+        settled = Math.hypot(lead.x - focus.x, lead.z - focus.z) < .01 && Math.abs(Math.min(pSpeed, 30) - camSpeed) < .05;
+        const pose = liveCameraPose(live.current.camera, focus, live.current.zoom, aspect(), { attack: ai.attack ?? (ai.flipped ? -1 : 1), speed: camSpeed });
         camera.position.set(pose.pos.x, pose.pos.y, pose.pos.z);
         camera.lookAt(pose.look.x, pose.look.y, pose.look.z);
         if (Math.abs(camera.fov - pose.fov) > .01) { camera.fov = pose.fov; camera.updateProjectionMatrix(); }

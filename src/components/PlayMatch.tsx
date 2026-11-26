@@ -14,7 +14,7 @@ import { LiveRink } from './RinkView';
 import { GoalReplay } from './GoalReplay';
 import { ShootoutBoard } from './Shootout';
 import type { FigureRequest } from './replayCache';
-import { CAPTURED, COMMAND_KEYS, emptyTouch, gamepadPad, keyboardPad, mergePads, stickVector, type Command, type TouchState } from './playInput';
+import { anyGamepad, CAPTURED, COMMAND_KEYS, detectDevice, emptyTouch, gamepadPad, keyboardPad, mergePads, stickVector, type Command, type InputDevice, type TouchState } from './playInput';
 
 /**
  * A match the manager plays himself, NHL style: he skates one of his players — the puck carrier when his team has
@@ -27,7 +27,7 @@ type Phase = 'intro' | 'playing' | 'break' | 'shootout' | 'final';
 interface Hud {
   clock: number; len: number; score: [number, number]; shots: [number, number]; men: [number, number];
   boxed: [{ id: string; left: number }[], { id: string; left: number }[]]; delayed: 0 | 1 | null; mode: PlayRink['mode'];
-  ctl: string | null; power: number; context: 'carry' | 'support' | 'defend'; labels: { shoot: string; pass: string; deke: string }; energy: number; faceoff: boolean; pulled: boolean;
+  ctl: string | null; power: number; context: 'carry' | 'support' | 'defend'; labels: { shoot: string; pass: string; deke: string }; energy: number; faceoff: boolean; foCue: 'ready' | 'now' | null; foCall: string | null; pulled: boolean;
 }
 interface GoalItem { event: GameEvent; tau: number; clip?: ReplayClip; period: number }
 interface Toast { id: number; text: string; tone: 'goal' | 'pen' | 'info' }
@@ -39,7 +39,8 @@ const KEY_HELP: [string, string][] = [
   ['Пробел / J', 'бросок: держать — сильнее (щелчок), отпустить — бросок; без шайбы в обороне — силовой приём'],
   ['K / E', 'пас в сторону стика; держать — пас верхом; в обороне — смена игрока; в атаке без шайбы — «дай пас»'],
   ['L / Q', 'финт (с рывком — вертушка, стик назад — протяжка, дважды — между ног); в замахе — ложный замах; в обороне — отбор клюшкой (сзади — подбить клюшку)'],
-  ['C / Tab', 'сменить игрока (к шайбе или в сторону стика)'],
+  ['F', 'вбрасывание: нажмите, когда судья бросает шайбу (Пробел и K тоже работают, но окно уже)'],
+  ['C / Tab', 'сменить игрока (к шайбе или в сторону стика); в обороне смена на защитника идёт сама'],
   ['V', 'смена звена'],
   ['G', 'снять / вернуть вратаря'],
   ['R', 'повтор последнего гола'],
@@ -51,7 +52,8 @@ const PAD_HELP: [string, string][] = [
   ['A', 'пас (держать — верхом), в обороне — смена игрока'],
   ['Правый стик', 'клюшка: назад и вперёд — щелчок / заряженный бросок, рывок вперёд — кистевой, вбок — финт, назад и вбок — протяжка, вбок туда-обратно — между ног, круг — вертушка, назад и отпустить — ложный замах; в обороне — отбор / подбить клюшку'],
   ['X', 'финт / отбор клюшкой'],
-  ['LB', 'сменить игрока'],
+  ['RB / R3', 'вбрасывание: нажмите, когда судья бросает шайбу'],
+  ['LB', 'сменить игрока (в обороне смена на защитника идёт сама)'],
   ['RB / LT', 'рывок'],
   ['Y', 'смена звена'],
   ['Back', 'снять вратаря'],
@@ -91,6 +93,17 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   const prevCommands = useRef(new Set<Command>());
   const root = useRef<HTMLDivElement>(null);
   const touchUI = settings.playTouch === 'on' || (settings.playTouch === 'auto' && typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches);
+  // What he plays on, for the hints: a gamepad as soon as one is connected (outside play the pads are polled here;
+  // during play the game loop reads them), else the touch screen or the keyboard.
+  const device: InputDevice = detectDevice(padOn, touchUI);
+  useEffect(() => {
+    if (phase === 'playing' && !paused) return;
+    const read = () => { const on = typeof navigator !== 'undefined' && !!navigator.getGamepads && anyGamepad(navigator.getGamepads()); if (on !== padOnRef.current) { padOnRef.current = on; setPadOn(on); } };
+    read();
+    const id = window.setInterval(read, 500);
+    window.addEventListener('gamepadconnected', read); window.addEventListener('gamepaddisconnected', read);
+    return () => { window.clearInterval(id); window.removeEventListener('gamepadconnected', read); window.removeEventListener('gamepaddisconnected', read); };
+  }, [phase, paused]);
 
   // Everyone who may step on the ice in 3D (figures prepared up front).
   const roster3d = useMemo(() => {
@@ -249,7 +262,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       let pad: PadState = mergePads(keyboardPad(keys.current), gp.pad, t);
       // the stick is read in screen terms: the camera of the 3D picture turns it into rink terms
       const cam = settingsRef.current.matchView === '3d' ? settingsRef.current.matchCamera : 'top';
-      if (cam === 'end' && (pad.mx || pad.my)) { const v = screenToRink(pad.mx, pad.my, cam, k.frameAt(k.tau).puck.x); pad = { ...pad, mx: v.x, my: v.y }; }
+      if ((cam === 'end' || cam === 'vertical') && (pad.mx || pad.my)) { const v = screenToRink(pad.mx, pad.my, cam, k.frameAt(k.tau).puck.x, k.attack ?? 1); pad = { ...pad, mx: v.x, my: v.y }; }
       k.advance(dt, pad);
       book(k, k.drain());
       ticker.tau = Math.max(0, k.tau - 1 / 60);
@@ -328,7 +341,8 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
           {ppSide === null && hud.men[0] !== 5 && <span className="rounded-sm px-1.5 bg-amber/15 text-amber font-semibold">{hud.men[0]} на {hud.men[1]}</span>}
           {hud.delayed !== null && <span className="rounded-sm px-1.5 bg-gold/20 text-gold font-semibold" data-play-delayed>Отложенный штраф</span>}
           {hud.pulled && <span className="rounded-sm px-1.5 bg-accent/15 text-accent font-semibold">Без вратаря</span>}
-          {hud.faceoff && <span className="text-ice font-semibold">Вбрасывание: «Бросок», когда шайба падает</span>}
+          {hud.faceoff && !hud.foCue && <span className="text-ice font-semibold">Вбрасывание</span>}
+          {hud.foCue === 'ready' && <span className="text-ice font-semibold" data-play-fo-cue="ready">Вбрасывание: {device === 'gamepad' ? 'RB' : device === 'touch' ? 'кнопка «Вбрасывание»' : 'F'} — когда шайба падает</span>}
         </div>
       )}
 
@@ -358,6 +372,15 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
           </div>
         )}
 
+        {/* The draw: «now!» the moment the puck falls, then how it was timed */}
+        {phase === 'playing' && hud && (hud.foCue === 'now' || hud.foCall) && (
+          <div className="absolute left-1/2 top-[38%] -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none" data-play-fo-cue={hud.foCue === 'now' ? 'now' : 'call'}>
+            <span className={cn('rounded-md px-4 py-1.5 font-display text-2xl shadow-xl', hud.foCue === 'now' ? 'bg-ice text-bg animate-pulse' : hud.foCall === 'Идеально!' ? 'bg-ok text-bg' : 'bg-black/65 text-white')}>
+              {hud.foCue === 'now' ? (device === 'gamepad' ? 'RB!' : device === 'touch' ? 'Жми!' : 'F!') : hud.foCall}
+            </span>
+          </div>
+        )}
+
         {/* Toasts */}
         <div className="absolute top-2 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1 pointer-events-none z-10" aria-live="polite">
           {toasts.map((t) => (
@@ -375,7 +398,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
           </div>
         )}
 
-        {phase === 'playing' && touchUI && !paused && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} />}
+        {phase === 'playing' && touchUI && !paused && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} faceoff={!!hud?.faceoff} />}
       </main>
 
       {/* Intro: what to press */}
@@ -390,7 +413,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
             <SettingPick label="Сложность" value={settings.playDifficulty} options={[['rookie', 'Новичок'], ['pro', 'Профи'], ['star', 'Звезда']]} onChange={(v) => setSettings({ playDifficulty: v })} id="playDifficulty" />
             <SettingPick label="Вид" value={settings.matchView} options={[['3d', '3D'], ['2d', '2D']]} onChange={(v) => setSettings({ matchView: v })} id="matchView" />
           </div>
-          <Controls touchUI={touchUI} padOn={padOn} />
+          <Controls device={device} />
           <div className="flex gap-2 mt-4 flex-wrap justify-center">
             <Button variant="primary" size="lg" onClick={begin} data-play-start><Icon name="play" /> Начать матч</Button>
             <Button size="lg" variant="ghost" onClick={simRest} disabled={busy}>Досимулировать</Button>
@@ -411,7 +434,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
             {goals.current.length > 0 && <Button variant="ghost" onClick={() => openReplay(goals.current[goals.current.length - 1])}>Повтор последнего гола</Button>}
             <Button variant="ghost" onClick={simRest} disabled={busy} data-play-simrest>{busy ? 'Симуляция…' : 'Досимулировать матч'}</Button>
           </div>
-          {help && <div className="mt-3 w-full"><Controls touchUI={touchUI} padOn={padOn} /></div>}
+          {help && <div className="mt-3 w-full"><Controls device={device} /></div>}
         </Sheet>
       )}
 
@@ -476,20 +499,38 @@ function SettingPick<V extends string | number>({ label, value, options, onChang
   );
 }
 
-function Controls({ touchUI, padOn }: { touchUI: boolean; padOn: boolean }) {
-  const list = padOn ? PAD_HELP : KEY_HELP;
+/**
+ * The controls of the device he plays on: a connected gamepad shows the pad, a touch screen the on-screen
+ * stick and buttons, otherwise the keyboard. Plugging a pad in switches the hints at once; the other devices
+ * are a tap away.
+ */
+function Controls({ device }: { device: InputDevice }) {
+  const [shown, setShown] = useState<InputDevice | null>(null);
+  // a new device (a pad plugged in) takes over from a manual pick
+  useEffect(() => setShown(null), [device]);
+  const view = shown ?? device;
+  const title: Record<InputDevice, string> = { gamepad: 'Геймпад', touch: 'Сенсорный экран', keyboard: 'Клавиатура' };
   return (
-    <div className="w-full text-left text-xs" data-play-controls>
-      {touchUI && (
-        <>
-          <p className="mb-1 text-muted">На экране: слева — стик (коснитесь и ведите пальцем), в центре справа — <b className="text-text">клюшка</b>, как правый стик в NHL, у края — кнопки <b className="text-text">Бросок</b> (держать — сильнее), <b className="text-text">Пас</b>, <b className="text-text">Финт</b>, <b className="text-text">Смена</b> и <b className="text-text">Рывок</b>. Подписи кнопок меняются: в обороне «Бросок» — силовой приём, «Финт» — отбор клюшкой.</p>
-          <p className="mb-2 text-muted" data-play-skill-help>Клюшка: оттяните палец назад (от ворот соперника) и резко вперёд — <b className="text-text">щелчок</b> (чем дольше держали — тем сильнее); короткий рывок вперёд — <b className="text-text">кистевой</b>; рывок вбок — <b className="text-text">финт</b>, вбок и сразу обратно — <b className="text-text">между ног</b>, назад и вбок — <b className="text-text">протяжка</b>, круг — <b className="text-text">вертушка</b>, оттянуть и отпустить — <b className="text-text">ложный замах</b>. В обороне рывок клюшкой — отбор (сбоку и сзади — подбить клюшку); без шайбы в атаке клюшка назад — готов к броску в одно касание.</p>
-        </>
-      )}
-      <div className="text-[11px] text-muted mb-1">{padOn ? 'Геймпад подключён' : 'Клавиатура (геймпад тоже работает — просто нажмите любую кнопку)'}</div>
-      <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
-        {list.map(([k, v]) => <Fragment key={k}><kbd className="font-mono text-[11px] text-ice whitespace-nowrap">{k}</kbd><span className="text-muted">{v}</span></Fragment>)}
+    <div className="w-full text-left text-xs" data-play-controls={view} data-play-device={device}>
+      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+        <span className="text-[11px] text-muted" data-play-device-note>{device === 'gamepad' ? 'Геймпад подключён — подсказки для геймпада' : device === 'touch' ? 'Игра пальцами на экране' : 'Клавиатура — подключите геймпад, и подсказки сменятся сами'}</span>
+        <span className="ml-auto flex rounded-sm border border-line overflow-hidden" role="tablist" aria-label="Подсказки для">
+          {(['keyboard', 'gamepad', 'touch'] as const).map(d => <button key={d} type="button" role="tab" aria-selected={view === d} onClick={() => setShown(d)}
+            className={cn('px-2 py-0.5 text-[10px] border-r border-line last:border-r-0', view === d ? 'bg-ice text-bg font-semibold' : 'text-muted hover:text-text')} data-play-help-tab={d}>{title[d]}</button>)}
+        </span>
       </div>
+      {view === 'touch' ? (
+        <>
+          <p className="mb-1 text-muted">Слева — стик (коснитесь и ведите пальцем), в центре справа — <b className="text-text">клюшка</b>, как правый стик в NHL, у края — кнопки <b className="text-text">Бросок</b> (держать — сильнее), <b className="text-text">Пас</b>, <b className="text-text">Финт</b>, <b className="text-text">Смена</b> и <b className="text-text">Рывок</b>. Подписи кнопок меняются: в обороне «Бросок» — силовой приём, «Финт» — отбор клюшкой.</p>
+          <p className="mb-1 text-muted" data-play-skill-help>Клюшка: оттяните палец назад (от ворот соперника) и резко вперёд — <b className="text-text">щелчок</b> (чем дольше держали — тем сильнее); короткий рывок вперёд — <b className="text-text">кистевой</b>; рывок вбок — <b className="text-text">финт</b>, вбок и сразу обратно — <b className="text-text">между ног</b>, назад и вбок — <b className="text-text">протяжка</b>, круг — <b className="text-text">вертушка</b>, оттянуть и отпустить — <b className="text-text">ложный замах</b>. В обороне рывок клюшкой — отбор (сбоку и сзади — подбить клюшку); без шайбы в атаке клюшка назад — готов к броску в одно касание.</p>
+          <p className="text-muted">На вбрасывании появляется большая кнопка <b className="text-text">Вбрасывание</b> — нажмите её, когда судья бросает шайбу. В обороне управление само переходит к защитнику между шайбой и воротами.</p>
+        </>
+      ) : (
+        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-0.5">
+          {(view === 'gamepad' ? PAD_HELP : KEY_HELP).map(([k, v]) => <Fragment key={k}><kbd className="font-mono text-[11px] text-ice whitespace-nowrap">{k}</kbd><span className="text-muted">{v}</span></Fragment>)}
+        </div>
+      )}
+      {view === 'gamepad' && device !== 'gamepad' && <p className="mt-1 text-[11px] text-muted">Геймпад не найден: подключите его и нажмите любую кнопку.</p>}
     </div>
   );
 }
@@ -562,9 +603,10 @@ function FloatStick({ className, R, hint, onVec, data }: { className: string; R:
  * for a slap / snap shot, flick for a wrist shot, sideways for dekes, a poke check on defence) in the middle of
  * the right half, and the buttons at the right edge.
  */
-function TouchControls({ touch, labels, onCommand, pulled }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean }) {
+function TouchControls({ touch, labels, onCommand, pulled, faceoff }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean; faceoff: boolean }) {
   useEffect(() => () => { touch.current = emptyTouch(); }, [touch]);
-  const hold = (key: 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint') => ({
+  useEffect(() => { if (!faceoff) touch.current.faceoff = false; }, [faceoff, touch]);
+  const hold = (key: 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff') => ({
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => { e.preventDefault(); try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* not an active pointer */ } touch.current[key] = true; },
     onPointerUp: () => { touch.current[key] = false; },
     onPointerCancel: () => { touch.current[key] = false; },
@@ -584,6 +626,8 @@ function TouchControls({ touch, labels, onCommand, pulled }: { touch: React.Muta
         <button type="button" className={cn(btn, 'col-start-2 row-start-2 text-[11px]')} {...hold('pass')} data-touch="pass">{labels.pass}</button>
         <button type="button" className={cn(btn, 'col-start-1 col-span-2 row-start-3 text-sm bg-accent/60 border-accent/80')} {...hold('shoot')} data-touch="shoot">{labels.shoot}</button>
       </div>
+      {/* the draw: one big button next to the others (over the skill-stick zone, idle at a draw), pressed as the puck falls */}
+      {faceoff && <button type="button" className={cn(btn, 'z-10 pointer-events-auto absolute right-[calc(max(.75rem,env(safe-area-inset-right))+172px)] bottom-[calc(max(.75rem,env(safe-area-inset-bottom))+56px)] w-36 h-16 text-sm bg-ice/80 border-ice text-bg')} {...hold('faceoff')} data-touch="faceoff">Вбрасывание</button>}
       <div className="absolute right-[max(.75rem,env(safe-area-inset-right))] top-12 pointer-events-auto flex flex-col gap-1.5">
         <button type="button" className="rounded-sm bg-black/50 text-white text-[10px] px-2 py-1 border border-white/25" onClick={() => onCommand('change')} data-touch="change">Смена звена</button>
         <button type="button" className="rounded-sm bg-black/50 text-white text-[10px] px-2 py-1 border border-white/25" onClick={() => onCommand('pull')} data-touch="pull">{pulled ? 'Вернуть вратаря' : 'Снять вратаря'}</button>

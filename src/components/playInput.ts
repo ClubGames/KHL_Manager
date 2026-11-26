@@ -6,7 +6,7 @@ import type { PadState } from '../game/playRink';
  * Keys are read by their physical code (KeyW, not «w»), so the controls do not depend on the keyboard layout —
  * a Russian layout works the same.
  */
-export type Action = 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint';
+export type Action = 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff';
 export type Command = 'pause' | 'pull' | 'change' | 'replay';
 
 export const KEYS: Record<Action, string[]> = {
@@ -15,6 +15,7 @@ export const KEYS: Record<Action, string[]> = {
   deke: ['KeyL', 'KeyQ'],
   swap: ['KeyC', 'Tab'],
   sprint: ['ShiftLeft', 'ShiftRight'],
+  faceoff: ['KeyF'],
 };
 export const COMMAND_KEYS: Record<Command, string[]> = {
   pause: ['Escape', 'KeyP'],
@@ -29,12 +30,12 @@ const MOVE: Record<string, [number, number]> = {
 /** Keys whose browser default (scrolling, focus moves) is suppressed during play. */
 export const CAPTURED = new Set([...Object.keys(MOVE), ...Object.values(KEYS).flat()]);
 
-/** Gamepad buttons (standard mapping): A pass · B / RT shoot · X deke · LB switch · LT / RB / L3 sprint · Y line change · Back pull goalie · Start pause. */
-export const PAD_BUTTONS: Record<Action, number[]> = { shoot: [1, 7], pass: [0], deke: [2], swap: [4], sprint: [5, 6, 10] };
+/** Gamepad buttons (standard mapping): A pass · B / RT shoot · X deke · LB switch · LT / RB / L3 sprint · RB / R3 faceoff (at a draw) · Y line change · Back pull goalie · Start pause. */
+export const PAD_BUTTONS: Record<Action, number[]> = { shoot: [1, 7], pass: [0], deke: [2], swap: [4], sprint: [5, 6, 10], faceoff: [5, 11] };
 export const PAD_COMMANDS: Partial<Record<Command, number[]>> = { pause: [9], change: [3], pull: [8] };
 
-export interface TouchState { mx: number; my: number; sx: number; sy: number; shoot: boolean; pass: boolean; deke: boolean; swap: boolean; sprint: boolean }
-export const emptyTouch = (): TouchState => ({ mx: 0, my: 0, sx: 0, sy: 0, shoot: false, pass: false, deke: false, swap: false, sprint: false });
+export interface TouchState { mx: number; my: number; sx: number; sy: number; shoot: boolean; pass: boolean; deke: boolean; swap: boolean; sprint: boolean; faceoff: boolean }
+export const emptyTouch = (): TouchState => ({ mx: 0, my: 0, sx: 0, sy: 0, shoot: false, pass: false, deke: false, swap: false, sprint: false, faceoff: false });
 
 export function keyboardPad(down: ReadonlySet<string>): PadState {
   let mx = 0, my = 0;
@@ -42,7 +43,7 @@ export function keyboardPad(down: ReadonlySet<string>): PadState {
   const m = Math.hypot(mx, my);
   if (m > 1) { mx /= m; my /= m; }
   const on = (a: Action) => KEYS[a].some(k => down.has(k));
-  return { mx, my, shoot: on('shoot'), pass: on('pass'), deke: on('deke'), swap: on('swap'), sprint: on('sprint') };
+  return { mx, my, shoot: on('shoot'), pass: on('pass'), deke: on('deke'), swap: on('swap'), sprint: on('sprint'), faceoff: on('faceoff') };
 }
 
 type PadLike = { axes: readonly number[]; buttons: readonly { pressed: boolean; value: number }[] };
@@ -59,7 +60,7 @@ export function gamepadPad(pads: readonly (PadLike | null)[] | null | undefined)
   const on = (a: Action) => PAD_BUTTONS[a].some(btn);
   const commands = new Set<Command>();
   for (const [c, list] of Object.entries(PAD_COMMANDS) as [Command, number[]][]) if (list.some(btn)) commands.add(c);
-  return { pad: { mx, my, sx, sy, shoot: on('shoot'), pass: on('pass'), deke: on('deke'), swap: on('swap'), sprint: on('sprint') }, commands, connected: true };
+  return { pad: { mx, my, sx, sy, shoot: on('shoot'), pass: on('pass'), deke: on('deke'), swap: on('swap'), sprint: on('sprint'), faceoff: on('faceoff') }, commands, connected: true };
 }
 
 function deadZone(x: number, y: number): [number, number] {
@@ -77,7 +78,7 @@ export function mergePads(...pads: PadState[]): PadState {
   if (m > 1) { mx /= m; my /= m; }
   if (sm > 1) { sx /= sm; sy /= sm; }
   const any = (k: keyof PadState) => pads.some(p => !!p[k]);
-  return { mx, my, sx, sy, shoot: any('shoot'), pass: any('pass'), deke: any('deke'), swap: any('swap'), sprint: any('sprint') };
+  return { mx, my, sx, sy, shoot: any('shoot'), pass: any('pass'), deke: any('deke'), swap: any('swap'), sprint: any('sprint'), faceoff: any('faceoff') };
 }
 
 /** The touch stick: the thumb's offset from where it touched down, as a vector of length ≤ 1 (radius in px). */
@@ -86,4 +87,14 @@ export function stickVector(dx: number, dy: number, radius: number): { x: number
   if (d < radius * 0.12) return { x: 0, y: 0 };
   const k = Math.min(1, d / radius) / d;
   return { x: dx * k, y: dy * k };
+}
+
+/** What the manager plays on: a connected gamepad wins, then a touch screen, then the keyboard. */
+export type InputDevice = 'gamepad' | 'touch' | 'keyboard';
+export function detectDevice(padConnected: boolean, touchUI: boolean): InputDevice {
+  return padConnected ? 'gamepad' : touchUI ? 'touch' : 'keyboard';
+}
+/** Whether any gamepad is connected (browsers list one only after a button press on it). */
+export function anyGamepad(pads: readonly (PadLike | null)[] | null | undefined): boolean {
+  return !!pads && pads.some(p => !!p);
 }
