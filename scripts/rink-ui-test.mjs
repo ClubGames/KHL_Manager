@@ -159,7 +159,8 @@ try {
   console.log('ok WebGL-unavailable fallback uses same timeline and stays dismissible');
 
   // goals do not open their replay by themselves here: a replay popping up during the long 3D checks would cover the rink
-  const match = await open({}, { autoReplay: 'off' });
+  // (nor do the 3D broadcast's celebrations and replays, which hold the clock)
+  const match = await open({}, { autoReplay: 'off', matchReplays: false });
   await match.getByRole('button', { name: /^СКА/ }).click();
   await match.getByRole('button', { name: 'Начать карьеру', exact: true }).click();
   const toMatch = match.getByRole('button', { name: 'Симулировать до матча', exact: true });

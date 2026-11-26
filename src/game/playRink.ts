@@ -127,7 +127,7 @@ const CAGES = [
 ];
 const STEP = 1 / 60;
 const REACH = 0.72; // body to the middle of the blade
-const FRAMES_KEPT = 12; // seconds of frames kept (goal clips look 7 s back)
+const FRAMES_KEPT = 20; // seconds of frames kept (goal clips look 7 s back; the 3D broadcast replays up to ~13 s back)
 const ZONE_MULT: Record<ShotZone, number> = { crease: 2.04, slot: 1.46, circles: 0.9, point: 0.33, perimeter: 0.26 };
 const WINDUP: Record<ReleaseKind, number> = { wrist: .32, snap: .2, slap: .55, backhand: .3, tip: .1, pass: .24 };
 const FOLLOW: Record<ReleaseKind, number> = { wrist: .45, snap: .38, slap: .5, backhand: .45, tip: .25, pass: .32 };
@@ -395,7 +395,7 @@ export class PlayRink {
       puck: { x: this.px(a.px + (b.px - a.px) * u), y: (a.py + (b.py - a.py) * u) / 0.3, h: a.ph + (b.ph - a.ph) * u },
       skaters, faceoff: a.stop === 1 || undefined, stopped: a.stop > 0 || undefined,
       carrier: a.carrier >= 0 ? a.ids[a.carrier] : null, caption: cap?.text,
-      official: a.stop === 1 ? { x: this.px(a.ox), y: a.oy / 0.3, h: 0 } : undefined,
+      official: a.stop ? { x: this.px(a.ox), y: a.oy / 0.3, h: 0 } : undefined,
     };
   }
   /** Game clock at presentation time (the match screen shows it). */
@@ -409,7 +409,7 @@ export class PlayRink {
   /** Motion for the 3D players: windups as they happen (a held shot keeps the stick loaded), follow-throughs after. */
   readonly motion = {
     update: () => { /* releases are pushed live */ },
-    prune: (tau: number) => { let n = 0; while (n < this.releases.length && this.releases[n].t < tau - 3) n++; if (n) this.releases.splice(0, n); },
+    prune: (tau: number) => { let n = 0; while (n < this.releases.length && this.releases[n].t < tau - 18) n++; if (n) this.releases.splice(0, n); },
     netX: (side: Side) => ((side === 0) !== this.flipped ? 1 : -1) * NET_X,
     goalAt: (tau: number): { side: Side; tau: number; netX: number } | null => {
       for (let i = this.plays.length - 1; i >= 0; i--) {
@@ -674,7 +674,8 @@ export class PlayRink {
     if (us !== null) { const c = this.center(us); if (c) this.ctl = c.id; }
     this.mode = 'faceoff';
     const setAt = this.tau;
-    this.fo = { dot, setAt, drop: setAt + 0.9 + this.rand() * 0.7, press: -1, btn: false, done: false };
+    // the official skates to the dot and holds the puck out before he drops it (see officialCrew)
+    this.fo = { dot, setAt, drop: setAt + 1.5 + this.rand() * 0.6, press: -1, btn: false, done: false };
     this.zoneIn = [loc(0, dot).x > OPP_BLUE, loc(1, dot).x > OPP_BLUE];
   }
   private center(s: Side): Sk | null {

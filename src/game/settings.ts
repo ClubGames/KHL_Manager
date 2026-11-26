@@ -38,6 +38,8 @@ export type Settings = {
   matchMinimap: boolean;
   /** before the first period in 3D: the teams skate out (visitors first, then the home team) with a laser show */
   matchIntro: boolean;
+  /** 3D match: the scorer's celebration and the goal's replay after a goal, replays of big moments at stoppages */
+  matchReplays: boolean;
   /** at a whistle the match pauses when the bench should act: timeout, goalie change, pulling the goalie */
   matchAdvice: boolean;
   /** a fast simulation that played one of the club's games opens its report */
@@ -61,7 +63,7 @@ export function defaultSettings(): Settings {
   return {
     replay3d: true, autoReplay: 'all', replayQuality: 'auto', replaySpeed: 1, replayCamera: 'auto', replayPrewarm: true,
     videoHeight: coarse() ? 720 : 1080, videoFps: 30, videoSlowmo: true, videoGraphics: true, videoQuality: 'view',
-    matchSpeed: 2, matchRink2d: true, matchView: '3d', matchCamera: 'broadcast', matchMinimap: true, matchIntro: true, matchAdvice: true, simOpenReport: true, simConfirm: true,
+    matchSpeed: 2, matchRink2d: true, matchView: '3d', matchCamera: 'broadcast', matchMinimap: true, matchIntro: true, matchReplays: true, matchAdvice: true, simOpenReport: true, simConfirm: true,
     playPeriod: 5, playDifficulty: 'pro', playAutoSwitch: true, playTouch: 'auto',
   };
 }
@@ -82,7 +84,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     replayCamera: one('replayCamera', CAMS), replayPrewarm: bool('replayPrewarm'),
     videoHeight: one('videoHeight', [720, 1080] as const), videoFps: one('videoFps', [30, 60] as const),
     videoSlowmo: bool('videoSlowmo'), videoGraphics: bool('videoGraphics'), videoQuality: one('videoQuality', ['fast', 'view'] as const),
-    matchSpeed: one('matchSpeed', [1, 2, 4] as const), matchRink2d: bool('matchRink2d'), matchView: one('matchView', ['2d', '3d'] as const), matchCamera: one('matchCamera', ['broadcast', 'high', 'ice', 'end', 'overhead', 'dynamic', 'zone', 'vertical'] as const), matchMinimap: bool('matchMinimap'), matchIntro: bool('matchIntro'), matchAdvice: bool('matchAdvice'), simOpenReport: bool('simOpenReport'), simConfirm: bool('simConfirm'),
+    matchSpeed: one('matchSpeed', [1, 2, 4] as const), matchRink2d: bool('matchRink2d'), matchView: one('matchView', ['2d', '3d'] as const), matchCamera: one('matchCamera', ['broadcast', 'high', 'ice', 'end', 'overhead', 'dynamic', 'zone', 'vertical'] as const), matchMinimap: bool('matchMinimap'), matchIntro: bool('matchIntro'), matchReplays: bool('matchReplays'), matchAdvice: bool('matchAdvice'), simOpenReport: bool('simOpenReport'), simConfirm: bool('simConfirm'),
     playPeriod: one('playPeriod', [3, 5, 8, 12, 20] as const), playDifficulty: one('playDifficulty', ['rookie', 'pro', 'star'] as const), playAutoSwitch: bool('playAutoSwitch'), playTouch: one('playTouch', ['auto', 'on', 'off'] as const),
   };
 }
