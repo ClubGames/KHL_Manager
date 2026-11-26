@@ -38,9 +38,23 @@ try {
   await page.locator('[data-match-mode="play"]').click();
   await page.locator('[data-play-match][data-phase="intro"]').waitFor();
   assert.match(await page.locator('[data-play-controls]').innerText(), /W A S D/);
+  assert.equal(await page.locator('[data-play-controls]').getAttribute('data-play-controls'), 'keyboard');
+  // a gamepad plugged in: the hints switch to the pad by themselves, and back when it is gone
+  await page.evaluate(() => { const pad = { id: 'Test pad', index: 0, connected: true, axes: [0, 0, 0, 0], buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })) }; window.__pads = [pad]; navigator.getGamepads = () => window.__pads; });
+  await page.locator('[data-play-controls="gamepad"]').waitFor({ timeout: 3000 });
+  assert.match(await page.locator('[data-play-controls]').textContent(), /RB \/ R3/);
+  await page.evaluate(() => { window.__pads = []; });
+  await page.locator('[data-play-controls="keyboard"]').waitFor({ timeout: 3000 });
+  // the other devices are a tap away
+  await page.locator('[data-play-help-tab="touch"]').click();
+  assert.equal(await page.locator('[data-play-controls]').getAttribute('data-play-controls'), 'touch');
+  await page.locator('[data-play-help-tab="keyboard"]').click();
   await page.locator('[data-play-start]').click();
   await page.locator('[data-play-match][data-phase="playing"]').waitFor();
   await page.locator('[data-live-rink]').waitFor();
+  // the opening draw: the HUD cues it, the faceoff key works
+  await page.locator('[data-play-fo-cue]').first().waitFor({ timeout: 8000 });
+  await page.keyboard.press('KeyF');
   // the faceoff, then the controlled skater (the ring) skates where the stick points
   await page.locator('[data-rink-ctrl]').waitFor({ timeout: 8000 });
   await page.waitForFunction(() => !document.querySelector('[data-live-rink][data-stopped]'), null, { timeout: 15000 });
@@ -90,8 +104,13 @@ try {
   const phone = await open({ viewport: { width: 844, height: 390 }, hasTouch: true, isMobile: true }, { playTouch: 'on' });
   await phone.getByRole('button', { name: 'Играть матч', exact: true }).click();
   await phone.locator('[data-match-mode="play"]').click();
+  assert.equal(await phone.locator('[data-play-controls]').getAttribute('data-play-controls'), 'touch', 'a phone shows the touch hints');
   await phone.locator('[data-play-start]').click();
   await phone.locator('[data-play-touch]').waitFor();
+  // the draw has its own big button on a touch screen
+  await phone.locator('[data-touch="faceoff"]').waitFor({ timeout: 8000 });
+  await phone.locator('[data-touch="faceoff"]').dispatchEvent('pointerdown', { pointerId: 6, pointerType: 'touch', bubbles: true });
+  await phone.locator('[data-touch="faceoff"]').dispatchEvent('pointerup', { pointerId: 6, pointerType: 'touch', bubbles: true }).catch(() => {});
   for (const b of ['shoot', 'pass', 'deke', 'swap', 'sprint']) assert.ok(await phone.locator(`[data-touch="${b}"]`).isVisible(), `touch button ${b}`);
   await phone.locator('[data-rink-ctrl]').waitFor({ timeout: 8000 });
   await phone.waitForFunction(() => !document.querySelector('[data-live-rink][data-stopped]'), null, { timeout: 15000 });

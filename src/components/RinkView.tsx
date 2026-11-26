@@ -51,8 +51,8 @@ export function RinkSvg({ frame, home, away, players }: { frame: LiveFrame; home
     {frame.skaters.map(p => <g key={`${p.side}-${p.id}`} transform={`translate(${p.pos.x} ${p.pos.y / 2})`} data-rink-player={p.id}>
       <title>{players[p.id]?.name ?? p.id}{p.goalie ? ' · вратарь' : ''}</title>
       <ellipse cy=".5" rx="1.65" ry="1" fill="#233a4b30" />
+      {frame.carrier === p.id && !p.goalie && <g data-rink-carrier><circle r="3.1" fill="#2ee6ff2e" stroke="#2ee6ff" strokeWidth=".55" /><circle r="3.1" fill="none" stroke="#06283a" strokeWidth=".15" strokeDasharray=".9 .7" /></g>}
       {p.ctrl && <g data-rink-ctrl><circle r="2.5" fill="#ffd23f33" stroke="#ffd23f" strokeWidth=".45" /><path d="M -1 -4.2 H 1 L 0 -2.9 Z" fill="#ffd23f" /></g>}
-      {frame.carrier === p.id && <circle r="2" fill="none" stroke="#f5b942" strokeWidth=".3" data-rink-carrier />}
       {(p.fall ?? 0) > .3 && <path d="M -1.6 -1.6 L 1.6 1.6 M 1.6 -1.6 L -1.6 1.6" stroke="#e5323e" strokeWidth=".3" opacity={p.fall} />}
       {p.goalie ? <rect x="-1.4" y="-1" width="2.8" height="2" rx=".5" fill={p.side ? '#f7fafc' : home.primaryColor} stroke={p.side ? away.primaryColor : '#fff'} strokeWidth=".35" /> : <circle r="1.3" fill={p.side ? '#f7fafc' : home.primaryColor} stroke={p.side ? away.primaryColor : '#0b1726'} strokeWidth={p.side ? '.5' : '.35'} />}
       <text y=".4" textAnchor="middle" fontSize="1.2" fontWeight="bold" fill={p.side ? away.primaryColor : '#fff'} stroke={p.side ? '#fff' : '#000'} strokeWidth=".15" paintOrder="stroke" fontFamily="sans-serif">{players[p.id]?.number ?? ''}</text>
@@ -77,6 +77,7 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
 }) {
   const settings = useSettings();
   const [failed3d, setFailed3d] = useState(false);
+  const [camOpen, setCamOpen] = useState(false);
   // The 3D match reads the same rink frames as the 2D picture; without the agent rink (or WebGL) it is 2D.
   const can3d = !!ai && !failed3d;
   const show3d = can3d && settings.matchView === '3d' && allow3d;
@@ -127,9 +128,16 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
     {show3d ? (
       <div className={cn('relative bg-[#081421] overflow-hidden', fill ? 'flex-1 min-h-0' : 'w-full')} style={fill ? undefined : { aspectRatio: '16 / 9' }} data-rink-3d>
         <LiveScene3D ai={ai!} ticker={ticker} home={home} away={away} players={players} roster={roster ?? []} camera={settings.matchCamera} quality={resolveReplayQuality(settings.replayQuality)} onFail={() => setFailed3d(true)} />
-        <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1" role="radiogroup" aria-label="Камера">
-          {LIVE_CAMERAS.map(([c, label]) => <button key={c} type="button" role="radio" aria-checked={settings.matchCamera === c} onClick={() => setSettings({ matchCamera: c })}
-            className={cn('rounded-sm px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur-sm', settings.matchCamera === c ? 'bg-white/85 text-[#0b1726]' : 'bg-black/35 text-white/85 hover:bg-black/55')} data-live-camera={c}>{label}</button>)}
+        <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1 z-20">
+          {/* the camera: one button with the current view; it opens the list (eight NHL-style cameras) */}
+          <span className="relative">
+            <button type="button" aria-haspopup="true" aria-expanded={camOpen} onClick={() => setCamOpen(o => !o)}
+              className="rounded-sm px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur-sm bg-white/85 text-[#0b1726]" data-live-camera-menu>Камера: {LIVE_CAMERAS.find(([c]) => c === settings.matchCamera)?.[1] ?? 'ТВ'} ▾</button>
+            {camOpen && <span className="absolute left-0 top-full mt-1 z-30 flex flex-col gap-0.5 rounded-sm bg-black/70 backdrop-blur-sm p-1 min-w-[112px]" role="radiogroup" aria-label="Камера">
+              {LIVE_CAMERAS.map(([c, label]) => <button key={c} type="button" role="radio" aria-checked={settings.matchCamera === c} onClick={() => { setSettings({ matchCamera: c }); setCamOpen(false); }}
+                className={cn('rounded-sm px-2 py-1 text-left text-[11px] font-semibold', settings.matchCamera === c ? 'bg-white/85 text-[#0b1726]' : 'text-white/90 hover:bg-white/20')} data-live-camera={c}>{label}</button>)}
+            </span>}
+          </span>
           {bare && viewToggle && <span className="bg-panel/90 rounded-sm">{viewToggle}</span>}
           <button type="button" aria-pressed={settings.matchMinimap} onClick={() => setSettings({ matchMinimap: !settings.matchMinimap })}
             className={cn('rounded-sm px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur-sm', settings.matchMinimap ? 'bg-white/85 text-[#0b1726]' : 'bg-black/35 text-white/85 hover:bg-black/55')} data-live-minimap-toggle>Карта</button>

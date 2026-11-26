@@ -183,8 +183,12 @@ try {
   assert.equal(await rink.locator('[data-rink-view]').getAttribute('data-rink-view'), '3d');
   await rink.locator('[data-live-3d="ready"]').waitFor({ timeout: 60000 });
   assert.equal(await rink.locator('[data-rink-minimap] [data-rink-puck]').count(), 1, 'minimap over the 3D picture');
+  await rink.locator('[data-live-camera-menu]').click();
   await rink.locator('[data-live-camera="end"]').click();
+  assert.equal(await rink.locator('[data-live-camera]').count(), 0, 'the camera list closes after a pick');
+  await rink.locator('[data-live-camera-menu]').click();
   assert.equal(await rink.locator('[data-live-camera="end"]').getAttribute('aria-checked'), 'true');
+  await rink.locator('[data-live-camera-menu]').click();
   await rink.locator('[data-live-minimap-toggle]').click(); assert.equal(await rink.locator('[data-rink-minimap]').count(), 0);
   await rink.locator('[data-live-minimap-toggle]').click(); assert.equal(await rink.locator('[data-rink-minimap]').count(), 1);
   await rink.locator('[data-rink-view-button="2d"]').click();
