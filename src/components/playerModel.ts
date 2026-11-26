@@ -7,7 +7,7 @@ import { clone as cloneSkinned } from 'three/examples/jsm/utils/SkeletonUtils.js
 import modelUrl from '../assets/hockey-player.glb?url';
 import { buildHelmet, kitUp } from './playerGear';
 import type { ReleaseKind } from './replayMotion';
-import type { LiveMove } from '../game/rinkPlayback';
+import type { LiveMove, LiveStance } from '../game/rinkPlayback';
 
 /**
  * Rigged 3D hockey players for the goal replay. One skinned template is loaded once and cloned per
@@ -32,7 +32,7 @@ export type Kit = {
 /** What an official's arms do (see officialCrew): the IIHF signals, the faceoff drop, a point. */
 export type OfficialPose = {
   phase: number; amp: number;
-  gesture: 'none' | 'armUp' | 'point' | 'goal' | 'trip' | 'hook' | 'hold' | 'slash' | 'interference' | 'boarding' | 'charging' | 'highstick' | 'fist' | 'icing' | 'washout' | 'ready' | 'drop' | 'shake';
+  gesture: 'none' | 'armUp' | 'point' | 'goal' | 'trip' | 'hook' | 'hold' | 'slash' | 'interference' | 'boarding' | 'charging' | 'highstick' | 'fist' | 'icing' | 'washout' | 'ready' | 'drop' | 'shake' | 'elbow' | 'head' | 'behind' | 'knee' | 'delay';
   /** seconds into the gesture */ t: number;
   /** a pointing arm's target in character space */ aim?: T.Vector3 | null;
   /** head turn toward the play (rad, + to his left) */ look?: number;
@@ -331,7 +331,7 @@ export class PlayerFigure {
    * down on one knee, sliding (the celebration after a goal).
    * Everything is solved for a right shot and mirrored for a left one.
    */
-  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number; check?: number; poke?: number; move?: LiveMove; moveT?: number; stagger?: number; down?: number; shake?: number; pump?: number; kneel?: number; t?: number } = {}) {
+  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number; check?: number; poke?: number; move?: LiveMove; moveT?: number; stagger?: number; down?: number; shake?: number; pump?: number; kneel?: number; t?: number; stance?: LiveStance; stanceT?: number; handle?: number; now?: number } = {}) {
     this.reset();
     const m = this.hand, kind = opts.kind ?? 'wrist';
     const chk = smooth(clamp01(opts.check ?? 0)), poke = smooth(clamp01(opts.poke ?? 0));
@@ -342,24 +342,33 @@ export class PlayerFigure {
     const w = (k: LiveMove) => (mv === k ? bell : 0);
     const toe = w('toe'), btw = w('between'), spin = w('spin'), fake = w('fake'), hip = w('hip'), pin = w('pin'), lift = w('lift'), rch = w('reach');
     const stag = clamp01(opts.stagger ?? 0), wob = stag * Math.sin(stag * 18), down = smooth(clamp01(opts.down ?? 0));
-    const kneel = smooth(clamp01(opts.kneel ?? 0));
+    // held stances (the played match): blocking — down on one knee, the stick flat across; a one-timer — the stick
+    // cocked; calling for the puck — the blade tapping the ice; vision — wide, the stick out in front; hustle — leaning
+    // into a burst; the manager's stickhandling turns the shoulders with the puck
+    const stw = smooth(clamp01(opts.stanceT ?? 0)), st = opts.stance;
+    const blk = st === 'block' ? stw : 0, ot = st === 'oneTimer' ? stw : 0, call = st === 'call' ? stw : 0, vis = st === 'vision' ? stw : 0, hus = st === 'hustle' ? stw : 0;
+    const hdl = Math.max(-1, Math.min(1, opts.handle ?? 0)), shove = w('push'), now = opts.now ?? 0;
+    const kneel = Math.max(smooth(clamp01(opts.kneel ?? 0)), blk * .9);
     // Deeper knee bend on a hard stride, a little bob with every push.
     const crouch = lerp(.1 + .07 * amp + .012 * amp * Math.cos(phase * 2), .02, cheer) + Math.abs(bank) * .08 + Math.abs(deke) * .06 + chk * .1 + poke * .07
-      + toe * .08 + btw * .16 + spin * .12 + hip * .14 - pin * .04 + lift * .05 - stag * .03 + rch * .14 + down * .22 + kneel * .42;
+      + toe * .08 + btw * .16 + spin * .12 + hip * .14 - pin * .04 + lift * .05 - stag * .03 + rch * .14 + down * .22 + kneel * .42
+      + ot * .06 + vis * .08 + hus * .04 + Math.abs(hdl) * .05 + shove * .05;
     this.rig.position.set(.035 * Math.sin(phase) * amp * (1 - cheer) + bank * .1 + (opts.deke ?? 0) * .12 + wob * .08 + hip * .12 * m, LIFT - crouch, 0);
     // Shot profile: load (stick back, shoulders closed), whip through the puck, follow through.
     const s = shot === undefined ? -9 : shot;
     // a shot fake: the windup comes up and is held, the puck stays on the blade
     const load = Math.max(s < -1 ? 0 : s < -.35 ? smooth((s + 1) / .65) : s < 0 ? 1 - smooth((s + .35) / .35) : 0, smooth(Math.min(1, fake * 1.4)));
     const follow = s < 0 ? 0 : s < .5 ? smooth(s / .5) : 1 - smooth((s - 1.1) / .8);
-    const size = kind === 'pass' ? .55 : kind === 'tip' ? .3 : kind === 'slap' ? 1.25 : 1;
+    const size = kind === 'pass' ? .55 : kind === 'saucer' ? .65 : kind === 'tip' ? .3 : kind === 'slap' ? 1.25 : 1;
     const back = kind === 'backhand';
     // a body check turns the lead shoulder (the one away from the stick) into the man; a poke reaches with the top hand
     const twist = ((back ? .45 : -.55) * load + (back ? -.4 : .4) * follow) * size + deke * .5 + chk * .5 - poke * .3
-      + toe * .3 + (mv === 'between' ? Math.sin(2 * Math.PI * mu) * .35 : 0) + hip * .9 + pin * .35 + wob * .3 - rch * .45;
-    const lean = lerp(.2 + .14 * amp + .1 * load * size, -.05, cheer) + chk * .22 + poke * .28 + btw * .25 + spin * .2 + toe * .1 - pin * .05 + lift * .18 - stag * .35 + rch * .42 - down * .45;
+      + toe * .3 + (mv === 'between' ? Math.sin(2 * Math.PI * mu) * .35 : 0) + hip * .9 + pin * .35 + wob * .3 - rch * .45
+      - ot * .4 + hdl * .22 * m;
+    const lean = lerp(.2 + .14 * amp + .1 * load * size, -.05, cheer) + chk * .22 + poke * .28 + btw * .25 + spin * .2 + toe * .1 - pin * .05 + lift * .18 - stag * .35 + rch * .42 - down * .45
+      - blk * .2 + vis * .06 + hus * .16 + shove * .22 + Math.abs(hdl) * .08;
     // Shoulders counter-rotate the stride a little (real skaters swing the upper body against the legs).
-    const swing = .07 * amp * Math.sin(phase) * (1 - load) * (1 - follow) * (1 - cheer);
+    const swing = .07 * amp * Math.sin(phase) * (1 - load) * (1 - follow) * (1 - cheer) * (1 + 1.6 * hus) * (1 - blk);
     this.turn('Abdomen', _t1.setFromAxisAngle(Z, -bank * .45 - (opts.deke ?? 0) * .25 - hip * .35 * m + wob * .2).multiply(_t2.setFromAxisAngle(X, lean * .55)));
     this.turn('Torso', _t1.setFromAxisAngle(Y, (twist * .6 + swing) * m).multiply(_t2.setFromAxisAngle(X, lean * .3)).multiply(_q.setFromAxisAngle(Z, -bank * .35)));
     this.turn('Chest', _t1.setFromAxisAngle(Y, (twist * .4 + swing * .6) * m).multiply(_t2.setFromAxisAngle(X, lean * .25)));
@@ -371,7 +380,7 @@ export class PlayerFigure {
     [1, -1].forEach((side, i) => {
       const ph = phase + (i ? Math.PI : 0), push = Math.max(0, Math.sin(ph)), backS = Math.sin(ph);
       // Push out to the side and back, recover low and forward; the inside skate carries the turn.
-      const wide = (.17 + .2 * push * amp) * side + brace * .07 * side + bank * .12 + (btw * .14 + hip * .1 + pin * .06 + stag * .08 + down * .14 + rch * .08) * side;
+      const wide = (.17 + .2 * push * amp) * side + brace * .07 * side + bank * .12 + (btw * .14 + hip * .1 + pin * .06 + stag * .08 + down * .14 + rch * .08 + vis * .08) * side;
       const lift = .065 * amp * smooth(Math.max(0, -Math.sin(ph + .5)));
       feet[i].set(wide, .023 + LIFT * .2 + lift, .08 - .28 * amp * backS);
       yaw[i] = side * (.1 + .32 * amp * push) + bank * .3;
@@ -414,6 +423,31 @@ export class PlayerFigure {
       const up = smooth(mu / .5);
       carry = mixV(carry, vec(-.2, .05 + .4 * up, 1.35), lift); carryTop = mixV(carryTop, vec(.05, .82 - crouch, .55), lift);
     }
+    if (shove > 0) {
+      // a push check: the stick held across in both hands at the chest, shoved out into the man
+      carry = mixV(carry, vec(-.95, .92 - crouch, .5 + .3 * shove), Math.min(1, shove * 1.5)); carryTop = mixV(carryTop, vec(.38, .98 - crouch, .38 + .3 * shove), Math.min(1, shove * 1.5));
+    }
+    if (blk > 0) {
+      // down to block: the stick laid flat across in front, the shaft low
+      carry = mixV(carry, vec(-.85, .02, .5), blk); carryTop = mixV(carryTop, vec(.38, .5, .42), blk);
+    }
+    if (ot > 0) {
+      // a one-timer coming: the stick cocked back off the ice, ready to swing through
+      carry = mixV(carry, vec(-.78, .7, -.15), ot); carryTop = mixV(carryTop, vec(.12, 1.06 - crouch, .24), ot);
+    }
+    if (call > 0) {
+      // «Пас!»: the blade tapping the ice
+      const tap = Math.pow(Math.max(0, Math.sin(now * 13)), 2);
+      carry = mixV(carry, vec(-.5, .16 * tap, .95), call); carryTop = mixV(carryTop, vec(.1, 1.05 - crouch, .32), call);
+    }
+    if (vis > 0) {
+      // the defensive stance: the stick out in front on the ice, in the lane
+      carry = mixV(carry, vec(-.3, 0, 1.38), vis); carryTop = mixV(carryTop, vec(.06, .98 - crouch, .52), vis);
+    }
+    if (hus > 0) {
+      // a burst: the stick in close, swinging with the stride
+      carry = mixV(carry, vec(-.45 + .12 * Math.sin(phase), .05, .75), hus * .7); carryTop = mixV(carryTop, vec(.14, 1.0 - crouch, .22), hus * .6);
+    }
     if (stag > 0) { carry = mixV(carry, vec(-.75, .35, .6), stag * .6); carryTop = mixV(carryTop, vec(.2, 1.15 - crouch, .25), stag * .5); }
     if (rch > 0) {
       // the stretch: the top hand shoots the stick out to the puck (or straight ahead), the blade flat on the ice
@@ -432,6 +466,7 @@ export class PlayerFigure {
       if (kind === 'slap') { wind = vec(-.65, 1.75, -.6); windTop = vec(.12, 1.0, .3); } // full backswing: blade high above and behind the shoulder
       else if (back) { wind = vec(.32, .04, carry.z - .5); windTop = vec(-.12, 1.0, .2); } // puck pulled to the backhand side
       else if (kind === 'pass') { wind = vec(carry.x - .08, .02, carry.z - .32); windTop = vec(carryTop.x, carryTop.y, carryTop.z - .05); }
+      else if (kind === 'saucer') { wind = vec(carry.x - .12, .03, carry.z - .4); windTop = vec(carryTop.x + .04, carryTop.y - .04, carryTop.z - .08); } // the blade cupped under the puck
       else if (kind === 'tip') { wind = vec(carry.x + .05, .12, carry.z + .05); windTop = vec(carryTop.x, carryTop.y + .02, carryTop.z); }
       else {
         // With the puck on the blade the windup is a short drag behind it, blade low (wrist/snap); without, a full backswing.
@@ -445,6 +480,7 @@ export class PlayerFigure {
       const f: [T.Vector3, T.Vector3] = kind === 'slap' ? [vec(.05, 1.3, 1.15), vec(.42, 1.05, .55)]
         : back ? [vec(.8, 1.05, 1.0), vec(-.18, 1.0, .5)]
         : kind === 'pass' ? [vec(-.2, .1, 1.35), vec(.24, .95, .6)]
+        : kind === 'saucer' ? [vec(-.22, .5, 1.3), vec(.26, 1.0, .58)] // the blade opens and lifts: the puck flips up and spins
         : kind === 'tip' ? [vec(-.35, .35, 1.3), vec(.15, 1.0, .5)]
         : kind === 'snap' ? [vec(-.15, .7, 1.3), vec(.32, .98, .6)]
         : [vec(-.08, 1.0, 1.25), vec(.36, .98, .6)];
@@ -617,6 +653,16 @@ export class PlayerFigure {
       case 'fist': R = vec(-sx - .55, sy + .05, sz + .25); PR = vec(0, -1, -.3); break;
       case 'icing': L = vec(-.12, sy - .08, front - .1); R = vec(.12, sy - .1, front - .08); PL = poleDown(1); PR = poleDown(-1); break;
       case 'washout': { const k = osc(7); L = vec(sx + .25 + .3 * k, sy - .05, front); R = vec(-sx - .25 - .3 * k, sy - .05, front); PL = vec(.3, -1, -.3); PR = vec(-.3, -1, -.3); break; }
+      // elbowing: the left hand taps the right elbow, held out at the side
+      case 'elbow': { const k = Math.abs(osc(8)); R = vec(-sx - .12, chest + .02, front + .1); L = vec(-sx + .02 + .05 * k, chest - .04, front - .02); PL = poleDown(1); PR = vec(-.2, -1, .2); break; }
+      // a check to the head: the open hand taps the side of the helmet
+      case 'head': R = vec(-.2, sy + .3 + .03 * osc(9), sz + .02); PR = vec(-.3, .8, -.2); break;
+      // checking from behind: both arms pushed out from the chest, palms forward
+      case 'behind': { const k = (osc(6) + 1) / 2; L = vec(.14, sy - .02, front + .1 + .28 * k); R = vec(-.14, sy - .02, front + .1 + .28 * k); PL = vec(.1, 1, .1); PR = vec(-.1, 1, .1); break; }
+      // kneeing: the hand slaps the knee
+      case 'knee': R = vec(-.14, .62 + .06 * Math.abs(osc(8)), sz + .28); PR = poleDown(-1); break;
+      // delay of game: the open hand across the chest, then straight out in front
+      case 'delay': { const k = smooth(Math.min(1, Math.max(0, (t - .5) / .4))); R = vec(-sx + (sx * 1.6) * (1 - k), chest + .04 + .1 * k, front + .02 + .45 * k); PR = vec(0, 1, .1); break; }
       case 'shake': R = vec(-.1, chest - .14 + .035 * osc(13), front + .42); PR = poleDown(-1); break;
       case 'ready': case 'drop': { const d = g === 'drop' ? smooth(Math.min(1, t / .18)) : 0; R = vec(-.06, sy - .3 - .2 * d, front + .3); PR = poleDown(-1); L = vec(.22, sy - .55, sz + .25); break; }
       default: break;

@@ -42,6 +42,13 @@ const KEY_HELP: [string, string][] = [
   ['Пробел / J', 'бросок: держать — сильнее (щелчок), отпустить — бросок; без шайбы в обороне — силовой приём'],
   ['K / E', 'пас в сторону стика; держать — пас верхом; в обороне — смена игрока; в атаке без шайбы — «дай пас»'],
   ['L / Q', 'финт (с рывком — вертушка, стик назад — протяжка, дважды — между ног); в замахе — ложный замах; в обороне — отбор клюшкой (сзади — подбить клюшку)'],
+  ['U / Z', 'модификатор (как LB): в обороне — блокировать бросок (держать); с шайбой: + K/E — пас верхом, + L/Q — особые финты (стик назад — между ног, вбок — протяжка, прямо — ложный бросок)'],
+  ['I / X', 'в обороне — подбить клюшку'],
+  ['O / Y', 'в обороне — прижать к борту'],
+  ['H / 1', 'в обороне — толчок (Пробел/J — силовой приём плечом)'],
+  ['M / 3', 'контроль обзора (держать): лицом к шайбе, отход спиной'],
+  ['N / 2', 'ускорение (держится, пока катитесь; ещё раз — выкл.)'],
+  ['Пробел без шайбы', 'в атаке — держать стик для броска в одно касание (пас прилетит — бросок сразу)'],
   ['F', 'вбрасывание: нажмите, когда судья бросает шайбу (Пробел и K тоже работают, но окно уже)'],
   ['C / Tab', 'сменить игрока (к шайбе или в сторону стика); в обороне смена на защитника идёт сама'],
   ['V', 'смена звена'],
@@ -53,7 +60,8 @@ const KEY_HELP: [string, string][] = [
   ['Мышь: ЛКМ', 'бросок (держать — сильнее); в обороне — силовой приём'],
   ['ЛКМ + провести', 'клюшка, как правый стик: вниз и вверх — щелчок, рывок вверх — кистевой, вбок — финт'],
   ['Мышь: ПКМ', 'пас к курсору (держать — верхом); в обороне — смена на игрока у курсора'],
-  ['Колесо / средняя', 'колесо — приблизить / отдалить камеру; средняя кнопка — финт'],
+  ['Колесо / средняя', 'колесо — приблизить / отдалить камеру; средняя кнопка — финт, в обороне — отбор клюшкой'],
+  ['Боковые кнопки', '«назад» — финт, «вперёд» — сменить игрока; остальное — клавишами выше (мышь + клавиатура)'],
 ];
 /** The gamepad: the NHL 25/26 scheme (playInput.ts). */
 const PAD_HELP: [string, string][] = [
@@ -78,6 +86,7 @@ const PAD_HELP: [string, string][] = [
   ['A', 'подбить клюшку'],
   ['Правый стик вверх', 'толчок'],
   ['Правый стик вниз и вверх', 'силовой приём плечом'],
+  ['B', 'силовой приём кнопкой (плечом, бедром или к борту — по ситуации)'],
   ['D-pad вверх / вниз', 'форчекинг / выход из зоны (переключение тактики)'],
   ['D-pad влево', 'смена пары защитников'],
   ['Прочее', ''],
@@ -462,7 +471,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
           </div>
         )}
 
-        {phase === 'playing' && touchUI && !paused && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} faceoff={!!hud?.faceoff} />}
+        {phase === 'playing' && touchUI && !paused && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} faceoff={!!hud?.faceoff} context={hud?.context ?? 'carry'} />}
       </main>
 
       {/* Intro: what to press */}
@@ -596,6 +605,7 @@ function Controls({ device }: { device: InputDevice }) {
         <>
           <p className="mb-1 text-muted">Слева — стик (коснитесь и ведите пальцем), в центре справа — <b className="text-text">клюшка</b>, как правый стик в NHL, у края — кнопки <b className="text-text">Бросок</b> (держать — сильнее), <b className="text-text">Пас</b>, <b className="text-text">Финт</b>, <b className="text-text">Смена</b> и <b className="text-text">Рывок</b>. Подписи кнопок меняются: в обороне «Бросок» — силовой приём, «Финт» — отбор клюшкой.</p>
           <p className="mb-1 text-muted" data-play-skill-help>Клюшка, как правый стик в NHL: проведите пальцем вниз и резко вверх — <b className="text-text">щелчок</b> (чем дольше внизу — тем сильнее, полная сила примерно за треть секунды); короткий рывок вверх — <b className="text-text">кистевой</b>; палец сбоку — ведение шайбы, рывок вбок — <b className="text-text">финт</b>, вбок и сразу обратно — <b className="text-text">между ног</b>, вниз и вбок — <b className="text-text">протяжка</b>, круг — <b className="text-text">вертушка</b>, вниз и отпустить — <b className="text-text">ложный замах</b>. Кнопка <b className="text-text">Финт</b>: обычный финт, с зажатым «Рывком» — вертушка, второе нажатие сразу после финта — между ног, стик назад — протяжка. В обороне рывок клюшкой или «Отбор» — отбор шайбы (сбоку и сзади — подбить клюшку); без шайбы в атаке клюшка вниз — готов к броску в одно касание. Метка на воротах показывает, куда полетит бросок: целится стик движения.</p>
+          <p className="mb-1 text-muted" data-play-extra-help>Над основными кнопками — дополнительные, по ситуации. С шайбой: <b className="text-text">Верхом</b> (держать: «Пас» — пас верхом, клюшка или «Финт» — особые финты, как LB) и <b className="text-text">Ускор.</b>; без шайбы в атаке — <b className="text-text">Ускор.</b>, а основные кнопки становятся «Дай пас» и «В касание» (держать — стик готов к броску с лёта). В обороне: <b className="text-text">Блок</b> (держать), <b className="text-text">Подбить</b> клюшку, <b className="text-text">К борту</b>, <b className="text-text">Толчок</b>, <b className="text-text">Обзор</b> (держать — лицом к шайбе).</p>
           <p className="text-muted">На вбрасывании появляется большая кнопка <b className="text-text">Вбрасывание</b> — нажмите её, когда судья бросает шайбу. В обороне управление само переходит к защитнику между шайбой и воротами.</p>
         </>
       ) : (
@@ -678,11 +688,19 @@ function FloatStick({ className, R, hint, onVec, data }: { className: string; R:
  * for a slap / snap shot, flick for a wrist shot, sideways for dekes, a poke check on defence) in the middle of
  * the right half, and the buttons at the right edge.
  */
-type TouchKey = 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff';
+type TouchKey = 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff' | 'lb' | 'lift' | 'pin' | 'push' | 'vision' | 'hustle';
+/** The extra buttons above the main ones, by the situation (the gamepad's NHL buttons). */
+const TOUCH_EXTRA: Record<'carry' | 'support' | 'defend', [TouchKey, string, string][]> = {
+  carry: [['lb', 'Верхом', 'держать: пас верхом, финты — особые'], ['hustle', 'Ускор.', 'ускорение']],
+  support: [['hustle', 'Ускор.', 'ускорение']],
+  defend: [['lb', 'Блок', 'держать: блокировать бросок'], ['lift', 'Подбить', 'подбить клюшку'], ['pin', 'К борту', 'прижать к борту'], ['push', 'Толчок', 'толчок'], ['vision', 'Обзор', 'держать: лицом к шайбе, спиной назад']],
+};
 /** The shortest press a touch button gives the rink (ms): several of its 1/60 s steps. */
 const TAP_MS = 110;
 
-function TouchControls({ touch, labels, onCommand, pulled, faceoff }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean; faceoff: boolean }) {
+function TouchControls({ touch, labels, onCommand, pulled, faceoff, context = 'carry' }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean; faceoff: boolean; context?: 'carry' | 'support' | 'defend' }) {
+  // a button that disappears with the situation (defence → attack) is let go
+  useEffect(() => { for (const k of ['lb', 'lift', 'pin', 'push', 'vision', 'hustle'] as const) if (!TOUCH_EXTRA[context].some(([x]) => x === k)) touch.current[k] = false; }, [context, touch]);
   useEffect(() => () => { touch.current = emptyTouch(); }, [touch]);
   useEffect(() => { if (!faceoff) touch.current.faceoff = false; }, [faceoff, touch]);
   // A quick tap is held down for a moment: a press and a release inside one frame would never reach the rink
@@ -721,6 +739,9 @@ function TouchControls({ touch, labels, onCommand, pulled, faceoff }: { touch: R
         <button type="button" className={cn(btn, 'col-start-1 row-start-2 text-[11px]')} {...hold('sprint')} data-touch="sprint">Рывок</button>
         <button type="button" className={cn(btn, 'col-start-2 row-start-2 text-[11px]')} {...hold('pass')} data-touch="pass">{labels.pass}</button>
         <button type="button" className={cn(btn, 'col-start-1 col-span-2 row-start-3 text-sm bg-accent/60 border-accent/80')} {...hold('shoot')} data-touch="shoot">{labels.shoot}</button>
+      </div>
+      <div className="absolute right-[max(.75rem,env(safe-area-inset-right))] bottom-[calc(max(.75rem,env(safe-area-inset-bottom))+220px)] pointer-events-auto grid grid-cols-3 gap-1.5 w-[160px]" data-play-extra={context}>
+        {TOUCH_EXTRA[context].map(([k, label, title]) => <button key={k} type="button" title={title} aria-label={title} className={cn(btn, 'h-11 text-[10px] leading-none')} {...hold(k)} data-touch={k}>{label}</button>)}
       </div>
       {/* the draw: one big button next to the others (over the skill-stick zone, idle at a draw), pressed as the puck falls */}
       {faceoff && <button type="button" className={cn(btn, 'z-10 pointer-events-auto absolute right-[calc(max(.75rem,env(safe-area-inset-right))+172px)] bottom-[calc(max(.75rem,env(safe-area-inset-bottom))+56px)] w-36 h-16 text-sm bg-ice/80 border-ice text-bg')} {...hold('faceoff')} data-touch="faceoff">Вбрасывание</button>}

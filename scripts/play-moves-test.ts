@@ -80,7 +80,8 @@ test('the manager\'s control goes to the defender between the puck and the net w
 test('the faceoff button: pressed as the puck drops it wins the draw far more often than a press too early', () => {
   const rate = (timing: 'good' | 'early') => {
     let won = 0, all = 0, cues = new Set<string>();
-    for (let g = 0; g < 2; g++) {
+    // (eight short games: with two the rate swung by ±15% from one seed to the next)
+    for (let g = 0; g < 8; g++) {
       const k = make(30 + g, { userSide: 0, periodMinutes: 6 }), p = priv(k);
       const pad = (k: PlayRink): PadState => {
         const fo = p.fo;

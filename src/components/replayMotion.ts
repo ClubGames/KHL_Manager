@@ -9,7 +9,7 @@ import { toWorld } from './replayCameras';
  * Pure functions (no three.js): ReplayScene turns them into poses, the tests check them in Node.
  */
 export type Touch = { id: string; t0: number; t1: number };
-export type ReleaseKind = 'wrist' | 'snap' | 'slap' | 'backhand' | 'tip' | 'pass';
+export type ReleaseKind = 'wrist' | 'snap' | 'slap' | 'backhand' | 'tip' | 'pass' | 'saucer';
 /** t: puck leaves the blade (clip time 0..1); windup/follow in seconds; (tx, tz): world point the puck goes to. */
 export type Release = { id: string; t: number; kind: ReleaseKind; windup: number; follow: number; tx: number; tz: number; goal?: boolean };
 /** A puck reaching a goalie: clip time and the world point where it passes him. */
@@ -18,10 +18,10 @@ export type MotionPlan = { touches: Touch[]; releases: Release[]; saves: Map<str
 
 /** World x of the goal lines (the nets stand on them). */
 export const NET_X = RINK.length / 2 - RINK.goalLine;
-export const WINDUP: Record<ReleaseKind, number> = { wrist: .32, snap: .2, slap: .55, backhand: .3, tip: .1, pass: .24 };
-export const FOLLOW: Record<ReleaseKind, number> = { wrist: .45, snap: .38, slap: .5, backhand: .45, tip: .25, pass: .32 };
+export const WINDUP: Record<ReleaseKind, number> = { wrist: .32, snap: .2, slap: .55, backhand: .3, tip: .1, pass: .24, saucer: .26 };
+export const FOLLOW: Record<ReleaseKind, number> = { wrist: .45, snap: .38, slap: .5, backhand: .45, tip: .25, pass: .32, saucer: .42 };
 /** Body turned away from the target in the windup (rad): side-on for shots, square for passes; < 0 backhand side. */
-const SIDE_ON: Record<ReleaseKind, number> = { wrist: .55, snap: .45, slap: .95, backhand: -.5, tip: .2, pass: .3 };
+const SIDE_ON: Record<ReleaseKind, number> = { wrist: .55, snap: .45, slap: .95, backhand: -.5, tip: .2, pass: .3, saucer: .35 };
 
 const smooth01 = (v: number) => { const t = clamp(v, 0, 1); return t * t * (3 - 2 * t); };
 

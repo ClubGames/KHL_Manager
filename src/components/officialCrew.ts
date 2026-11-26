@@ -23,7 +23,7 @@ import { RINK } from '../game/rinkGeometry';
  * convention (0 = facing +x, angle = atan2(−dz, dx)). Pure (no three.js): the tests run it in Node.
  */
 export type Gesture = 'none' | 'armUp' | 'point' | 'goal' | 'trip' | 'hook' | 'hold' | 'slash' | 'interference' | 'boarding' | 'charging'
-  | 'highstick' | 'fist' | 'icing' | 'washout' | 'ready' | 'drop' | 'shake';
+  | 'highstick' | 'fist' | 'icing' | 'washout' | 'ready' | 'drop' | 'shake' | 'elbow' | 'head' | 'behind' | 'knee' | 'delay';
 export type OfficialRole = 'ref' | 'line';
 export type Official = {
   role: OfficialRole; x: number; z: number; vx: number; vz: number;
@@ -53,6 +53,11 @@ const toW = (p: { x: number; y: number }) => ({ x: (p.x - 50) * RINK.length / 10
 /** The signal of an infraction, from the penalty's wording (both rinks write it in Russian). */
 export function penaltyGesture(text: string): Gesture {
   const t = text.toLowerCase();
+  if (t.includes('задержка игры') || t.includes('выброс')) return 'delay';
+  if (t.includes('локт')) return 'elbow';
+  if (t.includes('в голову')) return 'head';
+  if (t.includes('сзади')) return 'behind';
+  if (t.includes('колен')) return 'knee';
   if (t.includes('подножк')) return 'trip';
   if (t.includes('задержка клюшкой') || t.includes('крюк')) return 'hook';
   if (t.includes('задержка руками') || t.includes('захват')) return 'hold';
@@ -134,6 +139,10 @@ export class OfficialCrew {
       } else if (p.kind === 'offside') {
         const o = nearest('line', at);
         signal(o, [{ g: 'armUp', dur: 1.1 }, { g: 'point', dur: 1.3, aim: { x: Math.sign(at.x || 1) * (HL - RINK.neutralDot), z: Math.sign(at.z || 1) * RINK.dotOffset } }]);
+      } else if (p.kind === 'out') {
+        // over the glass: the nearest referee stops play
+        const o = nearest('ref', puck);
+        if (!o.hold) signal(o, [{ g: 'armUp', dur: 1.1 }]);
       } else if (p.kind === 'freeze' && !p.text.startsWith('Сирена')) {
         const o = nearest('ref', puck);
         if (!o.hold) signal(o, [{ g: 'armUp', dur: 1.1 }]);

@@ -49,3 +49,24 @@ export const FACEOFF_SPOTS: { center: RinkSpot; end: RinkSpot[]; neutral: RinkSp
 
 /** Ends switch every period (2nd period and the first overtime are played the other way round). */
 export const endsSwitched = (period: number) => period % 2 === 0;
+
+/**
+ * What stands round the ice (KHL arenas), world metres (x along the rink ±30, z across it ±15, the players'
+ * benches on the −z side): boards 1.07 m high; protective glass on top — 1.8 m along the sides, rising through the
+ * corners to 2.4 m behind the nets — except in front of the players' benches, where the players step over the
+ * boards; the protective netting hangs above the glass at both ends. The 3D arena is built to these numbers and the
+ * played match's puck leaves the ice over them.
+ */
+export const BOARDS_H = 1.07;
+/** The players' benches' fronts: |x| between these, on the −z side (home at x −6, visitors at +6, 9 m long). */
+export const BENCH_FRONT: readonly [number, number] = [1.5, 10.5];
+const smoothstep = (e0: number, e1: number, v: number) => { const t = Math.max(0, Math.min(1, (v - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
+export const inBenchFront = (x: number, z: number) => z < 0 && Math.abs(x) > BENCH_FRONT[0] && Math.abs(x) < BENCH_FRONT[1];
+/** Top of the boards + glass at a point of the boards (world metres). */
+export function glassTop(x: number, z: number): number {
+  if (inBenchFront(x, z)) return BOARDS_H;
+  const hl = RINK.length / 2, c = RINK.corner;
+  return BOARDS_H + 1.8 + 0.6 * smoothstep(hl - c - 1, hl - c * 0.35, Math.abs(x));
+}
+/** The protective netting above the glass: behind the nets and round the corners. */
+export const nettingAt = (x: number) => Math.abs(x) > RINK.length / 2 - RINK.corner;

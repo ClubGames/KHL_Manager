@@ -126,12 +126,16 @@ export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: R
 }
 
 /** Moves of the played match the 3D figures act out: dekes (side, toe drag, between the legs, spin-o-rama, shot fake), body checks (shoulder, hip, board pin) and a stick lift. */
-export type LiveMove = 'side' | 'toe' | 'between' | 'spin' | 'fake' | 'shoulder' | 'hip' | 'pin' | 'lift' | 'reach';
+export type LiveMove = 'side' | 'toe' | 'between' | 'spin' | 'fake' | 'shoulder' | 'hip' | 'pin' | 'lift' | 'reach' | 'push';
+/** Held stances of the played match: blocking a shot, a one-timer ready, calling for a pass, the defensive vision stance, a hustle burst. */
+export type LiveStance = 'block' | 'oneTimer' | 'call' | 'vision' | 'hustle';
 export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: Point; goalie?: boolean; box?: boolean; /** facing (unit vector, metres: x along the rink, y across) when the rink AI knows it */ dir?: { x: number; y: number };
   /** the played match: the skater the manager controls; body language 0…1 (a fall, a body check, a poke check) and a deke (−1…1) */
   ctrl?: boolean; fall?: number; check?: number; poke?: number; deke?: number;
   /** the played match: a named move being acted out (deke kinds, body-check kinds, a stick lift) and its progress 0…1; a stagger after a hit 0…1 */
   move?: LiveMove; moveT?: number; stagger?: number;
+  /** the played match: a held stance and its blend 0…1; the manager's stickhandling (the blade forehand −1 … backhand 1 across him) */
+  stance?: LiveStance; stanceT?: number; handle?: number;
   /** how a fallen skater went down (on his back, face first, sideways over the hip) and, sideways, to which side (±1) */
   fallKind?: 'back' | 'front' | 'side'; fallSide?: 1 | -1 }[]; faceoff?: boolean; stopped?: boolean; carrier?: string | null; caption?: string;
   /** during a stoppage: where the official who drops the puck at the next faceoff stands (known from the whistle) */

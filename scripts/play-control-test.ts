@@ -149,7 +149,7 @@ test('the skill stick (right stick / touch): pull back and flick — slap or sna
   const shots: Record<string, number> = {}, dekes: Record<string, number> = {}, through: Record<string, number> = {};
   let pokes = 0;
   const shoot = proto.shoot.bind(k), deke = proto.deke.bind(k), startPoke = proto.startPoke.bind(k);
-  proto.shoot = (a: unknown, ...x: unknown[]) => { if ((a as { id: string }).id === k.ctl) { const kd = String(x[3] ?? 'button'); shots[kd] = (shots[kd] ?? 0) + 1; if (gesture % 8 === 7) through[kd] = (through[kd] ?? 0) + 1; powers.push(Number(x[0])); } return shoot(a, ...x); };
+  proto.shoot = (a: unknown, ...x: unknown[]) => { if ((a as { id: string }).id === k.ctl) { const kd = String(x[3] ?? 'button'); shots[kd] = (shots[kd] ?? 0) + 1; if (gesture % 8 === 7) through[kd] = (through[kd] ?? 0) + 1; if (kd !== 'tip') powers.push(Number(x[0])); } return shoot(a, ...x); };
   proto.deke = (a: unknown, ...x: unknown[]) => { if ((a as { id: string }).id === k.ctl) { const kd = String(x[3] ?? 'side'); dekes[kd] = (dekes[kd] ?? 0) + 1; } return deke(a, ...x); };
   proto.startPoke = (a: unknown) => { if ((a as { id: string }).id === k.ctl) pokes++; return startPoke(a); };
   let f = 0, gesture = 0;
