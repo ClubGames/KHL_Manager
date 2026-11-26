@@ -4,6 +4,7 @@ import { GoalReplay } from './GoalReplay';
 import { prewarmReplays, type FigureRequest } from './replayCache';
 import { arenaDetail, resolveReplayQuality } from './ReplayScene';
 import { getSettings } from '../game/settings';
+import { gameClipsKey, goalClipKey, useGameClips } from '../game/clipStore';
 import { ShootoutBoard } from './Shootout';
 import { goalEventFor } from '../game/live';
 import {
@@ -36,6 +37,8 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
   const s = useGame()!;
   const ui = useUI();
   const [replay, setReplay] = useState<GameEvent | null>(null);
+  // the goals of a game he played or watched himself: the motion of the real goals (stored at the final whistle)
+  const playedClips = useGameClips(gameClipsKey(s.saveId, s.seasonNumber, gameId));
   // Goal replays of this game get their arena and players ready in the background (a setting).
   useEffect(() => {
     const st = getSettings();
@@ -228,7 +231,7 @@ export function GameBox({ gameId, onClose }: { gameId: number; onClose: () => vo
           </div>
         </>
       )}
-      {replay && <GoalReplay event={replay} events={r?.events} home={H} away={A} players={P} onClose={() => setReplay(null)} closeLabel="Закрыть повтор" />}
+      {replay && <GoalReplay event={replay} motionClip={playedClips?.[goalClipKey(replay)]} events={r?.events} home={H} away={A} players={P} onClose={() => setReplay(null)} closeLabel="Закрыть повтор" />}
     </Modal>
   );
 }

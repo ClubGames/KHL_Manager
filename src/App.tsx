@@ -225,7 +225,7 @@ export default function App() {
             : 'text-muted hover:text-text hover:bg-panel2 border-transparent'
     );
     return (
-      <button key={v} onClick={() => switchView(v)} className={cls} title={label}>
+      <button key={v} onClick={() => switchView(v)} className={cls} title={label} aria-current={active ? 'page' : undefined} data-nav-view={v}>
         <span className="relative">
           <Icon name={icon} className={mobile ? 'w-5 h-5' : ''} />
           {badge > 0 && <span className="absolute -top-1.5 -right-2 bg-amber text-bg text-[9px] font-bold px-1 rounded-sm leading-3">{badge}</span>}
@@ -278,13 +278,13 @@ export default function App() {
       ) : (
         <div className="min-h-screen flex land:h-[100dvh] land:min-h-0 land:overflow-hidden">
           {/* Landscape phones: a slim scrollable rail instead of the bottom bar, so the content gets the full height. */}
-          <nav className="hidden land:flex flex-col w-[calc(76px+env(safe-area-inset-left))] shrink-0 border-r border-line bg-panel/90 overflow-y-auto no-scrollbar pl-[env(safe-area-inset-left)]" aria-label="Разделы" data-land-rail>
+          <nav className="hidden land:flex flex-col w-[calc(76px+env(safe-area-inset-left))] shrink-0 border-r border-line bg-panel/90 overflow-y-auto no-scrollbar pl-[env(safe-area-inset-left)]" aria-label="Разделы" data-land-rail data-pad-sections>
             {nav.map((v) => {
               const item = NAV.find((n) => n.id === v);
               const label = RAIL_LABEL[v] ?? item?.label ?? v;
               const icon = v === 'offseason' ? 'trophy' : v === 'format' ? 'code' : item?.icon ?? 'dashboard';
               return (
-                <button key={v} type="button" onClick={() => switchView(v)} aria-current={view === v ? 'page' : undefined} className={cn('flex flex-col items-center gap-0.5 px-1 py-1.5 text-[9.5px] leading-tight border-l-2 shrink-0', view === v ? 'border-ice text-ice bg-ice/5' : 'border-transparent text-muted')}>
+                <button key={v} type="button" onClick={() => switchView(v)} aria-current={view === v ? 'page' : undefined} data-nav-view={v} className={cn('flex flex-col items-center gap-0.5 px-1 py-1.5 text-[9.5px] leading-tight border-l-2 shrink-0', view === v ? 'border-ice text-ice bg-ice/5' : 'border-transparent text-muted')}>
                   <span className="relative">
                     <Icon name={icon} className="w-[18px] h-[18px]" />
                     {v === 'inbox' && inboxTasks.length > 0 && <span className="absolute -top-1.5 -right-2.5 bg-amber text-bg text-[8.5px] font-bold px-0.5 rounded-sm leading-3">{inboxTasks.length}</span>}
@@ -314,7 +314,7 @@ export default function App() {
                 <div className="text-[11px] text-muted">{s.league.season} · {U.record.points} очков</div>
               </div>
             </div>
-            <nav className="flex-1 py-2 overflow-y-auto">{nav.map((v) => navItem(v))}</nav>
+            <nav className="flex-1 py-2 overflow-y-auto" data-pad-sections>{nav.map((v) => navItem(v))}</nav>
             <div className="p-3 border-t border-line text-xs text-muted space-y-1.5">
               <div className="flex justify-between">
                 <span>Бюджет</span>
@@ -418,7 +418,7 @@ export default function App() {
             <div className="p-2.5 sm:p-4 max-w-[1500px] mx-auto land:w-full land:flex-1 land:min-h-0 land:overflow-y-auto land:overscroll-contain land:p-2 land:pr-[max(0.5rem,env(safe-area-inset-right))]" data-view-scroll>{content}</div>
           </main>
 
-          <nav className="lg:hidden land:hidden fixed bottom-0 inset-x-0 z-30 bg-panel/95 backdrop-blur border-t border-line flex justify-around px-1 pb-[env(safe-area-inset-bottom)]" aria-label="Разделы">
+          <nav className="lg:hidden land:hidden fixed bottom-0 inset-x-0 z-30 bg-panel/95 backdrop-blur border-t border-line flex justify-around px-1 pb-[env(safe-area-inset-bottom)]" aria-label="Разделы" data-pad-sections>
             {(s.phase === 'offseason' ? (['dashboard', 'offseason', 'contracts', 'market'] as View[]) : MOBILE_MAIN).map((id) => navItem(id, true))}
             <button
               onClick={() => setMoreOpen(true)}

@@ -394,16 +394,21 @@ export function ReplayScene(props: Props) {
       // Never wait forever (a driver without parallel compile, a slow phone): show what is there after 4 s.
       const giveUp = setTimeout(() => { sceneCompiled = true; figuresPending = false; show(); }, 4000);
       unbind.push(() => clearTimeout(giveUp));
-      // Frame-time governor for the adaptive resolution.
-      let slow = 0, fast = 0, lastFrame = 0;
+      // Frame-time governor for the adaptive resolution (as in the live 3D match): measured against the display's
+      // refresh — a 60 Hz screen never gets under 15 ms and used to stay blurred after one slow moment — and never
+      // below the native pixels on a desktop.
+      const desktop = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches && !window.matchMedia('(pointer: coarse)').matches;
+      const floor = desktop ? Math.max(preset.minDpr, Math.min(maxRatio, 1)) : preset.minDpr;
+      let slow = 0, fast = 0, lastFrame = 0, base = 16.7, lowered = 0;
       controller.current = (time: number) => {
         const now = performance.now(), dt = now - lastFrame; lastFrame = now;
         if (exporting || !ready) return;
         update(time);
         if (preset.adaptive && dt > 0 && dt < 250) {
-          if (dt > 24) { slow++; fast = 0; } else if (dt < 15) { fast++; slow = 0; } else { slow = Math.max(0, slow - 1); fast = Math.max(0, fast - 1); }
-          if (renderer && slow > 20 && ratio > preset.minDpr) { ratio = Math.max(preset.minDpr, ratio - .2); renderer.setPixelRatio(ratio); resize(); slow = 0; }
-          else if (renderer && fast > 120 && ratio < maxRatio) { ratio = Math.min(maxRatio, ratio + .1); renderer.setPixelRatio(ratio); resize(); fast = 0; }
+          base = Math.min(base * 1.0005, Math.max(4, dt));
+          if (dt > Math.max(base * 1.7, 26)) { slow++; fast = Math.max(0, fast - 2); } else if (dt < base * 1.2) { fast++; slow = Math.max(0, slow - 1); } else { slow = Math.max(0, slow - 1); }
+          if (renderer && slow > 30 && ratio > floor && now - lowered > 1500) { ratio = Math.max(floor, ratio - .15); renderer.setPixelRatio(ratio); resize(); slow = 0; fast = 0; lowered = now; }
+          else if (renderer && fast > 90 && ratio < maxRatio) { ratio = Math.min(maxRatio, ratio + .15); renderer.setPixelRatio(ratio); resize(); fast = 0; }
         }
       };
       // Offline frames for the MP4 export: fixed size, exact time and camera, no adaptive resolution.

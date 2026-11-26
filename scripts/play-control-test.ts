@@ -145,23 +145,27 @@ test('the manager controls a skater: the stick moves him, a held shot charges an
 test('the skill stick (right stick / touch): pull back and flick — slap or snap, a flick — wrist shot, sideways — dekes, a circle — spin-o-rama, a flick on defence — a poke', () => {
   const k = make(61, { userSide: 0 }), p = priv(k);
   const proto = k as unknown as { shoot: (...a: unknown[]) => void; deke: (...a: unknown[]) => void; startPoke: (...a: unknown[]) => void };
-  const shots: Record<string, number> = {}, dekes: Record<string, number> = {};
+  const powers: number[] = [];
+  const shots: Record<string, number> = {}, dekes: Record<string, number> = {}, through: Record<string, number> = {};
   let pokes = 0;
   const shoot = proto.shoot.bind(k), deke = proto.deke.bind(k), startPoke = proto.startPoke.bind(k);
-  proto.shoot = (a: unknown, ...x: unknown[]) => { if ((a as { id: string }).id === k.ctl) { const kd = String(x[3] ?? 'button'); shots[kd] = (shots[kd] ?? 0) + 1; } return shoot(a, ...x); };
+  proto.shoot = (a: unknown, ...x: unknown[]) => { if ((a as { id: string }).id === k.ctl) { const kd = String(x[3] ?? 'button'); shots[kd] = (shots[kd] ?? 0) + 1; if (gesture % 8 === 7) through[kd] = (through[kd] ?? 0) + 1; powers.push(Number(x[0])); } return shoot(a, ...x); };
   proto.deke = (a: unknown, ...x: unknown[]) => { if ((a as { id: string }).id === k.ctl) { const kd = String(x[3] ?? 'side'); dekes[kd] = (dekes[kd] ?? 0) + 1; } return deke(a, ...x); };
   proto.startPoke = (a: unknown) => { if ((a as { id: string }).id === k.ctl) pokes++; return startPoke(a); };
   let f = 0, gesture = 0;
-  // one gesture every 90 frames, cycling: slap (held back 40 frames), wrist flick, side flick, side then back the other way, circle, back then sideways, fake
+  // one gesture every 90 frames, cycling (screen terms, NHL style: down = back, up = forward): slap (held down 40
+  // frames, then up), wrist flick up, side flick, side then back the other way, circle, down then sideways, fake,
+  // and a slap swung straight through the centre (a frame or two at rest on the way must not make it a fake)
   const script = (t: number): [number, number] => {
-    const g = gesture % 7;
-    if (g === 0) return t < 10 ? [0, 0] : t < 50 ? [-1, 0] : t < 56 ? [1, 0] : [0, 0];
-    if (g === 1) return t < 10 ? [0, 0] : t < 15 ? [1, 0.1] : [0, 0];
-    if (g === 2) return t < 10 ? [0, 0] : t < 15 ? [0, 1] : [0, 0];
-    if (g === 3) return t < 10 ? [0, 0] : t < 14 ? [0, 1] : t < 17 ? [0, 0] : t < 21 ? [0, -1] : [0, 0];
+    const g = gesture % 8;
+    if (g === 0) return t < 10 ? [0, 0] : t < 50 ? [0, 1] : t < 56 ? [0, -1] : [0, 0];
+    if (g === 1) return t < 10 ? [0, 0] : t < 15 ? [0.1, -1] : [0, 0];
+    if (g === 2) return t < 10 ? [0, 0] : t < 15 ? [1, 0] : [0, 0];
+    if (g === 3) return t < 10 ? [0, 0] : t < 14 ? [1, 0] : t < 17 ? [0, 0] : t < 21 ? [-1, 0] : [0, 0];
     if (g === 4) { if (t < 10 || t > 40) return [0, 0]; const a = ((t - 10) / 26) * Math.PI * 2.3; return [Math.cos(a), Math.sin(a)]; }
-    if (g === 5) return t < 10 ? [0, 0] : t < 30 ? [-1, 0] : t < 36 ? [0, 1] : [0, 0];
-    return t < 10 ? [0, 0] : t < 40 ? [-1, 0] : [0, 0];
+    if (g === 5) return t < 10 ? [0, 0] : t < 30 ? [0, 1] : t < 36 ? [1, 0] : [0, 0];
+    if (g === 6) return t < 10 ? [0, 0] : t < 40 ? [0, 1] : [0, 0];
+    return t < 10 ? [0, 0] : t < 35 ? [0, 1] : t < 38 ? [0, 0] : t < 44 ? [0, -1] : [0, 0];
   };
   const pad = (k: PlayRink): PadState => {
     f++;
@@ -182,11 +186,55 @@ test('the skill stick (right stick / touch): pull back and flick — slap or sna
     return { ...NO_PAD, mx: 0.6, my: 0 };
   };
   run(k, pad, undefined, 600);
-  console.log('   shots', JSON.stringify(shots), 'dekes', JSON.stringify(dekes), 'pokes', pokes);
+  console.log('   shots', JSON.stringify(shots), 'through the centre', JSON.stringify(through), 'dekes', JSON.stringify(dekes), 'pokes', pokes, 'min power', Math.min(...powers).toFixed(2));
   assert.ok((shots.slap ?? 0) + (shots.snap ?? 0) > 0, 'pull back and flick: a slap / snap shot');
+  assert.ok((through.slap ?? 0) + (through.snap ?? 0) > 0, 'a slap swung through the centre still goes');
+  assert.ok(Math.min(...powers) >= 0.6, 'skill-stick shots are hard (no weak shot from a full gesture)');
   assert.ok((shots.wrist ?? 0) > 0, 'a forward flick: a wrist shot');
   for (const kd of ['side', 'between', 'spin', 'toe', 'fake']) assert.ok((dekes[kd] ?? 0) > 0, `skill-stick deke ${kd}`);
   assert.ok(pokes > 0, 'a flick on defence pokes');
+});
+
+test('the manager\'s poke check takes the puck onto his stick; the skill stick carries the puck; the aim marker follows the mouse', () => {
+  const k = make(63, { userSide: 0 }), p = priv(k);
+  type Ag = { id: string; side: 0 | 1; x: number; y: number; fa: number; vx: number; vy: number; act: unknown; cool: number; manual: boolean; stun: number; on: string; goalie: boolean };
+  const raw = k as unknown as { agents: Map<string, Ag>; puck: { x: number; y: number; carrier: Ag | null; dead: boolean }; resolvePoke: (a: Ag) => void; mode: string; tau: number };
+  run(k, () => NO_PAD, undefined, 3);
+  const mine = [...raw.agents.values()].filter(a => a.side === 0 && !a.goalie && a.on === 'ice'), theirs = [...raw.agents.values()].filter(a => a.side === 1 && !a.goalie && a.on === 'ice');
+  const me = mine[0], c = theirs[0];
+  let took = 0, loose = 0;
+  for (let i = 0; i < 60; i++) {
+    c.x = 30; c.y = 15; c.fa = Math.PI; c.vx = c.vy = 0; c.act = null; c.stun = 0;
+    me.x = 31.6; me.y = 15; me.fa = Math.PI; me.vx = me.vy = 0; me.manual = true; me.stun = 0;
+    raw.puck.carrier = c; raw.puck.dead = false; raw.puck.x = 29.3; raw.puck.y = 15; raw.mode = 'play';
+    // facing the carrier from in front: a poke, not a lift
+    me.x = 28.4; me.fa = 0;
+    me.act = { k: 'poke', t0: raw.tau, done: true, lift: false };
+    raw.resolvePoke(me);
+    if (raw.puck.carrier === me) took++; else if (raw.puck.carrier === null) loose++;
+  }
+  console.log(`   pokes: onto his stick ${took}, knocked loose ${loose}`);
+  assert.ok(took > 0 && took > loose, 'a successful poke mostly gives the puck to the poker');
+  // stickhandling and the aim marker: his man with the puck in the zone
+  k.ctl = me.id; me.x = 48; me.y = 15; me.fa = 0; me.vx = me.vy = 0; me.act = null; me.cool = 0;
+  raw.puck.carrier = me; raw.puck.dead = false; raw.mode = 'play';
+  // skating down the screen (across the rink): the stick eased to the right of the screen (a quick flick would be
+  // a deke) puts the puck on that side
+  const lateral = (sx: number) => {
+    for (let i = 0; i < 45; i++) {
+      me.x = 48; me.y = 15; me.fa = Math.PI / 2; me.vx = me.vy = 0; me.act = null; raw.puck.carrier = me; raw.mode = 'play';
+      k.advance(1 / 60, { ...NO_PAD, sx: i < 5 ? 0 : Math.sign(sx) * Math.min(Math.abs(sx), 0.3 + (i - 5) * 0.015), sy: 0 });
+    }
+    return raw.puck.x - me.x;
+  };
+  const r = lateral(0.9), l = lateral(-0.9);
+  console.log(`   stickhandling: stick right ${r.toFixed(2)}, left ${l.toFixed(2)}`);
+  assert.ok(r > 0.25 && l < -0.25, 'the skill stick held to a side carries the puck there');
+  const marker = (y: number) => { me.x = 48; me.y = 15; me.vx = me.vy = 0; raw.puck.carrier = me; raw.mode = 'play'; k.advance(1 / 60, { ...NO_PAD, aimAt: { x: 56, y } }); return k.aimMarker(); };
+  const up = marker(12), down = marker(18);
+  assert.ok(up && down, 'the aim marker is shown with the puck in the zone');
+  assert.ok(up!.z < -0.3 && down!.z > 0.3, `the marker follows the cursor across the net (${up!.z.toFixed(2)} / ${down!.z.toFixed(2)})`);
+  assert.ok(Math.abs(Math.abs(up!.x) - (RINK.length / 2 - RINK.goalLine)) < 0.01, 'the marker sits on the goal line');
 });
 
 test('difficulty changes only the opponents: a star AI beats a rookie AI more often', () => {

@@ -3,8 +3,10 @@ import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App";
 import { initPlatform } from "./platform";
+import { initGamepadNav } from "./gamepadNav";
 
 initPlatform();
+initGamepadNav();
 
 class RootErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
   state: { error: Error | null } = { error: null };

@@ -4,6 +4,7 @@ import type { AttackStyle, ForecheckStyle, Game, GameEvent, Lineup, PullGoaliePo
 import type { BlockKind } from '../game/engine';
 import { blockLen, fmtClock } from '../game/engine';
 import { commitUserResult, makeUserSim, useGame } from '../game/state';
+import { gameClipsKey, goalClipKey, saveGameClips, type GameClips } from '../game/clipStore';
 import { applyEvent, emptyLive, foldEvents, manpower, type LiveStats } from '../game/live';
 import { Button, Icon, Panel, PlayerFace, PosBadge, shortName, TeamLogo, useClosing, useUI } from './ui';
 import { autoReplayFor, getSettings, useSettings } from '../game/settings';
@@ -1388,6 +1389,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               variant="primary"
               size="lg"
               onClick={() => {
+                { const kept: GameClips = {}; for (const e of sim.events) if (e.type === 'goal') { const c = clipFor(e); if (c) kept[goalClipKey(e)] = c; } void saveGameClips(gameClipsKey(s.saveId, s.seasonNumber, game.id), kept); }
                 commitUserResult(game.id, sim.result());
                 onFinished();
               }}

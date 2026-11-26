@@ -5,6 +5,7 @@ import { clamp } from '../game/rinkPlayback';
 import type { PlayerFigure } from './playerModel';
 import { acquireRenderer, addStageLights, compileScene, kitFor, loadModel, onCacheRedraw, releaseRenderer, sharedProps, takeArena, takeFigures, type FigureRequest } from './replayCache';
 import { liveCameraPose, toWorld, ZOOM, type LiveCamera } from './replayCameras';
+import { RINK } from '../game/rinkGeometry';
 
 export { LIVE_CAMERAS, type LiveCamera } from './replayCameras';
 import { releaseHeading } from './replayMotion';
@@ -116,6 +117,14 @@ export function LiveScene3D(props: Props) {
       const ctrlRing = new T.Mesh(ringGeo, ringMat); ctrlRing.rotation.x = -Math.PI / 2; ctrlRing.renderOrder = 2;
       const ctrlArrow = new T.Mesh(arrowGeo, ringMat); ctrlArrow.rotation.x = Math.PI;
       ctrlRing.visible = ctrlArrow.visible = false; scene.add(ctrlRing, ctrlArrow);
+      // The aim marker on the net (NHL style): where the manager's puck carrier would put a shot right now; it
+      // grows and warms from yellow to red as the shot is loaded. Drawn over the net and the goalie.
+      const aimGeo = new T.RingGeometry(.16, .25, 32), aimDot = new T.CircleGeometry(.06, 16);
+      const aimMat = new T.MeshBasicMaterial({ color: '#ffd23f', transparent: true, opacity: .95, depthTest: false, depthWrite: false, side: T.DoubleSide });
+      geometries.push(aimGeo, aimDot); materials.push(aimMat);
+      const aimMark = new T.Group(); aimMark.add(new T.Mesh(aimGeo, aimMat), new T.Mesh(aimDot, aimMat));
+      aimMark.children.forEach(m => { m.renderOrder = 10; }); aimMark.visible = false; scene.add(aimMark);
+      const aimCold = new T.Color('#ffd23f'), aimHot = new T.Color('#ff3b30');
       // Whoever has the puck (either team): a cyan ring under him, wider than the manager's yellow one.
       const carrierGeo = new T.RingGeometry(.74, .9, 48);
       const carrierMat = new T.MeshBasicMaterial({ color: '#2ee6ff', transparent: true, opacity: .85, depthWrite: false, side: T.DoubleSide });
@@ -213,6 +222,14 @@ export function LiveScene3D(props: Props) {
 
         const shown = shownSkaters(f);
         const ctl = shown.find(p => p.ctrl);
+        const am = ai.aimMarker?.() ?? null;
+        aimMark.visible = !!am;
+        if (am) {
+          // a hair in front of the goal line, toward the shooter
+          aimMark.position.set(am.x - Math.sign(am.x) * .06, clamp(am.y, .08, 1.12), am.z);
+          aimMark.scale.setScalar(1 + am.charge * .45 + Math.sin(now / 140) * .05);
+          aimMat.color.copy(aimCold).lerp(aimHot, am.charge);
+        }
         ctrlRing.visible = ctrlArrow.visible = !!ctl;
         if (ctl) { const c = toWorld(ctl.pos); ctrlRing.position.set(c.x, .015, c.z); ctrlArrow.position.set(c.x, 2.35 + Math.sin(now / 180) * .06, c.z); ctrlArrow.rotation.y = now / 600; }
         const holder = f.carrier && !f.stopped ? shown.find(p => p.id === f.carrier && !p.goalie) : undefined;
@@ -329,6 +346,8 @@ export function LiveScene3D(props: Props) {
         if (Math.abs(camera.fov - pose.fov) > .01) { camera.fov = pose.fov; camera.updateProjectionMatrix(); }
         sun.position.set(pose.look.x + 8, 25, pose.look.z + 12); sun.target.position.set(pose.look.x, 0, pose.look.z); sun.target.updateMatrixWorld();
         camera.updateMatrixWorld();
+        // the aim marker always faces the camera (seen from the side the net's plane would hide it)
+        if (aimMark.visible) aimMark.quaternion.copy(camera.quaternion);
         renderer.render(scene, camera);
         if (!readyRef) { readyRef = true; setReady(true); if (figuresDone) tickerRef.current.wait = false; }
       };
@@ -338,16 +357,36 @@ export function LiveScene3D(props: Props) {
         renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); dirty = true;
       };
       observer = new ResizeObserver(resize); observer.observe(element); resize();
-      // Adaptive resolution like the replay: step down while frames are slow, back up with headroom.
-      let slow = 0, fast = 0, prevNow = 0;
+      // The mouse on the ice (the played match aims with it): a screen point → rink percent, through the camera.
+      const ray = new T.Raycaster(), ice = new T.Plane(new T.Vector3(0, 1, 0), 0), hit = new T.Vector3(), ndc = new T.Vector2();
+      const pick = (cx: number, cy: number) => {
+        const r = canvas.getBoundingClientRect();
+        if (!r.width || !r.height) return null;
+        ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+        ray.setFromCamera(ndc, camera);
+        if (!ray.ray.intersectPlane(ice, hit)) return null;
+        return { x: clamp(hit.x / RINK.length * 100 + 50, 0, 100), y: clamp(hit.z / RINK.width * 100 + 50, 0, 100) };
+      };
+      const src = live.current.ai;
+      src.screenPick = pick;
+      unbind.push(() => { if (src.screenPick === pick) src.screenPick = null; });
+      // Adaptive resolution: step down only while frames are really slow for a while, back up with headroom.
+      // Measured against the display's own refresh (a 60 Hz screen never draws faster than 16.7 ms — it used to
+      // never earn its sharpness back after one slow moment, e.g. a rush up the ice), and never below the
+      // screen's native pixels on a desktop (a blurry picture there is worse than a dropped frame).
+      const desktop = typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches && !window.matchMedia('(pointer: coarse)').matches;
+      const floor = desktop ? Math.max(preset.minDpr, Math.min(maxRatio, 1)) : preset.minDpr;
+      let slow = 0, fast = 0, prevNow = 0, base = 16.7, lowered = 0;
       const tick = (now: number) => {
         if (stopped) return;
         const dt = now - prevNow; prevNow = now;
         try { update(now); } catch (e) { console.error(e); failRef.current(); return; }
         if (preset.adaptive && dt > 0 && dt < 250) {
-          if (dt > 24) { slow++; fast = 0; } else if (dt < 15) { fast++; slow = 0; } else { slow = Math.max(0, slow - 1); fast = Math.max(0, fast - 1); }
-          if (renderer && slow > 30 && ratio > preset.minDpr) { ratio = Math.max(preset.minDpr, ratio - .2); renderer.setPixelRatio(ratio); resize(); slow = 0; }
-          else if (renderer && fast > 180 && ratio < maxRatio) { ratio = Math.min(maxRatio, ratio + .1); renderer.setPixelRatio(ratio); resize(); fast = 0; }
+          // the refresh interval: the quickest frames seen (slowly forgiving, a monitor can change)
+          base = Math.min(base * 1.0005, Math.max(4, dt));
+          if (dt > Math.max(base * 1.7, 26)) { slow++; fast = Math.max(0, fast - 2); } else if (dt < base * 1.2) { fast++; slow = Math.max(0, slow - 1); } else { slow = Math.max(0, slow - 1); }
+          if (renderer && slow > 45 && ratio > floor && now - lowered > 2000) { ratio = Math.max(floor, ratio - .15); renderer.setPixelRatio(ratio); resize(); slow = 0; fast = 0; lowered = now; }
+          else if (renderer && fast > 120 && ratio < maxRatio) { ratio = Math.min(maxRatio, ratio + .15); renderer.setPixelRatio(ratio); resize(); fast = 0; }
         }
         raf = requestAnimationFrame(tick);
       };

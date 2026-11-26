@@ -98,3 +98,44 @@ export function detectDevice(padConnected: boolean, touchUI: boolean): InputDevi
 export function anyGamepad(pads: readonly (PadLike | null)[] | null | undefined): boolean {
   return !!pads && pads.some(p => !!p);
 }
+
+/**
+ * The mouse on a PC: the cursor aims (the played match turns it into a point on the ice), the left button shoots
+ * (held — harder) or, dragged, is the skill stick (down and up — a slap shot, a flick up — a wrist shot, sideways
+ * — a deke), the right button passes toward the cursor, the middle (or the «back» side) button dekes, the
+ * «forward» side button switches the player. A left press waits a moment to see whether it becomes a drag.
+ */
+export interface MouseState { x: number; y: number; at: number; lmb: boolean; rmb: boolean; mid: boolean; side: boolean; fwd: boolean; mode: 'none' | 'pending' | 'shot' | 'stick'; ox: number; oy: number; downAt: number; sx: number; sy: number; tapUntil: number }
+export const newMouse = (): MouseState => ({ x: 0, y: 0, at: -1, lmb: false, rmb: false, mid: false, side: false, fwd: false, mode: 'none', ox: 0, oy: 0, downAt: 0, sx: 0, sy: 0, tapUntil: 0 });
+/** A press longer than this without a drag is a shot; a drag beyond DRAG_PX first is the skill stick. */
+const MOUSE_WAIT = 90, DRAG_PX = 12, MOUSE_R = 80;
+export function mouseDown(m: MouseState, button: number, x: number, y: number, now: number) {
+  m.x = x; m.y = y; m.at = now;
+  if (button === 0) { m.lmb = true; m.mode = 'pending'; m.ox = x; m.oy = y; m.downAt = now; m.sx = m.sy = 0; }
+  else if (button === 2) m.rmb = true;
+  else if (button === 1) m.mid = true;
+  else if (button === 3) m.side = true;
+  else if (button === 4) m.fwd = true;
+}
+export function mouseMove(m: MouseState, x: number, y: number, now: number) {
+  m.x = x; m.y = y; m.at = now;
+  if (!m.lmb) return;
+  const dx = x - m.ox, dy = y - m.oy;
+  if (m.mode === 'pending' && Math.hypot(dx, dy) > DRAG_PX) m.mode = 'stick';
+  if (m.mode === 'stick') { const v = stickVector(dx, dy, MOUSE_R); m.sx = v.x; m.sy = v.y; }
+}
+export function mouseUp(m: MouseState, button: number, now: number) {
+  if (button === 0) {
+    // a quick click: still a shot (held a couple of frames so the rink sees the press and the release)
+    if (m.mode === 'pending') m.tapUntil = now + 50;
+    m.lmb = false; m.mode = 'none'; m.sx = m.sy = 0;
+  } else if (button === 2) m.rmb = false;
+  else if (button === 1) m.mid = false;
+  else if (button === 3) m.side = false;
+  else if (button === 4) m.fwd = false;
+}
+export function mousePad(m: MouseState, now: number): PadState {
+  if (m.lmb && m.mode === 'pending' && now - m.downAt > MOUSE_WAIT) m.mode = 'shot';
+  const shoot = (m.lmb && m.mode === 'shot') || now < m.tapUntil;
+  return { mx: 0, my: 0, sx: m.sx, sy: m.sy, shoot, pass: m.rmb, deke: m.mid || m.side, swap: m.fwd, sprint: false };
+}
