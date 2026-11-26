@@ -103,7 +103,11 @@ test('benches: seats for a whole bench on each side and the boxes across the ice
   }
   let crowd = 0; arena.benchCrowd.traverse(o => { if ((o as T.Mesh).isMesh) crowd += ((o as T.Mesh).geometry.getAttribute('position').count); });
   assert.ok(crowd > 5000, `the seated players have bodies (${crowd} vertices)`);
-  assert.ok([...benches].filter(o => (o as T.Mesh).isMesh).length < 60, 'merged per colour: few draw calls');
+  // merged per colour; the coaches (one tinted mesh each: they walk out of the tunnel) and the door panels move
+  // (the dark gaps behind the doors are drawn only while a door is open)
+  const meshes = [...benches].filter(o => (o as T.Mesh).isMesh && o.visible).length;
+  assert.ok(meshes < 75, `merged per colour: few draw calls (${meshes})`);
+  for (const c of arena.coaches) assert.ok(c.group.children.filter(o => (o as T.Mesh).isMesh).length <= 2, 'a coach is one or two meshes');
 });
 
 console.log(`\n${pass} arena view tests passed`);

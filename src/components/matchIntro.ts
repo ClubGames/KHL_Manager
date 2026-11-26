@@ -1,17 +1,24 @@
 import { RINK } from '../game/rinkGeometry';
+import { COACH_DX, COACH_Z, gateDoor, OFFICIALS_DOOR_X, TUNNEL, BENCH } from './arenaBenches';
+import { faceoffCamera, FACEOFF_CAM } from './liveShow';
 
 /**
  * The teams take the ice before the first period (3D), the way a KHL broadcast shows it:
  *
- *  1. the lights go down and the laser show starts; the four officials skate out to the red line;
- *  2. the visitors come out of their gate one after another — the whole dressed team, the starting goalie first —
- *     and circle their half at an easy warm-up pace (long glides, not a sprint);
+ *  1. the lights go down and the laser show starts; the four officials walk out of their corridor (across the ice
+ *     from the benches) through their door and skate to the red line;
+ *  2. the visitors walk out of the dressing-room tunnel behind their bench, through the bench and its door onto the
+ *     ice — the whole dressed team, the starting goalie first — and circle their half at an easy warm-up pace;
+ *     their coaches follow them out of the tunnel to the bench;
  *  3. their reserves peel off to the bench (over the boards onto their seats), the starting five, the goalie and
  *     the captain line up on their blue line facing centre ice; then the home team the same way, louder;
- *  4. the presentation: close-ups of each team's goalie, captain and leader with a caption;
- *  5. the captains skate to centre ice and shake hands with both referees, then with each other;
- *  6. the lights come up and everybody skates to his place for the opening faceoff (a captain who does not start
- *     goes to the bench), where the match takes over.
+ *  4. the anthem: everybody stands in line;
+ *  5. the starting goalies skate to their nets, the officials to their zone in front of the timekeepers (the
+ *     referees in the middle by the boards, a linesman on either side of them);
+ *  6. the captains skate to centre ice and shake hands;
+ *  7. the presentation: close-ups of each team's goalie, captain and leader with this season's numbers;
+ *  8. the lights come up and everybody skates to his place for the opening faceoff (a captain who does not start
+ *     goes to the bench) while the camera comes down from high over the centre circle; the match takes over.
  *
  * Pure (no three.js): times are seconds of real time since the start, positions world metres (origin at centre
  * ice, x along the rink, z across it; the benches on −z, the cameras' side +z), headings the 3D scene's convention
@@ -38,7 +45,9 @@ export type IntroShot = { id: string; side: 0 | 1; kind: 'goalie' | 'captain' | 
 type P2 = { x: number; z: number };
 type Path = { pts: P2[]; cum: number[]; len: number };
 type Team = {
-  side: 0 | 1; end: 1 | -1; out: number; peel: number; arrive: number;
+  side: 0 | 1; end: 1 | -1;
+  /** the first man starts walking out of the tunnel; the first man through the gate; the reserves peel off; all in place */
+  walk: number; out: number; peel: number; arrive: number;
   order: IntroSkater[];
   /** lined up on the blue line: the starting goalie and five, the captain (also when he does not start) */
   lined: IntroSkater[];
@@ -47,18 +56,22 @@ type Team = {
 export type IntroPlan = {
   skaters: IntroSkater[]; teams: [Team, Team];
   /** phase times */
-  t: { officials: number; away: number; home: number; lineup: number; present: number; hands: number; settle: number; length: number };
+  t: { officials: number; away: number; home: number; lineup: number; anthem: number; posts: number; hands: number; present: number; settle: number; length: number };
   shots: IntroShot[];
   /** per skater: the carousel path, his time out of the gate, his peel time and path, the line spot */
-  route: Map<string, { carousel: Path; out: number; peel: number; peelPath: Path; peelDur: number; spot: P2 | null; seat: Seat | null; team: Team }>;
+  route: Map<string, { walk: number; carousel: Path; out: number; peel: number; peelPath: Path; peelDur: number; spot: P2 | null; seat: Seat | null; team: Team }>;
 };
 
 const HL = RINK.length / 2, HW = RINK.width / 2, BLUE = HL - RINK.blueLine;
 /** Skating pace of the warm-up laps (m/s) and the gap between two players coming out (s). */
-export const INTRO_PACE = { lap: 5.2, gap: .5, peel: 4.6, officials: 4.2 };
+export const INTRO_PACE = { lap: 5.2, gap: .5, peel: 4.6, officials: 4.2, walk: 2.4, coach: 1.35 };
+/** How long the anthem plays (s), the goalies' and officials' moves to their places after it, the captains' handshake. */
+export const INTRO_TIMES = { anthem: 8, posts: 5.5, hands: 7.4, settle: 5.4 };
+/** The officials' zone (the referees' crease in front of the timekeepers): the two referees in the middle by the boards, the linesmen either side. */
+export const OFFICIALS_ZONE: readonly P2[] = [{ x: -.65, z: HW - 1.0 }, { x: .65, z: HW - 1.0 }, { x: -2.15, z: HW - .85 }, { x: 2.15, z: HW - .85 }];
 /** Stride length of the entrance's long glides (m per stride cycle): an easy rhythm, not quick little steps. */
 export const INTRO_STRIDE = 5.2;
-const SHOT = 2.7;
+const SHOT = 3.2;
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const smooth = (v: number) => { const t = clamp(v, 0, 1); return t * t * (3 - 2 * t); };
@@ -91,7 +104,15 @@ function bezier(a: P2, b: P2, c: P2, d: P2, n = 40): P2[] {
 }
 
 /** The gate a team comes out of (by its bench, home on the −x side of centre ice). */
-export function gateOf(side: 0 | 1) { return { x: side ? 9.7 : -9.7, z: -HW + .6 }; }
+export function gateOf(side: 0 | 1) { return { x: gateDoor(side).x, z: -HW + .6 }; }
+/** The walk out of the dressing room: out of the tunnel mouth, through the gap in the bench's back wall, over the bench,
+ *  along its floor to the gate and through it onto the ice. `hop` gives the step over the bench seat (height, m). */
+export function tunnelWalk(side: 0 | 1): Path {
+  const gx = TUNNEL.gapX(side), door = gateDoor(side);
+  return path([{ x: gx, z: TUNNEL.z }, { x: gx, z: -(HW + 2.2) }, { x: gx, z: -(HW + .72) }, { x: door.x, z: -(HW + .72) }, { x: door.x, z: -HW + .6 }]);
+}
+const SEAT_Z = [-(HW + 1.78), -(HW + .92)];
+export const walkHop = (z: number, x: number, side: 0 | 1) => (Math.abs(x - TUNNEL.gapX(side)) < .2 && z > SEAT_Z[0] && z < SEAT_Z[1] ? .55 * Math.sin(Math.PI * (z - SEAT_Z[0]) / (SEAT_Z[1] - SEAT_Z[0])) : 0);
 /** Which end a team defends at the start (its starters' side of centre ice in the opening formation). */
 export function homeEnd(skaters: IntroSkater[], side: 0 | 1): 1 | -1 {
   const own = skaters.filter(s => s.side === side && s.start);
@@ -124,16 +145,19 @@ function carousel(side: 0 | 1, end: 1 | -1, lane: number): Path {
 export function planIntro(skaters: IntroSkater[]): IntroPlan {
   const route: IntroPlan['route'] = new Map();
   const officials = 1.6, away = 7;
-  const mk = (side: 0 | 1, out: number): Team => {
+  const walkDur = (side: 0 | 1) => tunnelWalk(side).len / INTRO_PACE.walk;
+  const mk = (side: 0 | 1, walk: number): Team => {
     const order = lineup(skaters, side), end = homeEnd(skaters, side);
     const captain = order.find(s => s.captain && !s.goalie) ?? null;
     const lined = order.filter(s => s.start || s === captain);
+    const out = walk + walkDur(side);
     const last = out + Math.max(0, order.length - 1) * INTRO_PACE.gap;
     const peel = last + 4.5;
-    return { side, end, out, peel, arrive: peel, order, lined, captain };
+    return { side, end, walk, out, peel, arrive: peel, order, lined, captain };
   };
   const A = mk(1, away);
-  const H = mk(0, A.peel + 1.2);
+  // the home team comes through its gate a moment after the visitors have peeled off (it starts walking before that)
+  const H = mk(0, A.peel + 1.2 - walkDur(0));
   for (const team of [A, H]) {
     // the line on the blue line: in the order they reach it (by where they are on the loop when they peel off)
     const spots = new Map<string, P2>();
@@ -142,7 +166,7 @@ export function planIntro(skaters: IntroSkater[]): IntroPlan {
     team.order.forEach((s, i) => {
       const c = carousel(team.side, team.end, i % 3 === 2 ? 1 : 0);
       const out = team.out + i * INTRO_PACE.gap;
-      route.set(s.id, { carousel: c, out, peel: peelAt(i), peelPath: c, peelDur: 0, spot: null, seat: s.seat ?? null, team });
+      route.set(s.id, { walk: team.walk + i * INTRO_PACE.gap, carousel: c, out, peel: peelAt(i), peelPath: c, peelDur: 0, spot: null, seat: s.seat ?? null, team });
     });
     const byZ = [...team.lined].sort((p, q) => lapAt(route.get(p.id)!, route.get(p.id)!.peel).z - lapAt(route.get(q.id)!, route.get(q.id)!.peel).z);
     byZ.forEach((s, k) => spots.set(s.id, { x: team.end * (BLUE + .9), z: (k - (m - 1) / 2) * 1.75 }));
@@ -161,8 +185,9 @@ export function planIntro(skaters: IntroSkater[]): IntroPlan {
       team.arrive = Math.max(team.arrive, r.peel + r.peelDur + (spot ? .6 : r.seat ? .9 : 0));
     }
   }
-  const lineupT = H.peel, present = H.arrive + .6;
-  // the close-ups: visitors first — the goalie, the captain, the leader — then the home team
+  const lineupT = H.peel, anthem = H.arrive + .6, posts = anthem + INTRO_TIMES.anthem, hands = posts + INTRO_TIMES.posts;
+  const present = hands + (A.captain && H.captain ? INTRO_TIMES.hands : .4);
+  // the close-ups: visitors first — the goalie (at his net by now), the captain, the leader — then the home team
   const shots: IntroShot[] = [];
   let t = present;
   for (const team of [A, H]) {
@@ -171,8 +196,8 @@ export function planIntro(skaters: IntroSkater[]): IntroPlan {
     const list: [IntroSkater | null | undefined, IntroShot['kind']][] = [[g, 'goalie'], [team.captain, 'captain'], [leader, 'leader']];
     for (const [s, kind] of list) if (s) { shots.push({ id: s.id, side: team.side, kind, t0: t, t1: t + SHOT }); t += SHOT; }
   }
-  const hands = t + .4, settle = hands + (A.captain && H.captain ? 11.4 : 1.5);
-  return { skaters, teams: [H, A], t: { officials, away, home: H.out, lineup: lineupT, present, hands, settle, length: settle + 5 }, shots, route };
+  const settle = t + .3;
+  return { skaters, teams: [H, A], t: { officials, away, home: H.out, lineup: lineupT, anthem, posts, hands, present, settle, length: settle + INTRO_TIMES.settle }, shots, route };
 }
 
 /** Where a skater is on his carousel at time t (with a gentle start out of the gate). */
@@ -202,24 +227,19 @@ function keyed(keys: Key[], t: number): { x: number; z: number; heading: number 
   return { x: z.x, z: z.z, heading: z.face ?? null, speed: 0 };
 }
 
-/** The captains' handshakes at centre ice: their key points, and the referees'. */
+/** The captains' handshake at centre ice: their key points (out of the line, the shake, back into it). */
 function handshake(plan: IntroPlan) {
   const [H, A] = plan.teams, t0 = plan.t.hands;
   if (!H.captain || !A.captain) return null;
-  const eh = H.end, ea = A.end;
   const spot = (team: Team) => plan.route.get(team.captain!.id)!.spot!;
-  const sh = spot(H), sa = spot(A);
   const faceIn = (e: number) => (e > 0 ? Math.PI : 0); // toward centre from his end
-  const faceOut = (e: number) => (e > 0 ? 0 : Math.PI);
-  const capH: Key[] = [{ t: t0, ...sh, face: faceIn(eh) }, { t: t0 + 2.2, x: eh * .85, z: -1, face: faceIn(eh) }, { t: t0 + 3.8, x: eh * .85, z: -1, face: faceIn(eh) }, { t: t0 + 5, x: eh * .85, z: 1, face: faceIn(eh) }, { t: t0 + 6.6, x: eh * .85, z: 1, face: faceIn(eh) }, { t: t0 + 7.6, x: eh * .5, z: 0, face: faceIn(eh) }, { t: t0 + 9.2, x: eh * .5, z: 0, face: faceIn(eh) }, { t: t0 + 11.2, ...sh, face: faceIn(eh) }];
-  const capA: Key[] = [{ t: t0, ...sa, face: faceIn(ea) }, { t: t0 + 2.2, x: ea * .85, z: 1, face: faceIn(ea) }, { t: t0 + 3.8, x: ea * .85, z: 1, face: faceIn(ea) }, { t: t0 + 5, x: ea * .85, z: -1, face: faceIn(ea) }, { t: t0 + 6.6, x: ea * .85, z: -1, face: faceIn(ea) }, { t: t0 + 7.6, x: ea * .5, z: 0, face: faceIn(ea) }, { t: t0 + 9.2, x: ea * .5, z: 0, face: faceIn(ea) }, { t: t0 + 11.2, ...sa, face: faceIn(ea) }];
-  // referee 1 on z −1 first faces the home captain, then the visitors'; referee 2 on z +1 the other way round
-  const r1: Key[] = [{ t: t0 + 1.8, x: 0, z: -1, face: faceOut(eh) }, { t: t0 + 3.8, x: 0, z: -1, face: faceOut(eh) }, { t: t0 + 5, x: 0, z: -1.01, face: faceOut(ea) }, { t: t0 + 6.6, x: 0, z: -1.01, face: faceOut(ea) }, { t: t0 + 7.6, x: 0, z: -2.6, face: -Math.PI / 2 }];
-  const r2: Key[] = [{ t: t0 + .9, x: 1.5, z: -2.4 }, { t: t0 + 2, x: 0, z: 1, face: faceOut(ea) }, { t: t0 + 3.8, x: 0, z: 1, face: faceOut(ea) }, { t: t0 + 5, x: 0, z: 1.01, face: faceOut(eh) }, { t: t0 + 6.6, x: 0, z: 1.01, face: faceOut(eh) }, { t: t0 + 7.6, x: 0, z: 2.6, face: -Math.PI / 2 }];
+  const keys = (team: Team): Key[] => {
+    const e = team.end, sp = spot(team), f = faceIn(e);
+    return [{ t: t0, ...sp, face: f }, { t: t0 + 2.5, x: e * .5, z: 0, face: f }, { t: t0 + 4.3, x: e * .5, z: 0, face: f }, { t: t0 + 6.9, ...sp, face: f }];
+  };
   const bell = (a: number, b: number, t: number) => (t > a && t < b ? Math.sin(Math.PI * smooth((t - a) / (b - a))) : 0);
-  const shake = (t: number) => bell(t0 + 2.1, t0 + 3.9, t) + bell(t0 + 4.9, t0 + 6.7, t);
-  const shakeCaps = (t: number) => shake(t) + bell(t0 + 7.5, t0 + 9.3, t);
-  return { capH, capA, r1, r2, shake, shakeCaps, ids: [H.captain.id, A.captain.id] };
+  const shakeCaps = (t: number) => bell(t0 + 2.4, t0 + 4.4, t);
+  return { capH: keys(H), capA: keys(A), shakeCaps, ids: [H.captain.id, A.captain.id] };
 }
 
 /** Where everyone is at time t of the entrance. */
@@ -231,7 +251,12 @@ export function introPoses(plan: IntroPlan, t: number): Map<string, IntroPose> {
   // before the settle: the entrance itself
   const before = (s: IntroSkater, tt: number): IntroPose => {
     const r = plan.route.get(s.id)!, team = r.team;
-    if (tt < r.out) return hidden(gateOf(s.side));
+    if (tt < r.walk) return hidden({ x: TUNNEL.gapX(s.side), z: TUNNEL.z });
+    if (tt < r.out) {
+      // out of the tunnel at a walk, a step over the bench, through the gate
+      const w = tunnelWalk(s.side), u = Math.min(w.len, (tt - r.walk) * INTRO_PACE.walk), p = along(w, u);
+      return { x: p.x, y: walkHop(p.z, p.x, s.side), z: p.z, heading: head(p.dx, p.dz), speed: INTRO_PACE.walk, visible: true, wave: 0, sit: false, shake: 0 };
+    }
     const faceIn = team.end > 0 ? Math.PI : 0;
     // the captains at centre ice
     if (hs && (s.id === hs.ids[0] || s.id === hs.ids[1]) && tt >= plan.t.hands) {
@@ -240,7 +265,7 @@ export function introPoses(plan: IntroPlan, t: number): Map<string, IntroPose> {
     }
     if (tt < r.peel) {
       const p = lapAt(r, tt), u = tt - r.out;
-      const speed = u < .8 ? INTRO_PACE.lap * u / .8 : INTRO_PACE.lap;
+      const speed = u < .8 ? INTRO_PACE.walk + (INTRO_PACE.lap - INTRO_PACE.walk) * u / .8 : INTRO_PACE.lap;
       // a wave to the crowd as he comes out
       const wave = smooth(u / .4) * (1 - smooth((u - 1.4) / .5)) * .8;
       return { x: p.x, y: 0, z: p.z, heading: head(p.dx, p.dz), speed, visible: true, wave, sit: false, shake: 0 };
@@ -250,6 +275,11 @@ export function introPoses(plan: IntroPlan, t: number): Map<string, IntroPose> {
     const speed = r.peelPath.len / r.peelDur * 1.5 * (1 - v * v);
     if (v < 1) return { x: p.x, y: 0, z: p.z, heading: head(p.dx, p.dz), speed, visible: true, wave: 0, sit: false, shake: 0 };
     if (r.spot) {
+      // after the anthem the starting goalie skates to his net
+      if (s.goalie && s.start && tt >= plan.t.posts) {
+        const k = keyed([{ t: plan.t.posts, x: p.x, z: p.z, face: faceIn }, { t: plan.t.posts + INTRO_TIMES.posts - .3, x: s.x, z: s.z, face: faceIn }], tt);
+        return { x: k.x, y: 0, z: k.z, heading: k.heading ?? faceIn, speed: k.speed, visible: true, wave: 0, sit: false, shake: 0 };
+      }
       // in line, facing centre ice; a nod and the stick up in his close-up
       const shot = plan.shots.find(x => x.id === s.id && tt >= x.t0 && tt < x.t1);
       const wave = shot ? Math.sin(Math.PI * smooth((tt - shot.t0 - .5) / 1.6)) * .45 : 0;
@@ -286,28 +316,50 @@ export function introPoses(plan: IntroPlan, t: number): Map<string, IntroPose> {
   return out;
 }
 
-/** The officials: out from the timekeepers' side to the red line, the referees to the handshakes, then to their places. */
+/** The officials' walk out of their corridor (across the ice from the benches) through their door onto the ice. */
+export function officialsWalk(): Path {
+  return path([{ x: OFFICIALS_DOOR_X, z: TUNNEL.officialsZ }, { x: OFFICIALS_DOOR_X, z: HW + .2 }, { x: OFFICIALS_DOOR_X, z: HW - 1.2 }]);
+}
+
+/** The officials: out of their corridor to the red line for the anthem, then to their zone, then to their places. */
 export function introOfficials(plan: IntroPlan, t: number, places: P2[]): (IntroPose & { gesture: 'none' | 'shake' })[] {
-  const hs = handshake(plan);
-  const S = plan.t.settle;
+  const S = plan.t.settle, P = plan.t.posts, walk = officialsWalk(), walkDur = walk.len / (INTRO_PACE.walk * .9);
   return places.map((p, i) => {
-    const t0 = plan.t.officials + i * .4;
-    const from = { x: (i - 1.5) * .9, z: HW - .6 }, line = { x: 0, z: -2.6 - i * 2.1 };
-    const toCam = -Math.PI / 2;
+    const t0 = plan.t.officials + i * .7;
+    const gate = walk.pts[walk.pts.length - 1], line = { x: 0, z: -2.6 - i * 2.1 }, zone = OFFICIALS_ZONE[i] ?? OFFICIALS_ZONE[0];
+    const toCam = -Math.PI / 2, toIce = Math.PI / 2;
     const at = (tt: number) => {
-      if (tt < t0) return { x: from.x, z: from.z, heading: -Math.PI / 2, speed: 0, shake: 0 };
-      if (hs && i < 2 && tt >= plan.t.hands) {
-        const k = keyed([{ t: plan.t.hands, ...line, face: toCam }, ...(i === 0 ? hs.r1 : hs.r2)], tt);
-        return { x: k.x, z: k.z, heading: k.heading ?? toCam, speed: k.speed, shake: hs.shake(tt) };
-      }
-      const k = keyed([{ t: t0, ...from, face: Math.PI / 2 }, { t: t0 + dist(from, line) / INTRO_PACE.officials * 1.5, ...line, face: toCam }], tt);
-      return { x: k.x, z: k.z, heading: k.heading ?? toCam, speed: k.speed, shake: 0 };
+      if (tt < t0) return { x: walk.pts[0].x, z: walk.pts[0].z, heading: toCam, speed: 0, visible: false };
+      if (tt < t0 + walkDur) { const q = along(walk, (tt - t0) * INTRO_PACE.walk * .9); return { x: q.x, z: q.z, heading: head(q.dx, q.dz), speed: INTRO_PACE.walk * .9, visible: true }; }
+      const k = tt < P
+        ? keyed([{ t: t0 + walkDur, ...gate, face: toIce }, { t: t0 + walkDur + dist(gate, line) / INTRO_PACE.officials * 1.5, ...line, face: toCam }], tt)
+        : keyed([{ t: P + i * .15, ...line, face: toCam }, { t: P + INTRO_TIMES.posts - .6, ...zone, face: toIce }], tt);
+      return { x: k.x, z: k.z, heading: k.heading ?? toCam, speed: k.speed, visible: true };
     };
     const a = at(Math.min(t, S));
     let pose = { ...a };
-    if (t > S) { const k = keyed([{ t: S + .2, x: a.x, z: a.z, face: a.heading }, { t: S + 3.4, x: p.x, z: p.z }], t); pose = { x: k.x, z: k.z, heading: k.heading ?? a.heading, speed: k.speed, shake: 0 }; }
-    return { x: pose.x, y: 0, z: pose.z, heading: pose.heading, speed: pose.speed, visible: t >= t0, wave: 0, sit: false, shake: pose.shake, gesture: pose.shake > .02 ? 'shake' : 'none' };
+    if (t > S) { const k = keyed([{ t: S + .2, x: a.x, z: a.z, face: a.heading }, { t: S + .2 + clamp(dist(a, p) / 5.8, 3.2, INTRO_TIMES.settle - .2), x: p.x, z: p.z }], t); pose = { x: k.x, z: k.z, heading: k.heading ?? a.heading, speed: k.speed, visible: true }; }
+    return { x: pose.x, y: 0, z: pose.z, heading: pose.heading, speed: pose.speed, visible: pose.visible, wave: 0, sit: false, shake: 0, gesture: 'none' };
   });
+}
+
+/** The coaches: each team's three walk out of the tunnel after the players and take their places behind the bench. */
+export function introCoaches(plan: IntroPlan, t: number): { side: 0 | 1; i: number; x: number; z: number; heading: number; speed: number; visible: boolean }[] {
+  const out: ReturnType<typeof introCoaches> = [];
+  for (const team of plan.teams) {
+    const lastWalk = team.walk + Math.max(0, team.order.length - 1) * INTRO_PACE.gap;
+    COACH_DX.forEach((dx, i) => {
+      const gx = TUNNEL.gapX(team.side), spot = { x: BENCH.x[team.side] + dx, z: COACH_Z };
+      const w = path([{ x: gx, z: TUNNEL.z }, { x: gx, z: COACH_Z - .15 }, spot]);
+      const t0 = lastWalk + 2.2 + i * 1.1, u = (t - t0) * INTRO_PACE.coach;
+      if (u < 0) { out.push({ side: team.side, i, x: gx, z: TUNNEL.z, heading: Math.PI / 2, speed: 0, visible: false }); return; }
+      const q = along(w, u);
+      // heading: the direction walked; at the place he turns to face the ice (+z)
+      const done = u >= w.len, face = Math.atan2(-1, 0);
+      out.push({ side: team.side, i, x: q.x, z: q.z, heading: done ? face : head(q.dx, q.dz), speed: done ? 0 : INTRO_PACE.coach, visible: true });
+    });
+  }
+  return out;
 }
 
 /** Mean position of a team's skaters on the ice. */
@@ -323,9 +375,10 @@ function teamFocus(plan: IntroPlan, poses: Map<string, IntroPose>, side: 0 | 1):
  */
 export function introShow(plan: IntroPlan, t: number, poses = introPoses(plan, t)): { level: number; team: 0 | 1 | -1; focus: P2; burst: number } {
   const T = plan.t;
-  const level = smooth(t / 1.2) * (1 - smooth((t - T.settle + .4) / 1.6));
+  // dark for the entrance and the anthem, half up while the goalies and officials go to their places, out for the faceoff
+  const level = smooth(t / 1.2) * (1 - .45 * smooth((t - T.posts) / 2)) * (1 - smooth((t - T.settle + .4) / 1.6));
   const shot = plan.shots.find(s => t >= s.t0 && t < s.t1);
-  const team: 0 | 1 | -1 = t < T.away - .3 ? -1 : t < T.home - .2 ? 1 : t < T.present ? 0 : shot ? shot.side : -1;
+  const team: 0 | 1 | -1 = t < T.away - .3 ? -1 : t < T.home - .2 ? 1 : t < T.anthem ? 0 : shot ? shot.side : -1;
   let focus: P2 = { x: 0, z: 0 };
   if (shot) { const p = poses.get(shot.id); if (p) focus = { x: p.x, z: p.z }; }
   else if (team !== -1) focus = teamFocus(plan, poses, team) ?? focus;
@@ -341,9 +394,11 @@ export function introShotAt(plan: IntroPlan, t: number): IntroShot | null {
 export function introChapter(plan: IntroPlan, t: number): string {
   const T = plan.t;
   if (t < T.away) return 'Выход судей';
-  if (t < T.present) return 'Выход команд';
-  if (t < T.hands) return 'Стартовые составы';
-  if (t < T.settle) return 'Приветствие капитанов';
+  if (t < T.anthem) return 'Выход команд';
+  if (t < T.posts) return 'Гимн';
+  if (t < T.hands) return 'Судьи и вратари на местах';
+  if (t < T.present) return 'Приветствие капитанов';
+  if (t < T.settle) return 'Стартовые составы';
   return 'На вбрасывание';
 }
 
@@ -355,15 +410,21 @@ const mixCam = (a: Cam, b: Cam, k: number): Cam => ({
 });
 
 /**
- * The entrance's camera: a high sweep over the dark arena, a crane on the near side following each team round its
- * loop, a wide shot of the line-ups, cuts to the close-ups, a two-shot of the handshakes, back out wide for the settle.
+ * The entrance's camera: a high sweep over the dark arena, a low shot at the bench as each team walks out of its
+ * tunnel, a crane on the near side following it round its loop, a slow pan along the lines through the anthem, wide
+ * while the goalies and officials go to their places, a two-shot of the handshake, the close-ups, and for the
+ * settle the faceoff camera coming down from high over the centre circle.
  */
 export function introCamera(plan: IntroPlan, t: number, poses = introPoses(plan, t)): Cam {
   const T = plan.t;
   const sweepAt = (tt: number): Cam => { const a = -1.9 + tt * .09; return { pos: { x: Math.cos(a) * 34, y: lerp(24, 15, smooth(tt / T.away)), z: Math.sin(a) * -24 + 4 }, look: { x: 0, y: 1, z: 0 }, fov: 50 }; };
   const crane = (f: P2): Cam => ({ pos: { x: clamp(f.x * .75, -18, 18), y: 8.5, z: 22 }, look: { x: f.x * .92, y: 1, z: f.z * .4 }, fov: 42 });
-  const wide = (tt: number): Cam => ({ pos: { x: Math.sin(tt * .05) * 3, y: 10.5 - smooth((tt - T.lineup) / 6) * 2, z: 25 - smooth((tt - T.lineup) / 6) * 3 }, look: { x: 0, y: 1, z: 0 }, fov: 48 });
-  if (t < T.away) return sweepAt(t);
+  // on the ice in front of the bench, looking back at the gap in its wall and the tunnel
+  const tunnelCam = (team: Team, tt: number): Cam => {
+    const gx = TUNNEL.gapX(team.side), door = gateDoor(team.side), u = smooth((tt - team.walk) / 5);
+    return { pos: { x: lerp(gx + (door.x - gx) * .3, door.x + Math.sign(door.x) * 1.5, u), y: 2.4, z: -HW + 6.5 - u }, look: { x: lerp(gx, door.x, u), y: 1.1, z: lerp(-(HW + 2.4), -HW, u) }, fov: 40 };
+  };
+  if (t >= T.settle) return faceoffCamera({ x: 0, z: 0 }, (t - T.settle) / FACEOFF_CAM.descend);
   const shot = plan.shots.find(s => t >= s.t0 && t < s.t1);
   if (shot) {
     const p = poses.get(shot.id), r = plan.route.get(shot.id)!;
@@ -372,15 +433,32 @@ export function introCamera(plan: IntroPlan, t: number, poses = introPoses(plan,
     // in front of him (toward centre ice), at eye height, the lens long
     return { pos: { x: px - e * d, y: shot.kind === 'goalie' ? 1.55 : 1.7, z: pz + side + u * .3 }, look: { x: px, y: shot.kind === 'goalie' ? 1.15 : 1.42, z: pz }, fov: 30 };
   }
-  if (t >= T.hands && t < T.settle) {
+  if (t >= T.hands && t < T.present) {
     const u = t - T.hands;
     return { pos: { x: Math.sin(u * .18) * 2.6, y: 2.3, z: 7.4 - Math.min(1, u / 9) }, look: { x: 0, y: 1.25, z: 0 }, fov: 36 };
   }
-  if (t >= T.settle) return wide(t);
-  // the carousels: the crane drifts with the team going round, the line-ups wide
+  if (t >= T.posts) {
+    // wide from the near side: the goalies skate to their nets, the officials come to their zone right below
+    const u = smooth((t - T.posts) / 1.5);
+    return mixCam({ pos: { x: 0, y: 2.2, z: 9 }, look: { x: 0, y: 1.3, z: 0 }, fov: 48 }, { pos: { x: 0, y: 10.5, z: 24 }, look: { x: 0, y: .5, z: 3 }, fov: 58 }, u);
+  }
+  if (t >= T.anthem) {
+    // the anthem: slowly along one line, then the other, from just off centre ice
+    const u = (t - T.anthem) / INTRO_TIMES.anthem, side = u < .5 ? -1 : 1, v = (u % .5) / .5;
+    const lx = side * (BLUE + .9);
+    const c: Cam = { pos: { x: lx * .45, y: 1.9, z: lerp(-6, 6, v) * .6 + 5.5 }, look: { x: lx, y: 1.3, z: lerp(-4, 4, v) }, fov: 38 };
+    return t - T.anthem < 1.2 ? mixCam({ pos: { x: 0, y: 10.5, z: 25 }, look: { x: 0, y: 1, z: 0 }, fov: 48 }, c, smooth((t - T.anthem) / 1.2)) : c;
+  }
+  if (t < T.away) return sweepAt(t);
+  // a team walking out of its tunnel: the low shot at the bench; then the crane round the loops, the line-ups wide
+  for (const team of [plan.teams[1], plan.teams[0]]) if (t >= team.walk && t < team.out + 1.6) {
+    const c = tunnelCam(team, t);
+    return team === plan.teams[1] && t < team.walk + 1.4 ? mixCam(sweepAt(T.away), c, smooth((t - team.walk) / 1.4)) : c;
+  }
+  const wide = (tt: number): Cam => ({ pos: { x: Math.sin(tt * .05) * 3, y: 10.5 - smooth((tt - T.lineup) / 6) * 2, z: 25 - smooth((tt - T.lineup) / 6) * 3 }, look: { x: 0, y: 1, z: 0 }, fov: 48 });
   const fa = teamFocus(plan, poses, 1) ?? { x: 0, z: 0 }, fh = teamFocus(plan, poses, 0) ?? fa;
   const f = { x: lerp(fa.x, fh.x, smooth((t - T.home) / 2.5)), z: lerp(fa.z, fh.z, smooth((t - T.home) / 2.5)) };
-  const c = mixCam(sweepAt(T.away), crane(f), smooth((t - T.away) / 1.8));
+  const c = crane(f);
   if (t < T.lineup) return c;
   return mixCam(c, wide(t), smooth((t - T.lineup) / 2.5));
 }

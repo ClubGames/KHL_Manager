@@ -9,7 +9,7 @@ import type { RinkPlay } from '../game/rinkAI';
  *
  * Pure (no three.js): rink presentation time `tau`, world metres (origin at centre ice). The tests run it in Node.
  */
-export type ReplayKind = 'goal' | 'save' | 'post' | 'hit' | 'miss';
+export type ReplayKind = 'goal' | 'save' | 'post' | 'hit' | 'miss' | 'penalty';
 export type ReplaySpec = {
   kind: ReplayKind; from: number; to: number;
   /** the key moment: the slow motion runs around it and the camera cuts to the close angle before it */
@@ -113,4 +113,96 @@ export function celebrateCamera(t: number, scorer: { x: number; z: number }): Ca
   const d = 4.8 - Math.min(1, t / 3) * .8;
   const pos = { x: clamp(scorer.x + Math.cos(a) * d, -28.5, 28.5), y: 1.9, z: clamp(scorer.z + Math.sin(a) * d, -13.5, 13.5) };
   return { pos, look: { x: scorer.x, y: 1.2, z: scorer.z }, fov: 34 };
+}
+
+/**
+ * The faceoff after a break in the broadcast (the entrance, a replay, a penalty): the camera starts high over the
+ * faceoff circle looking straight down and comes down to a low broadcast angle at the dot while the players take
+ * their places (`k` 0…1); the match camera takes over once the puck is dropped.
+ */
+export const FACEOFF_CAM = { descend: 3.2, handover: 1.1 };
+export function faceoffCamera(dot: { x: number; z: number }, k: number): Cam {
+  const u = clamp(k, 0, 1), e = u * u * (3 - 2 * u);
+  // the far circles: from the near side; the camera stays inside the arena
+  const z0 = clamp(dot.z + 1.2, -12, 12), z1 = clamp(dot.z + 8.6, -6, 14.2);
+  const pos = { x: dot.x * (1 - .12 * e), y: 17 + (3.6 - 17) * e, z: z0 + (z1 - z0) * e };
+  return { pos, look: { x: dot.x, y: .5 * e, z: dot.z + (1 - e) * .01 }, fov: 50 - 10 * e };
+}
+export const mixCam = (a: Cam, b: Cam, k: number): Cam => {
+  const l = (x: number, y: number) => x + (y - x) * k;
+  return { pos: { x: l(a.pos.x, b.pos.x), y: l(a.pos.y, b.pos.y), z: l(a.pos.z, b.pos.z) }, look: { x: l(a.look.x, b.look.x), y: l(a.look.y, b.look.y), z: l(a.look.z, b.look.z) }, fov: l(a.fov, b.fov) };
+};
+
+/* ---------------- a penalty: the referee's call, the replay of the infraction, the walk to the box ---------------- */
+
+/** How long the referee's call is shown (s, the clock held): the arm up, the signal of the infraction, the point to the box. */
+export const ANNOUNCE = { armUp: .9, signal: 2.4, point: 1.5, length: 4.8 };
+/** The referee's signal `t` seconds into the announcement. */
+export function announceGesture(t: number): { phase: 'armUp' | 'signal' | 'point'; t: number } {
+  if (t < ANNOUNCE.armUp) return { phase: 'armUp', t };
+  if (t < ANNOUNCE.armUp + ANNOUNCE.signal) return { phase: 'signal', t: t - ANNOUNCE.armUp };
+  return { phase: 'point', t: t - ANNOUNCE.armUp - ANNOUNCE.signal };
+}
+/** The penalty's caption from the rinks' text («Удаление: Имя — причина (2 мин)» / «…, 2 мин»). */
+export function penaltyCaption(text: string): { name: string; reason: string } {
+  const body = text.replace(/^Удаление:\s*/, '');
+  const [name, ...rest] = body.split(' — ');
+  const reason = rest.join(' — ').replace(/^\s+|\s+$/g, '');
+  const tail = name.match(/^(.*?),\s*(\d+ мин)$/);
+  if (tail) return { name: tail[1].trim(), reason: tail[2] };
+  return { name: name.trim(), reason: reason.replace(/,\s*(\d+ мин)$/, ' ($1)') };
+}
+/** The infraction's replay: from a few seconds before it (the delayed call marks it, else just before the whistle). */
+export function penaltyReplay(callTau: number, infractionTau: number | null, text: string, player?: string): ReplaySpec {
+  const key = infractionTau ?? callTau - .25;
+  return { kind: 'penalty', from: key - 3, to: Math.min(callTau + .6, key + 1.6), key, netX: null, text, player };
+}
+/** The camera on the referee making the call: in front of him, a little to the side, at eye height, a long lens. */
+export function announceCamera(ref: { x: number; z: number; heading: number }, t: number): Cam {
+  const a = ref.heading - .35 + t * .03, d = 4.4 - Math.min(1, t / 4) * .6;
+  // the heading convention: facing (cos h, −sin h) in x, z
+  const pos = { x: clamp(ref.x + Math.cos(a) * d, -28, 28), y: 1.7, z: clamp(ref.z - Math.sin(a) * d, -13.6, 13.6) };
+  return { pos, look: { x: ref.x, y: 1.35, z: ref.z }, fov: 32 };
+}
+/** Following the penalised man to the box (the near side): from the ice, between him and the middle of the rink. */
+export function boxCamera(p: { x: number; z: number }): Cam {
+  return { pos: { x: clamp(p.x * .85, -26, 26), y: 2.6, z: clamp(p.z - 7.5, -12, 9) }, look: { x: p.x, y: 1, z: p.z + .4 }, fov: 40 };
+}
+
+/* ---------------- after a goal: the scorers skate along their bench for the fist bumps ---------------- */
+
+/** The fist-bump line: pace (m/s), the gap between two men (s), the lane along the bench boards (world z), how far past the bench ends. */
+export const BUMP = { pace: 2.9, gap: .55, z: -(15 - .85), over: 5.6 };
+export type BumpPlan = { ids: string[]; benchX: number; x0: number; x1: number; length: number };
+/** The line: the scorer first, the others after him; they skate toward −x so the bench (−z) is on their right. */
+export function bumpPlan(ids: string[], benchX: number): BumpPlan {
+  const x0 = benchX + BUMP.over, x1 = benchX - BUMP.over;
+  return { ids, benchX, x0, x1, length: (x0 - x1 + Math.max(0, ids.length - 1) * BUMP.gap * BUMP.pace) / BUMP.pace + .5 };
+}
+/** Everybody in the line at time t: on the lane, the glove out while he passes the bench. */
+export function bumpPose(plan: BumpPlan, t: number): Map<string, { x: number; z: number; heading: number; speed: number; bump: number }> {
+  const out = new Map<string, { x: number; z: number; heading: number; speed: number; bump: number }>();
+  // a gentle curve in to the boards before the bench and out again after it
+  const zAt = (x: number) => {
+    const outside = Math.max(0, Math.abs(x - plan.benchX) - (BUMP.over - 1.2));
+    return BUMP.z + Math.min(2.4, outside * outside * .12);
+  };
+  plan.ids.forEach((id, k) => {
+    const x = plan.x0 + k * BUMP.gap * BUMP.pace - BUMP.pace * t, z = zAt(x);
+    // skating toward −x: the heading from the slope of the lane (facing (cos h, −sin h))
+    const slope = (zAt(x + .05) - zAt(x - .05)) / .1;
+    const bump = clamp((Math.min(x - (plan.benchX - 4.6), plan.benchX + 4.6 - x)) / .8, 0, 1);
+    out.set(id, { x, z, heading: Math.atan2(slope, -1), speed: BUMP.pace, bump });
+  });
+  return out;
+}
+/** How much a man on the bench at `seatX` reaches out over the boards (a skater passing in front of him). */
+export function bumpReach(poses: Map<string, { x: number; bump: number }>, seatX: number): number {
+  let r = 0;
+  poses.forEach(p => { r = Math.max(r, p.bump * clamp(1 - Math.abs(p.x - seatX) / 1.8, 0, 1)); });
+  return r;
+}
+/** The fist-bump camera: on the ice ahead of the line, looking back along the bench at the scorer. */
+export function bumpCamera(lead: { x: number; z: number }): Cam {
+  return { pos: { x: clamp(lead.x - 4.4, -27, 27), y: 1.8, z: BUMP.z + 4.6 }, look: { x: lead.x + 1.2, y: 1.15, z: BUMP.z - .5 }, fov: 42 };
 }

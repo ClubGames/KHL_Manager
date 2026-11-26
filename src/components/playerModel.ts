@@ -36,6 +36,7 @@ export type OfficialPose = {
   /** seconds into the gesture */ t: number;
   /** a pointing arm's target in character space */ aim?: T.Vector3 | null;
   /** head turn toward the play (rad, + to his left) */ look?: number;
+  /** at a faceoff ('ready'): the windup before the throw 0…1 — the hand with the puck comes up */ windup?: number;
 };
 
 /** Goalie pose. Points are in character space (+x the goalie's left, +z out of the net). */
@@ -138,8 +139,34 @@ function aim(bone: T.Object3D, child: T.Object3D, target: T.Vector3) {
   bone.updateMatrixWorld(true);
 }
 
-/** Analytic two-bone IK (shoulder-elbow-wrist, hip-knee-ankle) with a pole direction for the middle joint. */
-function solveLimb(upper: T.Object3D, lower: T.Object3D, end: T.Object3D, target: T.Vector3, pole: T.Vector3, joint?: T.Vector3, jointWeight = 0) {
+const _m0 = new T.Matrix4(), _m1 = new T.Matrix4(), _f = new T.Vector3(), _g = new T.Vector3(), _h = new T.Vector3();
+/**
+ * Like `aim`, but with the twist about the bone held: the bone's own `bendLocal` axis (the way the next joint
+ * folds, in the bone's frame) is turned onto `bend`. A minimal rotation leaves the twist to chance — an arm
+ * swung from the T-pose across the chest to the stick came out rolled over, the shoulder pad wrung (the top hand).
+ */
+function aimTwist(bone: T.Object3D, child: T.Object3D, target: T.Vector3, bend: T.Vector3, bendLocal: T.Vector3) {
+  const b = _a.setFromMatrixPosition(bone.matrixWorld), c = _b.setFromMatrixPosition(child.matrixWorld);
+  const d0 = c.sub(b).normalize(), d1 = _c.copy(target).sub(b);
+  if (d1.lengthSq() < 1e-8) return;
+  d1.normalize();
+  bone.getWorldQuaternion(_wq);
+  const b0 = _f.copy(bendLocal).applyQuaternion(_wq); b0.addScaledVector(d0, -b0.dot(d0));
+  const b1 = _g.copy(bend); b1.addScaledVector(d1, -b1.dot(d1));
+  if (b0.lengthSq() < 1e-6 || b1.lengthSq() < 1e-6) { aim(bone, child, target); return; }
+  b0.normalize(); b1.normalize();
+  _m0.makeBasis(d0, b0, _h.crossVectors(d0, b0));
+  _m1.makeBasis(d1, b1, _e.crossVectors(d1, b1));
+  _q.setFromRotationMatrix(_m1.multiply(_m0.transpose()));
+  _wq.premultiply(_q);
+  bone.parent!.getWorldQuaternion(_pq).invert();
+  bone.quaternion.copy(_pq.multiply(_wq));
+  bone.updateMatrixWorld(true);
+}
+
+/** Analytic two-bone IK (shoulder-elbow-wrist, hip-knee-ankle) with a pole direction for the middle joint.
+ *  `bendLocal`: the upper bone's fold axis in its own frame — its twist is then solved too (the arms). */
+function solveLimb(upper: T.Object3D, lower: T.Object3D, end: T.Object3D, target: T.Vector3, pole: T.Vector3, joint?: T.Vector3, jointWeight = 0, bendLocal?: T.Vector3) {
   const s = new T.Vector3().setFromMatrixPosition(upper.matrixWorld);
   const m = new T.Vector3().setFromMatrixPosition(lower.matrixWorld);
   const e = new T.Vector3().setFromMatrixPosition(end.matrixWorld);
@@ -151,7 +178,13 @@ function solveLimb(upper: T.Object3D, lower: T.Object3D, end: T.Object3D, target
   const elbow = s.clone().addScaledVector(dir, a * cosA).addScaledVector(n, a * sinA);
   const reach = s.clone().addScaledVector(dir, dist);
   if (joint && jointWeight > 0) elbow.lerp(joint, jointWeight);
-  aim(upper, lower, elbow);
+  if (bendLocal) {
+    // the way the forearm folds off the upper arm (for a straight arm: away from the pole)
+    const fold = reach.clone().sub(elbow), up = elbow.clone().sub(s).normalize();
+    fold.addScaledVector(up, -fold.dot(up));
+    if (fold.lengthSq() < 1e-5) fold.copy(n).negate();
+    aimTwist(upper, lower, elbow, fold, bendLocal);
+  } else aim(upper, lower, elbow);
   aim(lower, end, reach);
 }
 
@@ -161,6 +194,8 @@ export class PlayerFigure {
   private bones: Record<string, T.Bone> = {};
   private restLocal = new Map<T.Bone, T.Quaternion>();
   private restRig: Map<string, Rest>;
+  /** the upper arms' fold axis in their own bone frames: the T-pose elbow folds the forearm forward (+z) */
+  private fold: Record<'L' | 'R', T.Vector3> = { L: new T.Vector3(), R: new T.Vector3() };
   private shaft: T.Mesh; private blade: T.Mesh; private paddle?: T.Mesh;
   private stickLength: number;
   private owned: { geometries: T.BufferGeometry[]; materials: T.Material[]; textures: T.Texture[] } = { geometries: [], materials: [], textures: [] };
@@ -192,6 +227,10 @@ export class PlayerFigure {
         else if (/Feet/.test(mesh.name)) mesh.material = boot;
       }
     });
+    for (const sd of ['L', 'R'] as const) {
+      const r = this.restRig.get('UpperArm' + sd);
+      if (r) this.fold[sd].copy(Z).applyQuaternion(r.quat.clone().invert());
+    }
     // Gloved fists: the base model's open hands are shrunk inside the gloves.
     this.bones.HandL.scale.setScalar(.6); this.bones.HandR.scale.setScalar(.6);
     this.rig.updateMatrixWorld(true);
@@ -293,9 +332,19 @@ export class PlayerFigure {
   }
 
   private arms(left: T.Vector3, right: T.Vector3, leftPole: T.Vector3, rightPole: T.Vector3) {
-    const b = this.bones;
-    solveLimb(b.UpperArmL, b.LowerArmL, b.HandL, this.world(left), this.dirWorld(leftPole));
-    solveLimb(b.UpperArmR, b.LowerArmR, b.HandR, this.world(right), this.dirWorld(rightPole));
+    this.arm('L', this.world(left), this.dirWorld(leftPole));
+    this.arm('R', this.world(right), this.dirWorld(rightPole));
+  }
+  /** One arm onto a world point, the elbow toward a world pole, the upper arm's twist solved with it. */
+  private arm(side: 'L' | 'R', target: T.Vector3, pole: T.Vector3) {
+    const b = this.bones, sg = side === 'L' ? 1 : -1;
+    // the collarbone goes with the arm: down when the hand is low (the T-pose pad stood up in a peak over a hanging
+    // arm), forward when it reaches in front or across the body
+    const tl = this.root.worldToLocal(target.clone()), sh = b['UpperArm' + side].getWorldPosition(_f), shl = this.root.worldToLocal(sh);
+    const drop = clamp01((shl.y - tl.y) / .55) - clamp01((tl.y - shl.y) / .4) * .8, fwd = clamp01(tl.z / .55) * .7 + clamp01((.12 - sg * tl.x) / .35) * .5;
+    this.turn('Shoulder' + side, _t1.setFromAxisAngle(Z, -.34 * drop * sg).multiply(_t2.setFromAxisAngle(Y, -.26 * fwd * sg)));
+    b['Shoulder' + side].updateMatrixWorld(true);
+    solveLimb(b['UpperArm' + side], b['LowerArm' + side], b['Hand' + side], target, pole, undefined, 0, this.fold[side]);
   }
 
   /** Mirror a character-space point across the body (left ↔ right) for a figure of the other hand. */
@@ -331,7 +380,7 @@ export class PlayerFigure {
    * down on one knee, sliding (the celebration after a goal).
    * Everything is solved for a right shot and mirrored for a left one.
    */
-  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number; check?: number; poke?: number; move?: LiveMove; moveT?: number; stagger?: number; down?: number; shake?: number; pump?: number; kneel?: number; t?: number; stance?: LiveStance; stanceT?: number; handle?: number; now?: number } = {}) {
+  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number; check?: number; poke?: number; move?: LiveMove; moveT?: number; stagger?: number; down?: number; shake?: number; pump?: number; kneel?: number; bump?: number; t?: number; stance?: LiveStance; stanceT?: number; handle?: number; now?: number } = {}) {
     this.reset();
     const m = this.hand, kind = opts.kind ?? 'wrist';
     const chk = smooth(clamp01(opts.check ?? 0)), poke = smooth(clamp01(opts.poke ?? 0));
@@ -489,14 +538,18 @@ export class PlayerFigure {
     if (cheer > 0) { heel = mixV(heel, vec(-.2, 2.25, .45), smooth(cheer)); top = mixV(top, vec(.2, 1.12, .3), smooth(cheer)); }
     this.grip(heel, top, vec(1, -.6, -.6), vec(-1, -.8, -.3));
     // the free right hand: out for a handshake, or a fist pumped after a goal (the stick stays in the other hand)
-    const shake = smooth(clamp01(opts.shake ?? 0)), pump = smooth(clamp01(opts.pump ?? 0)), tt = opts.t ?? 0;
-    if (shake > 0 || pump > 0) {
+    const shake = smooth(clamp01(opts.shake ?? 0)), pump = smooth(clamp01(opts.pump ?? 0)), bump = smooth(clamp01(opts.bump ?? 0)), tt = opts.t ?? 0;
+    if (shake > 0 || pump > 0 || bump > 0) {
       const b = this.bones;
       const now = this.root.worldToLocal(b.HandR.getWorldPosition(new T.Vector3()));
-      const hand = shake >= pump
-        ? vec(-.12, 1.02 - crouch + .035 * Math.sin(tt * 13), .52)
-        : vec(-.3, 1.42 - crouch + .36 * Math.pow(Math.max(0, Math.sin(tt * 6.5)), .6), .22);
-      solveLimb(b.UpperArmR, b.LowerArmR, b.HandR, this.world(now.lerp(hand, Math.max(shake, pump))), this.dirWorld(shake >= pump ? vec(-1, -.8, -.2) : vec(-1, -.2, -.6)));
+      const top = Math.max(shake, pump, bump);
+      // a fist bump along the bench (on his right): the glove out to the side, knuckles first, a little punch at each man
+      const hand = bump === top
+        ? vec(-.58 - .06 * Math.max(0, Math.sin(tt * 9)), 1.16 - crouch, .2 + .05 * Math.sin(tt * 9))
+        : shake >= pump
+          ? vec(-.12, 1.02 - crouch + .035 * Math.sin(tt * 13), .52)
+          : vec(-.3, 1.42 - crouch + .36 * Math.pow(Math.max(0, Math.sin(tt * 6.5)), .6), .22);
+      this.arm('R', this.world(now.lerp(hand, top)), this.dirWorld(bump === top ? vec(-.3, -1, -.5) : shake >= pump ? vec(-1, -.8, -.2) : vec(-1, -.2, -.6)));
     }
   }
 
@@ -574,7 +627,7 @@ export class PlayerFigure {
    * upright between the knees, head and shoulders turned toward the play. o.seat: height of the seat above the
    * floor; o.look: turn toward the play (rad, + to his left); o.up 0..1: standing up (a goal of his team).
    */
-  sit(o: { seat?: number; look?: number; up?: number } = {}) {
+  sit(o: { seat?: number; look?: number; up?: number; /** standing at the boards: the right glove out over them (a fist bump) 0…1 */ reach?: number; t?: number } = {}) {
     this.reset();
     const seat = o.seat ?? .48, up = smooth(clamp01(o.up ?? 0)), look = Math.max(-1.1, Math.min(1.1, o.look ?? 0));
     const hip = this.restRig.get('UpperLegL')?.pos.y ?? .9;
@@ -590,6 +643,12 @@ export class PlayerFigure {
     // the stick: blade on the floor out in front, the knob up by the chin, both gloves on the shaft
     const heel = mixV(vec(-.04, 0, 1.25), vec(-.3, 0, .62), up), top = mixV(vec(-.02, .74, .58), vec(-.2, 1.2, .3), up);
     this.grip(heel, top, vec(.9, -.5, -.1), vec(-.9, -.6, -.1));
+    const reach = smooth(clamp01(o.reach ?? 0)) * up;
+    if (reach > 0) {
+      const now = this.root.worldToLocal(this.bones.HandR.getWorldPosition(new T.Vector3()));
+      const tt = o.t ?? 0;
+      this.arm('R', this.world(now.lerp(vec(-.16, 1.28 + .04 * Math.sin(tt * 8), .62 + .06 * Math.max(0, Math.sin(tt * 8))), reach)), this.dirWorld(vec(-1, -.6, -.2)));
+    }
   }
 
   /**
@@ -664,7 +723,15 @@ export class PlayerFigure {
       // delay of game: the open hand across the chest, then straight out in front
       case 'delay': { const k = smooth(Math.min(1, Math.max(0, (t - .5) / .4))); R = vec(-sx + (sx * 1.6) * (1 - k), chest + .04 + .1 * k, front + .02 + .45 * k); PR = vec(0, 1, .1); break; }
       case 'shake': R = vec(-.1, chest - .14 + .035 * osc(13), front + .42); PR = poleDown(-1); break;
-      case 'ready': case 'drop': { const d = g === 'drop' ? smooth(Math.min(1, t / .18)) : 0; R = vec(-.06, sy - .3 - .2 * d, front + .3); PR = poleDown(-1); L = vec(.22, sy - .55, sz + .25); break; }
+      case 'ready': case 'drop': {
+        // holding the puck out over the dot; the windup brings it up and back a little, the throw snaps it down past the
+        // puck's height and the arm swings back as he backs off
+        const w = g === 'ready' ? smooth(clamp01(o.windup ?? 0)) : 0;
+        const d = g === 'drop' ? smooth(Math.min(1, t / .12)) : 0, back = g === 'drop' ? smooth((t - .14) / .3) : 0;
+        R = vec(-.06, sy - .3 + .26 * w - .34 * d + .1 * back, front + .3 - .1 * w + .06 * d - .25 * back); PR = poleDown(-1);
+        if (g === 'drop' && t < .1) R.y += .26 * (1 - t / .1) * (1 - d);
+        L = vec(.22, sy - .55 + .05 * w, sz + .25); break;
+      }
       default: break;
     }
     if (g !== 'none' && g !== 'ready' && g !== 'drop') { L = rest(1).lerp(L, into); R = rest(-1).lerp(R, into); }

@@ -4,7 +4,7 @@ import type { Team } from '../types';
 import { FACEOFF_SPOTS, RINK, glassTop as glassTopAt, inBenchFront } from '../game/rinkGeometry';
 import { getClubLogoSources } from '../game/clubColors';
 import { LG } from '../brand';
-import { buildBenches, type BenchKit } from './arenaBenches';
+import { buildBenches, type BenchCoach, type BenchDoor, type BenchKit } from './arenaBenches';
 
 const _ray = new T.Ray(), _pt = new T.Vector3(), _frustum = new T.Frustum(), _pv = new T.Matrix4(), _origin = new T.Vector3();
 /**
@@ -43,6 +43,12 @@ export type Arena = {
   iceReflection: { texture: { value: T.Texture | null }; matrix: { value: T.Matrix4 }; strength: { value: number } };
   /** The low-poly players on the benches (the live match on the higher presets seats the real figures instead). */
   benchCrowd: T.Group;
+  /** the doors in the boards (benches, penalty boxes, the officials'): `set(0…1)` opens one */
+  doors: BenchDoor[];
+  /** the coaches behind the benches (each a group the live match may walk out of the tunnel; `x, z, yaw` their place) */
+  coaches: BenchCoach[];
+  /** everything movable back in place (doors shut, coaches at the bench): the arena is shared between scenes */
+  resetProps: () => void;
   /** Call before each render (after the reflection pass): hides what would stand between this camera and the ice (the scoreboard under the high cameras). */
   view: (camera: T.Camera) => void;
   /** Animates the LED ribbons (call once per frame with performance.now()). */
@@ -149,6 +155,9 @@ function paintIce(ctx: CanvasRenderingContext2D, w: number, h: number, logo?: HT
     // the two short "goalkeeper" ticks inside the crease
     for (const sy of [-1, 1]) { ctx.beginPath(); ctx.moveTo(X(gx + s * 1.22), Y(HALF_W + sy * 1.22)); ctx.lineTo(X(gx + s * 1.22), Y(HALF_W + sy * 1.07)); ctx.stroke(); }
   }
+  // the referees' crease: a red half circle on the ice in front of the timekeepers (the near side, world +z)
+  ctx.strokeStyle = RED; ctx.lineWidth = Math.max(3 * u, X(RINK.lineWidth));
+  ctx.beginPath(); ctx.arc(X(HALF_L), Y(RINK.width), X(3), Math.PI, Math.PI * 2); ctx.stroke();
   // the ice gets a little snowy along the boards
   const edge = ctx.createLinearGradient(0, 0, 0, h);
   edge.addColorStop(0, 'rgba(200,214,222,.35)'); edge.addColorStop(.04, 'rgba(200,214,222,0)'); edge.addColorStop(.96, 'rgba(200,214,222,0)'); edge.addColorStop(1, 'rgba(200,214,222,.35)');
@@ -467,7 +476,7 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
   // Team benches with the coaches and the players who are not on the ice, the penalty boxes and the timekeepers.
   const benches = new T.Group(), benchCrowd = new T.Group();
   benches.add(benchCrowd); group.add(benches); hidden.push(benches);
-  buildBenches({
+  const benchParts = buildBenches({
     home, away, kits: options.benchKits, group: benches, crowd: benchCrowd, mat, canvas, texture: c => tex(c),
     mesh: (geo, m, parent) => { own.geometries.push(geo); const x = new T.Mesh(geo, m); x.receiveShadow = true; parent.add(x); return x; },
   });
@@ -529,6 +538,11 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
     reflectionHidden: hidden,
     iceReflection,
     benchCrowd,
+    doors: benchParts.doors, coaches: benchParts.coaches,
+    resetProps: () => {
+      benchParts.doors.forEach(d => d.set(0));
+      benchParts.coaches.forEach(c => { c.group.visible = true; c.group.position.set(c.x, 0, c.z); c.group.rotation.set(0, c.yaw, 0); c.group.updateMatrix(); });
+    },
     view: camera => { const show = !scoreboardBlocks(camera, boardBox); scoreboard.forEach(o => { o.visible = show; }); },
     tick: now => { ribbonTex.offset.x = (now / 1000 * .045) % 1; ledTex.offset.x = (now / 1000 * .06) % 1; },
     lights: k => { iceLamps.value = k; lampMat.color.setRGB(1, .965, .88).multiplyScalar(.12 + .88 * k); glowMat.opacity = .8 * k; glow.visible = k > .02; },

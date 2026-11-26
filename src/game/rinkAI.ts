@@ -78,8 +78,8 @@ interface Leg { via?: Agent; tv?: number; /** fixed point a pass is aimed at (th
 interface Puck { x: number; y: number; h: number; vx: number; vy: number; carrier: Agent | null; leg: Leg | null; next: Leg | null; last: Side | null; noTouch: Agent | null; noTouchUntil: number; icing: Side | null; reserved: Agent | null; reservedUntil: number; dead: boolean; /** scored: the side whose goal it is in (net physics), vertical speed */ net: Side | null; vh: number }
 interface ShotPlan { ev: GameEvent; T: Side; chain: Agent[]; spots: V2[]; rel: number[]; arr: number[]; tr: number; target: V2 | Agent; th: number; step: number; acquired: boolean; acqStarted: boolean; shot: boolean }
 interface DuelPlan { ev: GameEvent; kind: 'hit' | 'penalty'; actor: Agent; victim: Agent | null }
-interface Stop { reason: 'start' | 'goal' | 'freeze' | 'icing' | 'penalty' | 'offside'; dot: V2; t0: number; phase: 'whistle' | 'celebrate' | 'gather' | 'set' | 'drop'; phaseAt: number; scorer?: Agent; winner?: Side }
-interface Frame { tau: number; g: number; px: number; py: number; ph: number; ids: string[]; pos: Float32Array; /** facing angle of every man (rink metres, atan2(fy, fx)) */ face: Float32Array; flags: Uint8Array; carrier: number; stop: 0 | 1 | 2; ox: number; oy: number; pace: number }
+interface Stop { reason: 'start' | 'goal' | 'freeze' | 'icing' | 'penalty' | 'offside'; dot: V2; t0: number; phase: 'whistle' | 'celebrate' | 'gather' | 'set' | 'drop' | 'battle'; phaseAt: number; scorer?: Agent; winner?: Side }
+interface Frame { tau: number; g: number; px: number; py: number; ph: number; ids: string[]; pos: Float32Array; /** facing angle of every man (rink metres, atan2(fy, fx)) */ face: Float32Array; flags: Uint8Array; carrier: number; stop: 0 | 1 | 2; ox: number; oy: number; dx: number; dy: number; pace: number }
 
 const isAgent = (v: V2 | Agent): v is Agent => typeof (v as Agent).id === 'string';
 /** The goal cages as boxes on the ice: from the goal line to the back of the net, post to post (frame included). */
@@ -108,6 +108,8 @@ const FACEOFF_DOTS = { center: { x: 30, y: 15 } };
 /** Least time from the end of the whistle to the players set for a faceoff, and set → drop (the official skates
  *  to the dot, bends over, holds the puck out; see officialCrew). */
 export const FACEOFF_GATHER = 2.6, FACEOFF_SET = 1.1;
+/** The drop (s): the official's windup (the puck comes up in his hand), the throw down, then the centres battle for the puck on the ice. */
+export const FACEOFF_DROP = { windup: 0.3, fall: 0.15, battle: 0.45 };
 /** End-zone dot of side s's defensive zone, on the half where the puck is. */
 const zoneDot = (s: Side, y: number): V2 => loc(s, { x: RINK.endDot, y: loc(s, { x: 0, y }).y < MID ? MID - RINK.dotOffset : MID + RINK.dotOffset });
 /** Neutral-zone dot just outside side s's attacking blue line (offside faceoffs), on the puck's half. */
@@ -296,6 +298,7 @@ export class RinkAI {
       skaters, faceoff: a.stop === 1 || undefined, stopped: a.stop > 0 || undefined,
       carrier: a.carrier >= 0 ? a.ids[a.carrier] : null, caption: caption?.text,
       official: a.stop ? { x: this.px(a.ox), y: a.oy / 0.3, h: 0 } : undefined,
+      dot: a.stop ? { x: this.px(a.dx), y: a.dy / 0.3, h: 0 } : undefined,
     };
   }
   /** The goal sequence as the 3D viewer consumes it — exactly the frames shown on the 2D rink. */
@@ -661,14 +664,21 @@ export class RinkAI {
     if (st.phase === 'gather' || st.phase === 'set' || st.phase === 'drop') {
       const d = dist(p, st.dot);
       if (d > 0.02) { const step = Math.min(d, 7 * DT); p.x += ((st.dot.x - p.x) / d) * step; p.y += ((st.dot.y - p.y) / d) * step; }
-      p.h = st.phase === 'drop' ? Math.max(0, 1.1 * (1 - (this.tau - st.phaseAt) / 0.45)) : 1.1;
+      const t = this.tau - st.phaseAt, W = FACEOFF_DROP.windup;
+      p.h = st.phase !== 'drop' ? 1.1 : t < W ? 1.1 + 0.22 * Math.sin(Math.PI / 2 * t / W) : Math.max(0, 1.32 * (1 - (t - W) / FACEOFF_DROP.fall));
+    }
+    if (st.phase === 'battle') {
+      // the two centres fight for it: it jiggles between their blades
+      const t = this.tau - st.phaseAt;
+      p.h = 0; p.x = st.dot.x + Math.sin(t * 31) * 0.09 * (1 - t / FACEOFF_DROP.battle); p.y = st.dot.y + Math.sin(t * 19 + 1) * 0.05;
     }
     if (st.phase === 'gather') {
       const ready = this.onIce().every(a => !a.leave && dist(a, this.slot(a)) < 0.9) && dist(p, st.dot) < 0.05;
       // the linesman (the referee at centre ice) has to reach the dot and get set too: never in a rush
       if ((ready && since > FACEOFF_GATHER) || since > 14) { st.phase = 'set'; st.phaseAt = this.tau; }
     } else if (st.phase === 'set' && since > FACEOFF_SET) { st.phase = 'drop'; st.phaseAt = this.tau; }
-    else if (st.phase === 'drop' && since >= 0.45) this.dropPuck();
+    else if (st.phase === 'drop' && since >= FACEOFF_DROP.windup + FACEOFF_DROP.fall - 1e-9) { st.phase = 'battle'; st.phaseAt = this.tau; }
+    else if (st.phase === 'battle' && since >= FACEOFF_DROP.battle - 1e-9) this.dropPuck();
   }
   private dropPuck() {
     const st = this.stop!, p = this.puck;
@@ -1915,9 +1925,9 @@ export class RinkAI {
     const pos = new Float32Array(list.length * 2), face = new Float32Array(list.length), flags = new Uint8Array(list.length);
     list.forEach((a, i) => { pos[i * 2] = a.x; pos[i * 2 + 1] = a.y; face[i] = Math.atan2(a.fy, a.fx); flags[i] = (a.goalie ? 1 : 0) | (a.on === 'box' ? 2 : 0); });
     const st = this.stop;
-    const faceoff = !!st && (st.phase === 'set' || st.phase === 'drop' || (st.phase === 'gather' && dist(this.puck, st.dot) < 0.05));
-    const off = st ? { x: st.dot.x + 0.9, y: st.dot.y + 1.6 } : { x: 0, y: 0 };
-    this.frames.push({ tau: this.tau, g: this.g, px: this.puck.x, py: this.puck.y, ph: this.puck.h, ids: this.lastIds, pos, face, flags, carrier: this.puck.carrier ? this.lastIds.indexOf(this.puck.carrier.id) : -1, stop: st ? (faceoff ? 1 : 2) : 0, ox: off.x, oy: off.y, pace: this.mode === 'end' || !this.frames.length ? RinkAI.PACE.cold : this.pace });
+    const faceoff = !!st && (st.phase === 'set' || st.phase === 'drop' || st.phase === 'battle' || (st.phase === 'gather' && dist(this.puck, st.dot) < 0.05));
+    const off = st ? { x: st.dot.x, y: st.dot.y - 0.75 } : { x: 0, y: 0 };
+    this.frames.push({ tau: this.tau, g: this.g, px: this.puck.x, py: this.puck.y, ph: this.puck.h, ids: this.lastIds, pos, face, flags, carrier: this.puck.carrier ? this.lastIds.indexOf(this.puck.carrier.id) : -1, stop: st ? (faceoff ? 1 : 2) : 0, ox: off.x, oy: off.y, dx: st?.dot.x ?? 0, dy: st?.dot.y ?? 0, pace: this.mode === 'end' || !this.frames.length ? RinkAI.PACE.cold : this.pace });
   }
 }
 
