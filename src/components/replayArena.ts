@@ -541,7 +541,7 @@ export function buildArena(scene: T.Object3D, home: Team, away: Team, anisotropy
     doors: benchParts.doors, coaches: benchParts.coaches,
     resetProps: () => {
       benchParts.doors.forEach(d => d.set(0));
-      benchParts.coaches.forEach(c => { c.group.visible = true; c.group.position.set(c.x, 0, c.z); c.group.rotation.set(0, c.yaw, 0); c.group.updateMatrix(); });
+      benchParts.coaches.forEach(c => { c.group.visible = true; c.group.position.set(c.x, 0, c.z); c.group.rotation.set(0, c.yaw, 0); c.group.updateMatrix(); c.rig.rest(); });
     },
     view: camera => { const show = !scoreboardBlocks(camera, boardBox); scoreboard.forEach(o => { o.visible = show; }); },
     tick: now => { ribbonTex.offset.x = (now / 1000 * .045) % 1; ledTex.offset.x = (now / 1000 * .06) % 1; },

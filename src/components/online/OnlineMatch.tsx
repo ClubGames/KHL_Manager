@@ -13,7 +13,7 @@ import { GoalReplay } from '../GoalReplay';
 import { ShootoutBoard } from '../Shootout';
 import type { FigureRequest } from '../replayCache';
 import { anyGamepad, CAPTURED, COMMAND_KEYS, detectDevice, emptyTouch, gamepadPad, mouseDown, mouseMove, mouseUp, newMouse, type Command, type MouseState, type TouchState } from '../playInput';
-import { Controls, framePad, GoalList, Sheet, TouchControls, type GoalItem } from '../PlayMatch';
+import { Controls, framePad, GoalList, LineChip, Sheet, TouchControls, type GoalItem } from '../PlayMatch';
 import { buildCtx, GuestMatch, HostMatch, outToast, type MatchCommand, type MatchSide } from '../../net/match';
 import type { OnlineSession } from '../../net/session';
 import type { MatchView, TeamPack } from '../../net/wire';
@@ -24,7 +24,7 @@ import type { MatchView, TeamPack } from '../../net/wire';
  * intermissions and the final waiting for both players' «ready».
  */
 interface Toast { id: number; text: string; tone: 'goal' | 'pen' | 'info' }
-interface Hud extends PlayHud { men: [number, number]; boxed: [{ id: string; left: number }[], { id: string; left: number }[]]; delayed: 0 | 1 | null; pulled: boolean; clock: number; len: number; score: [number, number]; shots: [number, number] }
+interface Hud extends PlayHud { to: { side: 0 | 1; left: number } | null; tol: boolean; line: string; men: [number, number]; boxed: [{ id: string; left: number }[], { id: string; left: number }[]]; delayed: 0 | 1 | null; pulled: boolean; clock: number; len: number; score: [number, number]; shots: [number, number] }
 class Ticker { sec = 0; tau = 0; wait = false; hold = false; slow = false; shows = false; }
 
 /** The guest's picture runs this far behind the newest frame (the next one is always there to interpolate to). */
@@ -79,9 +79,13 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
   const touchUI = settings.playTouch === 'on' || (settings.playTouch === 'auto' && typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: coarse)').matches);
   const device = detectDevice(padOn, touchUI);
   const playing = view.phase === 'playing';
-  const paused = view.paused !== null;
+  // the menu: online the match never stops for it — the other player plays on, the AI skates this team meanwhile
+  const [menu, setMenu] = useState(false);
+  const paused = menu;
   const phaseRef = useRef(view.phase); phaseRef.current = view.phase;
   const pausedRef = useRef(paused); pausedRef.current = paused;
+  const openMenu = (on: boolean) => { setMenu(on); pausedRef.current = on; side.pause(on); };
+  useEffect(() => { if (!playing && menu) { setMenu(false); side.pause(false); } }, [playing, menu, side]);
 
   // the goal clips are cut while the period's rink still has their frames
   const keepClips = (k: PlayRink | null) => { if (k) for (const g of view.goals) if (!clips.current.has(g.tau) && g.period === view.period) { const c = k.goalClip(g.tau); if (c) clips.current.set(g.tau, c); } };
@@ -100,7 +104,7 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
   }, [ctx]);
 
   const command = (c: Command) => {
-    if (c === 'pause') { if (phaseRef.current === 'playing') side.pause(!pausedRef.current); return; }
+    if (c === 'pause') { if (phaseRef.current === 'playing') openMenu(!pausedRef.current); return; }
     if (c === 'replay') return; // online the match never stops for a replay: they are in the intermission
     if (phaseRef.current !== 'playing' || pausedRef.current) return;
     side.command(c as MatchCommand);
@@ -122,9 +126,9 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
     return () => { window.removeEventListener('keydown', down); window.removeEventListener('keyup', up); window.removeEventListener('blur', blur); };
   }, []);
   useEffect(() => { suspendPadNav(playing && !paused); return () => suspendPadNav(false); }, [playing, paused]);
-  // a phone call, another app: the match pauses for both
+  // a phone call, another app: the menu opens (the match goes on for the other player, the AI takes this team)
   useEffect(() => {
-    const vis = () => { if (document.hidden && phaseRef.current === 'playing' && !pausedRef.current) side.pause(true); };
+    const vis = () => { if (document.hidden && phaseRef.current === 'playing' && !pausedRef.current) openMenu(true); };
     document.addEventListener('visibilitychange', vis);
     return () => document.removeEventListener('visibilitychange', vis);
   }, [side]);
@@ -157,6 +161,8 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
       prevCommands.current = gp.commands;
       const live = phaseRef.current === 'playing' && !pausedRef.current;
       const pad = live ? framePad(rink, keys.current, gp.pad, touch.current, mouse.current, now, settingsRef.current) : NO_PAD;
+      // this screen holds the play (the entrance, a replay): the host waits for both screens
+      side.hold(phaseRef.current === 'playing' && !!ticker.hold);
       if (side instanceof HostMatch) {
         side.advance(dt, pad);
         ticker.tau = Math.max(0, rink.tau - 1 / 60);
@@ -173,7 +179,7 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
       if (now - hudAt > 90) {
         hudAt = now;
         // the host's own seat is 0; the guest's copy reports the guest's seat whatever is asked
-        setHud({ ...rink.hud(0), men: rink.men(), boxed: rink.boxed(), delayed: rink.delayed, pulled: rink.pulled[mySide], clock: rink.clock, len: rink.len, score: [rink.score[0], rink.score[1]], shots: side.shots() });
+        setHud({ ...rink.hud(0), to: rink.timeoutNow(), tol: rink.timeoutLeft[mySide], line: rink.lineOn(mySide), men: rink.men(), boxed: rink.boxed(), delayed: rink.delayed, pulled: rink.pulled[mySide], clock: rink.clock, len: rink.len, score: [rink.score[0], rink.score[1]], shots: side.shots() });
       }
       raf = requestAnimationFrame(loop);
     };
@@ -225,7 +231,7 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
           <span className="w-1.5 h-1.5 rounded-full bg-current" />{rtt === null ? '—' : `${rtt} мс`}
         </span>
         {playing && (
-          <button type="button" className="ml-1 rounded-sm border border-line px-2 py-1 text-xs hover:bg-panel2" onClick={() => side.pause(true)} aria-label="Пауза" data-play-pause>
+          <button type="button" className="ml-1 rounded-sm border border-line px-2 py-1 text-xs hover:bg-panel2" onClick={() => openMenu(true)} aria-label="Меню" data-play-pause>
             <Icon name="pause" />
           </button>
         )}
@@ -251,11 +257,12 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
         onPointerCancel={() => { mouse.current = { ...newMouse(), x: mouse.current.x, y: mouse.current.y, at: mouse.current.at }; }}
         onContextMenu={(e) => { if (playing) e.preventDefault(); }}>
         {rink ? (
-          <LiveRink fill className="flex-1 min-h-0 rounded-none border-0" ticker={ticker} ids={[[], []]} goalies={[null, null]} event={null} home={H} away={A} players={P} ai={rink} running={playing && !paused} roster={roster3d} allow3d={!replay} bare minimap={!touchUI} intro={false} replays={false} />
+          <LiveRink fill className="flex-1 min-h-0 rounded-none border-0" ticker={ticker} ids={[[], []]} goalies={[null, null]} event={null} home={H} away={A} players={P} ai={rink} running={playing} roster={roster3d} allow3d={!replay} bare minimap={!touchUI} intro={view.period === 1} />
         ) : <div className="flex-1 bg-[#0a1828]" />}
 
         {playing && hud && (
           <div className={cn('absolute pointer-events-none flex flex-col gap-1 w-[min(46vw,220px)] z-10', touchUI ? 'left-1/2 -translate-x-1/2 bottom-2 w-[min(34vw,200px)]' : 'left-2 bottom-2')} data-play-hud>
+            <LineChip line={hud.line} touchUI={touchUI} />
             {ctlName && (
               <div className={cn('rounded-sm px-2 py-1 text-white text-xs', touchUI ? 'bg-black/25 [text-shadow:0_1px_2px_rgba(0,0,0,.85)]' : 'bg-black/55 backdrop-blur-sm')}>
                 <div className="flex items-center gap-1.5"><b className="text-[#ffd23f] tabular">#{ctlName.number}</b><span className="truncate" data-play-ctl>{ctlName.name}</span><span className="ml-auto text-[10px] text-white/60">{ctlName.position}</span></div>
@@ -290,9 +297,21 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
           <div className="absolute right-2 bottom-2 flex gap-1.5 z-10">
             <Button size="sm" onClick={() => command('change')} data-play-change>Смена звена <kbd className="opacity-60">V</kbd></Button>
             <Button size="sm" variant={hud?.pulled ? 'primary' : 'secondary'} onClick={() => command('pull')} data-play-pull>{hud?.pulled ? 'Вернуть вратаря' : 'Снять вратаря'} <kbd className="opacity-60">G</kbd></Button>
+            <Button size="sm" onClick={() => command('timeout')} disabled={!hud?.tol || !!hud?.to} data-play-timeout>Тайм-аут <kbd className="opacity-60">4</kbd></Button>
           </div>
         )}
-        {playing && touchUI && !paused && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} faceoff={!!hud?.faceoff} context={hud?.context ?? 'carry'} />}
+        {playing && view.away?.[1 - mySide] && (
+          <div className="absolute left-2 top-12 z-10 rounded-sm bg-black/60 px-2 py-1 text-[11px] text-white pointer-events-none" data-online-peer-away>{peerName} в меню — его командой пока играет компьютер</div>
+        )}
+        {playing && hud?.to && (
+          <div className="absolute left-1/2 -translate-x-1/2 top-3 z-20 flex flex-col items-center gap-1.5 rounded-sm bg-black/65 px-4 py-2 text-white shadow-lg fade-in" data-play-timeout-on={hud.to.side === mySide ? 'mine' : 'theirs'}>
+            <div className="text-[11px] uppercase tracking-[.2em] text-white/70">Тайм-аут · {who(hud.to.side)}</div>
+            <div className="font-display text-2xl tabular leading-none" data-play-timeout-left>0:{String(Math.ceil(hud.to.left)).padStart(2, '0')}</div>
+            <div className="text-[11px] text-white/70">{hud.to.side === mySide ? 'Тренер объясняет установку, игроки отдыхают' : 'Соперник отдыхает и получает установку'}</div>
+            {hud.to.side === mySide && <Button size="sm" onClick={() => command('timeout')} data-play-timeout-skip>Продолжить игру</Button>}
+          </div>
+        )}
+        {playing && touchUI && !paused && !hud?.to && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} faceoff={!!hud?.faceoff} context={hud?.context ?? 'carry'} timeout={!!hud?.tol && !hud?.to} />}
       </main>
 
       {view.phase === 'loading' && (
@@ -311,11 +330,12 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
 
       {playing && paused && (
         <Sheet>
-          <h2 className="font-display text-xl mb-1" data-online-paused>Пауза</h2>
-          <p className="text-xs text-muted mb-3">{view.paused === mySide ? 'Вы поставили игру на паузу' : `${peerName} поставил игру на паузу`} · счёт {score[0]}:{score[1]}</p>
+          <h2 className="font-display text-xl mb-1" data-online-paused>Меню</h2>
+          <p className="text-xs text-muted mb-3">Сетевой матч не останавливается: {peerName} играет дальше, а вашей командой пока управляет компьютер · счёт {score[0]}:{score[1]}</p>
           <div className="flex flex-col gap-2 w-full max-w-xs">
-            <Button variant="primary" size="lg" onClick={() => side.pause(false)} data-play-resume>Продолжить</Button>
-            <Button onClick={() => { side.pause(false); window.setTimeout(() => side.command('change'), 50); }}>Смена звена</Button>
+            <Button variant="primary" size="lg" onClick={() => openMenu(false)} data-play-resume>Вернуться в игру</Button>
+            <Button onClick={() => { openMenu(false); side.command('change'); }}>Смена звена</Button>
+            <Button onClick={() => { openMenu(false); side.command('timeout'); }} disabled={!hud?.tol || !!hud?.to} data-play-pause-timeout>{hud?.tol ? 'Тайм-аут (30 с)' : 'Тайм-аут уже взят'}</Button>
             <Button variant="ghost" onClick={() => setHelp((h) => !h)}>{help ? 'Скрыть управление' : 'Управление'}</Button>
             <Button variant="danger" onClick={onLeave} data-online-leave>Выйти из матча</Button>
           </div>

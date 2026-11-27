@@ -9,7 +9,7 @@ import { getSettings, subscribeSettings, type Settings } from '../../game/settin
 
 export type Bus = 'sfx' | 'crowd' | 'music';
 
-type Engine = { ctx: AudioContext; master: GainNode; bus: Record<Bus, GainNode>; noise: AudioBuffer; pink: AudioBuffer };
+type Engine = { ctx: AudioContext; master: GainNode; bus: Record<Bus, GainNode>; noise: AudioBuffer; pink: AudioBuffer; /** the arena's echo (a convolution reverb fed from every bus) */ reverb: ConvolverNode | null };
 let engine: Engine | null = null;
 let unlockInstalled = false;
 let muted = false;
@@ -32,6 +32,35 @@ function makeNoise(ctx: BaseAudioContext, seconds: number, pink: boolean): Audio
   return buf;
 }
 
+/**
+ * The hall's impulse response: a big ice arena (≈2.4 s of reverberation). Stereo noise decaying exponentially, the
+ * highs dying faster than the lows (air and seats soak them up), a few discrete early reflections off the glass,
+ * the boards and the roof in the first 90 ms, a short pre-delay. Generated, not recorded.
+ */
+function arenaImpulse(ctx: BaseAudioContext, seconds = 2.4): AudioBuffer {
+  const sr = ctx.sampleRate, n = Math.floor(sr * seconds), buf = ctx.createBuffer(2, n, sr);
+  let s = 0x51f15e;
+  const rnd = () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return ((s >>> 0) / 4294967296) * 2 - 1; };
+  const pre = Math.floor(sr * .018), rt = seconds * .42;
+  for (let ch = 0; ch < 2; ch++) {
+    const d = buf.getChannelData(ch);
+    let lp = 0;
+    for (let i = pre; i < n; i++) {
+      const t = (i - pre) / sr;
+      // the cutoff of a one-pole low-pass falls with time: bright at first, dark in the tail
+      const k = Math.exp(-t / (rt * .55)) * .75 + .06;
+      lp += (rnd() - lp) * k;
+      d[i] = lp * Math.exp(-t / rt) * (t < .08 ? t / .08 : 1) * .55;
+    }
+    // early reflections (different in each ear: the width of the hall)
+    for (const [ms, g] of [[11, .5], [23, .38], [37, .32], [52, .24], [71, .2], [89, .16]] as const) {
+      const at = pre + Math.floor((ms + (ch ? 3.5 : -2) * (ms / 40)) * sr / 1000);
+      if (at < n) d[at] += g * (ch ? -1 : 1) * (.8 + .2 * Math.abs(rnd()));
+    }
+  }
+  return buf;
+}
+
 /** Creates the context (only from a user gesture, see `installSoundUnlock`). */
 function create(): Engine | null {
   if (engine) return engine;
@@ -46,7 +75,18 @@ function create(): Engine | null {
     master.connect(limiter); limiter.connect(ctx.destination);
     const bus = { sfx: ctx.createGain(), crowd: ctx.createGain(), music: ctx.createGain() };
     for (const b of Object.values(bus)) b.connect(master);
-    engine = { ctx, master, bus, noise: makeNoise(ctx, 2, false), pink: makeNoise(ctx, 4, true) };
+    // the arena: everything also goes into the hall's echo — the crowd most (it surrounds you), the organ a lot,
+    // the puck and the boards a little (their slap comes back off the stands)
+    let reverb: ConvolverNode | null = null;
+    try {
+      reverb = ctx.createConvolver();
+      reverb.normalize = true;
+      reverb.buffer = arenaImpulse(ctx);
+      const wet = ctx.createGain(); wet.gain.value = .5;
+      reverb.connect(wet); wet.connect(master);
+      for (const [b, k] of [[bus.crowd, .7], [bus.music, .45], [bus.sfx, .16]] as const) { const g = ctx.createGain(); g.gain.value = k; b.connect(g); g.connect(reverb); }
+    } catch { reverb = null; }
+    engine = { ctx, master, bus, noise: makeNoise(ctx, 2, false), pink: makeNoise(ctx, 4, true), reverb };
     applySettings(getSettings());
     subscribeSettings(() => applySettings(getSettings()));
     return engine;

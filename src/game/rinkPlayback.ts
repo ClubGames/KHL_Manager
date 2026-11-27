@@ -162,7 +162,9 @@ export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: 
   /** the played match: a held stance and its blend 0…1; the manager's stickhandling (the blade forehand −1 … backhand 1 across him) */
   stance?: LiveStance; stanceT?: number; handle?: number;
   /** how a fallen skater went down (on his back, face first, sideways over the hip) and, sideways, to which side (±1) */
-  fallKind?: 'back' | 'front' | 'side'; fallSide?: 1 | -1 }[]; faceoff?: boolean; stopped?: boolean; carrier?: string | null; caption?: string;
+  fallKind?: 'back' | 'front' | 'side'; fallSide?: 1 | -1;
+  /** stepping onto the ice from the bench: seconds left (he stands at the boards meanwhile; the 3D shows the climb) */
+  hop?: number }[]; faceoff?: boolean; stopped?: boolean; carrier?: string | null; caption?: string;
   /** during a stoppage: where the official who drops the puck at the next faceoff stands (known from the whistle) */
   official?: Point;
   /** during a stoppage: the dot of the next faceoff */

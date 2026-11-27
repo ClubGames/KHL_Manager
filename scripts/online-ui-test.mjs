@@ -81,14 +81,33 @@ try {
   await guest.locator('[data-play-ctl]').waitFor({ timeout: 5000 });
   await guest.screenshot({ path: '/tmp/online-match-guest.png' });
   await host.screenshot({ path: '/tmp/online-match-host.png' });
-  // pause from the guest: both paused
+  // the guest's menu: the match goes on (the host plays on, the AI takes the guest's team), the host is told
   await guest.locator('[data-play-pause]').click();
-  await host.locator('[data-online-paused]').waitFor({ timeout: 3000 });
-  assert.match(await host.locator('[data-play-match]').innerText(), /Гость поставил игру на паузу/);
-  await host.waitForTimeout(400); const c1 = await host.locator('[data-play-clock]').innerText(); await host.waitForTimeout(1200);
-  assert.equal(await host.locator('[data-play-clock]').innerText(), c1, 'the clock stands');
-  await host.locator('[data-play-resume]').click();
+  await guest.locator('[data-online-paused]').waitFor({ timeout: 3000 });
+  await host.locator('[data-online-peer-away]').waitFor({ timeout: 3000 });
+  assert.equal(await host.locator('[data-online-paused]').count(), 0, 'the host is not stopped');
+  const c1 = await host.locator('[data-play-clock]').innerText(); await host.waitForTimeout(2500);
+  assert.notEqual(await host.locator('[data-play-clock]').innerText(), c1, 'the clock runs on');
+  // a timeout from the guest's menu: both screens show it
+  await guest.locator('[data-play-pause-timeout]').click();
   await guest.waitForFunction(() => !document.querySelector('[data-online-paused]'), null, { timeout: 3000 });
+  await host.waitForFunction(() => !document.querySelector('[data-online-peer-away]'), null, { timeout: 3000 });
+  assert.match(await guest.locator('[data-play-match]').innerText(), /при следующей остановке/, 'in play: it waits for the whistle');
+  // both in their menus: the AI plays both teams and soon whistles (the timeout comes then)
+  await guest.locator('[data-play-pause]').click(); await host.locator('[data-play-pause]').click();
+  await host.locator('[data-play-timeout-on="theirs"]').waitFor({ state: 'attached', timeout: 150000 });
+  await guest.locator('[data-play-resume]').click(); await host.locator('[data-play-resume]').click();
+  await guest.locator('[data-play-timeout-on="mine"]').waitFor({ timeout: 5000 });
+  console.log('   timeout:', (await guest.locator('[data-play-timeout-on]').innerText()).replace(/\s+/g, ' '));
+  assert.ok(await guest.locator('[data-play-line]').count() > 0, 'the unit on the ice is named');
+  const left = async (p) => Number((await p.locator('[data-play-timeout-left]').innerText()).split(':')[1]);
+  const l0 = await left(guest); await guest.waitForTimeout(3000);
+  const l1 = await left(guest), lh = await left(host);
+  console.log(`   timeout seconds: ${l0} → ${l1} (host ${lh})`);
+  assert.ok(l1 <= l0 - 2 && Math.abs(lh - l1) <= 1, 'the seconds count down on both screens');
+  await guest.screenshot({ path: '/tmp/online-timeout-guest.png' });
+  await guest.locator('[data-play-timeout-skip]').click();
+  await host.waitForFunction(() => !document.querySelector('[data-play-timeout-on]'), null, { timeout: 5000 });
   // the guest leaves: the host is told and waits for a new guest
   await guest.locator('[data-play-pause]').click();
   await guest.locator('[data-online-leave]').click();
@@ -98,7 +117,7 @@ try {
   await host.locator('[data-online-hosting]').waitFor({ timeout: 3000 });
   await guest.locator('[data-online-notice]').waitFor({ timeout: 3000 });
   assert.deepEqual(errors, []);
-  console.log('✓ online in two tabs: lobby, clubs, settings, ready, the match on both screens, pause for both, leaving');
+  console.log('✓ online in two tabs: lobby, clubs, settings, ready, the match on both screens, the menu that does not stop play, a timeout, leaving');
 } finally {
   await browser.close();
 }

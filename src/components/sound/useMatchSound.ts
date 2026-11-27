@@ -48,24 +48,29 @@ class WebSink implements SoundSink {
     this.crowdNoise.level(excite);
   }
 
+  private nextStride = 0;
+  private skateLevel = 0;
   skating(level: number) {
     const e = audio();
     if (!e || this.closed) return;
     if (!this.skate) {
-      // blades on ice: a soft high hiss with the rhythm of strides
+      // the glide under it all: a faint, high, steady hiss of blades on ice
       const src = e.ctx.createBufferSource(); src.buffer = e.pink; src.loop = true;
-      const hp = e.ctx.createBiquadFilter(); hp.type = 'bandpass'; hp.frequency.value = 4200; hp.Q.value = .6;
-      const stride = e.ctx.createGain(); stride.gain.value = .7;
-      const lfo = e.ctx.createOscillator(); lfo.frequency.value = 2.2;
-      const depth = e.ctx.createGain(); depth.gain.value = .3;
-      lfo.connect(depth); depth.connect(stride.gain);
+      const bp = e.ctx.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 5200; bp.Q.value = .5;
       const g = e.ctx.createGain(); g.gain.value = 0;
-      src.connect(hp); hp.connect(stride); stride.connect(g); g.connect(e.bus.sfx);
-      src.start(); lfo.start();
+      src.connect(bp); bp.connect(g); g.connect(e.bus.sfx);
+      src.start();
       this.skate = { src, g };
-      src.onended = () => { try { lfo.stop(); } catch { /* stopped */ } };
     }
-    this.skate.g.gain.setTargetAtTime(level * .1, e.ctx.currentTime, .25);
+    this.skateLevel += (level - this.skateLevel) * .08;
+    const t = e.ctx.currentTime, k = this.skateLevel;
+    this.skate.g.gain.setTargetAtTime(k * .028, t, .3);
+    // the strides: each push of a blade a short scrape — ten skaters out of step, so no rhythm can be heard
+    if (k > .05 && t >= this.nextStride) {
+      const p = .5 + Math.random() * .5;
+      sfx.stride(k * p, (Math.random() - .5) * .8);
+      this.nextStride = t + (.07 + Math.random() * .3) / (.4 + k * 1.6);
+    }
   }
 
   close() {

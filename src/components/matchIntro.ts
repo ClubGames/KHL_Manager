@@ -475,7 +475,19 @@ export function introCamera(plan: IntroPlan, t: number, poses = introPoses(plan,
     const c: Cam = { pos: { x: lx * .45, y: 1.9, z: lerp(-6, 6, v) * .6 + 5.5 }, look: { x: lx, y: 1.3, z: lerp(-4, 4, v) }, fov: 38 };
     return t - T.anthem < 1.2 ? mixCam({ pos: { x: 0, y: 10.5, z: 25 }, look: { x: 0, y: 1, z: 0 }, fov: 48 }, c, smooth((t - T.anthem) / 1.2)) : c;
   }
-  if (t < T.away) return sweepAt(t);
+  if (t < T.away) {
+    // the officials walk out of their corridor: low on the ice in front of their door, looking up the corridor as
+    // they come down it on foot, then turning with them as they step onto the ice (in and out of the arena sweep)
+    const walkLen = officialsWalk().len / (INTRO_PACE.walk * .9), w0 = T.officials - .4, w1 = T.officials + 2.1 + walkLen + 1.2;
+    if (t < w0 || t > T.away) return sweepAt(t);
+    const u = smooth((t - T.officials) / (2.1 + walkLen));
+    const door: Cam = {
+      pos: { x: OFFICIALS_DOOR_X - 4.2 + u * 1.4, y: 1.5, z: HW - 6.6 + u * .9 },
+      look: { x: OFFICIALS_DOOR_X, y: 1.25 - u * .2, z: lerp(HW + 2.6, HW - .4, u) }, fov: 42,
+    };
+    const inK = smooth((t - w0) / 1.1), outK = smooth((t - w1) / Math.max(.4, T.away - w1));
+    return mixCam(mixCam(sweepAt(t), door, inK), sweepAt(t), outK);
+  }
   // a team walking out of its tunnel: the low shot at the bench; then the crane round the loops, the line-ups wide
   for (const team of [plan.teams[1], plan.teams[0]]) if (t >= team.walk && t < team.out + 1.6) {
     const c = tunnelCam(team, t);

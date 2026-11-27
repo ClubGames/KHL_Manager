@@ -750,7 +750,9 @@ export class PlayerFigure {
     // shoulders (character space) — the arms are solved onto targets around them
     const sh = this.restRig.get('UpperArmL')?.pos ?? vec(.17, 1.42, 0);
     const sy = sh.y - crouch - lean * .12, sx = Math.abs(sh.x), sz = lean * .32;
-    const rest = (side: 1 | -1) => vec(side * (sx + .1), sy - .5 + .04 * Math.sin(o.phase + (side > 0 ? Math.PI : 0)) * amp, sz + .08 + .1 * side * swing);
+    // walking: the arms swing against the legs (the left arm forward with the right foot)
+    const armWalk = (side: 1 | -1) => walk * .2 * Math.sin(o.phase + (side > 0 ? 0 : Math.PI));
+    const rest = (side: 1 | -1) => vec(side * (sx + .1 - .04 * walk), sy - .5 + .04 * Math.sin(o.phase + (side > 0 ? Math.PI : 0)) * amp + .03 * walk * Math.abs(armWalk(side)) * 4, sz + .08 + .1 * side * swing + armWalk(side));
     let L = rest(1), R = rest(-1);
     const poleOut = (side: 1 | -1) => vec(side, -.7, -.5), poleDown = (side: 1 | -1) => vec(side * .8, -1, -.2);
     let PL = poleOut(1), PR = poleOut(-1);

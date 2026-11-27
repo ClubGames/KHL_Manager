@@ -148,14 +148,38 @@ await test('a host ↔ guest match: the guest sees the host\'s rink, skates his 
   assert.equal(host.view.phase, 'loading'); assert.equal(guest.view.period, 2);
   assert.ok(guest.rink?.flipped, 'second period: ends switched on the guest\'s copy too');
   host.loaded(); guest.loaded(); await sleep(15);
-  // pause from the guest stops the host
+  // the guest's menu does not stop the match: his team is the AI's meanwhile
   guest.pause(true); await sleep(15);
-  assert.equal(host.view.paused, 0);
+  assert.equal(host.view.paused, null, 'online a menu never pauses the match');
+  assert.deepEqual(host.view.away?.[gctx.mySide], true, 'the guest is marked as in his menu');
+  assert.deepEqual(guest.view.away?.[gctx.mySide], true, 'and his screen knows it');
+  const run = (sec: number) => { for (let j = 0; j < sec * 60; j++) host.advance(1 / 60, NO_PAD); };
   const tau = host.rink!.tau;
-  host.advance(0.5, NO_PAD);
-  assert.equal(host.rink!.tau, tau, 'paused: the rink stands');
-  host.pause(false); await sleep(15);
-  assert.equal(guest.view.paused, null);
+  run(0.5);
+  assert.ok(host.rink!.tau > tau + 0.4, 'the menu: the rink plays on');
+  guest.pause(false); await sleep(15);
+  assert.deepEqual(guest.view.away, [false, false]);
+  // a screen holding the play (the entrance, a replay): the host waits for it, then plays on
+  guest.hold(true); await sleep(15);
+  const t2 = host.rink!.tau;
+  run(0.5);
+  assert.equal(host.rink!.tau, t2, 'the guest\'s replay holds the host');
+  guest.hold(false); await sleep(15);
+  run(0.5);
+  assert.ok(host.rink!.tau > t2 + 0.4, 'and lets it go');
+  // the guest's timeout: at once at a stoppage or at the next whistle; one per match
+  const rk = host.rink!;
+  guest.command('timeout'); await sleep(15);
+  assert.equal(rk.timeoutLeft[gctx.mySide], false, 'the guest took his timeout');
+  for (let j = 0; j < 60 * 120 && !rk.timeoutNow(); j++) host.advance(1 / 60, NO_PAD);
+  assert.equal(rk.timeoutNow()?.side, gctx.mySide, 'the timeout is under way (at a whistle)');
+  run(0.2); await sleep(30);
+  assert.equal(guest.rink!.timeoutNow()?.side, gctx.mySide, 'the guest\'s copy shows it');
+  const c0 = rk.clock; run(2);
+  assert.equal(rk.clock, c0, 'the clock stands in a timeout');
+  guest.command('timeout'); await sleep(15);
+  host.advance(1 / 30, NO_PAD);
+  assert.equal(rk.timeoutNow(), null, 'the caller ends his timeout early');
   // a guest's command: his own side's goalie
   for (let j = 0; j < 400 && host.rink!.mode !== 'play'; j++) host.advance(1 / 60, NO_PAD);
   guest.command('pull'); await sleep(15);

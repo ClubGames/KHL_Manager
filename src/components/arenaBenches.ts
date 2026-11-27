@@ -2,6 +2,8 @@ import * as T from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import type { Team } from '../types';
 import { RINK } from '../game/rinkGeometry';
+import { Parts, type V } from './benchParts';
+import { CoachRig } from './coachRig';
 
 /**
  * The team benches and the penalty boxes of the 3D arena: rubber floor, the bench with club-colour cushions,
@@ -64,91 +66,8 @@ export function defaultBenchKit(team: Team, side: 0 | 1): BenchKit {
     : { jersey: '#f4f7fa', trim: team.primaryColor, pants: '#1a1f27', socks: '#f4f7fa', helmet: '#f4f7fa', glove: team.primaryColor };
 }
 
-type V = [number, number, number];
-const ONE = new T.Vector3(1, 1, 1), UP = new T.Vector3(0, 1, 0);
-
-/** Geometry collected per material key and merged at the end. Keys: '#hex' (matte), 'lit:#hex' (unlit), 'metal:#hex', 'glass'. */
-class Parts {
-  private by = new Map<string, T.BufferGeometry[]>();
-  private frame = new T.Matrix4();
-  /** Following parts are placed in a local frame: at (x, y, z), turned by yaw (local +z faces the ice when yaw makes it so). */
-  at(x: number, y: number, z: number, yaw = 0) { this.frame.compose(new T.Vector3(x, y, z), new T.Quaternion().setFromAxisAngle(UP, yaw), ONE); return this; }
-  world() { this.frame.identity(); return this; }
-  add(key: string, g: T.BufferGeometry, p: V, r: V = [0, 0, 0], s: V = [1, 1, 1]) {
-    g.applyMatrix4(new T.Matrix4().compose(new T.Vector3(...p), new T.Quaternion().setFromEuler(new T.Euler(...r)), new T.Vector3(...s)));
-    g.applyMatrix4(this.frame);
-    (this.by.get(key) ?? this.by.set(key, []).get(key)!).push(g);
-  }
-  box(key: string, sx: number, sy: number, sz: number, p: V, r?: V) { this.add(key, new T.BoxGeometry(sx, sy, sz), p, r); }
-  ball(key: string, rad: number, p: V, s: V = [1, 1, 1]) { this.add(key, new T.SphereGeometry(rad, 10, 7), p, [0, 0, 0], s); }
-  cyl(key: string, rt: number, rb: number, h: number, p: V, r?: V, s?: V, seg = 8) { this.add(key, new T.CylinderGeometry(rt, rb, h, seg), p, r, s); }
-  /** A round limb from a to b (local coordinates). */
-  limb(key: string, rad: number, a: V, b: V, rb = rad) {
-    const va = new T.Vector3(...a), vb = new T.Vector3(...b), d = vb.clone().sub(va), len = d.length();
-    if (len < 1e-4) return;
-    const g = new T.CylinderGeometry(rb, rad, len, 7);
-    g.applyQuaternion(new T.Quaternion().setFromUnitVectors(UP, d.normalize()));
-    g.translate((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2);
-    g.applyMatrix4(this.frame);
-    (this.by.get(key) ?? this.by.set(key, []).get(key)!).push(g);
-  }
-  build(parent: T.Object3D, mesh: (g: T.BufferGeometry, m: T.Material, parent: T.Object3D) => T.Mesh, material: (key: string) => T.Material) {
-    this.by.forEach((list, key) => {
-      const g = mergeGeometries(list, false); list.forEach(x => x.dispose());
-      if (g) mesh(g, material(key), parent);
-    });
-    this.by.clear();
-  }
-  /** Everything matte in one mesh, the colours painted on the vertices (one draw call for a small figure). */
-  buildTinted(parent: T.Object3D, mesh: (g: T.BufferGeometry, m: T.Material, parent: T.Object3D) => T.Mesh, tinted: T.Material, material: (key: string) => T.Material) {
-    const all: T.BufferGeometry[] = [], col = new T.Color();
-    this.by.forEach((list, key) => {
-      if (!key.startsWith('#')) return;
-      col.set(key).convertSRGBToLinear();
-      for (const g of list) {
-        const n = g.getAttribute('position').count, c = new Float32Array(n * 3);
-        for (let i = 0; i < n; i++) { c[i * 3] = col.r; c[i * 3 + 1] = col.g; c[i * 3 + 2] = col.b; }
-        g.setAttribute('color', new T.BufferAttribute(c, 3));
-        all.push(g.index ? g.toNonIndexed() : g);
-      }
-      this.by.delete(key);
-    });
-    const g = mergeGeometries(all, false); all.forEach(x => x.dispose());
-    if (g) mesh(g, tinted, parent);
-    this.build(parent, mesh, material);
-  }
-}
-
 const SKIN = ['#e3b796', '#d6a585', '#c48f6c', '#ebc3a4'], HAIR = ['#3b2a20', '#8f8f8f', '#1c1c1c', '#6b4a2e', '#c9c2b8'];
 const SUIT = ['#1d222b', '#2a2f3a', '#23272f'];
-
-/** A coach in a suit, standing (feet at the local origin, facing local +z). */
-function coach(p: Parts, o: { suit: string; tie: string; skin: string; hair: string; pose: 'cross' | 'clip' | 'hands' | 'point' }) {
-  const { suit, skin } = o;
-  for (const s of [-1, 1]) {
-    p.box('#0e1013', .11, .07, .27, [s * .1, .035, .04]);
-    p.limb(suit, .068, [s * .1, .08, 0], [s * .105, .95, 0], .072);
-  }
-  p.box(suit, .37, .2, .23, [0, .99, 0]);
-  p.cyl(suit, .215, .18, .62, [0, 1.38, 0], [0, 0, 0], [1, 1, .64], 10);
-  p.box('#eef1f4', .11, .22, .02, [0, 1.55, .128]);
-  p.box(o.tie, .045, .3, .016, [0, 1.46, .138]);
-  for (const s of [-1, 1]) p.ball(suit, .1, [s * .2, 1.62, 0], [1, .85, 1]);
-  p.cyl(skin, .048, .055, .1, [0, 1.71, 0]);
-  p.ball(skin, .108, [0, 1.83, .005], [1, 1.12, 1.05]);
-  p.box(skin, .035, .05, .04, [0, 1.81, .115]);
-  p.ball(o.hair, .113, [0, 1.875, -.025], [1.02, .78, 1.02]);
-  const sh = (s: number): V => [s * .22, 1.6, 0];
-  const arm = (s: number, elbow: V, hand: V) => { p.limb(suit, .056, sh(s), elbow, .05); p.limb(suit, .05, elbow, hand, .045); p.ball(skin, .045, hand); };
-  if (o.pose === 'cross') { arm(-1, [-.25, 1.33, .08], [.13, 1.33, .17]); arm(1, [.25, 1.3, .08], [-.13, 1.29, .18]); }
-  else if (o.pose === 'clip') {
-    arm(1, [.25, 1.34, .05], [.24, 1.13, .1]);
-    arm(-1, [-.25, 1.32, .08], [-.15, 1.22, .3]);
-    p.box('#6b4e2e', .25, .34, .015, [-.08, 1.27, .33], [-1.05, 0, 0]);
-    p.box('#f4f6f8', .21, .27, .004, [-.08, 1.275, .336], [-1.05, 0, 0]);
-  } else if (o.pose === 'point') { arm(1, [.27, 1.42, .2], [.34, 1.52, .5]); arm(-1, [-.25, 1.34, .02], [-.26, 1.1, .05]); }
-  else { arm(1, [.25, 1.34, -.04], [.14, 1.08, -.16]); arm(-1, [-.25, 1.34, -.04], [-.14, 1.08, -.16]); }
-}
 
 /** A seated person (penalty box timekeeper): suit, at a desk. Seat surface at y = seat. */
 function official(p: Parts, o: { suit: string; skin: string; hair: string; seat: number }) {
@@ -311,12 +230,12 @@ export function buildBenches(b: BenchBuild) {
     // (each one his own little group: the live match walks them out of the tunnel after the players)
     const poses = ['clip', 'cross', 'point'] as const;
     COACH_DX.forEach((dx, i) => {
-      const c = new Parts(), x = x0 + dx + (rnd() - .5) * .3, yaw = (rnd() - .5) * .3;
-      c.at(0, BENCH.floor, 0, 0);
-      coach(c, { suit: SUIT[(i + side) % SUIT.length], tie: i === 1 ? team.primaryColor : pick(['#7a1f2b', '#22426b', team.secondaryColor]), skin: pick(SKIN), hair: pick(HAIR), pose: poses[i] });
+      const x = x0 + dx + (rnd() - .5) * .3, yaw = (rnd() - .5) * .3;
       const g = new T.Group(); g.position.set(x, 0, COACH_Z); g.rotation.y = yaw; g.updateMatrix(); b.group.add(g);
-      c.buildTinted(g, b.mesh, tinted, material);
-      coaches.push({ side: side as 0 | 1, group: g, x, z: COACH_Z, yaw });
+      // jointed (see coachRig): the live match brings him to life, the replays leave him standing
+      const rig = new CoachRig(g, BENCH.floor, poses[i], { suit: SUIT[(i + side) % SUIT.length], tie: i === 1 ? team.primaryColor : pick(['#7a1f2b', '#22426b', team.secondaryColor]), skin: pick(SKIN), hair: pick(HAIR) },
+        (c, node) => c.buildTinted(node, b.mesh, tinted, material), i * 1.7 + side * 3.1);
+      coaches.push({ side: side as 0 | 1, group: g, x, z: COACH_Z, yaw, rig, head: i === 1 });
     });
     // the players who are not on the ice (light preset and the replays): seated, one standing at the door
     const k = kits[side];
@@ -417,4 +336,4 @@ export function buildBenches(b: BenchBuild) {
 }
 
 export type BenchDoor = DoorSpot & { hinge: T.Group; gap: T.Mesh; readonly open: number; set: (v: number) => void };
-export type BenchCoach = { side: 0 | 1; group: T.Group; x: number; z: number; yaw: number };
+export type BenchCoach = { side: 0 | 1; group: T.Group; x: number; z: number; yaw: number; /** his joints */ rig: CoachRig; /** the head coach (arms crossed, in the middle) */ head: boolean };

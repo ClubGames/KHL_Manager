@@ -28,7 +28,7 @@ import { RINK } from './rinkGeometry';
 type Side = 0 | 1;
 type Role = 'C' | 'LW' | 'RW' | 'LD' | 'RD' | 'X';
 type V2 = { x: number; y: number };
-export type PlayKind = 'faceoff' | 'loose' | 'out' | 'entry' | 'dump' | 'icing' | 'offside' | 'takeaway' | 'interception' | 'block' | 'wide' | 'hit' | 'penalty' | 'freeze' | 'save' | 'goal' | 'change' | 'clear';
+export type PlayKind = 'faceoff' | 'loose' | 'out' | 'entry' | 'dump' | 'icing' | 'offside' | 'takeaway' | 'interception' | 'block' | 'wide' | 'hit' | 'penalty' | 'freeze' | 'save' | 'goal' | 'change' | 'clear' | 'timeout';
 export type RinkPlay = { tau: number; g: number; kind: PlayKind; side: Side | null; player?: string; text: string };
 export type RinkTactics = [{ forecheck: ForecheckStyle; style: AttackStyle }, { forecheck: ForecheckStyle; style: AttackStyle }];
 /** `flip`: teams have switched ends (2nd period, 1st overtime …). The simulation itself always runs in one

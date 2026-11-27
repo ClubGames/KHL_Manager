@@ -44,7 +44,7 @@ type Actor = {
   on?: boolean;
 };
 /** A walk between the ice and a seat: from (fx, fz), through the door in the boards (or over the boards, `hop`). */
-type Trip = { fx: number; fz: number; t0: number; hop: boolean; dur: number; /** through this door in the boards (at a whistle the bench uses its doors) */ door?: { x: number; z: number } };
+type Trip = { fx: number; fz: number; t0: number; hop: boolean; dur: number; /** through this door in the boards (at a whistle the bench uses its doors) */ door?: { x: number; z: number }; /** entering: the share of the trip spent getting out of the bench */ out?: number };
 /** The bench door of a side nearest to x (on the boards' line, a step onto the ice). */
 const benchDoor = (side: 0 | 1, x: number) => { const d = DOORS.filter(o => o.kind === 'bench' && o.side === side).sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0]; return { x: d.x, z: d.z + .45 }; };
 /** The door (or the top of the boards) a seat is reached through: on the ice edge in front of it. */
@@ -334,6 +334,10 @@ export function LiveScene3D(props: Props) {
       let tv: Tv | null = null, lastAngle = '';
       // the faceoff camera: from `t0` (real ms) coming down over `dot`; `playAt` when the puck is in play (the hand-over)
       let foCam: { t0: number; dot: { x: number; z: number }; playAt: number } | null = null, foWanted = -1;
+      /** when the play last stopped (real seconds), for the coaches' word with the bench */
+      let coachStop = NaN, coachT = NaN;
+      /** a timeout on screen: since when (real ms), for the camera's move to the bench */
+      let toCamAt = NaN;
       const seenPen = new Set<number>();
       const seenGoals = new Set<number>();
       let lastMomentClock = -Infinity, stopSeen = NaN, stopChecked = false;
@@ -533,7 +537,10 @@ export function LiveScene3D(props: Props) {
               // from his seat, from where he was going, or (the light preset seats nobody) from the bench
               const p = a.seat || a.off ? a.group.position : { x: BENCH.x[a.side] + (a.phase % 1 - .5) * 4, z: BENCH.seatZ };
               const bench = !a.seat?.startsWith('p') && p.z < 0, door = bench && f.stopped ? benchDoor(a.side, p.x) : undefined;
-              a.enter = { fx: p.x, fz: p.z, t0: now, hop: bench && !door, dur: door ? 750 + Math.hypot(door.x - p.x, door.z - p.z) / 2.2 * 1000 : 750, door };
+              // as long as the rink holds him at the boards (the frames' `hop`): he skates only once he is out
+              const hold = f.skaters.find(q => q.id === a.id)?.hop ?? 0;
+              const base = door ? 750 + Math.hypot(door.x - p.x, door.z - p.z) / 2.2 * 1000 : 750;
+              a.enter = { fx: p.x, fz: p.z, t0: now, hop: bench && !door, dur: hold > 0 ? Math.max(hold * 1000 + 180, 600) : base, door, out: hold > 0 ? clamp((hold * 1000) / (hold * 1000 + 180), .6, .9) : .45 };
             }
             a.on = true; a.off = undefined;
             if (a.seat) { leaveSeat(a); a.lx = NaN; }
@@ -608,8 +615,11 @@ export function LiveScene3D(props: Props) {
             if (u >= 1) a.enter = undefined;
             else {
               const door = tr.door ?? doorOf({ x: tr.fx, z: tr.fz });
-              if (u < .45) { const v = smooth01(u / .45); w.x = tr.fx + (door.x - tr.fx) * v; w.z = tr.fz + (door.z - tr.fz) * v; lift = tr.hop ? Math.sin(Math.PI * v) * .95 : 0; }
-              else { const v = smooth01((u - .45) / .55); w.x = door.x + (w.x - door.x) * v; w.z = door.z + (w.z - door.z) * v; }
+              // up to the boards (or along the bench to its door), over them, and only then away on his skates
+              const k = tr.out ?? .45, reach = tr.hop ? k * .45 : k;
+              if (u < reach) { const v = smooth01(u / reach); w.x = tr.fx + (door.x - tr.fx) * v; w.z = tr.fz + (door.z - tr.fz) * v; }
+              else if (u < k) { const v = smooth01((u - reach) / (k - reach)); w.x = door.x; w.z = door.z; lift = tr.hop ? Math.sin(Math.PI * v) * .9 : 0; }
+              else { const v = smooth01((u - k) / (1 - k)); w.x = door.x + (w.x - door.x) * v; w.z = door.z + (w.z - door.z) * v; }
             }
           }
           const bp = bumpNow?.get(p.id);
@@ -758,9 +768,10 @@ export function LiveScene3D(props: Props) {
             const g = arena.coaches.filter(x => x.side === c.side)[c.i];
             if (!g) return;
             g.group.visible = c.visible;
-            const step = c.speed > 0 ? Math.abs(Math.sin(it * 5.2 + c.i)) : 0;
-            g.group.position.set(c.x, .025 * step, c.z); g.group.rotation.set(0, c.speed > 0 ? c.heading + Math.PI / 2 : g.yaw, .025 * Math.sin(it * 5.2 + c.i) * (c.speed > 0 ? 1 : 0));
+            // walking: the legs step, the arms swing (coachRig); standing at the bench he watches the entrance
+            g.group.position.set(c.x, 0, c.z); g.group.rotation.set(0, c.speed > 0 ? c.heading + Math.PI / 2 : g.yaw, 0);
             g.group.updateMatrix();
+            if (c.visible) g.rig.update({ t: now / 1000, dt: realDt, puck: { x: -c.x * Math.cos(g.group.rotation.y) + c.z * Math.sin(g.group.rotation.y), z: -c.x * Math.sin(g.group.rotation.y) - c.z * Math.cos(g.group.rotation.y) }, mood: 'play', moodT: 99, excite: 0, walk: { phase: it * 5.2 + c.i, w: c.speed > 0 ? 1 : 0 }, head: g.head });
           });
           puck.visible = puckShadow.visible = trail.visible = false; carrierRing.visible = ctrlRing.visible = ctrlArrow.visible = aimMark.visible = false;
           // the captions: the chapter, and whose close-up it is (with his season)
@@ -770,6 +781,19 @@ export function LiveScene3D(props: Props) {
         } else {
           puck.visible = true; officials.forEach(o => { o.group.visible = true; });
           if (replaying) { carrierRing.visible = ctrlRing.visible = ctrlArrow.visible = aimMark.visible = false; }
+        }
+        if (!intro) {
+          // the coaches behind the benches are alive: they follow the play, gesture, react to the goals and the whistles
+          const tSec = now / 1000, dtC = Number.isNaN(coachT) ? 0 : clamp(tSec - coachT, 0, .2); coachT = tSec;
+          if (f.stopped) { if (Number.isNaN(coachStop)) coachStop = tSec; } else coachStop = NaN;
+          const excite = clamp((Math.abs(pw.x) - 14) / 12, 0, 1), tmo = ai.timeoutNow?.() ?? null;
+          arena.coaches.forEach(c => {
+            if (!c.group.visible) return;
+            const yaw = c.group.rotation.y, dx = pw.x - c.group.position.x, dz = pw.z - c.group.position.z;
+            const since = goal ? tau - goal.tau : 99;
+            const mood = tmo ? 'timeout' : since >= 0 && since < 6 && goal ? (goal.side === c.side ? 'goalFor' : 'goalAgainst') : f.stopped ? 'stop' : 'play';
+            c.rig.update({ t: tSec, dt: dtC, puck: { x: dx * Math.cos(yaw) - dz * Math.sin(yaw), z: dx * Math.sin(yaw) + dz * Math.cos(yaw) }, mood, moodT: mood === 'stop' ? tSec - coachStop : since, excite, head: c.head });
+          });
         }
         const sh = intro && ip ? introShow(intro.plan, it, ip) : null;
         const L = sh?.level ?? 0;
@@ -832,6 +856,15 @@ export function LiveScene3D(props: Props) {
           pose.pos = m.pos; pose.look = m.look; pose.fov = m.fov;
           if (k >= 1 || now - foCam.t0 > 20000) foCam = null;
         }
+        // a timeout: the camera goes down to the bench of the team that called it — the huddle round the coach
+        const tmoCam = !intro && !replaying ? ai.timeoutNow?.() ?? null : null;
+        if (tmoCam) {
+          if (Number.isNaN(toCamAt)) toCamAt = now;
+          const bx = BENCH.x[tmoCam.side], sec = (now - toCamAt) / 1000, drift = Math.sin(sec * .09) * 1.6;
+          const bench = { pos: { x: bx + 3.4 + drift, y: 2.1, z: -RINK.width / 2 + 6.2 }, look: { x: bx + drift * .3, y: 1.25, z: -RINK.width / 2 - 1.6 }, fov: 40 };
+          const m = mixCam({ pos: pose.pos, look: pose.look, fov: pose.fov }, bench, smooth01(sec / 1.6));
+          pose.pos = m.pos; pose.look = m.look; pose.fov = m.fov; dirty = true;
+        } else toCamAt = NaN;
         if (intro && sh) {
           // the entrance's own camera, handing over to the match camera as everybody skates to his place
           const ic = introCamera(intro.plan, it, ip!);
