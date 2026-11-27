@@ -11,6 +11,7 @@ import type { FigureRequest } from './replayCache';
 import { resolveReplayQuality } from './ReplayScene';
 import { LiveScene3D } from './LiveScene3D';
 import { crewFor } from './officialCrew';
+import { useMatchSound } from './sound/useMatchSound';
 
 export { clipFrame };
 /** Static ice markings in real IIHF/KHL proportions (viewBox 100 × 50 = 60 × 30 m, 1 m = 5/3 units). */
@@ -93,6 +94,8 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
   const can3d = !!ai && !failed3d;
   const show3d = can3d && settings.matchView === '3d' && allow3d;
   const read = () => (ai ? ticker.tau ?? 0 : ticker.sec);
+  // the match's sound follows the same frames (only with the agent rink: the formation picture has no play)
+  useMatchSound(ai, ticker, running);
   const [t, setT] = useState(read);
   const last = useRef(0);
   useEffect(() => {
@@ -124,6 +127,8 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
   // the four officials (the same crew the 3D picture shows)
   const officials: RinkOfficial[] | undefined = ai ? crewFor(ai).update(frame, ai.plays, t).map(o => ({ x: o.x / RINK.length * 100 + 50, y: o.z / RINK.width * 100 + 50, ref: o.role === 'ref', signal: o.gesture !== 'none', heading: o.heading })) : undefined;
   const svg = <RinkSvg frame={frame} home={home} away={away} players={players} aim={aim} officials={officials} />;
+  const soundButton = ai && <button type="button" aria-pressed={settings.sound} onClick={() => setSettings({ sound: !settings.sound })} title={settings.sound ? 'Выключить звук' : 'Включить звук'}
+    className={cn('rounded-sm px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur-sm', settings.sound ? 'bg-white/85 text-[#0b1726]' : 'bg-black/35 text-white/85 hover:bg-black/55')} data-live-sound-toggle>{settings.sound ? '🔊 Звук' : '🔇 Звук'}</button>;
   const viewToggle = can3d && <span className="flex rounded-sm border border-line overflow-hidden shrink-0" role="radiogroup" aria-label="Вид площадки" data-rink-view={show3d ? '3d' : '2d'}>
     {(['2d', '3d'] as const).map(v => <button key={v} type="button" role="radio" aria-checked={settings.matchView === v} onClick={() => setSettings({ matchView: v })}
       className={cn('px-1.5 py-0.5 text-[10px] font-bold uppercase', settings.matchView === v ? 'bg-ice text-bg' : 'text-muted hover:text-text')} data-rink-view-button={v}>{v}</button>)}
@@ -159,12 +164,13 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
           {bare && viewToggle && <span className="bg-panel/90 rounded-sm">{viewToggle}</span>}
           <button type="button" aria-pressed={settings.matchMinimap} onClick={() => setSettings({ matchMinimap: !settings.matchMinimap })}
             className={cn('rounded-sm px-1.5 py-0.5 text-[10px] font-semibold backdrop-blur-sm', settings.matchMinimap ? 'bg-white/85 text-[#0b1726]' : 'bg-black/35 text-white/85 hover:bg-black/55')} data-live-minimap-toggle>Карта</button>
+          {soundButton}
         </div>
         {/* The same frame on the 2D rink: both pictures are one simulation. */}
         {settings.matchMinimap && minimap && <div className="absolute right-1.5 bottom-1.5 w-[28%] min-w-[120px] max-w-[240px] rounded-sm border border-white/25 bg-[#0a1828]/75 p-0.5 pointer-events-none" style={{ aspectRatio: '2 / 1' }} data-rink-minimap>{svg}</div>}
       </div>
     ) : (
-      <div className="bg-[#0a1828] p-1 flex-1 min-h-0 flex items-center justify-center relative">{bare && viewToggle && <div className="absolute top-1.5 left-1.5 z-10 bg-panel/90 rounded-sm">{viewToggle}</div>}<div className={fill ? 'w-full h-full' : 'w-full max-w-[560px]'} style={fill ? undefined : { aspectRatio: '2 / 1' }}>{svg}</div></div>
+      <div className="bg-[#0a1828] p-1 flex-1 min-h-0 flex items-center justify-center relative"><div className="absolute top-1.5 left-1.5 z-10 flex gap-1">{bare && viewToggle && <span className="bg-panel/90 rounded-sm">{viewToggle}</span>}{soundButton}</div><div className={fill ? 'w-full h-full' : 'w-full max-w-[560px]'} style={fill ? undefined : { aspectRatio: '2 / 1' }}>{svg}</div></div>
     )}
   </section>;
 }
