@@ -21,7 +21,7 @@
     "executableName": "Hockey Simulator Manager",
     "copyright": "ClubGames",
     "directories": { "output": "release", "buildResources": "build" },
-    "files": ["main.cjs", "preload.cjs", "modInstall.cjs", "app/**/*", "package.json"],
+    "files": ["main.cjs", "preload.cjs", "modInstall.cjs", "lan.cjs", "app/**/*", "package.json"],
     "asar": true,
     "electronLanguages": ["ru", "en-US"],
     "win": {

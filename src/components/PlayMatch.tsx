@@ -32,7 +32,7 @@ interface Hud {
   boxed: [{ id: string; left: number }[], { id: string; left: number }[]]; delayed: 0 | 1 | null; mode: PlayRink['mode'];
   ctl: string | null; power: number; context: 'carry' | 'support' | 'defend'; labels: { shoot: string; pass: string; deke: string }; energy: number; faceoff: boolean; foCue: 'ready' | 'now' | null; foCall: string | null; pulled: boolean; move: string | null;
 }
-interface GoalItem { event: GameEvent; tau: number; clip?: ReplayClip; period: number }
+export interface GoalItem { event: GameEvent; tau: number; clip?: ReplayClip; period: number }
 interface Toast { id: number; text: string; tone: 'goal' | 'pen' | 'info' }
 
 /** Shown on the intro screen and in the pause menu. */
@@ -313,23 +313,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       // … while it holds the clock: the teams' entrance, a replay (skippable; a safety cap all the same)
       if (ticker.hold && held < 240) { held += dt; raf = requestAnimationFrame(loop); return; }
       if (!ticker.hold) held = 0;
-      const t = touch.current;
-      let pad: PadState = mergePads(keyboardPad(keys.current), gp.pad, t, mousePad(mouse.current, now));
-      // the sticks are read in screen terms: the camera of the 3D picture turns them into rink terms (the skill
-      // stick's up / down stays the screen's — NHL style — only the side of a deke or the stickhandling turns)
-      const cam = settingsRef.current.matchView === '3d' ? settingsRef.current.matchCamera : 'top';
-      if (cam === 'end' || cam === 'vertical') {
-        const px = k.frameAt(k.tau).puck.x, att = k.attack ?? 1;
-        if (pad.mx || pad.my) { const v = screenToRink(pad.mx, pad.my, cam, px, att); pad = { ...pad, mx: v.x, my: v.y }; }
-        if (pad.sx || pad.sy) { const v = screenToRink(pad.sx ?? 0, pad.sy ?? 0, cam, px, att); pad = { ...pad, srx: v.x, sry: v.y }; }
-      }
-      // the mouse aims: the cursor on the ice (for a few seconds after it moved, or while a button is held)
-      const ms = mouse.current;
-      if (ms.at > 0 && (now - ms.at < 3000 || ms.lmb || ms.rmb)) {
-        const pick = settingsRef.current.matchView === '3d' && k.screenPick ? k.screenPick : svgPick;
-        const pc = pick(ms.x, ms.y);
-        if (pc) pad = { ...pad, aimAt: k.fromPercent(pc.x, pc.y) };
-      }
+      const pad = framePad(k, keys.current, gp.pad, touch.current, mouse.current, now, settingsRef.current);
       k.advance(dt, pad);
       book(k, k.drain());
       ticker.tau = Math.max(0, k.tau - 1 / 60);
@@ -551,8 +535,29 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   );
 }
 
+/**
+ * This frame's pad from every device, in rink terms: the sticks are read in screen terms and the camera of the 3D
+ * picture turns them (the skill stick's up / down stays the screen's — NHL style — only the side of a deke or the
+ * stickhandling turns); the mouse aims with the cursor on the ice for a few seconds after it moved.
+ */
+export function framePad(k: Pick<PlayRink, 'frameAt' | 'tau' | 'attack' | 'screenPick' | 'fromPercent'>, keys: Set<string>, gp: PadState, touch: TouchState, mouse: MouseState, now: number, settings: { matchView: string; matchCamera: string }): PadState {
+  let pad: PadState = mergePads(keyboardPad(keys), gp, touch, mousePad(mouse, now));
+  const cam = settings.matchView === '3d' ? settings.matchCamera : 'top';
+  if (cam === 'end' || cam === 'vertical') {
+    const px = k.frameAt(k.tau).puck.x, att = k.attack ?? 1;
+    if (pad.mx || pad.my) { const v = screenToRink(pad.mx, pad.my, cam, px, att); pad = { ...pad, mx: v.x, my: v.y }; }
+    if (pad.sx || pad.sy) { const v = screenToRink(pad.sx ?? 0, pad.sy ?? 0, cam, px, att); pad = { ...pad, srx: v.x, sry: v.y }; }
+  }
+  if (mouse.at > 0 && (now - mouse.at < 3000 || mouse.lmb || mouse.rmb)) {
+    const pick = settings.matchView === '3d' && k.screenPick ? k.screenPick : svgPick;
+    const pc = pick(mouse.x, mouse.y);
+    if (pc) pad = { ...pad, aimAt: k.fromPercent(pc.x, pc.y) };
+  }
+  return pad;
+}
+
 /** The 2D rink under the mouse: a screen point → rink percent (the 3D view brings its own through the camera). */
-function svgPick(cx: number, cy: number): { x: number; y: number } | null {
+export function svgPick(cx: number, cy: number): { x: number; y: number } | null {
   const svg = document.querySelector<SVGSVGElement>('[data-play-match] [data-live-rink] > div:not([data-rink-3d]) [data-rink-svg]');
   const m = svg?.getScreenCTM();
   if (!svg || !m) return null;
@@ -560,7 +565,7 @@ function svgPick(cx: number, cy: number): { x: number; y: number } | null {
   return { x: Math.max(0, Math.min(100, p.x)), y: Math.max(0, Math.min(100, p.y * 2)) };
 }
 
-function Sheet({ children }: { children: React.ReactNode }) {
+export function Sheet({ children }: { children: React.ReactNode }) {
   return (
     <div data-pad-scope className="absolute inset-0 z-40 bg-bg/80 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 overflow-y-auto">
       <div className="bg-panel border border-line rounded-md p-4 sm:p-5 w-full max-w-2xl text-center shadow-2xl flex flex-col items-center max-h-[94dvh] overflow-y-auto overscroll-contain fade-in">{children}</div>
@@ -568,7 +573,7 @@ function Sheet({ children }: { children: React.ReactNode }) {
   );
 }
 
-function SettingPick<V extends string | number>({ label, value, options, onChange, id }: { label: string; value: V; options: [V, string][]; onChange: (v: V) => void; id: string }) {
+export function SettingPick<V extends string | number>({ label, value, options, onChange, id }: { label: string; value: V; options: [V, string][]; onChange: (v: V) => void; id: string }) {
   return (
     <div>
       <div className="text-[11px] text-muted mb-1">{label}</div>
@@ -586,7 +591,7 @@ function SettingPick<V extends string | number>({ label, value, options, onChang
  * stick and buttons, otherwise the keyboard. Plugging a pad in switches the hints at once; the other devices
  * are a tap away.
  */
-function Controls({ device }: { device: InputDevice }) {
+export function Controls({ device }: { device: InputDevice }) {
   const [shown, setShown] = useState<InputDevice | null>(null);
   // a new device (a pad plugged in) takes over from a manual pick
   useEffect(() => setShown(null), [device]);
@@ -634,7 +639,7 @@ function BoxLine({ sim, home, away }: { sim: ReturnType<typeof makeUserSim>['sim
   );
 }
 
-function GoalList({ goals, P, onReplay }: { goals: GoalItem[]; P: Record<string, { name: string }>; onReplay: (g: GoalItem) => void }) {
+export function GoalList({ goals, P, onReplay }: { goals: GoalItem[]; P: Record<string, { name: string }>; onReplay: (g: GoalItem) => void }) {
   if (!goals.length) return null;
   return (
     <ul className="w-full text-left text-xs space-y-1 my-1" data-play-goals>
@@ -698,7 +703,7 @@ const TOUCH_EXTRA: Record<'carry' | 'support' | 'defend', [TouchKey, string, str
 /** The shortest press a touch button gives the rink (ms): several of its 1/60 s steps. */
 const TAP_MS = 110;
 
-function TouchControls({ touch, labels, onCommand, pulled, faceoff, context = 'carry' }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean; faceoff: boolean; context?: 'carry' | 'support' | 'defend' }) {
+export function TouchControls({ touch, labels, onCommand, pulled, faceoff, context = 'carry' }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean; faceoff: boolean; context?: 'carry' | 'support' | 'defend' }) {
   // a button that disappears with the situation (defence → attack) is let go
   useEffect(() => { for (const k of ['lb', 'lift', 'pin', 'push', 'vision', 'hustle'] as const) if (!TOUCH_EXTRA[context].some(([x]) => x === k)) touch.current[k] = false; }, [context, touch]);
   useEffect(() => () => { touch.current = emptyTouch(); }, [touch]);

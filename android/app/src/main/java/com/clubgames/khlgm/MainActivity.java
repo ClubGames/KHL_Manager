@@ -47,6 +47,8 @@ public class MainActivity extends BridgeActivity {
     public void onCreate(Bundle savedInstanceState) {
         // before the WebView exists: no service worker may stand between it and the game's page
         dropServiceWorkers();
+        // the sockets of the online match (LanNetPlugin): registered before the bridge starts
+        registerPlugin(LanNetPlugin.class);
         super.onCreate(savedInstanceState);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         if (getBridge() != null && getBridge().getWebView() != null) {

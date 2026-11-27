@@ -12,6 +12,7 @@ import { Standings } from './components/Standings';
 import { GameBox, Schedule } from './components/Schedule';
 import { Match } from './components/Match';
 import { PlayMatch } from './components/PlayMatch';
+import { OnlineScreen } from './components/online/OnlineScreen';
 import { MatchModeModal, type MatchMode } from './components/MatchModes';
 import { getSettings } from './game/settings';
 import { Trades } from './components/Trades';
@@ -65,6 +66,8 @@ export default function App() {
   const saveStatus = useSaveStatus();
   const [view, setView] = useState<View>('dashboard');
   const [matchGame, setMatchGame] = useState<Game | null>(null);
+  /** the network game (outside the career) is open */
+  const [online, setOnline] = useState(false);
   /** how the open match is taken: played by the manager or watched from the bench */
   const [matchMode, setMatchMode] = useState<'play' | 'watch'>('watch');
   /** «Играть матч» was pressed: the choice of play / watch / quick simulation is open */
@@ -169,7 +172,7 @@ export default function App() {
   if (!s) {
     return (
       <UIContext.Provider value={api}>
-        <Startup onStart={(r, id) => void startNewGame(r, id)} />
+        {online ? <OnlineScreen onClose={() => setOnline(false)} /> : <Startup onStart={(r, id) => void startNewGame(r, id)} onOnline={() => setOnline(true)} />}
       {settingsOpen && (
         <Modal open onClose={() => setSettingsOpen(false)} width="max-w-2xl" title={<span className="font-display uppercase tracking-wide">Настройки</span>}>
           <SettingsPanel onClose={() => setSettingsOpen(false)} />
