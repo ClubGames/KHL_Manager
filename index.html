@@ -31,6 +31,8 @@
         window.addEventListener('unhandledrejection', function (e) { var r = e && e.reason; note(r && r.message ? r.message : r); });
         window.__khlBootErrors = errors;
         function blank() {
+          // React never drew the interface (the boot screen's own text must not count as «something on screen»)
+          if (!window.__khlMounted) return true;
           var root = document.getElementById('root');
           if (!root || !root.textContent || root.textContent.replace(/\s+/g, '').length < 10) return true;
           // something is drawn, but is any of it on screen? (nothing but the page itself under the probe points)
