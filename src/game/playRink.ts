@@ -93,6 +93,8 @@ export interface PlayRinkOptions {
   home: Team; away: Team; players: Record<string, Player>; lineups: [Lineup, Lineup];
   /** the manager's side (null: both benches are AI — tests, finishing a period in the background) */
   userSide: Side | null;
+  /** two humans (online): the sides of seat 0 and seat 1 (overrides userSide); step / advance take a pad per seat */
+  humans?: Side[];
   kind: 'reg' | 'ot3' | 'ot5';
   /** the teams have switched ends: presentation is mirrored lengthwise */
   flip?: boolean;
@@ -262,7 +264,61 @@ interface Puck {
   rel?: { by: Sk; x: number; y: number }; defl?: boolean;
 }
 interface Pending { side: Side; player: Sk; reason: string; min: 2 | 4 | 5 }
+/** One simulation step as recorded (and, online, streamed to the guest). */
+export type RinkFrame = Frame;
 interface Frame { tau: number; clock: number; px: number; py: number; ph: number; carrier: number; ids: string[]; sk: { id: string; side: Side; goalie: boolean; box: boolean; x: number; y: number; fa: number; ctrl: boolean; fall: number; fk: FallKind; fs: 1 | -1; check: number; poke: number; deke: number; mv: MoveKind | null; mt: number; stag: number; st: Stance | null; stT: number; hl: number }[]; stop: 0 | 1 | 2; ox: number; oy: number; dx: number; dy: number }
+
+/** The HUD of one seat (see PlayRink.hud). */
+export type PlayHud = { ctl: string | null; power: number; context: 'carry' | 'support' | 'defend'; labels: { shoot: string; pass: string; deke: string }; energy: number; faceoff: boolean; foCue: 'ready' | 'now' | null; foCall: string | null; move: string | null };
+export type AimMark = { x: number; y: number; z: number; charge: number };
+export type GoalClipKey = { tau: number; scorer: string; side: Side; kind: ShotKind; release: number; strength: Strength };
+/**
+ * Online: what the host's rink sends the guest's copy (PlayRink.netTick → PlayRink.ingest) — the frames, plays,
+ * releases and goals since the last tick, the windups in progress, and the state its HUD shows.
+ */
+export interface RinkTick {
+  frames: Frame[]; plays: RinkPlay[]; releases: PlayRelease[]; clips: GoalClipKey[];
+  wind: [string, 'shot' | 'pass', number][];
+  tau: number; clock: number; mode: PlayRink['mode']; score: [number, number]; shots: [number, number]; pulled: [boolean, boolean];
+  men: [number, number]; boxed: [{ id: string; left: number }[], { id: string; left: number }[]]; delayed: Side | null;
+  hud: PlayHud; aim: AimMark | null;
+}
+
+/** One human at the controls (see PlayRink.seats). */
+interface Seat {
+  side: Side;
+  ctl: string | null;
+  prevPad: PadState;
+  pressAt: { shoot: number; pass: number };
+  /** skill-stick gesture state: when it was pulled back (-1: not), when it was last at rest, the last sideways flick, the turn swept */
+  ss: { back: number; loadEnd: number; rest: number; ang: number; sweep: number; sweepAt: number; wasOut: boolean; ot: boolean; otEnd: number; still: number; backSweep: number; handSide: 0 | 1 | -1; sideAt: number; pend: null | { at: number; f: number; l: number; s: 1 | -1; sweep: number; drag: boolean } };
+  /** the skill stick held out with the puck: where the blade carries it (lateral −1…1 to the left of his facing, forward −1…1) */
+  handle: { lat: number; fwd: number } | null;
+  /** the last quick side-to-side of the stickhandling (a man reaching in has a harder time) */
+  handleSwing: number;
+  /** where he aims: the mouse cursor on the ice (null: the skating stick decides) */
+  aimPt: V2 | null;
+  aimVec: V2;
+  lastDekeAt: number;
+  /** L3 hustle latched on (until the stick is let go or L3 is pressed again) */
+  hustleOn: boolean;
+  /** his man in the shot-block stance this step (LB on defence) */
+  blockBy: Sk | null;
+  /** RT held with the puck (NHL scheme): the right stick only stickhandles, quicker */
+  handleFast: boolean;
+  callForPass: number;
+  autoAt: number;
+  /** how he timed the last draw (the HUD shows it for a moment) */
+  foCall: { text: string; until: number } | null;
+  /** his press for the current draw (-1: none yet) and whether it was the faceoff button */
+  foPress: number;
+  foBtn: boolean;
+}
+function newSeat(side: Side): Seat {
+  return { side, ctl: null, prevPad: NO_PAD, pressAt: { shoot: -1, pass: -1 },
+    ss: { back: -1, loadEnd: -1, rest: 0, ang: 0, sweep: 0, sweepAt: 0, wasOut: false, ot: false, otEnd: -1, still: 0, backSweep: 0, handSide: 0, sideAt: -9, pend: null },
+    handle: null, handleSwing: -9, aimPt: null, aimVec: { x: 0, y: 0 }, lastDekeAt: -9, hustleOn: false, blockBy: null, handleFast: false, callForPass: 0, autoAt: 0, foCall: null, foPress: -1, foBtn: false };
+}
 
 export class PlayRink {
   readonly plays: RinkPlay[] = [];
@@ -284,8 +340,9 @@ export class PlayRink {
   readonly hits: [number, number] = [0, 0];
   readonly faceoffWins: [number, number] = [0, 0];
   readonly goalsFor: { id: string; side: Side; tau: number; clock: number }[] = [];
-  /** the skater the manager controls */
-  ctl: string | null = null;
+  /** the skater the manager controls (the current seat's: see `z`) */
+  get ctl(): string | null { return this.z.ctl; }
+  set ctl(v: string | null) { this.z.ctl = v; }
   /** set by the 3D view: a screen point → rink percent (the mouse aims with it) */
   screenPick: ((cx: number, cy: number) => { x: number; y: number } | null) | null = null;
   /** goalie pulled for an extra attacker (the manager's choice for his side, the AI's for the other) */
@@ -296,34 +353,63 @@ export class PlayRink {
   private stopInfo: { reason: 'start' | 'goal' | 'freeze' | 'icing' | 'offside' | 'penalty' | 'out' | 'end'; dot: V2; until: number; icingSide: Side | null } = { reason: 'start', dot: { x: 30, y: 15 }, until: 0.6, icingSide: null };
   /** the faceoff: `gather` while the players skate to their places (spots by id), then the official sets, winds up and throws the puck down
    *  (`drop`: the moment it leaves his hand), and the centres battle for it for a moment (`decide`) */
-  private fo: { dot: V2; setAt: number; drop: number; press: number; btn: boolean; done: boolean; gather: boolean; until: number; spots: Map<string, V2>; decide: number } | null = null;
-  /** how the manager timed the last draw (the HUD shows it for a moment) */
-  private foCall: { text: string; until: number } | null = null;
+  private fo: { dot: V2; setAt: number; drop: number; done: boolean; gather: boolean; until: number; spots: Map<string, V2>; decide: number } | null = null;
+  private get foCall() { return this.z.foCall; }
+  private set foCall(v: { text: string; until: number } | null) { this.z.foCall = v; }
   private pending: Pending[] = [];
   private zoneIn: [boolean, boolean] = [false, false];
   private touches: { id: string; side: Side }[] = [];
   private lastSave = -9;
   /** a man jumped on before the one he replaces got to the bench (too many men while both are out there) */
   private early: [{ id: string; leaver: Sk } | null, { id: string; leaver: Sk } | null] = [null, null];
-  private prevPad: PadState = NO_PAD;
-  private pressAt = { shoot: -1, pass: -1 };
+  /**
+   * The humans at the controls, each with his own skater and input state (a seat): one in a match against the AI,
+   * two in an online match. The code that reads a seat's state (`ctl`, `ss`, `handle`, …) reads the current one,
+   * `z`; step() makes each seat current in turn for its controls, the rest of the rink asks seatFor / seatOf.
+   */
+  private seat0: Seat = newSeat(0);
+  private twin: Seat[] | null = null;
+  private z: Seat = this.seat0;
+  /** (the tests reset the current seat's last pad through these) */
+  protected get prevPad() { return this.z.prevPad; }
+  protected set prevPad(v: PadState) { this.z.prevPad = v; }
+  protected get pressAt() { return this.z.pressAt; }
   private lineIdx: [number, number] = [0, 0];
-  /** skill-stick gesture state: when it was pulled back (-1: not), when it was last at rest, the last sideways flick, the turn swept */
-  private ss = { back: -1, loadEnd: -1, rest: 0, ang: 0, sweep: 0, sweepAt: 0, wasOut: false, ot: false, otEnd: -1, still: 0, backSweep: 0, handSide: 0 as 0 | 1 | -1, sideAt: -9, pend: null as null | { at: number; f: number; l: number; s: 1 | -1; sweep: number; drag: boolean } };
-  /** the skill stick held out with the puck: where the blade carries it (lateral −1…1 to the left of his facing, forward −1…1) */
-  private handle: { lat: number; fwd: number } | null = null;
-  /** the last quick side-to-side of the stickhandling (a man reaching in has a harder time) */
-  private handleSwing = -9;
-  /** where the manager aims: the mouse cursor on the ice (null: the skating stick decides) */
-  private aimPt: V2 | null = null;
-  private aimVec: V2 = { x: 0, y: 0 };
-  private lastDekeAt = -9;
-  /** L3 hustle latched on (until the stick is let go or L3 is pressed again) */
-  private hustleOn = false;
-  /** the manager's man in the shot-block stance this step (LB on defence) */
-  private blockBy: Sk | null = null;
-  /** RT held with the puck (NHL scheme): the right stick only stickhandles, quicker */
-  private handleFast = false;
+  private get ss() { return this.z.ss; }
+  private set ss(v: Seat['ss']) { this.z.ss = v; }
+  private get handle() { return this.z.handle; }
+  private set handle(v: { lat: number; fwd: number } | null) { this.z.handle = v; }
+  private get handleSwing() { return this.z.handleSwing; }
+  private set handleSwing(v: number) { this.z.handleSwing = v; }
+  private get aimPt() { return this.z.aimPt; }
+  private set aimPt(v: V2 | null) { this.z.aimPt = v; }
+  private get aimVec() { return this.z.aimVec; }
+  private set aimVec(v: V2) { this.z.aimVec = v; }
+  private get lastDekeAt() { return this.z.lastDekeAt; }
+  private set lastDekeAt(v: number) { this.z.lastDekeAt = v; }
+  private get hustleOn() { return this.z.hustleOn; }
+  private set hustleOn(v: boolean) { this.z.hustleOn = v; }
+  private get blockBy() { return this.z.blockBy; }
+  private set blockBy(v: Sk | null) { this.z.blockBy = v; }
+  private get handleFast() { return this.z.handleFast; }
+  private set handleFast(v: boolean) { this.z.handleFast = v; }
+  /** The seats in play now (none: both benches are the AI's). */
+  private seats(): Seat[] {
+    if (this.opts.humans?.length) {
+      if (!this.twin || this.twin.length !== this.opts.humans.length) { this.twin = this.opts.humans.map((side, i) => (i === 0 ? Object.assign(this.seat0, { side }) : newSeat(side))); }
+      return this.twin;
+    }
+    if (this.opts.userSide === null) return [];
+    this.seat0.side = this.opts.userSide;
+    return [this.seat0];
+  }
+  /** The human playing side s (undefined: the AI's bench). */
+  private seatFor(s: Side): Seat | undefined { return this.seats().find(z => z.side === s); }
+  /** The human skating `a` right now. */
+  private seatOf(a: Sk | null | undefined): Seat | undefined { return a ? this.seats().find(z => z.ctl === a.id && z.side === a.side) : undefined; }
+  private human(s: Side): boolean { return !!this.seatFor(s); }
+  /** Runs `f` with seat `z` current. */
+  private as<T>(z: Seat, f: () => T): T { const o = this.z; this.z = z; try { return f(); } finally { this.z = o; } }
   /** the team tactics the manager calls from the d-pad: forecheck (-1 passive 1-2-2, 0 balanced, 1 aggressive 2-1-2) and breakout (0 standard, 1 stretch, 2 safe) */
   readonly forecheck: [number, number] = [0, 0];
   readonly breakout: [number, number] = [0, 0];
@@ -337,8 +423,10 @@ export class PlayRink {
   private offNext = new Set<string>();
   private changeCheck = 0;
   private aiTick = 0;
-  private callForPass = 0;
-  private autoAt = 0;
+  private get callForPass() { return this.z.callForPass; }
+  private set callForPass(v: number) { this.z.callForPass = v; }
+  private get autoAt() { return this.z.autoAt; }
+  private set autoAt(v: number) { this.z.autoAt = v; }
   private stepAcc = 0;
   private readonly goalieIds: [string | null, string | null];
   private readonly teams: [Team, Team];
@@ -378,7 +466,7 @@ export class PlayRink {
   /* ---------------- public API ---------------- */
   get flipped() { return !!this.opts.flip; }
   /** The way the manager's team attacks in presentation terms (+1: toward +x); undefined without a manager. */
-  get attack(): 1 | -1 | undefined { const s = this.opts.userSide; return s === null ? undefined : (s === 0) !== this.flipped ? 1 : -1; }
+  get attack(): 1 | -1 | undefined { const s = this.seats()[0]?.side ?? null; return s === null ? undefined : (s === 0) !== this.flipped ? 1 : -1; }
   /** The interactive rink is simulated as it is played: nothing to compute ahead. */
   ensure(_tau: number) { /* frames are produced by step() */ }
   get ended() { return this.mode === 'end'; }
@@ -386,24 +474,87 @@ export class PlayRink {
   /** Events since the last call. */
   drain(): PlayOut[] { const o = this.out; this.out = []; return o; }
   /** Advances real time by `dt` seconds (fixed internal steps of 1/60 s) with the manager's controls. */
-  advance(dt: number, pad: PadState = NO_PAD) {
+  advance(dt: number, pad: PadState | readonly PadState[] | (() => readonly PadState[]) = NO_PAD) {
+    if (this.mirror) return;
     this.stepAcc = Math.min(this.stepAcc + dt, 0.25);
-    while (this.stepAcc >= STEP - 1e-9) { this.stepAcc -= STEP; this.step(pad); }
+    while (this.stepAcc >= STEP - 1e-9) { this.stepAcc -= STEP; this.step(typeof pad === 'function' ? pad() : pad); }
+  }
+
+  /* ---------------- online ---------------- */
+  /** The guest's copy of the host's rink: frames are streamed in (ingest), nothing is simulated here. */
+  mirror = false;
+  private remote: Pick<RinkTick, 'hud' | 'aim' | 'men' | 'boxed' | 'delayed'> | null = null;
+  /** how far the host's ticks have got: the last frame sent, and plays / releases / goals by running count */
+  private sent = { tau: -1, plays: 0, releases: 0, clips: 0 };
+  private playN = 0;
+  private releaseN = 0;
+  /** Every skater and goalie of both teams (the guest's copy must know the same people). */
+  agentIds(): string[] { return [...this.agents.keys()]; }
+  /** A copy for the online guest: built from the same options, its own opening frames dropped (the host's come). */
+  static mirrorOf(opts: PlayRinkOptions): PlayRink {
+    const k = new PlayRink(opts);
+    k.mirror = true; k.frames.length = 0; k.plays.length = 0; k.releases.length = 0; k.clips.length = 0;
+    return k;
+  }
+  /**
+   * The host: everything new since the last call for the guest whose seat is `seat` (null when no new frame is due:
+   * the frames go at `hz` per second, the guest's picture interpolates between them).
+   */
+  netTick(seat: number, hz = 30): RinkTick | null {
+    const gap = 1 / hz - 1e-6, frames: Frame[] = [];
+    let last = this.sent.tau;
+    // every 1/hz s (the end of the period flushes the rest with a high hz)
+    for (const f of this.frames) if (f.tau > last + gap) { frames.push(f); last = f.tau; }
+    if (!frames.length) return null;
+    this.sent.tau = last;
+    const fromEnd = <T>(list: T[], total: number, sentN: number) => (total - sentN > 0 ? list.slice(Math.max(0, list.length - (total - sentN))) : []);
+    const plays = fromEnd(this.plays, this.playN, this.sent.plays), releases = fromEnd(this.releases, this.releaseN, this.sent.releases);
+    const clips = this.clips.slice(this.sent.clips).map(c => c.e);
+    this.sent.plays = this.playN; this.sent.releases = this.releaseN; this.sent.clips = this.clips.length;
+    const wind: RinkTick['wind'] = [];
+    for (const a of this.agents.values()) if (a.act?.k === 'windup' && a.on === 'ice') wind.push([a.id, a.act.what, a.act.t0]);
+    return {
+      frames, plays, releases, clips, wind, tau: this.tau, clock: this.clock, mode: this.mode, score: [this.score[0], this.score[1]], shots: [this.shots[0], this.shots[1]],
+      pulled: [this.pulled[0], this.pulled[1]], men: this.men(), boxed: this.boxed(), delayed: this.delayed, hud: this.hud(seat), aim: this.aimMarker(seat),
+    };
+  }
+  /** The guest: the host's tick into this copy. */
+  ingest(t: RinkTick) {
+    for (const f of t.frames) if (!this.frames.length || f.tau > this.frames[this.frames.length - 1].tau) this.keep(f);
+    for (const p of t.plays) this.plays.push(p);
+    if (this.plays.length > 200) this.plays.splice(0, this.plays.length - 150);
+    for (const r of t.releases) this.releases.push(r);
+    for (const e of t.clips) this.clips.push({ e, clip: null });
+    this.tau = t.tau; this.clock = t.clock; this.mode = t.mode;
+    this.score[0] = t.score[0]; this.score[1] = t.score[1]; this.shots[0] = t.shots[0]; this.shots[1] = t.shots[1];
+    this.pulled[0] = t.pulled[0]; this.pulled[1] = t.pulled[1];
+    // windups in progress: the 3D stick goes back before the release arrives
+    const wind = new Map(t.wind.map(([id, what, t0]) => [id, { what, t0 }] as const));
+    for (const a of this.agents.values()) {
+      const w = wind.get(a.id);
+      if (w) a.act = { k: 'windup', t0: w.t0, what: w.what };
+      else if (a.act?.k === 'windup') a.act = null;
+    }
+    this.remote = { hud: t.hud, aim: t.aim, men: t.men, boxed: t.boxed, delayed: t.delayed };
   }
   /** Skaters per side right now (in the box ones excluded, an extra attacker included). */
-  men(): [number, number] { return [this.skaters(0).length, this.skaters(1).length]; }
+  men(): [number, number] { if (this.mirror) return this.remote?.men ?? [5, 5]; return [this.skaters(0).length, this.skaters(1).length]; }
   /** Men in the box per side with the time left on their penalties (period-clock seconds). */
   boxed(): [{ id: string; left: number }[], { id: string; left: number }[]] {
+    if (this.mirror) return this.remote?.boxed ?? [[], []];
     return [0, 1].map(s => [...this.agents.values()].filter(a => a.side === s && a.on === 'box').map(a => ({ id: a.id, left: Math.max(0, a.boxUntil - this.clock) })).sort((p, q) => p.left - q.left)) as [{ id: string; left: number }[], { id: string; left: number }[]];
   }
   /** A delayed penalty is signalled against this side (the referee's arm is up). */
-  get delayed(): Side | null { return this.pending.length ? this.pending[0].side : null; }
+  get delayed(): Side | null { if (this.mirror) return this.remote?.delayed ?? null; return this.pending.length ? this.pending[0].side : null; }
   /** On-ice skaters per side (ids), for the books. */
   ice(): [(string | null)[], (string | null)[]] { return [this.skaters(0, true).map(a => a.id), this.skaters(1, true).map(a => a.id)]; }
   goalieOn(s: Side): string | null { return this.goalieOf(s)?.id ?? null; }
   /** The manager's view of his controlled player: what each button does right now and the charge of a windup. */
-  hud(): { ctl: string | null; power: number; context: 'carry' | 'support' | 'defend'; labels: { shoot: string; pass: string; deke: string }; energy: number; faceoff: boolean; foCue: 'ready' | 'now' | null; foCall: string | null; move: string | null } {
-    const me = this.ctl ? this.agents.get(this.ctl) : undefined, s = this.opts.userSide;
+  hud(seat = 0): PlayHud {
+    if (this.mirror) return this.remote?.hud ?? { ctl: null, power: 0, context: 'defend', labels: { shoot: 'Силовой', pass: 'Смена', deke: 'Отбор' }, energy: 1, faceoff: false, foCue: null, foCall: null, move: null };
+    const z = this.seats()[seat];
+    if (z && z !== this.z) return this.as(z, () => this.hud(seat));
+    const me = this.ctl ? this.agents.get(this.ctl) : undefined, s = z ? z.side : null;
     const p = this.puck;
     const context = me && p.carrier === me ? 'carry' : s !== null && (p.carrier?.side === s || (p.passTo && p.passTo.side === s)) ? 'support' : 'defend';
     const act = me?.act;
@@ -420,7 +571,7 @@ export class PlayRink {
     return { ctl: this.ctl, power, context, labels, energy: me?.energy ?? 1, faceoff: this.mode === 'faceoff', foCue, foCall, move };
   }
   /** The manager hands his skater back to the AI (the rest of the period is simulated). */
-  autopilot() { this.opts.userSide = null; this.ctl = null; }
+  autopilot() { this.opts.userSide = null; this.opts.humans = undefined; for (const z of [this.seat0, ...(this.twin ?? [])]) z.ctl = null; this.twin = null; this.z = this.seat0; }
   /** Plays the rest of the block without the manager (fast: no presentation). */
   runToEnd(maxSteps = 200000) { this.autopilot(); for (let i = 0; i < maxSteps && !this.ended; i++) this.step(NO_PAD); }
   /** Pull (true) or return (false) side s's goalie. */
@@ -588,7 +739,7 @@ export class PlayRink {
     return 5 - mine;
   }
   private play(kind: PlayKind, side: Side | null, text: string, who?: Sk) {
-    this.plays.push({ tau: this.tau, g: this.clock, kind, side, player: who?.id, text });
+    this.plays.push({ tau: this.tau, g: this.clock, kind, side, player: who?.id, text }); this.playN++;
     if (this.plays.length > 200) this.plays.splice(0, 50);
   }
   private boxSeat(a: Sk): V2 {
@@ -674,7 +825,7 @@ export class PlayRink {
     this.out.push({ type: 'penalty', side: pen.side, player: a.id, min: pen.min, reason: pen.reason });
     this.play('penalty', pen.side, `Удаление: ${a.name} — ${pen.reason} (${pen.min === 4 ? '2+2' : pen.min} мин)`, a);
     this.ppIdx[(1 - pen.side) as Side] = 0; this.ppIdx[pen.side] = 0;
-    if (this.ctl === a.id) this.ctl = null;
+    for (const z of this.seats()) if (z.ctl === a.id) z.ctl = null;
   }
   private stepStop() {
     const st = this.stopInfo;
@@ -738,7 +889,7 @@ export class PlayRink {
       else if (g.on !== 'ice') {
         g.on = 'ice'; g.leaving = false;
         const ex = this.skaters(s).length - this.manpower(s);
-        if (ex > 0) { const cut = this.skaters(s).filter(a => a.id !== this.ctl).slice(-ex); cut.forEach(a => { a.on = 'bench'; }); }
+        if (ex > 0) { const cut = this.skaters(s).filter(a => a.id !== this.seatFor(s)?.ctl).slice(-ex); cut.forEach(a => { a.on = 'bench'; }); }
       }
     }
     const p = this.puck;
@@ -768,19 +919,18 @@ export class PlayRink {
       if (g) { const n = loc(s, { x: GOAL + 1.0, y: MID }); place.set(g.id, n); if (!gather) { g.x = n.x; g.y = n.y; g.vx = 0; g.vy = 0; g.fa = s ? Math.PI : 0; } }
     }
     // the manager takes his centre for the draw
-    const us = this.opts.userSide;
-    if (us !== null) { const c = this.center(us); if (c) this.ctl = c.id; }
+    for (const z of this.seats()) { z.foPress = -1; z.foBtn = false; const c = this.center(z.side); if (c) z.ctl = c.id; }
     this.mode = 'faceoff';
     const setAt = this.tau;
     // the official skates to the dot and holds the puck out before he drops it (see officialCrew)
-    this.fo = { dot, setAt, drop: setAt + 1.5 + this.rand() * 0.6, press: -1, btn: false, done: false, gather, until: setAt + FO_GATHER_MAX, spots: place, decide: NaN };
+    this.fo = { dot, setAt, drop: setAt + 1.5 + this.rand() * 0.6, done: false, gather, until: setAt + FO_GATHER_MAX, spots: place, decide: NaN };
     this.zoneIn = [loc(0, dot).x > OPP_BLUE, loc(1, dot).x > OPP_BLUE];
   }
   private center(s: Side): Sk | null {
     const list = this.skaters(s), d = this.fo?.dot ?? this.puck;
     return list.length ? list.reduce((b, a) => (dist(a, d) < dist(b, d) ? a : b)) : null;
   }
-  private stepFaceoff(press: { shoot: boolean; pass: boolean; faceoff: boolean }) {
+  private stepFaceoff(presses: { shoot: boolean; pass: boolean; faceoff: boolean }[]) {
     const fo = this.fo!;
     const p = this.puck;
     if (fo.gather) {
@@ -803,7 +953,7 @@ export class PlayRink {
       fo.gather = false; fo.setAt = this.tau; fo.drop = this.tau + 1.5 + this.rand() * 0.6;
       return;
     }
-    if ((press.faceoff || press.shoot || press.pass) && fo.press < 0) { fo.press = this.tau; fo.btn = press.faceoff; }
+    this.seats().forEach((z, i) => { const press = presses[i]; if (press && (press.faceoff || press.shoot || press.pass) && z.foPress < 0) { z.foPress = this.tau; z.foBtn = press.faceoff; } });
     for (const a of this.onIce()) { a.manual = false; if (a.goalie) this.goalieTarget(a); else { a.tx = a.x; a.ty = a.y; a.urg = 0.2; } this.move(a); }
     // the drop: a short windup (the hand comes up), the throw down, then the centres battle for the puck on the ice
     const t = this.tau - fo.drop;
@@ -816,14 +966,13 @@ export class PlayRink {
     const c0 = this.center(0), c1 = this.center(1);
     if (!c0 || !c1) { this.mode = 'play'; p.dead = false; p.h = 0; return; }
     let pr = 0.5 + (c0.fo - c1.fo) / 170;
-    const us = this.opts.userSide;
-    if (us !== null) {
+    for (const z of this.seats()) {
       // timing the drop: the manager's centre wins clean with a press right as the puck falls
       // the faceoff button has a wider clean window than the shot / pass fallback
-      const t = fo.press < 0 ? 9 : fo.press - fo.drop, clean = fo.btn ? 0.2 : 0.14;
-      const bonus = t < -0.07 ? -0.45 : t <= clean ? (fo.btn ? 0.36 : 0.3) : t <= 0.32 ? 0.1 : -0.12;
-      pr += us === 0 ? bonus : -bonus;
-      this.foCall = { text: t < -0.07 ? 'Рано!' : t <= clean ? 'Идеально!' : t <= 0.32 ? 'Неплохо' : fo.press < 0 ? 'Не нажали' : 'Поздно', until: this.tau + 1.4 };
+      const t = z.foPress < 0 ? 9 : z.foPress - fo.drop, clean = z.foBtn ? 0.2 : 0.14;
+      const bonus = t < -0.07 ? -0.45 : t <= clean ? (z.foBtn ? 0.36 : 0.3) : t <= 0.32 ? 0.1 : -0.12;
+      pr += z.side === 0 ? bonus : -bonus;
+      z.foCall = { text: t < -0.07 ? 'Рано!' : t <= clean ? 'Идеально!' : t <= 0.32 ? 'Неплохо' : z.foPress < 0 ? 'Не нажали' : 'Поздно', until: this.tau + 1.4 };
     }
     const w: Side = this.rand() < clamp(pr, 0.06, 0.94) ? 0 : 1;
     const winner = w ? c1 : c0;
@@ -843,19 +992,23 @@ export class PlayRink {
   }
 
   /* ---------------- the main step ---------------- */
-  private step(pad: PadState) {
+  private step(padIn: PadState | readonly PadState[]) {
     this.tau += STEP;
-    const prev = this.prevPad;
-    const press = { shoot: pad.shoot && !prev.shoot, pass: pad.pass && !prev.pass, deke: pad.deke && !prev.deke, swap: pad.swap && !prev.swap, faceoff: !!pad.faceoff && !prev.faceoff,
-      poke: !!pad.poke && !prev.poke, lift: !!pad.lift && !prev.lift, pin: !!pad.pin && !prev.pin, hustle: !!pad.hustle && !prev.hustle, push: !!pad.push && !prev.push };
-    const release = { shoot: !pad.shoot && prev.shoot, pass: !pad.pass && prev.pass };
-    this.prevPad = { ...pad };
-    if (press.shoot) this.pressAt.shoot = this.tau;
-    if (press.pass) this.pressAt.pass = this.tau;
+    const seats = this.seats(), pads = Array.isArray(padIn) ? padIn as readonly PadState[] : [padIn as PadState];
+    const input = seats.map((z, i) => {
+      const pad = pads[i] ?? NO_PAD, prev = z.prevPad;
+      const press = { shoot: pad.shoot && !prev.shoot, pass: pad.pass && !prev.pass, deke: pad.deke && !prev.deke, swap: pad.swap && !prev.swap, faceoff: !!pad.faceoff && !prev.faceoff,
+        poke: !!pad.poke && !prev.poke, lift: !!pad.lift && !prev.lift, pin: !!pad.pin && !prev.pin, hustle: !!pad.hustle && !prev.hustle, push: !!pad.push && !prev.push };
+      const release = { shoot: !pad.shoot && prev.shoot, pass: !pad.pass && prev.pass };
+      z.prevPad = { ...pad };
+      if (press.shoot) z.pressAt.shoot = this.tau;
+      if (press.pass) z.pressAt.pass = this.tau;
+      return { z, pad, press, release };
+    });
     this.boxWalk();
     if (this.mode === 'end') { this.record(); return; }
     if (this.mode === 'stop') { this.stepStop(); this.record(); return; }
-    if (this.mode === 'faceoff') { this.stepFaceoff(press); this.record(); return; }
+    if (this.mode === 'faceoff') { this.stepFaceoff(input.map(x => x.press)); this.record(); return; }
     this.clock += STEP * this.clockRate();
     if (this.clock >= this.len) { this.clock = this.len; this.play('freeze', null, 'Сирена: конец периода'); this.startStop('end', { x: 30, y: 15 }, 1.2); this.record(); return; }
     this.boxes();
@@ -863,7 +1016,8 @@ export class PlayRink {
     this.goaliePulls();
     this.changes();
     if (this.puck.carrier) this.puck.carrier.ownAt = this.tau;
-    this.user(pad, press, release);
+    for (const a of this.onIce()) a.manual = false;
+    for (const x of input) this.as(x.z, () => this.user(x.pad, x.press, x.release));
     this.think();
     for (const a of this.onIce()) this.move(a);
     this.collide();
@@ -911,7 +1065,7 @@ export class PlayRink {
   private aiPullOk(s: Side) { return this.goalieIds[s] !== null; }
   private goaliePulls() {
     for (const s of [0, 1] as Side[]) {
-      if (s === this.opts.userSide) continue;
+      if (this.human(s)) continue;
       const diff = this.score[1 - s] - this.score[s];
       const late = this.opts.kind === 'reg' && (this.opts.period ?? 1) >= 3 && this.len - this.clock < 100;
       const want = late && diff >= 1 && diff <= 2;
@@ -928,7 +1082,7 @@ export class PlayRink {
       if (!this.pulled[s] && g.on === 'bench' && this.mode === 'play') {
         const extra = this.skaters(s).length - this.manpower(s);
         if (extra > 0) {
-          const off = this.skaters(s).filter(a => a !== this.puck.carrier && a.id !== this.ctl).sort((a, b) => dist(a, this.bench[s]) - dist(b, this.bench[s]))[0];
+          const off = this.skaters(s).filter(a => a !== this.puck.carrier && a.id !== this.seatFor(s)?.ctl).sort((a, b) => dist(a, this.bench[s]) - dist(b, this.bench[s]))[0];
           if (off && !off.leaving) off.leaving = true;
           if (off && dist(off, this.bench[s]) < 2.4) { off.on = 'bench'; off.leaving = false; g.on = 'ice'; g.x = this.bench[s].x; g.y = this.bench[s].y + 1; g.vx = 0; g.vy = 0; }
         } else { g.on = 'ice'; g.x = this.bench[s].x; g.y = this.bench[s].y + 1; }
@@ -1029,7 +1183,7 @@ export class PlayRink {
           this.ppIdx[s]++; this.changeNow[s] = false; at.F = at.D = this.tau;
           for (const a of list) if ((forced || a.energy < 0.7) && a !== c) a.leaving = true;
         }
-        if (this.ctl && this.agents.get(this.ctl)?.leaving) this.pickControl(true);
+        for (const z of this.seats()) if (z.ctl && this.agents.get(z.ctl)?.leaving) this.as(z, () => this.pickControl(true));
         continue;
       }
       // the more tired group first; the other only a few seconds after the first is done
@@ -1058,7 +1212,7 @@ export class PlayRink {
         const kind = worn?.kindD ? 'D' : 'F';
         if (worn && this.safeToChange(s, kind, worn.energy < 0.12) && this.subFor(s, worn, 0.6)) { worn.leaving = true; at[kind] = this.tau; }
       }
-      if (this.ctl && this.agents.get(this.ctl)?.leaving) this.pickControl(true);
+      for (const z of this.seats()) if (z.ctl && this.agents.get(z.ctl)?.leaving) this.as(z, () => this.pickControl(true));
     }
   }
   /** The replacement comes over the boards while `a` is still on his way in. */
@@ -1107,13 +1261,12 @@ export class PlayRink {
       else { b.on = 'ice'; b.leaving = false; b.x = this.bench[s].x + (this.rand() - 0.5); b.y = this.bench[s].y + 0.6; b.vx = 0; b.vy = 2.5; b.fa = Math.PI / 2; b.act = null; }
     }
     this.assignRoles(s);
-    if (this.ctl === a.id) this.pickControl(true);
+    for (const z of this.seats()) if (z.ctl === a.id) this.as(z, () => this.pickControl(true));
   }
 
   /* ---------------- the manager's skater ---------------- */
   private pickControl(nearestToPuck = true, exclude?: Sk) {
-    const s = this.opts.userSide;
-    if (s === null) { this.ctl = null; return; }
+    const s = this.z.side;
     const list = this.skaters(s, false).filter(a => a !== exclude && a.on === 'ice');
     if (!list.length) { this.ctl = null; return; }
     const p = this.puck.carrier?.side === s ? this.puck.carrier : null;
@@ -1139,10 +1292,8 @@ export class PlayRink {
     return { best: list.reduce((b, a) => (score(a) < score(b) ? a : b)), score };
   }
   private user(pad: PadState, press: { shoot: boolean; pass: boolean; deke: boolean; swap: boolean; poke: boolean; lift: boolean; pin: boolean; hustle: boolean; push: boolean }, release: { shoot: boolean; pass: boolean }) {
-    const s = this.opts.userSide;
-    for (const a of this.onIce()) a.manual = false;
+    const s = this.z.side;
     this.blockBy = null; this.handleFast = false;
-    if (s === null) return;
     let me = this.ctl ? this.agents.get(this.ctl) : undefined;
     if (!me || me.on !== 'ice' || me.leaving || me.side !== s || me.goalie) { this.pickControl(); me = this.ctl ? this.agents.get(this.ctl) : undefined; }
     if (!me) return;
@@ -1426,7 +1577,8 @@ export class PlayRink {
   /* ---------------- AI ---------------- */
   private diffOf(a: Sk): number {
     // the manager's opponents play to the difficulty; his own teammates always play «pro»
-    if (this.opts.userSide === null || a.side === this.opts.userSide) return 1;
+    // two humans: everybody plays «pro»
+    if (this.seats().length !== 1 || this.human(a.side)) return 1;
     return this.difficulty === 'rookie' ? 0.72 : this.difficulty === 'star' ? 1.18 : 1;
   }
   private think() {
@@ -1462,7 +1614,7 @@ export class PlayRink {
    * teammate is also coming.
    */
   private chase(s: Side, free: Sk[], mine: Sk | null) {
-    const ctlMe = this.ctl ? this.agents.get(this.ctl) : undefined;
+    const zc = this.seatFor(s)?.ctl, ctlMe = zc ? this.agents.get(zc) : undefined;
     const user = ctlMe && ctlMe.side === s && ctlMe.manual && ctlMe.stun <= 0 ? ctlMe : null;
     const lead = mine ? this.catchAt(mine).t : user ? this.catchAt(user).t : Infinity;
     const cands = free.map(a => ({ a, c: this.catchAt(a) })).sort((u, v) => u.c.t - v.c.t);
@@ -1619,7 +1771,7 @@ export class PlayRink {
       const pool = cl.x < BLUE + 2 ? left : left.filter(a => !a.kindD || (goalSide(a) && dist(a, carrier) < 4));
       if (!pool.length) pool.push(...(Fs.length ? Fs : left));
       let pr = pool.reduce((b, a) => (dist(a, carrier) < dist(b, carrier) ? a : b));
-      const ctlMe = this.ctl ? this.agents.get(this.ctl) : undefined;
+      const zc = this.seatFor(s)?.ctl, ctlMe = zc ? this.agents.get(zc) : undefined;
       if (ctlMe && ctlMe.side === s && dist(ctlMe, carrier) < dist(pr, carrier) + 1) pr = null as unknown as Sk;
       const fc = this.opts.lineups ? 1 : 1;
       const pkHold = pk && cl.x < BLUE + 1 && dist(pr ?? carrier, carrier) > 5;
@@ -1818,8 +1970,8 @@ export class PlayRink {
       const net = { x: OPP_GOAL, y: MID };
       const lane = this.laneOpen(a, loc(s, net), 0.75);
       // a called-for pass from the manager's skater
-      const ctlMe = this.ctl ? this.agents.get(this.ctl) : undefined;
-      if (ctlMe && ctlMe.side === s && this.tau < this.callForPass && ctlMe !== a && this.passLaneOk(a, ctlMe)) { this.callForPass = 0; this.passTo(a, ctlMe, false); return; }
+      const zs = this.seatFor(s), ctlMe = zs?.ctl ? this.agents.get(zs.ctl) : undefined;
+      if (zs && ctlMe && ctlMe.side === s && this.tau < zs.callForPass && ctlMe !== a && this.passLaneOk(a, ctlMe)) { zs.callForPass = 0; this.passTo(a, ctlMe, false); return; }
       const prime = me.x > OPP_BLUE + 0.5 && me.x < OPP_GOAL - 0.4 && lane && (shotZone(me) === 'crease' || shotZone(me) === 'slot');
       if (me.x > OPP_BLUE + 0.5 && me.x < OPP_GOAL - 0.4) {
         const z = shotZone(me);
@@ -1963,7 +2115,7 @@ export class PlayRink {
     if (a.act?.k === 'windup') vmax *= a.act.what === 'shot' ? 0.6 : 0.85;
     // skating backwards: a good defenceman nearly keeps up (crossovers); the manager's vision-control backpedal less so
     if (a.back) vmax *= a.manual ? 0.8 : a.kindD ? 0.9 : 0.84;
-    if (this.blockBy === a) vmax *= 0.55;
+    if (this.seats().some(z => z.blockBy === a)) vmax *= 0.55;
     let wx: number, wy: number;
     if (a.manual) { wx = a.wx * vmax; wy = a.wy * vmax; }
     else {
@@ -2056,6 +2208,7 @@ export class PlayRink {
   /* ---------------- actions: shots, passes, dekes, checks, pokes ---------------- */
   private releaseRec(a: Sk, kind: ReleaseKind, target: V2, windup: number) {
     const w = this.world(target);
+    this.releaseN++;
     this.releases.push({ id: a.id, side: a.side, t: this.tau, kind, windup: Math.max(0.08, Math.min(WINDUP[kind], windup)), follow: FOLLOW[kind], tx: w.x, tz: w.z });
   }
   private strength(s: Side): Strength {
@@ -2127,7 +2280,7 @@ export class PlayRink {
         const rebound = kind === 'rebound' ? 1.5 : 1;
         const dekeF = this.tau - a.dekeBeat < 0.7 && d < a.dekeR ? a.dekeF : 1;
         const tip = kind === 'tip' ? 1.5 : 1;
-        const diff = this.opts.userSide === null ? 1 : s === this.opts.userSide ? (this.difficulty === 'rookie' ? 1.5 : this.difficulty === 'star' ? 0.85 : 1.1) : (this.difficulty === 'rookie' ? 0.7 : this.difficulty === 'star' ? 1.15 : 0.95);
+        const diff = !this.seats().length ? 1 : this.human(s) ? (this.difficulty === 'rookie' ? 1.5 : this.difficulty === 'star' ? 0.85 : 1.1) : (this.difficulty === 'rookie' ? 0.7 : this.difficulty === 'star' ? 1.15 : 0.95);
         pg = GOAL_CAL * (1 - sv) * q * ZONE_MULT[zone] * corner * speedF * screen * move * rebound * dekeF * tip * diff;
         pg = clamp(pg, 0.008, 0.8);
       }
@@ -2151,10 +2304,10 @@ export class PlayRink {
    * height at random.
    */
   private aimSpot(a: Sk, power: number, aim: V2 | null, gl: V2 | null, preview = false, slap = false): { ty: number; th: number } {
-    const s = a.side, manual = a.manual && a.id === this.ctl;
+    const zs = this.seatOf(a), s = a.side, manual = a.manual && !!zs;
     const auto = gl ? (gl.y > MID ? -1 : 1) : preview ? 1 : (this.rand() < 0.5 ? -1 : 1);
     let ty = MID + auto * (POST - 0.2);
-    if (manual && this.aimPt) ty = clamp(loc(s, this.aimPt).y, MID - POST + 0.15, MID + POST - 0.15);
+    if (manual && zs!.aimPt) ty = clamp(loc(s, zs!.aimPt).y, MID - POST + 0.15, MID + POST - 0.15);
     else if (aim && Math.hypot(aim.x, aim.y) > 0.35) {
       const n = (loc(s, { x: L / 2 + aim.x, y: W / 2 + aim.y }).y - W / 2) / Math.hypot(aim.x, aim.y);
       if (!manual) ty = MID + (n < 0 ? -1 : 1) * (POST - 0.2);
@@ -2168,7 +2321,11 @@ export class PlayRink {
    * The aim marker on the net (NHL style): where the manager's puck carrier would put a shot now — world metres
    * (x, z on the ice, y the height) and the charge of the shot. Null without the puck or far from the net.
    */
-  aimMarker(): { x: number; y: number; z: number; charge: number } | null {
+  aimMarker(seat = 0): AimMark | null {
+    if (this.mirror) return this.remote?.aim ?? null;
+    const zs = this.seats()[seat];
+    if (!zs) return null;
+    if (zs !== this.z) return this.as(zs, () => this.aimMarker(seat));
     const me = this.ctl ? this.agents.get(this.ctl) : undefined;
     if (!me || this.mode !== 'play' || this.puck.carrier !== me || !me.manual) return null;
     const s = me.side, mine = loc(s, me);
@@ -2220,7 +2377,8 @@ export class PlayRink {
     a.lastPuck = this.tau; a.cool = this.tau + 0.25;
     this.releaseRec(a, saucer ? 'saucer' : 'pass', { x: tx, y: ty }, 0.2);
     // the manager's control follows the pass (NHL style)
-    if (this.opts.userSide === a.side && a.manual) this.ctl = m.id;
+    const zp = this.seatFor(a.side);
+    if (zp && a.manual) zp.ctl = m.id;
   }
   private dump(a: Sk) {
     const s = a.side, me = loc(s, a), far = me.y < MID ? 26 : 4;
@@ -2295,7 +2453,7 @@ export class PlayRink {
     const near = opps.some(o => dist(o, a) < 1.5);
     const risk = { side: 0.14, toe: 0.16, between: 0.22, spin: 0.12, fake: 0.05 }[kind] - a.hands / 900;
     if (near && this.rand() < risk) { this.loose(a.vx + Math.cos(a.fa) * 2, a.vy + Math.sin(a.fa) * 2); this.puck.noTouch = a; this.puck.noTouchUntil = this.tau + 0.4; return; }
-    if (this.opts.userSide === a.side && a.manual) this.play('loose', a.side, `${a.name}: ${DEKE_NAME[kind]}`, a);
+    if (this.human(a.side) && a.manual) this.play('loose', a.side, `${a.name}: ${DEKE_NAME[kind]}`, a);
   }
   /** The deke an AI carrier picks: his hands and the situation (a checker on his back: a spin; a man in front: a toe drag). */
   private aiDekeKind(a: Sk, closeGoalie: boolean): DekeKind {
@@ -2383,7 +2541,7 @@ export class PlayRink {
       const dk = c.act?.k === 'deke' ? c.act.kind : null;
       if (inReach) {
         // quick hands side to side (the manager's stickhandling) keep the puck away from a reaching stick
-        const dangle = c.manual && this.tau - this.handleSwing < 0.45 ? 0.14 : 0;
+        const dangle = c.manual && this.tau - (this.seatOf(c)?.handleSwing ?? -9) < 0.45 ? 0.14 : 0;
         const pr = clamp(0.42 + ((a.check + a.def) / 2 - c.hands) / 140 - (dk === 'toe' || dk === 'between' ? 0.42 : dk ? 0.28 : 0) - dangle, 0.06, 0.85) * this.diffOf(a) / Math.sqrt(this.diffOf(c));
         if (this.rand() < pr) {
           c.act = null; c.cool = Math.max(c.cool, this.tau + 0.4);
@@ -2539,8 +2697,9 @@ export class PlayRink {
         else { reach = 0.5; off = 0; }
       }
       // the manager's stickhandling: the blade carries the puck where his skill stick holds it
-      else if (c.manual && this.handle && c.id === this.ctl && (!c.act || (this.handleFast && c.act.k === 'windup' && c.act.what === 'pass'))) { off = this.handle.lat * (this.handleFast ? 0.62 : 0.55); reach = REACH + this.handle.fwd * 0.22; }
-      if (c.act?.k === 'windup' && !(this.handleFast && this.handle && c.act.what === 'pass')) reach = c.act.what === 'shot' ? 0.5 : 0.6;
+      const zc = this.seatOf(c);
+      if (c.manual && zc?.handle && (!c.act || (zc.handleFast && c.act.k === 'windup' && c.act.what === 'pass'))) { off = zc.handle.lat * (zc.handleFast ? 0.62 : 0.55); reach = REACH + zc.handle.fwd * 0.22; }
+      if (c.act?.k === 'windup' && !(zc?.handleFast && zc.handle && c.act.what === 'pass')) reach = c.act.what === 'shot' ? 0.5 : 0.6;
       // pulled in from full stretch
       if (c.act?.k === 'reach') { reach = REACH + 0.55 * (1 - smooth01((this.tau - c.act.t0) / REACH_DUR / 0.6 - 0.66)); off = 0; }
       const b = { x: c.x + Math.cos(fa) * reach - Math.sin(fa) * off, y: c.y + Math.sin(fa) * reach + Math.cos(fa) * off };
@@ -2575,7 +2734,7 @@ export class PlayRink {
         if (a.goalie || a === shot.by || a.stun > 0 || (p.noTouch === a && this.tau < p.noTouchUntil)) continue;
         const d = segDist(a, { x: ox, y: oy }, p);
         // LB held (the manager's block stance): down on one knee, a much wider and surer body in the lane
-        const stance = this.blockBy === a;
+        const stance = this.seats().some(z => z.blockBy === a);
         if (a.side !== shot.side && d < (stance ? (p.h < 1.1 ? 0.95 : 0.5) : p.h < 0.5 ? 0.48 : 0.36) && this.rand() < (stance ? 0.96 : 0.8)) { this.block(a, shot); if (stance) a.stun = Math.max(a.stun, 0.3); return; }
         if (a.side === shot.side && p.h < 0.5 && dist(this.blade(a), p) < 0.5 && this.rand() < 0.03 * 60 * dt * (a.manual ? 2 : 1)) { this.tip(a, shot); return; }
       }
@@ -2912,7 +3071,8 @@ export class PlayRink {
     a.lastPuck = this.tau; a.decideAt = this.tau + 0.15 + this.rand() * 0.2; a.carryT = null;
     if (intercept) this.play('interception', a.side, `Перехват: ${a.name}`, a);
     // the manager's control goes to the teammate who gets the puck
-    if (this.opts.userSide === a.side) this.ctl = a.id;
+    const zt = this.seatFor(a.side);
+    if (zt) zt.ctl = a.id;
     // the manager's one-timer: swung through as the pass arrived — the shot goes off the pass at once (the windup's
     // length is its power); still wound up — the puck stops on the blade and the swing forward (or the button let go)
     // is the slap shot; swung far too early — a whiff, he just takes the pass
@@ -2926,13 +3086,13 @@ export class PlayRink {
           // the windup: from the stick going back (or the button) to the swing through
           const wind = Math.max(0, fired - t0);
           const far = Math.hypot(a.x - (a.side ? GOAL : OPP_GOAL), a.y - MID) > 9;
-          this.shoot(a, (by === 'stick' ? stickPower : buttonPower)(wind), Math.max(wind, 0.4), this.aimVec, far || wind > 0.32 ? 'slap' : 'snap');
+          this.shoot(a, (by === 'stick' ? stickPower : buttonPower)(wind), Math.max(wind, 0.4), zt?.aimVec ?? null, far || wind > 0.32 ? 'slap' : 'snap');
           return;
         }
         this.play('loose', a.side, `${a.name}: замах раньше времени — принял шайбу`, a);
       } else {
         a.act = { k: 'windup', t0, what: 'shot' }; a.otHold = true;
-        if (by === 'stick') { this.ss.back = t0; this.ss.loadEnd = -1; }
+        if (by === 'stick' && zt) { zt.ss.back = t0; zt.ss.loadEnd = -1; }
       }
     }
     if (wasPass && !a.manual && this.rand() < 0.35 && shotZone(loc(a.side, a)) !== 'perimeter' && loc(a.side, a).x > OPP_BLUE + 4 && this.laneOpen(a, { x: OPP_GOAL, y: MID }, 0.7)) {
@@ -2973,7 +3133,7 @@ export class PlayRink {
       tau: this.tau, clock: this.clock, px: this.puck.x, py: this.puck.y, ph: this.puck.h,
       carrier: this.puck.carrier ? ids.indexOf(this.puck.carrier.id) : -1, ids,
       sk: list.map(a => ({
-        id: a.id, side: a.side, goalie: a.goalie, box: a.on === 'box' && !a.boxGo, x: a.x, y: a.y, fa: a.fa, ctrl: a.id === this.ctl,
+        id: a.id, side: a.side, goalie: a.goalie, box: a.on === 'box' && !a.boxGo, x: a.x, y: a.y, fa: a.fa, ctrl: !!this.seatOf(a),
         // going down takes a moment (the body tips over), getting up the last 0.35 s
         fall: a.fall > 0 ? smooth01(Math.min(1, (this.tau - a.fallAt) / 0.28)) * smooth01(Math.min(1, a.fall / 0.35)) : 0, fk: a.fallK, fs: a.fallS,
         check: a.act?.k === 'check' && !a.foulMv ? Math.sin(Math.PI * clamp((this.tau - a.act.t0) / 0.42, 0, 1)) : 0,
@@ -2982,7 +3142,7 @@ export class PlayRink {
         ...this.moveOf(a),
         stag: a.stagger > this.tau ? clamp((a.stagger - this.tau) / 0.45, 0, 1) : 0,
         ...this.stanceOf(a),
-        hl: a.manual && this.handle && this.puck.carrier === a ? this.handle.lat : 0,
+        hl: a.manual && this.puck.carrier === a ? this.seatOf(a)?.handle?.lat ?? 0 : 0,
       })),
       stop: st as 0 | 1 | 2, ox: dot.x, oy: dot.y - OFFICIAL_AT, dx: dot.x, dy: dot.y,
     };
@@ -3000,9 +3160,9 @@ export class PlayRink {
     if (a.otHold && a.act?.k === 'windup' && a.on === 'ice') k = 'oneTimer';
     else if (!a.goalie && a.on === 'ice' && a.stun <= 0 && !a.act) {
       const cl = c && c.side !== a.side ? loc(c.side, c) : null;
-      if (this.blockBy === a || (cl && c!.act?.k === 'windup' && c!.act.what === 'shot' && dist(a, c!) < 6 && segDist(a, c!, loc(c!.side, { x: OPP_GOAL, y: MID })) < 0.9)) k = 'block';
+      if (this.seats().some(z => z.blockBy === a) || (cl && c!.act?.k === 'windup' && c!.act.what === 'shot' && dist(a, c!) < 6 && segDist(a, c!, loc(c!.side, { x: OPP_GOAL, y: MID })) < 0.9)) k = 'block';
       else if ((a.oneTimer && a.manual) || (p.passTo === a && !c && p.passBy?.side === a.side && loc(a.side, a).x > OPP_BLUE + 4 && dist(loc(a.side, a), { x: OPP_GOAL, y: MID }) < 15)) k = 'oneTimer';
-      else if (a.id === this.ctl && this.tau < this.callForPass) k = 'call';
+      else if (this.tau < (this.seatOf(a)?.callForPass ?? 0)) k = 'call';
       else if (a.back && c !== a && Math.hypot(a.vx, a.vy) > 0.6) k = 'vision';
       else if (a.sprint && Math.hypot(a.vx, a.vy) > 5.5) k = 'hustle';
     }
@@ -3023,8 +3183,9 @@ export class PlayRink {
     if (act?.k === 'reach') return { mv: 'reach', mt: clamp((this.tau - act.t0) / REACH_DUR, 0, 1) };
     return { mv: null, mt: 0 };
   }
-  private record() {
-    this.frames.push(this.snapshot());
+  private record() { this.keep(this.snapshot()); }
+  private keep(f: Frame) {
+    this.frames.push(f);
     if (this.frames.length > FRAMES_KEPT * 60 + 30 && this.frames[0].tau < this.tau - FRAMES_KEPT) {
       // cut the clips of goals before their frames are gone
       for (const c of this.clips) if (!c.clip && this.tau - c.e.tau > 2.3) c.clip = this.buildClip(c.e);

@@ -10,6 +10,7 @@ const path = require('node:path');
 const fs = require('node:fs/promises');
 const { pathToFileURL } = require('node:url');
 const { installModZip, migrateMods, writeZip } = require('./modInstall.cjs');
+const { createLan } = require('./lan.cjs');
 
 const SCHEME = 'app';
 const ORIGIN = `${SCHEME}://khl`;
@@ -213,6 +214,13 @@ function gpuSummary() {
   const status = app.getGPUFeatureStatus();
   return `WebGL: ${status.webgl}, WebGL2: ${status.webgl2}, растеризация: ${status.gpu_compositing}`;
 }
+
+// Online over the local network (lan.cjs): the page calls these through window.khlDesktop.lan.
+const lan = createLan((ev) => { if (win && !win.isDestroyed()) win.webContents.send('lan:event', ev); });
+for (const name of ['host', 'beacon', 'stopHost', 'join', 'close', 'scan', 'stopScan', 'addresses']) ipcMain.handle(`lan:${name}`, (_e, o) => lan[name](o || {}));
+// the match's messages: fire and forget (dozens a second)
+ipcMain.on('lan:send', (_e, o) => lan.send(o || {}));
+app.on('will-quit', () => lan.dispose());
 
 ipcMain.handle('khl:info', () => ({
   version: app.getVersion(),

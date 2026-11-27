@@ -73,7 +73,7 @@ export function RinkSvg({ frame, home, away, players, aim, officials }: { frame:
   </svg>;
 }
 
-export function LiveRink({ ticker, ids, goalies, event, home, away, players, running, ai = null, className, fill = false, roster, allow3d = true, bare = false, minimap = true, intro = false }: {
+export function LiveRink({ ticker, ids, goalies, event, home, away, players, running, ai = null, className, fill = false, roster, allow3d = true, bare = false, minimap = true, intro = false, replays }: {
   ticker: { sec: number; tau?: number }; ids: [string[], string[]]; goalies: [string | null, string | null]; event: GameEvent | null;
   home: Team; away: Team; players: Record<string, Player>; running: boolean; ai?: LiveSource | null; className?: string; fill?: boolean;
   /** everyone who may come on the ice: the 3D view prepares their figures up front */
@@ -86,6 +86,8 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
   minimap?: boolean;
   /** the start of the match: the 3D picture shows the teams' entrance (if the settings want it) */
   intro?: boolean;
+  /** the broadcast's replays of moments (they hold the clock): the settings' choice unless given (online: never — the other device would not wait) */
+  replays?: boolean;
 }) {
   const settings = useSettings();
   const [failed3d, setFailed3d] = useState(false);
@@ -148,7 +150,7 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
     </div>}
     {show3d ? (
       <div className={cn('relative bg-[#081421] overflow-hidden', fill ? 'flex-1 min-h-0' : 'w-full')} style={fill ? undefined : { aspectRatio: '16 / 9' }} data-rink-3d>
-        <LiveScene3D ai={ai!} ticker={ticker} home={home} away={away} players={players} roster={roster ?? []} camera={settings.matchCamera} zoom={settings.matchZoom} quality={resolveReplayQuality(settings.replayQuality)} onFail={() => setFailed3d(true)} intro={intro && settings.matchIntro} replays={settings.matchReplays} />
+        <LiveScene3D ai={ai!} ticker={ticker} home={home} away={away} players={players} roster={roster ?? []} camera={settings.matchCamera} zoom={settings.matchZoom} quality={resolveReplayQuality(settings.replayQuality)} onFail={() => setFailed3d(true)} intro={intro && settings.matchIntro} replays={replays ?? settings.matchReplays} />
         {/* above the phone controls of the played match (their stick zone covers the left of the picture): the camera
             list opens down over it and must take the taps */}
         <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1 z-30" data-live-view-controls>

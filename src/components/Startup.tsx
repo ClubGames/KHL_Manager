@@ -430,7 +430,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
   });
 }
 
-export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: string) => void }) {
+export function Startup({ onStart, onOnline }: { onStart: (r: NormalizedRoster, teamId: string) => void; onOnline?: () => void }) {
   const ui = useUI();
   const [saveCount, setSaveCount] = useState<number | null>(null);
   const [stage, setStage] = useState<'loading' | 'error' | 'empty' | 'select' | 'format' | 'pick'>('loading');
@@ -529,6 +529,11 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
                 ⤓ Приложения
               </a>
             )}
+            {onOnline && (
+              <button type="button" onClick={onOnline} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-ice/50 text-xs text-ice hover:bg-ice/10 bg-bg/70 backdrop-blur" data-startup-online>
+                <Icon name="play" /> Онлайн
+              </button>
+            )}
             <button type="button" onClick={() => ui.openSettings()} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line text-xs text-muted hover:text-text bg-bg/70 backdrop-blur" data-startup-settings>
               <Icon name="settings" /> Настройки
             </button>
@@ -557,6 +562,17 @@ export function Startup({ onStart }: { onStart: (r: NormalizedRoster, teamId: st
 
         {stage !== 'format' && (
           <>
+            {onOnline && (
+              <button type="button" onClick={onOnline} className="group w-full mb-6 relative overflow-hidden rounded-md border border-ice/35 bg-panel text-left px-4 sm:px-5 py-3.5 flex items-center gap-4 hover:border-ice/70 transition-colors" data-startup-online-card>
+                <span className="absolute inset-0 pointer-events-none opacity-60" style={{ background: 'linear-gradient(100deg, rgba(143,216,240,.16), transparent 45%, rgba(229,50,62,.12))' }} />
+                <span className="relative w-11 h-11 shrink-0 rounded-full bg-ice/15 text-ice flex items-center justify-center text-xl">⇄</span>
+                <span className="relative min-w-0 flex-1">
+                  <span className="block font-display uppercase tracking-wide text-lg leading-tight">Сетевая игра <span className="text-[10px] align-middle ml-1 rounded-sm bg-accent text-white px-1.5 py-0.5 tracking-widest">новое</span></span>
+                  <span className="block text-xs text-muted mt-0.5">Матч с другом по Wi-Fi — телефон или компьютер, каждый со своими модами. Отдельно от карьеры.</span>
+                </span>
+                <span className="relative text-ice font-semibold text-sm hidden sm:block group-hover:translate-x-0.5 transition-transform">Играть →</span>
+              </button>
+            )}
             <Panel className={saveCount ? 'mb-8 border-ice/40' : 'mb-8'} title={saveCount ? `Продолжить карьеру · сохранений: ${saveCount}` : 'Продолжить карьеру'}>
               <SavesList onCount={setSaveCount} />
             </Panel>
