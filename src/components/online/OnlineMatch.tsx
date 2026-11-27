@@ -24,8 +24,8 @@ import type { MatchView, TeamPack } from '../../net/wire';
  * intermissions and the final waiting for both players' «ready».
  */
 interface Toast { id: number; text: string; tone: 'goal' | 'pen' | 'info' }
-interface Hud extends PlayHud { to: { side: 0 | 1; left: number } | null; tol: boolean; line: string; men: [number, number]; boxed: [{ id: string; left: number }[], { id: string; left: number }[]]; delayed: 0 | 1 | null; pulled: boolean; clock: number; len: number; score: [number, number]; shots: [number, number] }
-class Ticker { sec = 0; tau = 0; wait = false; hold = false; slow = false; shows = false; }
+interface Hud extends PlayHud { to: { side: 0 | 1; left: number } | null; tol: boolean; line: string; show: boolean; men: [number, number]; boxed: [{ id: string; left: number }[], { id: string; left: number }[]]; delayed: 0 | 1 | null; pulled: boolean; clock: number; len: number; score: [number, number]; shots: [number, number] }
+class Ticker { sec = 0; tau = 0; wait = false; hold = false; slow = false; shows = false; ui = false; }
 
 /** The guest's picture runs this far behind the newest frame (the next one is always there to interpolate to). */
 const GUEST_DELAY = 0.1;
@@ -170,8 +170,10 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
         if (live) side.pad(pad, now);
         const f = rink.frames;
         if (f.length) {
-          const target = rink.tau - GUEST_DELAY;
-          pres = pres < 0 || Math.abs(pres - target) > 0.6 ? target : pres + dt + (target - pres - dt) * 0.08;
+          // the host waits for a screen (its replay has just begun): catch up to its last frame at once, where the
+          // same replay begins here — both screens show it together
+          const held = !!side.view.held, target = held ? f[f.length - 1].tau : rink.tau - GUEST_DELAY;
+          pres = pres < 0 || Math.abs(pres - target) > 0.6 ? target : held ? Math.min(target, pres + dt * 3) : pres + dt + (target - pres - dt) * 0.08;
           ticker.tau = Math.max(f[0].tau, Math.min(f[f.length - 1].tau, pres));
         }
       }
@@ -179,7 +181,7 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
       if (now - hudAt > 90) {
         hudAt = now;
         // the host's own seat is 0; the guest's copy reports the guest's seat whatever is asked
-        setHud({ ...rink.hud(0), to: rink.timeoutNow(), tol: rink.timeoutLeft[mySide], line: rink.lineOn(mySide), men: rink.men(), boxed: rink.boxed(), delayed: rink.delayed, pulled: rink.pulled[mySide], clock: rink.clock, len: rink.len, score: [rink.score[0], rink.score[1]], shots: side.shots() });
+        setHud({ ...rink.hud(0), to: rink.timeoutNow(), tol: rink.timeoutLeft[mySide], line: rink.lineOn(mySide), show: ticker.ui, men: rink.men(), boxed: rink.boxed(), delayed: rink.delayed, pulled: rink.pulled[mySide], clock: rink.clock, len: rink.len, score: [rink.score[0], rink.score[1]], shots: side.shots() });
       }
       raf = requestAnimationFrame(loop);
     };
@@ -311,7 +313,7 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
             {hud.to.side === mySide && <Button size="sm" onClick={() => command('timeout')} data-play-timeout-skip>Продолжить игру</Button>}
           </div>
         )}
-        {playing && touchUI && !paused && !hud?.to && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} faceoff={!!hud?.faceoff} context={hud?.context ?? 'carry'} timeout={!!hud?.tol && !hud?.to} />}
+        {playing && touchUI && !paused && !hud?.to && !hud?.show && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} faceoff={!!hud?.faceoff} context={hud?.context ?? 'carry'} timeout={!!hud?.tol && !hud?.to} />}
       </main>
 
       {view.phase === 'loading' && (

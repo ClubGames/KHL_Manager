@@ -1,3 +1,7 @@
+// The arena crowd. First choice: real recordings of indoor crowds (CC0, src/assets/crowd/CREDITS.md) — a murmur
+// bed, louder stands for the dangerous moments, the roar after a goal, applause and an "ooh" — looped with the
+// game's own crossfades so no seam is heard. Should they fail to load (an old web view's decoder), the crowd is
+// synthesized as before:
 // The arena crowd, synthesized. Thousands of people heard from the ice are mostly a wash — a sea of voices too many
 // to tell apart, shaped like speech (most of it between 250 Hz and 2.5 kHz) and swelling slowly — with a few nearer
 // voices rising out of it now and then. So the murmur is a speech-shaped noise bed with a slow, uneven swell, plus a
@@ -6,6 +10,11 @@
 // Two murmur loops of different lengths (13 s and 9.4 s) play together, so the crowd never audibly repeats, and
 // everything goes through the hall's echo (engine.ts). Built once, spread over frames so the page never stalls.
 import { audioAny, noise, output, type Bus } from './engine';
+import murmurUrl from '../../assets/crowd/murmur.mp3?url';
+import standsUrl from '../../assets/crowd/stands.mp3?url';
+import cheerUrl from '../../assets/crowd/cheer.mp3?url';
+import applauseUrl from '../../assets/crowd/applause.mp3?url';
+import oohUrl from '../../assets/crowd/ooh.mp3?url';
 
 type Engine = NonNullable<ReturnType<typeof audioAny>>;
 const SR = 22050;
@@ -90,7 +99,41 @@ function loopable(ctx: BaseAudioContext, data: Float32Array, seconds: number): A
 /** Yields to the page between slices (a phone keeps drawing the match while the crowd is built). */
 const nextFrame = () => new Promise<void>(r => setTimeout(r, 16));
 
-type Buffers = { murmur: AudioBuffer; murmur2: AudioBuffer; cheer: AudioBuffer; applause: AudioBuffer };
+type Buffers = { murmur: AudioBuffer; murmur2: AudioBuffer; cheer: AudioBuffer; applause: AudioBuffer; /** recorded: the louder stands and the "ooh" */ stands?: AudioBuffer; ooh?: AudioBuffer; rec?: boolean };
+
+/**
+ * A recording made into a seamless loop: `head` / `tail` seconds cut off (the encoder's padding, a fade baked in),
+ * the last `xf` seconds crossfaded (equal power) into the first, the level set to `rms`.
+ */
+function recLoop(ctx: BaseAudioContext, b: AudioBuffer, head: number, tail: number, xf: number, rms: number): AudioBuffer {
+  const sr = b.sampleRate, h = Math.floor(head * sr), len = b.length - h - Math.floor(tail * sr), x = Math.min(Math.floor(xf * sr), Math.floor(len / 3)), n = len - x;
+  const out = ctx.createBuffer(b.numberOfChannels, n, sr);
+  let sum = 0;
+  for (let c = 0; c < b.numberOfChannels; c++) {
+    const src = b.getChannelData(c), d = out.getChannelData(c);
+    for (let i = 0; i < n; i++) d[i] = src[h + i];
+    // the loop's end runs into its start: the tail fades out over the head fading in
+    for (let i = 0; i < x; i++) { const w = i / x; d[i] = src[h + i] * Math.sin(w * Math.PI / 2) + src[h + n + i] * Math.cos(w * Math.PI / 2); }
+    for (let i = 0; i < n; i++) sum += d[i] * d[i];
+  }
+  const k = rms / Math.max(1e-6, Math.sqrt(sum / (n * b.numberOfChannels)));
+  for (let c = 0; c < b.numberOfChannels; c++) { const d = out.getChannelData(c); for (let i = 0; i < n; i++) d[i] *= k; }
+  return out;
+}
+
+/** The recorded crowd (null when a file does not load or decode: the synthesized one plays then). */
+async function recorded(ctx: BaseAudioContext): Promise<Buffers | null> {
+  try {
+    const dec = async (u: string) => ctx.decodeAudioData(await (await fetch(u)).arrayBuffer());
+    const [m, st, ch, ap, oh] = await Promise.all([murmurUrl, standsUrl, cheerUrl, applauseUrl, oohUrl].map(dec));
+    const murmur = recLoop(ctx, m, .06, .06, 1.5, .2);
+    await nextFrame();
+    const ooh = recLoop(ctx, oh, .03, 0, 0, .3);
+    return { murmur, murmur2: murmur, stands: recLoop(ctx, st, .06, .06, 1, .2), cheer: recLoop(ctx, ch, .4, 1.1, 1.2, .22), applause: recLoop(ctx, ap, .25, 1.6, .9, .2), ooh, rec: true };
+  } catch {
+    return null;
+  }
+}
 
 async function murmurOf(ctx: BaseAudioContext, L: number, voices: number): Promise<AudioBuffer> {
   const X = .8, data = new Float32Array(Math.floor((L + X) * SR));
@@ -144,12 +187,12 @@ async function buildBuffers(ctx: BaseAudioContext): Promise<Buffers> {
 }
 
 let buffers: Promise<Buffers> | null = null;
-function getBuffers(e: Engine) { return (buffers ??= buildBuffers(e.ctx)); }
+function getBuffers(e: Engine) { return (buffers ??= recorded(e.ctx).then(r => r ?? buildBuffers(e.ctx))); }
 
 /** The crowd of one match: a looping murmur, cheering and applause whose levels follow the play. */
 export class Crowd {
   private e: Engine | null = null;
-  private nodes: { src: AudioBufferSourceNode[]; murmur: GainNode; cheer: GainNode; applause: GainNode; room: GainNode } | null = null;
+  private nodes: { src: AudioBufferSourceNode[]; murmur: GainNode; cheer: GainNode; applause: GainNode; room: GainNode; stands: GainNode | null } | null = null;
   private stopped = false;
   private bufs: Buffers | null = null;
   /** the crowd's own slow wander (it is never quite the same level for long) */
@@ -164,30 +207,36 @@ export class Crowd {
     if (!e || e.ctx.state !== 'running') return;
     if (!this.bufs) { if (!this.e) { this.e = e; void getBuffers(e).then(b => { this.bufs = b; }); } return; }
     const { ctx } = e;
-    const loop = (buf: AudioBuffer, rate: number, bus: Bus, f?: number, pan = 0) => {
+    const loop = (buf: AudioBuffer, rate: number, bus: Bus, f?: number, pan = 0, at = Math.random() * buf.duration) => {
       const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.playbackRate.value = rate;
       const g = ctx.createGain(); g.gain.value = 0;
       let node: AudioNode = src;
       if (f) { const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = f; node.connect(lp); node = lp; }
       node.connect(g); g.connect(output(e, bus, pan));
-      src.start(ctx.currentTime + .05, Math.random() * buf.duration);
+      src.start(ctx.currentTime + .05, at % buf.duration);
       return { src, g };
     };
-    // two different murmurs of different lengths, one each side: the stands all round, never the same twice
-    const m1 = loop(this.bufs.murmur, 1, 'crowd', 2800, -.55), m2 = loop(this.bufs.murmur2, .97, 'crowd', 2400, .55);
-    const murmur = ctx.createGain(); m1.g.disconnect(); m2.g.disconnect(); m1.g.gain.value = .62; m2.g.gain.value = .55;
+    const b = this.bufs, rec = !!b.rec;
+    // two murmurs, one each side: the stands all round, never the same twice (synthesized: two loops of different
+    // lengths; recorded: the one recording twice, half of it apart and a shade slower on one side)
+    const at1 = Math.random() * b.murmur.duration;
+    const m1 = loop(b.murmur, 1, 'crowd', rec ? undefined : 2800, rec ? -.35 : -.55, at1);
+    const m2 = loop(b.murmur2, rec ? .985 : .97, 'crowd', rec ? 6500 : 2400, rec ? .35 : .55, rec ? at1 + b.murmur.duration / 2 : undefined);
+    const murmur = ctx.createGain(); m1.g.disconnect(); m2.g.disconnect(); m1.g.gain.value = rec ? .5 : .62; m2.g.gain.value = rec ? .5 : .55;
     m1.g.connect(murmur); m2.g.connect(murmur); murmur.connect(output(e, 'crowd')); murmur.gain.value = 0;
-    const ch = loop(this.bufs.cheer, 1, 'crowd', 4600), ap = loop(this.bufs.applause, 1, 'crowd', 6500);
+    const ch = loop(b.cheer, 1, 'crowd', rec ? undefined : 4600), ap = loop(b.applause, 1, 'crowd', rec ? undefined : 6500);
+    // recorded: the louder stands come up with the danger
+    const sd = b.stands ? loop(b.stands, 1, 'crowd') : null;
     // the hall itself: ventilation, the ice plant, a distant hum (very low, felt more than heard)
     const roomSrc = ctx.createBufferSource(); roomSrc.buffer = e.pink; roomSrc.loop = true;
     const roomLp = ctx.createBiquadFilter(); roomLp.type = 'lowpass'; roomLp.frequency.value = 260;
     const room = ctx.createGain(); room.gain.value = 0;
     roomSrc.connect(roomLp); roomLp.connect(room); room.connect(output(e, 'crowd'));
     roomSrc.start();
-    this.nodes = { src: [m1.src, m2.src, ch.src, ap.src, roomSrc], murmur, cheer: ch.g, applause: ap.g, room };
+    this.nodes = { src: [m1.src, m2.src, ch.src, ap.src, roomSrc, ...(sd ? [sd.src] : [])], murmur, cheer: ch.g, applause: ap.g, room, stands: sd?.g ?? null };
     this.e = e;
-    murmur.gain.setTargetAtTime(.24, ctx.currentTime, 1.5);
-    room.gain.setTargetAtTime(.1, ctx.currentTime, 1.5);
+    murmur.gain.setTargetAtTime(rec ? .3 : .24, ctx.currentTime, 1.5);
+    room.gain.setTargetAtTime(rec ? .05 : .1, ctx.currentTime, 1.5);
   }
 
   /** The crowd's excitement 0…1 (smoothed): the murmur grows, above about half the cheering comes in. */
@@ -199,6 +248,13 @@ export class Crowd {
     if (t > this.driftAt) { this.driftTo = (Math.random() - .5) * .16; this.driftAt = t + 3 + Math.random() * 6; }
     this.drift += (this.driftTo - this.drift) * .03;
     // quiet in ordinary play — a crowd does not shout all the time — and up with the danger
+    if (this.nodes.stands) {
+      // recorded: the murmur is always there; the stands rise with the danger; the roar only at the very top
+      this.nodes.murmur.gain.setTargetAtTime(Math.max(.12, .28 + .12 * x + this.drift * .6), t, 1.1);
+      this.nodes.stands.gain.setTargetAtTime(.04 + .5 * x * x, t, .8);
+      this.nodes.cheer.gain.setTargetAtTime(Math.max(0, x - .7) * 1.2, t, .7);
+      return;
+    }
     this.nodes.murmur.gain.setTargetAtTime(Math.max(.08, .18 + .3 * x * x + this.drift * .5), t, 1.1);
     this.nodes.cheer.gain.setTargetAtTime(Math.max(0, x - .58) * 1.1, t, .7);
   }
@@ -230,6 +286,14 @@ export class Crowd {
     this.ensure();
     if (!this.nodes || !this.e || !this.bufs) return;
     const e = this.e, { ctx } = e, t = ctx.currentTime + .03;
+    if (this.bufs.ooh) {
+      // recorded: the real "ooh"; the groan is the same voices lower, slower and duller
+      const src = ctx.createBufferSource(); src.buffer = this.bufs.ooh; src.playbackRate.value = down ? .74 : .95 + Math.random() * .1;
+      const lp = ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = down ? 1100 : 5000;
+      const g = ctx.createGain(); g.gain.value = down ? .8 : 1;
+      src.connect(lp); lp.connect(g); g.connect(output(e, 'crowd'));
+      src.start(t); return;
+    }
     const src = ctx.createBufferSource(); src.buffer = this.bufs.cheer; src.playbackRate.value = down ? .8 : 1.05;
     const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.6;
     // the vowel glides: "oo-OH" rises then falls; a groan sinks
@@ -259,7 +323,7 @@ export class Crowd {
     this.stopped = true;
     if (!this.nodes || !this.e) return;
     const t = this.e.ctx.currentTime;
-    for (const g of [this.nodes.murmur, this.nodes.cheer, this.nodes.applause, this.nodes.room]) g.gain.setTargetAtTime(0, t, .3);
+    for (const g of [this.nodes.murmur, this.nodes.cheer, this.nodes.applause, this.nodes.room, this.nodes.stands]) g?.gain.setTargetAtTime(0, t, .3);
     for (const s of this.nodes.src) { try { s.stop(t + 1.5); } catch { /* already stopped */ } }
     this.nodes = null;
   }

@@ -148,7 +148,14 @@ export class HostMatch implements MatchSide {
   advance(dt: number, pad: PadState) {
     const k = this.rink;
     this.clock += dt;
-    if (!k || !this.running || this.held) return;
+    const held = this.running && this.held;
+    if (held !== !!this.view.held) {
+      // the play stops here: every frame up to this moment goes to the guest first (the moment his screen's replay
+      // begins at must be in them)
+      if (held && k) { const t = k.netTick(1, 1000); if (t) { this.send({ t: 'tick', k: packTick(t, this.index), out: this.outs, sog: this.shots() }); this.outs = []; } }
+      this.push({ held });
+    }
+    if (!k || !this.running || held) return;
     // the seats: [the host, the guest] (whichever side each plays)
     k.advance(dt, () => [pad, this.nextGuestPad()]);
     const out = k.drain();
