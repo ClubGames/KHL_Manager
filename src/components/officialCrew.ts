@@ -57,12 +57,12 @@ export function penaltyGesture(text: string): Gesture {
   if (t.includes('локт')) return 'elbow';
   if (t.includes('в голову')) return 'head';
   if (t.includes('сзади')) return 'behind';
-  if (t.includes('колен')) return 'knee';
-  if (t.includes('подножк')) return 'trip';
+  if (t.includes('колен') || t.includes('ногой')) return 'knee';
+  if (t.includes('подножк') || t.includes('отсечен')) return 'trip';
   if (t.includes('задержка клюшкой') || t.includes('крюк')) return 'hook';
-  if (t.includes('задержка руками') || t.includes('захват')) return 'hold';
-  if (t.includes('удар клюшкой') || t.includes('рубящ')) return 'slash';
-  if (t.includes('без шайбы') || t.includes('помеха')) return 'interference';
+  if (t.includes('задержка руками') || t.includes('задержка соперника') || t.includes('захват')) return 'hold';
+  if (t.includes('удар клюшкой') || t.includes('рубящ') || t.includes('толчок клюшкой') || t.includes('колющ') || t.includes('концом клюшки')) return 'slash';
+  if (t.includes('без шайбы') || t.includes('не владеющего') || t.includes('помеха')) return 'interference';
   if (t.includes('на борт')) return 'boarding';
   if (t.includes('разгон') || t.includes('атака')) return 'charging';
   if (t.includes('высок') || t.includes('высота')) return 'highstick';
@@ -129,8 +129,10 @@ export class OfficialCrew {
         const held = this.crew.find(o => o.hold && o.gesture === 'armUp');
         const o = held ?? nearest('ref', at), side = p.side ?? 0;
         const box = { x: BOX_X[side], z: BOX_Z };
-        signal(o, [...(held ? [] : [{ g: 'armUp' as Gesture, dur: .9 }]), { g: penaltyGesture(p.text), dur: 2.4 }, { g: 'point', dur: 1.6, aim: box }]);
-        o.go = { ...TIMEKEEPER, x: TIMEKEEPER.x + (o.x > 0 ? 2.4 : -2.4), until: tau + 6.5 };
+        // a penalty shot: the infraction's signal, then he points to centre ice (where the shooter starts)
+        const ps = p.text.startsWith('Штрафной бросок');
+        signal(o, [...(held ? [] : [{ g: 'armUp' as Gesture, dur: .9 }]), { g: penaltyGesture(p.text), dur: 2.4 }, { g: 'point', dur: 1.6, aim: ps ? { x: 0, z: 0 } : box }]);
+        if (!ps) o.go = { ...TIMEKEEPER, x: TIMEKEEPER.x + (o.x > 0 ? 2.4 : -2.4), until: tau + 6.5 };
       } else if (p.kind === 'goal') {
         const net = { x: Math.sign(puck.x || at.x || 1) * GOAL, z: 0 };
         const o = nearest('ref', net);

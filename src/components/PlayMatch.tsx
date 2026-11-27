@@ -19,6 +19,7 @@ import type { FigureRequest } from './replayCache';
 import { anyGamepad, CAPTURED, COMMAND_KEYS, detectDevice, emptyTouch, gamepadPad, keyboardPad, mergePads, mouseDown, mouseMove, mousePad, mouseUp, newMouse, stickVector, type Command, type InputDevice, type MouseState, type TouchState } from './playInput';
 import { suspendPadNav } from '../gamepadNav';
 import { useCrowdVerdict } from './sound/useMatchSound';
+import { penLength } from '../game/penalties';
 
 /**
  * A match the manager plays himself, NHL style: he skates one of his players — the puck carrier when his team has
@@ -220,7 +221,10 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
         }
       } else if (o.type === 'penalty' || o.type === 'hit') {
         sim.recordPlayed(k.clock, o);
-        if (o.type === 'penalty') toast(`Удаление: ${P[o.player]?.name ?? ''} — ${o.reason}, ${o.min} мин`, 'pen');
+        if (o.type === 'penalty') toast(`${o.kind === 'bench' ? 'Малый скамеечный штраф' : 'Удаление'}: ${P[o.player]?.name ?? ''} — ${o.reason}, ${o.kind ? penLength({ kind: o.kind, plus: o.plus }) : `${o.min} мин`}`, 'pen');
+      } else if (o.type === 'penaltyShot') {
+        sim.recordPlayed(k.clock, o);
+        toast(`Штрафной бросок: ${P[o.shooter]?.name ?? ''} — ${o.goal ? 'гол!' : 'не реализован'}`, o.goal ? 'goal' : 'info', 2600);
       } else if (o.type === 'waived') {
         sim.recordPlayed(k.clock, { type: 'info', side: o.side, text: o.text });
         toast(o.text);

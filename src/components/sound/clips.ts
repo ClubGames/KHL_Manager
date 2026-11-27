@@ -62,13 +62,23 @@ export function playClip(name: ClipName, o: ClipOpts = {}): ClipHandle | null {
   src.connect(g); g.connect(output(e, o.bus ?? 'sfx', o.pan ?? 0));
   const offset = Math.max(0, Math.min(b.duration - .1, o.offset ?? 0));
   src.start(t, offset);
+  const h: ClipHandle = { src, g, e };
+  live.add(h); src.onended = () => live.delete(h);
   if (o.length) {
     const end = t + o.length;
     g.gain.setValueAtTime(gain, Math.max(t + (o.attack ?? 0), end - fade));
     g.gain.linearRampToValueAtTime(1e-4, end);
     src.stop(end + .05);
   }
-  return { src, g, e };
+  return h;
+}
+
+/** Every recording still sounding (so leaving the match can silence them all). */
+const live = new Set<ClipHandle>();
+
+/** Fades out every recording still playing (the match screen closes: no cheering over the menus). */
+export function stopClips(seconds = .4) {
+  for (const h of [...live]) { fadeClip(h, seconds); live.delete(h); }
 }
 
 /** Fades a playing recording out and stops it. */

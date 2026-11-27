@@ -319,6 +319,12 @@ export interface GameEvent {
   goalie?: string | null;
   /** penalty minutes of this penalty */
   pim?: number;
+  /** the KHL kind of the penalty (minor, bench minor, double minor, major, misconduct, game misconduct, match penalty) */
+  penKind?: 'minor' | 'bench' | 'double' | 'major' | 'misconduct' | 'game' | 'match';
+  /** the penalized player takes no further part in the match */
+  ejected?: boolean;
+  /** the penalty's length as the scoreboard writes it ("2 мин", "2+2 мин", "5 мин + ДдКМ", "2+10 мин", "ДдКМ") */
+  penLen?: string;
   /** how the puck went in — classified by the engine from the shooter's context (visual variety for the 3D replay) */
   shotType?: 'wrist' | 'slap' | 'snap' | 'backhand' | 'tip' | 'rebound';
   /** penalty: it gives the opponent a power play; goal: it was scored on the power play (also into an empty net) */

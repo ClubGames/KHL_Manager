@@ -8,6 +8,7 @@ import { endsSwitched } from '../game/rinkGeometry';
 import { NO_PAD, PlayRink, type PadState, type PlayOut, type PlayRinkOptions, type Side } from '../game/playRink';
 import { matchTeam } from './teamPack';
 import { packTick, unpackTick, type BlockInit, type MatchSettings, type MatchView, type NetMsg, type TeamPack } from './wire';
+import { penLength } from '../game/penalties';
 
 /** Both clubs as this match knows them (the same on both devices). */
 export interface OnlineCtx {
@@ -174,7 +175,7 @@ export class HostMatch implements MatchSide {
           this.view = { ...this.view, goals: [...this.view.goals, { event: e, tau: g?.tau ?? k.tau, period: this.sim.period }] };
           changed = true;
         }
-      } else if (o.type === 'penalty' || o.type === 'hit') { this.sim.recordPlayed(k.clock, o); if (o.type === 'penalty') changed = true; }
+      } else if (o.type === 'penalty' || o.type === 'hit' || o.type === 'penaltyShot') { this.sim.recordPlayed(k.clock, o); if (o.type !== 'hit') changed = true; }
       else if (o.type === 'waived') this.sim.recordPlayed(k.clock, { type: 'info', side: o.side, text: o.text });
       else if (o.type === 'timeout') { this.sim.recordPlayed(k.clock, { type: 'info', side: o.side, text: `Тайм-аут: ${(o.side ? this.ctx.away : this.ctx.home).name}` }); this.view = { ...this.view, timeouts: [k.timeoutLeft[0], k.timeoutLeft[1]] }; changed = true; }
     }
@@ -296,7 +297,8 @@ export function outToast(o: PlayOut, mySide: Side, P: Record<string, Player>): {
     const mine = o.side === mySide;
     return { text: `${mine ? 'ГОЛ!' : 'Гол соперника'} ${P[o.shooter]?.name ?? ''}${o.assists.length ? ` (${o.assists.map(a => P[a]?.name).join(', ')})` : ''}`, tone: 'goal', ms: 3600 };
   }
-  if (o.type === 'penalty') return { text: `Удаление: ${P[o.player]?.name ?? ''} — ${o.reason}, ${o.min} мин`, tone: 'pen', ms: 2600 };
+  if (o.type === 'penalty') return { text: `${o.kind === 'bench' ? 'Малый скамеечный штраф' : 'Удаление'}: ${P[o.player]?.name ?? ''} — ${o.reason}, ${o.kind ? penLength({ kind: o.kind, plus: o.plus }) : `${o.min} мин`}`, tone: 'pen', ms: 2600 };
+  if (o.type === 'penaltyShot') return { text: `Штрафной бросок: ${P[o.shooter]?.name ?? ''} — ${o.goal ? 'гол!' : 'не реализован'}`, tone: o.goal ? 'goal' : 'info', ms: 2600 };
   if (o.type === 'waived') return { text: o.text, tone: 'info', ms: 2600 };
   if (o.type === 'timeout') return { text: o.side === mySide ? 'Тайм-аут — тренер объясняет, игроки отдыхают' : 'Тайм-аут взял соперник', tone: 'info', ms: 2600 };
   if (o.type === 'icing') return { text: 'Проброс', tone: 'info', ms: 1600 };

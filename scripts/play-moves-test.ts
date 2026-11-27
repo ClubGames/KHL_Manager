@@ -157,7 +157,7 @@ test('interference: no call on a man who just lost the puck (the grace after it)
       const hits = p.hits[0];
       p.resolveCheck(a, t);
       if (p.hits[0] > hits) landed++;
-      if (p.pending.some((x: { reason: string }) => x.reason === 'атака игрока без шайбы')) n++;
+      if (p.pending.some((x: { reason: string }) => x.reason === 'атака игрока, не владеющего шайбой')) n++;
     }
     return { n, landed };
   };
@@ -174,7 +174,11 @@ test('infractions are acted out: a hit to the head — the forearm to the head (
   const want: [string, string | null][] = [['удар в голову', 'fHead'], ['удар локтем', 'fElbow'], ['удар коленом', 'fKnee'], ['подножка', 'fTrip'],
     ['задержка клюшкой', 'fHook'], ['задержка руками', 'fHold'], ['задержка', 'fHold'], ['удар клюшкой', 'fSlash'], ['высота клюшки', 'fHigh'],
     ['грубость', 'fRough'], ['толчок на борт', 'fBoard'], ['атака сзади', 'fBoard'], ['задержка игры (выброс шайбы за пределы площадки)', null],
-    ['атака с разгона', null], ['помеха вратарю', null]];
+    ['атака с разгона', null], ['помеха вратарю', null],
+    // the KHL names of the played match's calls
+    ['атака в голову или шею', 'fHead'], ['задержка соперника', 'fHold'], ['игра высоко поднятой клюшкой', 'fHigh'],
+    ['выброс шайбы за пределы площадки', null], ['атака игрока, не владеющего шайбой', null], ['атака с разбега', null],
+    ['отсечение', 'fTrip'], ['колющий удар', 'fCross'], ['удар концом клюшки', 'fCross'], ['толчок клюшкой', 'fCross'], ['удар ногой', 'fKnee'], ['симуляция', null]];
   for (const [reason, mv] of want) assert.equal(foulMove(reason), mv, reason);
   const k = make(52), p = priv(k);
   toPlay(k);
@@ -226,12 +230,16 @@ test('cameras: NHL-style live cameras stay in the arena, the vertical one turns 
   assert.ok(fast.pos.z > slow.pos.z + 3, 'dynamic: wider on a rush');
 
   // replay cameras on a goal clip of a played period
-  const k = make(60);
+  // (a period now and then ends 0:0 — the next seed then)
+  let k = make(60);
   let clip = null as ReturnType<PlayRink['goalClip']>;
-  for (let i = 0; i < 1500 * 60 && !k.ended && !clip; i++) {
-    k.advance(1 / 60);
-    const o: PlayOut[] = k.drain();
-    if (o.some(x => x.type === 'shot' && x.outcome === 'goal')) { for (let j = 0; j < 240; j++) k.advance(1 / 60); const g = k.goalsFor[k.goalsFor.length - 1]; clip = k.goalClip(g.tau); }
+  for (let g = 60; g < 66 && !clip; g++) {
+    k = make(g);
+    for (let i = 0; i < 1500 * 60 && !k.ended && !clip; i++) {
+      k.advance(1 / 60);
+      const o: PlayOut[] = k.drain();
+      if (o.some(x => x.type === 'shot' && x.outcome === 'goal')) { for (let j = 0; j < 240; j++) k.advance(1 / 60); const gl = k.goalsFor[k.goalsFor.length - 1]; clip = k.goalClip(gl.tau); }
+    }
   }
   assert.ok(clip, 'a goal clip');
   const views = CAMERAS.map(([c]) => c).filter(c => c !== 'auto') as ReplayView[];

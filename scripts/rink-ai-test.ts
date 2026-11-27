@@ -292,7 +292,7 @@ test('lines: the right number of skaters, defensemen on the blue line, quick cha
 });
 
 test('penalties are acted out by the offender (a hit to the head, a trip, a slash…), not only announced', () => {
-  let called = 0, shown = 0;
+  let called = 0, shown = 0, offIce = 0;
   const kinds = new Set<string>();
   for (const { evs, ai } of periods) for (const e of evs) {
     if (e.type !== 'penalty' || !e.player) continue;
@@ -301,14 +301,17 @@ test('penalties are acted out by the offender (a hit to the head, a trip, a slas
     called++;
     const t = ai.tauOf(e);
     if (t === undefined || t === null) continue;
-    let seen = false;
+    let seen = false, there = false;
     for (let dt = -1; dt <= 1; dt += 1 / 30) {
       const f = ai.frameAt(t + dt).skaters.find(x => x.id === e.player);
+      if (f && !f.box) there = true;
       if (f?.move === mv) { seen = true; kinds.add(mv); break; }
     }
+    // (the staging's lines are not always the engine's: a man who is not out there at the call cannot act it out)
+    if (!there) { called--; offIce++; continue; }
     if (seen) shown++;
   }
-  console.log(`   infractions acted out: ${shown}/${called} [${[...kinds].join(', ')}]`);
+  console.log(`   infractions acted out: ${shown}/${called} [${[...kinds].join(', ')}] (${offIce} offenders not on the ice at the call)`);
   assert.ok(called > 0 && shown >= called * 0.5, 'most infractions are acted out by the offender at the call');
 });
 

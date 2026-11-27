@@ -143,11 +143,11 @@ export function foulMove(reason: string): FoulMove | null {
   const t = reason.toLowerCase();
   if (t.includes('в голову') || t.includes('голов')) return 'fHead';
   if (t.includes('локт')) return 'fElbow';
-  if (t.includes('колен')) return 'fKnee';
-  if (t.includes('подножк')) return 'fTrip';
+  if (t.includes('колен') || t.includes('ногой')) return 'fKnee';
+  if (t.includes('подножк') || t.includes('отсечен')) return 'fTrip';
   if (t.includes('задержка клюшкой') || t.includes('крюк')) return 'fHook';
   if (t.includes('задержка руками') || t.includes('захват') || t.includes('удержание') || (t.includes('задержка') && !t.includes('игры'))) return 'fHold';
-  if (t.includes('толчок клюшкой') || t.includes('кросс') || t.includes('концом клюшки')) return 'fCross';
+  if (t.includes('толчок клюшкой') || t.includes('кросс') || t.includes('концом клюшки') || t.includes('колющ')) return 'fCross';
   if (t.includes('удар клюшкой') || t.includes('рубящ')) return 'fSlash';
   if (t.includes('высок') || t.includes('высота')) return 'fHigh';
   if (t.includes('груб') || t.includes('драк')) return 'fRough';

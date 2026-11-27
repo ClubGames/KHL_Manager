@@ -4,6 +4,7 @@ import { clamp, goalieSavePct, isGoalie, lineAttack, lineDefense, pairAttack, pa
 import { defaultTactics } from './defaults';
 import { ATTACK_STYLE_INFO, calcDefenseChemistry, calcForwardChemistry, effectiveGoalieOvr, FORECHECK_INFO, goalieFreshness, PULL_GOALIE_INFO } from './chemistry';
 import type { DerbyInfo } from './derbies';
+import { drawCall, EJECT_END, ejects, penHeadline, penLength, pimOf, PENALTY_SHOT_GOAL, SHORT_MIN, type PenaltyCall, type PenKind } from './penalties';
 
 export interface SimTeam {
   id: string;
@@ -44,7 +45,9 @@ interface SimSnap {
 /** A play of a period played on the rink (see GameSim.recordPlayed). Coordinates as in the shot map (0…100). */
 export type PlayedRecord =
   | { type: 'shot'; side: TI; shooter: string; goalie: string | null; outcome: 'goal' | 'save' | 'miss' | 'block'; post?: boolean; blocker?: string; assists: string[]; strength: Strength; shotType: NonNullable<GameEvent['shotType']>; x: number; y: number; xg: number; zone: ShotZone; ice: [(string | null)[], (string | null)[]] }
-  | { type: 'penalty'; side: TI; player: string; min: 2 | 4 | 5; reason: string; /** a coincidental major (a fight): served in full, the team not short-handed */ coin?: boolean }
+  | { type: 'penalty'; side: TI; player: string; min: number; reason: string; /** a coincidental major (a fight): served in full, the team not short-handed */ coin?: boolean;
+      /** the KHL kind (default from `min`: 2 minor, 4 double minor, 5 major) and what comes with it */ kind?: PenKind; plus?: PenaltyCall['plus'] }
+  | { type: 'penaltyShot'; side: TI; shooter: string; goalie: string | null; goal: boolean; fouler?: string; reason: string }
   | { type: 'hit'; side: TI; player: string; victim: string }
   | { type: 'info'; side: TI; text: string };
 
@@ -110,8 +113,6 @@ export function pickWeighted<T>(items: T[], w: (t: T) => number): T | null {
   return items[items.length - 1];
 }
 
-const MINOR = ['подножка', 'удар клюшкой', 'задержка', 'помеха вратарю', 'атака игрока без шайбы', 'высота клюшки', 'задержка руками', 'нарушение численного состава', 'бросок клюшки'];
-const MAJOR = ['удар в голову', 'атака сзади', 'толчок на борт', 'удар локтем'];
 export const INJURY_TYPES = ['ушиб', 'растяжение', 'повреждение связок', 'перелом', 'сотрясение мозга', 'повреждение плеча', 'травма колена', 'растяжение паха', 'травма кисти', 'ушиб ноги', 'повреждение спины'];
 
 /** Length of a block on the game clock: a period 20:00, the regular-season 3-on-3 overtime 5:00. */
@@ -842,7 +843,7 @@ export class GameSim {
         const pi: TI = Math.random() < 0.5 * (fc0.penMult / ((fc0.penMult + fc1.penMult) * 0.5)) ? 0 : 1;
         this.sec = sec + 29 + Math.floor(Math.random() * 5);
         ({ modes, ice, men } = situation());
-        this.takePenalty(pi, ice[pi]);
+        this.takePenalty(pi, ice[pi], ice[1 - pi]);
       }
 
       const hitChance = 0.14 * 0.5 * (fc0.hitMult + fc1.hitMult) * (this.derby?.hitMult ?? 1);
@@ -1059,43 +1060,82 @@ export class GameSim {
     return 'shot';
   }
 
-  private takePenalty(i: TI, ice: (string | null)[]) {
+  private takePenalty(i: TI, ice: (string | null)[], oppIce: (string | null)[] = []) {
     const skaters = skatersOf(ice, this.P);
     const p = pickWeighted(skaters, (id) => 0.5 + (this.P[id].skills.checking ?? 60) / 50);
     if (!p) return;
-    const r = Math.random();
-    let min = 2;
-    let type = pick(MINOR);
-    let misconduct = false;
-    if (r < 0.02) {
-      misconduct = true;
-      min = 10;
-      type = 'грубость (10 минут)';
-    } else if (r < 0.07) {
-      min = 4;
-      type = 'удар клюшкой (двойной малый)';
-    } else if (r < 0.14) {
-      min = 5;
-      type = pick(MAJOR);
+    const call = drawCall();
+    // a foul from behind on a clean breakaway: a penalty shot instead of the minor (KHL rule 24)
+    if (call.breakaway && call.kind === 'minor' && Math.random() < 0.02) {
+      const o = (1 - i) as TI;
+      const shooter = pickWeighted(skatersOf(oppIce, this.P), (id) => Math.pow((this.P[id].skills.shooting ?? 60) / 60, 2) + (this.P[id].position === 'D' ? 0 : 0.5));
+      if (shooter) {
+        const g = this.goalies[i], gp = g ? this.P[g] : null;
+        const goal = Math.random() < clamp(PENALTY_SHOT_GOAL + ((this.P[shooter].skills.shooting ?? 65) - 70) * 0.006 - ((gp ? effectiveGoalieOvr(gp, 0) : 70) - 75) * 0.006, 0.12, 0.6);
+        this.penaltyShot({ side: o, shooter, goalie: g, goal, fouler: p, reason: call.reason }, ice, oppIce);
+        return;
+      }
     }
-    this.line(p).pim += min;
-    this.stats[i].pim += min;
+    this.assessCall(i, p, call);
+  }
+
+  /** Puts a call into the books: the box, the penalty minutes, the power play, an ejection; one play-by-play line. */
+  private assessCall(i: TI, p: string, call: PenaltyCall, note0 = '') {
+    const kind = call.kind, short = SHORT_MIN[kind], pim = pimOf(call), out = ejects(call);
+    // a bench minor counts for the team; the man who serves it gets no minutes himself
+    if (kind !== 'bench') this.line(p).pim += pim;
+    this.stats[i].pim += pim;
     const teamId = this.team(i).id;
-    let boxUntil = this.sec + min * 60;
-    let note = '';
-    if (misconduct) this.misconducts[i] = [...this.misconducts[i].filter((x) => x.end > this.sec), { player: p, min, start: this.sec, end: boxUntil }];
-    else {
+    let boxUntil = this.sec;
+    let note = note0;
+    if (short) {
       this.pens[i] = this.pens[i].filter((x) => x.end > this.sec);
       const start = this.penSlot(i);
-      boxUntil = start + min * 60;
-      this.pens[i].push({ player: p, min, start, end: boxUntil });
+      boxUntil = start + short * 60;
+      this.pens[i].push({ player: p, min: short, start, end: boxUntil });
       this.stats[1 - i].ppChances++;
       this.unitIdx[1 - i]++;
       const m = this.men();
-      if (start > this.sec) note = ` Штраф начнётся, когда закончится одно из удалений — «${this.label(i)}» до тех пор втроём.`;
-      else if (m[i] === 3) note = ` «${this.label(i)}» остаётся втроём: ${m[1 - i]} на 3!`;
+      if (start > this.sec) note += ` Штраф начнётся, когда закончится одно из удалений — «${this.label(i)}» до тех пор втроём.`;
+      else if (m[i] === 3) note += ` «${this.label(i)}» остаётся втроём: ${m[1 - i]} на 3!`;
     }
-    this.push({ type: 'penalty', team: teamId, player: p, pim: min, pp: !misconduct, penUntil: this.penUntil(), boxUntil, text: `Штраф ${min} мин: ${this.P[p].name} (${this.label(i)}) — ${type}${note ? `.${note}` : ''}` });
+    // the misconduct (after the minor), the game misconduct, the match penalty: he sits out (or leaves the game)
+    if (out) this.misconducts[i] = [...this.misconducts[i].filter((x) => x.end > this.sec), { player: p, min: 20, start: this.sec, end: EJECT_END }];
+    else if (kind === 'misconduct' || call.plus === 'misconduct') {
+      const from = Math.max(this.sec, boxUntil);
+      this.misconducts[i] = [...this.misconducts[i].filter((x) => x.end > this.sec), { player: p, min: 10, start: this.sec, end: from + 600 }];
+      boxUntil = from + 600;
+    }
+    if (out) note += ' Удалён до конца матча.';
+    if (kind === 'bench') note += ' Отбывает штраф по указанию тренера.';
+    const name = this.P[p]?.name ?? '';
+    this.push({ type: 'penalty', team: teamId, player: p, pim, pp: short > 0, penKind: kind, penLen: penLength(call), ejected: out || undefined, penUntil: this.penUntil(), boxUntil, text: `${penHeadline(call)}: ${name} (${this.label(i)}) — ${call.reason}${note ? `.${note}` : ''}` });
+  }
+
+  /** A penalty shot (буллит): the shooter alone against the goalie; a goal counts like any other. */
+  private penaltyShot(r: { side: TI; shooter: string; goalie: string | null; goal: boolean; fouler?: string; reason: string }, iceFoul: (string | null)[] = [], iceShoot: (string | null)[] = []) {
+    const i = r.side, o = (1 - i) as TI, teamId = this.team(i).id, sp = this.P[r.shooter];
+    const fouler = r.fouler ? this.P[r.fouler]?.name : '';
+    this.push({ type: 'info', team: teamId, text: `Штрафной бросок! ${fouler ? `${fouler} (${this.label(o)}) — ${r.reason} при выходе один на один. ` : ''}Исполняет ${sp?.name ?? ''}` });
+    this.shots[i]++;
+    this.stats[i].shots++;
+    this.line(r.shooter).shots++;
+    const gl = r.goalie ? this.line(r.goalie) : null;
+    if (gl) gl.shotsAgainst++;
+    const time = this.clock();
+    // the shot itself is one on one; the goal is filed under the manpower on the clock (never a power-play goal:
+    // the penalties already running stand — KHL rule)
+    const m = this.men(), strength: Strength = m[i] < m[o] ? 'SH' : m[i] === m[o] && m[i] < 5 ? '4v4' : 'EV';
+    if (r.goal) {
+      this.score[i]++;
+      this.line(r.shooter).goals++;
+      if (gl) gl.goalsAgainst++;
+      this.scorers.push({ period: this.period, time, team: teamId, scorer: r.shooter, assists: [], strength });
+      this.push({ type: 'goal', team: teamId, player: r.shooter, players: [], strength, shotType: 'wrist', x: 84, y: 50, xg: PENALTY_SHOT_GOAL, zone: 'slot', score: [this.score[0], this.score[1]], goalie: r.goalie, pp: false, penUntil: this.penUntil(), ice: i === 0 ? [iceShoot, iceFoul] : [iceFoul, iceShoot], text: `ГОЛ! ${sp?.name ?? ''} реализует штрафной бросок` });
+    } else {
+      if (gl) gl.saves++;
+      this.push({ type: 'shot', team: teamId, player: r.shooter, strength: 'EV', shotType: 'wrist', x: 84, y: 50, xg: PENALTY_SHOT_GOAL, zone: 'slot', goalie: r.goalie, ice: i === 0 ? [iceShoot, iceFoul] : [iceFoul, iceShoot], text: `Штрафной бросок: ${sp?.name ?? ''} — ${r.goalie ? `сейв ${this.P[r.goalie]?.name ?? ''}` : 'мимо'}` });
+    }
   }
 
   /* ---------------- a period played on the rink (the manager controls a skater) ----------------
@@ -1128,6 +1168,7 @@ export class GameSim {
     if (r.type === 'shot') { r.ice[0].forEach((id) => mark(0, id)); r.ice[1].forEach((id) => mark(1, id)); mark(i, r.shooter); r.assists.forEach((id) => mark(i, id)); mark(o, r.blocker); }
     if (r.type === 'hit') { mark(i, r.player); mark(o, r.victim); }
     if (r.type === 'penalty') mark(i, r.player);
+    if (r.type === 'penaltyShot') { mark(i, r.shooter); if (r.fouler) mark(o, r.fouler); }
     if (r.type === 'hit') {
       this.stats[i].hits++;
       this.push({ type: 'hit', team: teamId, player: r.player, players: [r.victim], text: `Силовой приём: ${this.P[r.player]?.name ?? ''} против ${this.P[r.victim]?.name ?? ''}` });
@@ -1139,20 +1180,23 @@ export class GameSim {
     }
     if (r.type === 'penalty') {
       const min = r.min;
-      this.line(r.player).pim += min;
-      this.stats[i].pim += min;
-      this.pens[i] = this.pens[i].filter((x) => x.end > this.sec);
       if (r.coin) {
         // a fight: five minutes each, the teams at full strength (no power play)
+        this.line(r.player).pim += min;
+        this.stats[i].pim += min;
+        this.pens[i] = this.pens[i].filter((x) => x.end > this.sec);
         this.pens[i].push({ player: r.player, min, start: this.sec, end: this.sec + min * 60, coin: true });
-        this.push({ type: 'penalty', team: teamId, player: r.player, pim: min, pp: false, penUntil: this.penUntil(), boxUntil: this.sec + min * 60, text: `Штраф ${min} мин: ${this.P[r.player]?.name ?? ''} (${this.label(i)}) — ${r.reason} (взаимный)` });
+        this.push({ type: 'penalty', team: teamId, player: r.player, pim: min, pp: false, penKind: 'major', penLen: `${min} мин`, penUntil: this.penUntil(), boxUntil: this.sec + min * 60, text: `Большой штраф (${min} мин): ${this.P[r.player]?.name ?? ''} (${this.label(i)}) — ${r.reason} (взаимный)` });
         return this.events[this.events.length - 1];
       }
-      const start = this.penSlot(i), boxUntil = start + min * 60;
-      this.pens[i].push({ player: r.player, min, start, end: boxUntil });
-      this.stats[o].ppChances++;
-      this.unitIdx[o]++;
-      this.push({ type: 'penalty', team: teamId, player: r.player, pim: min, pp: true, penUntil: this.penUntil(), boxUntil, text: `Штраф ${min} мин: ${this.P[r.player]?.name ?? ''} (${this.label(i)}) — ${r.reason}` });
+      const kind: PenKind = r.kind ?? (min >= 5 ? 'major' : min === 4 ? 'double' : 'minor');
+      this.assessCall(i, r.player, { kind, reason: r.reason, ...(r.plus ? { plus: r.plus } : {}) });
+      return this.events[this.events.length - 1];
+    }
+    if (r.type === 'penaltyShot') {
+      // (the shot itself — the goal or the save — came from the rink as a shot of its own)
+      const fouler = r.fouler ? this.P[r.fouler]?.name : '';
+      this.push({ type: 'info', team: teamId, score: [this.score[0], this.score[1]], text: `Штрафной бросок${fouler ? ` (${fouler} — ${r.reason})` : ''}: ${this.P[r.shooter]?.name ?? ''} — ${r.goal ? 'гол!' : 'не реализован'}` });
       return this.events[this.events.length - 1];
     }
     // a shot
@@ -1212,7 +1256,11 @@ export class GameSim {
   }
   /** Penalties still running at the end of a played block: [player, end] per team (they carry over to the next one). */
   playedBox(): [[string, number, boolean?][], [string, number, boolean?][]] {
-    const of = (i: TI) => this.pens[i].filter((x) => x.end > this.sec).map((x): [string, number, boolean?] => (x.coin ? [x.player, x.end, true] : [x.player, x.end]));
+    const of = (i: TI) => [
+      ...this.pens[i].filter((x) => x.end > this.sec).map((x): [string, number, boolean?] => (x.coin ? [x.player, x.end, true] : [x.player, x.end])),
+      // misconducts (10 minutes) and ejections (ДдКМ, match penalties: the end is EJECT_END) — the team stays at full strength
+      ...this.misconducts[i].filter((x) => x.end > this.sec && !this.pens[i].some((y) => y.player === x.player && y.end > this.sec)).map((x): [string, number, boolean?] => [x.player, x.end, true]),
+    ];
     return [of(0), of(1)];
   }
 

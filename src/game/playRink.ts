@@ -4,6 +4,7 @@ import { FOUL_MOVE_DUR, foulMove } from './rinkPlayback';
 import type { RinkPlay, PlayKind } from './rinkAI';
 import { BOARDS_H, FACEOFF_SPOTS, RINK, glassTop, inBenchFront } from './rinkGeometry';
 import { goalieSavePct } from './ratings';
+import { EJECT_END, ejects, penLength, SHORT_MIN, type PenaltyCall, type PenKind } from './penalties';
 
 /*
  * A period the manager plays himself, NHL style: he skates one of his players (the puck carrier when his team
@@ -142,7 +143,10 @@ export const TIMEOUT_SEC = 30;
 /** What happened on the ice, for the books (GameSim.recordPlayed) and the match screen. */
 export type PlayOut =
   | { type: 'shot'; side: Side; shooter: string; goalie: string | null; outcome: 'goal' | 'save' | 'miss' | 'block'; post?: boolean; blocker?: string; assists: string[]; strength: Strength; shotType: ShotKind; x: number; y: number; xg: number; zone: ShotZone; ice: [(string | null)[], (string | null)[]] }
-  | { type: 'penalty'; side: Side; player: string; min: 2 | 4 | 5; reason: string; /** a coincidental major (a fight): the team is not short-handed */ coin?: boolean }
+  | { type: 'penalty'; side: Side; player: string; /** the minutes his team plays short (a misconduct: its 10, a ДдКМ 20) */ min: number; reason: string; /** a coincidental major (a fight): the team is not short-handed */ coin?: boolean;
+      /** the KHL kind and what comes with it (10 minutes, the automatic ДдКМ of a major) */ kind?: PenKind; plus?: PenaltyCall['plus'] }
+  /** a penalty shot taken (the foul on a breakaway): its result */
+  | { type: 'penaltyShot'; side: Side; shooter: string; goalie: string | null; goal: boolean; fouler?: string; reason: string }
   | { type: 'hit'; side: Side; player: string; victim: string }
   | { type: 'faceoff'; side: Side; player: string }
   | { type: 'icing' | 'offside'; side: Side }
@@ -177,10 +181,10 @@ const NET_X = RINK.length / 2 - RINK.goalLine;
 const GOAL_CAL = 1.25;
 /** The calls of the played match, in the wording of the KHL (and of the text simulation's list). */
 const PEN_REASON = {
-  trip: 'подножка', hook: 'задержка клюшкой', interference: 'атака игрока без шайбы', charge: 'атака с разгона', board: 'толчок на борт', slash: 'удар клюшкой',
-  hold: 'задержка руками', high: 'высота клюшки', goalie: 'помеха вратарю', elbow: 'удар локтем', head: 'удар в голову', behind: 'атака сзади',
-  knee: 'удар коленом', rough: 'грубость', bench: 'нарушение численного состава', delay: 'задержка игры (выброс шайбы за пределы площадки)',
-  fight: 'драка',
+  trip: 'подножка', hook: 'задержка клюшкой', interference: 'атака игрока, не владеющего шайбой', charge: 'атака с разбега', board: 'толчок на борт', slash: 'удар клюшкой',
+  hold: 'задержка соперника', high: 'игра высоко поднятой клюшкой', goalie: 'помеха вратарю', elbow: 'удар локтем', head: 'атака в голову или шею', behind: 'атака сзади',
+  knee: 'удар коленом', rough: 'грубость', bench: 'нарушение численного состава', delay: 'выброс шайбы за пределы площадки',
+  fight: 'драка', dive: 'симуляция', unsport: 'неспортивное поведение',
 } as const;
 
 const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
@@ -301,6 +305,12 @@ interface Sk {
   diveUntil?: number;
   /** serving a coincidental major (a fight): his team plays at full strength meanwhile, back to the bench after it */
   coin?: boolean;
+  /** out of the match (ДдКМ, a match penalty): to the dressing room, never back on the ice */
+  ejected?: boolean;
+  /** a 10-minute misconduct after his minor (2+10): he stays in the box until this clock, his team at full strength */
+  miscUntil?: number;
+  /** the way his next stick sweep goes (±1: it swings back and forth) */
+  sweepDir?: number;
 }
 interface Shot { by: Sk; side: Side; t0: number; outcome: 'goal' | 'save' | 'miss'; kind: ShotKind; from: V2; xg: number; zone: ShotZone; goalie: Sk | null; strength: Strength; ice: [(string | null)[], (string | null)[]]; assists: string[]; post: boolean }
 interface Puck {
@@ -316,7 +326,8 @@ interface Puck {
    */
   icingY?: number; icingCrossed?: boolean; icingT?: number; icingCall?: boolean;
 }
-interface Pending { side: Side; player: Sk; reason: string; min: 2 | 4 | 5 }
+interface Pending { side: Side; player: Sk; reason: string; min: 2 | 4 | 5; /** the KHL kind (default from min: a minor, a double minor, a major with its ДдКМ) */ kind?: PenKind; plus?: PenaltyCall['plus'];
+  /** a foul from behind on a clean breakaway: the man fouled takes a penalty shot instead of a power play */ ps?: Sk }
 /** One simulation step as recorded (and, online, streamed to the guest). */
 export type RinkFrame = Frame;
 interface Frame { tau: number; clock: number; px: number; py: number; ph: number; carrier: number; ids: string[]; sk: { id: string; side: Side; goalie: boolean; box: boolean; x: number; y: number; fa: number; ctrl: boolean; fall: number; fk: FallKind; fs: 1 | -1; check: number; poke: number; deke: number; mv: MoveKind | null; mt: number; stag: number; st: Stance | null; stT: number; hl: number; /** seconds left of stepping onto the ice */ hop: number }[]; stop: 0 | 1 | 2; ox: number; oy: number; dx: number; dy: number }
@@ -435,6 +446,10 @@ export class PlayRink {
   private held: { g: Sk; kind: 'glove' | 'cover'; t0: number } | null = null;
   /** a fight under way (at a stoppage): the two of them, since when, who wins it, the loser already down */
   private fightOn: { a: Sk; b: Sk; t0: number; win: Sk; down: boolean } | null = null;
+  /** a penalty shot (a breakaway fouled from behind): awarded at the whistle, taken alone against the goalie */
+  private ps: { shooter: Sk; side: Side; fouler: Sk; reason: string; live: boolean; t0: number; goals: number; shotSeen: boolean } | null = null;
+  /** A penalty shot is being taken (the match screen may show it; the clock is stopped). */
+  get penaltyShot(): { shooter: string; side: Side } | null { return this.ps?.live ? { shooter: this.ps.shooter.id, side: this.ps.side } : null; }
   /** the goal celebration the scorer's manager picked */
   private celeb: { id: string; kind: CelebKind; t0: number } | null = null;
   private zoneIn: [boolean, boolean] = [false, false];
@@ -535,7 +550,13 @@ export class PlayRink {
       for (const id of ids) if (this.validSkater(id)) this.agent(id, s);
       const g = this.goalieIds[s];
       if (g && this.P[g]) { const a = this.agent(g, s, true); a.on = 'ice'; const n = loc(s, { x: GOAL + 1, y: MID }); a.x = n.x; a.y = n.y; a.fa = s ? Math.PI : 0; }
-      for (const [id, end, coin] of opts.box?.[s] ?? []) { const a = this.agents.get(id); if (a && !a.goalie && end > 0) { a.on = 'box'; a.boxUntil = end; a.coin = !!coin; const seat = this.boxSeat(a); a.x = seat.x; a.y = seat.y; } }
+      for (const [id, end, coin] of opts.box?.[s] ?? []) {
+        const a = this.agents.get(id);
+        if (!a || a.goalie || end <= 0) continue;
+        // ejected earlier in the match (the books give him an end no match reaches): he is not here at all
+        if (end > EJECT_END / 10) { a.ejected = true; a.on = 'bench'; continue; }
+        a.on = 'box'; a.boxUntil = end; a.coin = !!coin; const seat = this.boxSeat(a); a.x = seat.x; a.y = seat.y;
+      }
     }
     if (opts.timeouts) this.timeoutLeft = [opts.timeouts[0], opts.timeouts[1]];
     for (const s of [0, 1] as Side[]) this.setUnit(s, true, false);
@@ -788,7 +809,7 @@ export class PlayRink {
   /* ---------------- set-up ---------------- */
   private validSkater(id: string | null | undefined): id is string {
     const p = id ? this.P[id] : undefined;
-    return !!p && p.position !== 'G' && !p.inVhl;
+    return !!p && p.position !== 'G' && !p.inVhl && !this.agents.get(id!)?.ejected;
   }
   private agent(id: string, side: Side, goalie = false): Sk {
     let a = this.agents.get(id);
@@ -928,19 +949,38 @@ export class PlayRink {
       for (const pen of list) this.assess(pen);
     }
   }
+  /** The KHL kind of a call: given, else from its minutes (a major for a dangerous foul brings the automatic ДдКМ). */
+  private callOf(pen: Pending): PenaltyCall {
+    if (pen.kind) return { kind: pen.kind, reason: pen.reason, ...(pen.plus ? { plus: pen.plus } : {}) };
+    if (pen.min === 5) return { kind: 'major', reason: pen.reason, plus: pen.plus ?? 'game' };
+    return { kind: pen.min === 4 ? 'double' : pen.reason === PEN_REASON.bench ? 'bench' : 'minor', reason: pen.reason, ...(pen.plus ? { plus: pen.plus } : {}) };
+  }
   private assess(pen: Pending, coin = false) {
     const a = pen.player;
     if (a.on !== 'ice') return;
-    a.coin = coin;
-    a.on = 'box'; a.leaving = false; a.act = null; a.boxUntil = this.clock + pen.min * 60; a.boxMin = pen.min;
+    // a foul from behind on a breakaway: a penalty shot instead of the minor (if the man fouled can still take it)
+    if (pen.ps && !coin && pen.ps.on === 'ice' && !pen.ps.ejected) { this.awardPenaltyShot(pen); return; }
+    const call = coin ? { kind: 'major' as const, reason: pen.reason } : this.callOf(pen);
+    // now and then the man called argues with the referee: ten more minutes (2+10)
+    if (!coin && !call.plus && (call.kind === 'minor' || call.kind === 'double') && this.rand() < (call.reason === PEN_REASON.rough ? 0.08 : 0.02)) call.plus = 'misconduct';
+    const short = coin ? 0 : SHORT_MIN[call.kind], out = !coin && ejects(call);
+    // a misconduct (or a ДдКМ) alone leaves the team at full strength, like a coincidental major
+    a.coin = coin || short === 0;
+    a.on = 'box'; a.leaving = false; a.act = null;
+    a.boxUntil = this.clock + (short ? short : call.kind === 'misconduct' ? 10 : 20) * 60;
+    a.boxMin = coin ? pen.min : short === 4 ? 4 : short === 5 ? 5 : 2;
+    a.ejected = out || undefined;
+    a.miscUntil = call.plus === 'misconduct' ? a.boxUntil + 600 : undefined;
     if (this.early[a.side]?.leaver === a || this.early[a.side]?.id === a.id) this.early[a.side] = null;
     if (coin) { this.play('penalty', pen.side, `${a.name} — ${pen.reason} (5 мин, взаимные: составы равные)`, a); a.boxGo = true; a.stun = 0; a.fall = 0; this.out.push({ type: 'penalty', side: pen.side, player: a.id, min: pen.min, reason: pen.reason, coin: true }); for (const z of this.seats()) if (z.ctl === a.id) z.ctl = null; return; }
-    // he skates to the penalty box door himself (out of the play at once), then sits down
+    // he skates to the penalty box door himself (out of the play at once), then sits down — or, ejected, goes on
+    // through it to the dressing room while a teammate takes his seat for the minutes his team plays short
     a.boxGo = true; a.stun = 0; a.fall = 0;
     if (this.puck.carrier === a) this.puck.carrier = null;
-    this.out.push({ type: 'penalty', side: pen.side, player: a.id, min: pen.min, reason: pen.reason });
-    this.play('penalty', pen.side, `Удаление: ${a.name} — ${pen.reason} (${pen.min === 4 ? '2+2' : pen.min} мин)`, a);
-    this.ppIdx[(1 - pen.side) as Side] = 0; this.ppIdx[pen.side] = 0;
+    this.out.push({ type: 'penalty', side: pen.side, player: a.id, min: short || (call.kind === 'misconduct' ? 10 : 20), reason: pen.reason, kind: call.kind, ...(call.plus ? { plus: call.plus } : {}) });
+    const len = penLength(call);
+    this.play('penalty', pen.side, `Удаление: ${a.name} — ${pen.reason}${call.kind === 'bench' ? ' (малый скамеечный)' : ''}, ${len}${out ? ' — до конца матча' : ''}`, a);
+    if (short) { this.ppIdx[(1 - pen.side) as Side] = 0; this.ppIdx[pen.side] = 0; }
     for (const z of this.seats()) if (z.ctl === a.id) z.ctl = null;
   }
   private stepStop() {
@@ -982,9 +1022,50 @@ export class PlayRink {
       if (this.toPending !== null) { this.timeoutLeft[this.toPending] = true; this.toPending = null; }
       this.finish(); return;
     }
+    if (this.ps && !this.ps.live) { this.startPenaltyShot(); return; }
     if (st.reason !== 'start') this.aiTimeout(st.icingSide);
     if (this.toPending !== null && st.reason !== 'start') { this.beginTimeout(this.toPending, st.dot, st.icingSide); return; }
     this.setupFaceoff(st.dot, st.icingSide, st.reason !== 'start');
+  }
+  /** The foul on a breakaway: no power play — the man fouled takes a penalty shot after the whistle. */
+  private awardPenaltyShot(pen: Pending) {
+    const v = pen.ps!, a = pen.player;
+    this.ps = { shooter: v, side: v.side, fouler: a, reason: pen.reason, live: false, t0: this.tau, goals: this.goalsFor.length, shotSeen: false };
+    this.play('penalty', a.side, `Штрафной бросок! ${a.name} — ${pen.reason} при выходе один на один. Исполняет ${v.name}`, a);
+    this.stopInfo.until = Math.max(this.stopInfo.until, this.tau + 2.5);
+  }
+  /** Everybody else to the benches, the shooter at centre ice with the puck, the goalie in his net: go. */
+  private startPenaltyShot() {
+    const ps = this.ps!, s = ps.side, o = (1 - s) as Side, sh = ps.shooter;
+    this.held = null; this.celeb = null;
+    for (const a of this.onIce()) if (!a.goalie && a !== sh) { a.on = 'bench'; a.leaving = false; a.act = null; a.x = this.bench[a.side].x; a.y = this.bench[a.side].y; a.vx = 0; a.vy = 0; }
+    for (const side of [0, 1] as Side[]) {
+      const g = this.goalieOf(side);
+      if (g) { const n = loc(side, { x: GOAL + 1, y: MID }); g.x = n.x; g.y = n.y; g.vx = 0; g.vy = 0; g.fa = side ? Math.PI : 0; g.act = null; }
+    }
+    const at = loc(s, { x: RED - 2, y: MID });
+    sh.x = at.x; sh.y = at.y; sh.fa = s ? Math.PI : 0; sh.vx = Math.cos(sh.fa) * 2; sh.vy = 0; sh.act = null; sh.stun = 0; sh.fall = 0; sh.stagger = 0; sh.leaving = false;
+    const p = this.puck;
+    p.dead = false; p.inNet = null; p.shot = null; p.passTo = null; p.passBy = null; p.icing = null; p.h = 0; p.vh = 0; p.vx = 0; p.vy = 0;
+    p.x = 30; p.y = MID; p.carrier = sh; p.last = sh; sh.ownAt = this.tau;
+    for (const z of this.seats()) z.ctl = z.side === s ? sh.id : null;
+    ps.live = true; ps.t0 = this.tau; ps.goals = this.goalsFor.length; ps.shotSeen = false;
+    this.mode = 'play';
+    void o;
+  }
+  /** The penalty shot ends: a goal (the usual goal stoppage follows), a save, the puck lost or going back, too long. */
+  private penaltyShotWatch() {
+    const ps = this.ps!, p = this.puck, sh = ps.shooter, s = ps.side, o = (1 - s) as Side;
+    if (p.shot) ps.shotSeen = true;
+    const goal = this.goalsFor.length > ps.goals;
+    const back = p.carrier === sh && loc(s, { x: p.x + p.vx, y: 0 }).x < loc(s, p).x - 0.6 && loc(s, sh).x > RED + 3;
+    const over = goal || (ps.shotSeen && !p.shot) || this.held !== null || (p.carrier !== sh && !p.shot && this.tau - ps.t0 > 1) || back || this.tau - ps.t0 > 14;
+    if (!over) return;
+    this.ps = null;
+    this.out.push({ type: 'penaltyShot', side: s, shooter: sh.id, goalie: this.goalieOf(o)?.id ?? null, goal, fouler: ps.fouler.id, reason: ps.reason });
+    if (goal) return; // the goal's own stoppage, the faceoff at centre after it
+    this.play('freeze', o, `Штрафной бросок не реализован: ${sh.name}`, sh);
+    if (this.mode === 'play') this.startStop('freeze', zoneDot(o, MID), 1.4);
   }
   /**
    * A timeout (one per team per match): at a stoppage at once, in play at the next whistle. Both teams go to their
@@ -1331,12 +1412,12 @@ export class PlayRink {
     if (this.mode === 'stop') { for (const x of input) if (!x.z.away) this.as(x.z, () => this.stopInput(x.press)); this.stepStop(); this.record(); return; }
     if (this.mode === 'timeout') { this.stepTimeout(); this.record(); return; }
     if (this.mode === 'faceoff') { this.stepFaceoff(input.map(x => x.press)); this.record(); return; }
-    this.clock += STEP * this.clockRate();
+    // (a penalty shot runs no clock)
+    if (!this.ps?.live) this.clock += STEP * this.clockRate();
     if (this.clock >= this.len) { this.clock = this.len; this.play('freeze', null, 'Сирена: конец периода'); this.startStop('end', { x: 30, y: 15 }, 1.2); this.record(); return; }
     this.boxes();
     this.energy();
-    this.goaliePulls();
-    this.changes();
+    if (!this.ps?.live) { this.goaliePulls(); this.changes(); }
     if (this.puck.carrier) this.puck.carrier.ownAt = this.tau;
     for (const a of this.onIce()) { a.manual = false; a.protect = false; a.boardPlay = false; a.keepFa = undefined; }
     for (const x of input) { if (x.z.away) { x.z.ctl = null; continue; } this.as(x.z, () => this.user(x.pad, x.press, x.release)); }
@@ -1345,9 +1426,11 @@ export class PlayRink {
     this.collide();
     this.acts();
     this.puckStep();
+    if (this.ps?.live && this.mode !== 'play') this.penaltyShotWatch();
     if (this.mode !== 'play') { this.record(); return; }
     this.contact();
     if (this.puck.carrier) this.puck.carrier.ownAt = this.tau;
+    if (this.ps?.live) { this.penaltyShotWatch(); this.record(); return; }
     this.zones();
     this.delayedWhistle();
     this.record();
@@ -1359,18 +1442,43 @@ export class PlayRink {
     for (const a of this.agents.values()) {
       if (a.on !== 'box' || !a.boxGo) continue;
       const door = { x: this.box[a.side].x, y: this.box[a.side].y }, dx = door.x - a.x, dy = door.y - a.y, d = Math.hypot(dx, dy);
-      if (d < 0.35) { a.boxGo = false; const seat = this.boxSeat(a); a.x = seat.x; a.y = seat.y; a.vx = 0; a.vy = 0; a.fa = -Math.PI / 2; continue; }
+      if (d < 0.35) {
+        a.boxGo = false;
+        if (a.ejected) { this.toDressingRoom(a); continue; }
+        const seat = this.boxSeat(a); a.x = seat.x; a.y = seat.y; a.vx = 0; a.vy = 0; a.fa = -Math.PI / 2; continue;
+      }
       const v = Math.min(5.5, 1.2 + d * 1.6), k = Math.min(1, STEP * 5);
       a.vx += (dx / d * v - a.vx) * k; a.vy += (dy / d * v - a.vy) * k;
       a.x += a.vx * STEP; a.y += a.vy * STEP;
       a.fa = Math.atan2(a.vy, a.vx);
     }
   }
+  /**
+   * An ejected man leaves through the box door; if his team plays short for it (a major with its ДдКМ, a match
+   * penalty) a teammate from the bench serves those minutes in the box.
+   */
+  private toDressingRoom(a: Sk) {
+    const left = a.boxUntil - this.clock, short = !a.coin && left > 0;
+    a.on = 'bench'; a.boxGo = false; a.coin = false; a.vx = 0; a.vy = 0; a.x = this.box[a.side].x; a.y = this.box[a.side].y;
+    this.play('change', a.side, `${a.name} отправляется в раздевалку`, a);
+    if (!short) return;
+    const Lu = this.opts.lineups[a.side];
+    const id = [...Lu.F.flat().reverse(), ...Lu.D.flat().reverse(), Lu.u20F, Lu.u20D].find(x => this.validSkater(x) && this.agents.get(x)?.on === 'bench');
+    const b = id ? this.agents.get(id) : undefined;
+    if (!b) return;
+    b.on = 'box'; b.coin = false; b.boxUntil = a.boxUntil; b.boxMin = a.boxMin; b.boxGo = false; b.miscUntil = undefined;
+    const seat = this.boxSeat(b); b.x = seat.x; b.y = seat.y; b.vx = 0; b.vy = 0; b.fa = -Math.PI / 2;
+    this.play('change', a.side, `Штраф ${a.name} отбывает ${b.name}`, b);
+  }
   private boxes() {
     for (const a of this.agents.values()) {
       if (a.on !== 'box' || this.clock < a.boxUntil - 1e-6) continue;
+      // ejected (ДдКМ alone): out of the box only to the dressing room
+      if (a.ejected) { this.toDressingRoom(a); continue; }
+      // his minor is over, the 10 minutes after it are not: his team is back at full strength, he sits on
+      if (a.miscUntil && this.clock < a.miscUntil - 1e-6) { a.coin = true; a.boxUntil = a.miscUntil; a.miscUntil = undefined; continue; }
       // a fighting major served (his team played on at full strength): he goes to the bench, not onto the ice
-      if (a.coin) { a.coin = false; a.on = 'bench'; a.boxGo = false; a.x = this.bench[a.side].x; a.y = this.bench[a.side].y; a.vx = 0; a.vy = 0; this.play('change', a.side, `${a.name} отбыл большой штраф`, a); continue; }
+      if (a.coin) { a.coin = false; a.on = 'bench'; a.boxGo = false; a.x = this.bench[a.side].x; a.y = this.bench[a.side].y; a.vx = 0; a.vy = 0; this.play('change', a.side, `${a.name} отбыл штраф`, a); continue; }
       a.on = 'ice'; a.boxGo = false; a.x = this.box[a.side].x; a.y = this.box[a.side].y - 0.4; a.vx = 0; a.vy = -2; a.leaving = false; a.fa = -Math.PI / 2;
       this.play('change', a.side, `${a.name} возвращается после удаления`, a);
       this.assignRoles(a.side);
@@ -2179,7 +2287,15 @@ export class PlayRink {
         const lead = clamp(dist(pr, carrier) / Math.max(1, pr.max), 0, 0.8);
         const fut = { x: carrier.x + carrier.vx * lead, y: carrier.y + carrier.vy * lead };
         const own = loc(s, { x: GOAL, y: MID }), dx = own.x - fut.x, dy = own.y - fut.y, d = Math.hypot(dx, dy) || 1;
-        const t = inside({ x: fut.x + (dx / d) * 0.9, y: fut.y + (dy / d) * 0.9 }, 0.7);
+        let t = inside({ x: fut.x + (dx / d) * 0.9, y: fut.y + (dy / d) * 0.9 }, 0.7);
+        // a carrier standing still (or nearly) shields the puck with his body: go round to the side the puck is on,
+        // where a stick can get at it (sticks meet only where they really meet — his skates are in the way otherwise)
+        const pq = this.puck;
+        if (Math.hypot(carrier.vx, carrier.vy) < 2.5 && dist(pr, carrier) < 4) {
+          const ux = pq.x - carrier.x, uy = pq.y - carrier.y, ud = Math.hypot(ux, uy) || 1;
+          const side = inside({ x: pq.x + (ux / ud) * 1.0 + (dx / d) * 0.3, y: pq.y + (uy / ud) * 1.0 + (dy / d) * 0.3 }, 0.7);
+          if (!this.pokeLine(pr, this.liftFrom(pr, carrier), false)) t = side;
+        }
         pr.tx = t.x; pr.ty = t.y; pr.urg = 1; pr.back = false;
         left.splice(left.indexOf(pr), 1);
         this.aiDefend(pr, carrier);
@@ -2350,7 +2466,15 @@ export class PlayRink {
     // close to his own net the defender has to win it: more sticks and bodies on the carrier
     const cl = loc(a.side, c), danger = cl.x < BLUE && Math.hypot(cl.x - GOAL, cl.y - MID) < 13 ? 1.8 : 1;
     if (d < 2.1 && (sp > 2.0 || boards) && this.rand() < (boards ? 0.05 : 0.03) * danger * Math.pow(a.check / 70, 2) * k) { this.startCheck(a, c); return; }
-    if (d < 1.7 && this.rand() < (0.06 + a.check / 1500) * danger * k) this.startPoke(a);
+    if (d < 1.7 && this.rand() < (0.06 + a.check / 1500) * danger * k) {
+      // he reads the play: with the carrier's skates in the way of the puck a good defender keeps his stick home
+      // (the weaker and the more desperate ones go for it anyway — and trip him)
+      const lift = this.liftFrom(a, c), line = this.pokeLine(a, lift, false);
+      // a lift with no way to his stick is only a hook: most keep it home
+      if (!line) { if (this.holdsBack(a)) return; }
+      else if (this.stickContact(line.pts, c)?.what === 'legs' && this.holdsBack(a)) return;
+      this.startPoke(a);
+    }
   }
 
   /** The carrier's choices (AI): shoot, pass, carry, dump, deke. */
@@ -2836,18 +2960,24 @@ export class PlayRink {
   /** One pass of a stick sweep (R1 held on defence): the blade along the ice in an arc in front of him. */
   private resolveSweep(a: Sk) {
     const p = this.puck, c = p.carrier;
-    if (!c || c.side === a.side || dist(a, c) > 2.2 || Math.cos(angDiff(a.fa, Math.atan2(p.y - a.y, p.x - a.x))) < 0.3) return;
-    const pr = clamp(0.22 + (a.def - c.hands) / 200, 0.06, 0.45) * (c.protect ? 0.5 : c.boardPlay ? 0.4 : 1) * this.diffOf(a) / Math.sqrt(this.diffOf(c));
-    if (this.rand() < pr) {
+    if (!c || c.side === a.side || dist(a, c) > 2.4) return;
+    // the blade along the ice in an arc a stick's length out, from the side it was on to the other
+    const from = a.fa - 1.0 * (a.sweepDir ?? 1), pts: V2[] = [];
+    for (let k = 0; k <= 20; k++) { const ang = from + (a.sweepDir ?? 1) * 2.0 * k / 20; pts.push({ x: a.x + Math.cos(ang) * 1.3, y: a.y + Math.sin(ang) * 1.3 }); }
+    a.sweepDir = -(a.sweepDir ?? 1);
+    const hit = this.stickContact(pts, c);
+    if (!hit) return;
+    if (hit.what === 'puck' || hit.what === 'blade') {
+      // knocked sideways, the way the blade was sweeping
       c.act = null; c.cool = Math.max(c.cool, this.tau + 0.4);
-      const dx = a.x - p.x, dy = a.y - p.y, d = Math.hypot(dx, dy) || 1;
-      this.loose((dx / d) * 2.2 + a.vx * 0.4, (dy / d) * 2.2 + a.vy * 0.4);
+      const ang = from + (-(a.sweepDir) * 2.0 * hit.i / 20), tx = -Math.sin(ang) * -(a.sweepDir), ty = Math.cos(ang) * -(a.sweepDir);
+      const sp = hit.what === 'puck' ? 2.6 : 1.6;
+      this.loose(c.vx * 0.4 + tx * sp, c.vy * 0.4 + ty * sp);
       p.noTouch = c; p.noTouchUntil = this.tau + 0.45;
       this.play('takeaway', a.side, `Выбил шайбу клюшкой: ${a.name}`, a);
       return;
     }
-    // the blade into his skates instead: a trip now and then
-    if (dist(a, c) < 1.15 && this.rand() < 0.05) { this.knockDown(c, 'front', 1, 0.8); this.foul(a, PEN_REASON.trip, c); }
+    if (hit.what === 'legs') this.stickInLegs(a, c, true);
   }
   /**
    * The puck is played toward the far end (a shot, a pass, a clear, a dump): icing is pending if it left from the
@@ -3013,10 +3143,16 @@ export class PlayRink {
     a.cool = this.tau + (light ? 0.6 : 0.9);
     if (t) { const dx = t.x - a.x, dy = t.y - a.y, d = Math.hypot(dx, dy) || 1, kick = light ? 1.2 : 2.2; a.vx += (dx / d) * kick; a.vy += (dy / d) * kick; }
   }
+  /** An AI defender who sees the carrier's skates between his stick and the puck pulls it back (the better, the surer). */
+  private holdsBack(a: Sk) { return !a.manual && this.rand() < clamp(0.66 + (a.check - 60) / 120 + (this.diffOf(a) - 1) * 0.2, 0.5, 0.93); }
+  /** Whether a's poke at the carrier c is a stick lift: from beside or behind him (or always, when asked for). */
+  private liftFrom(a: Sk, c: Sk, force = false) {
+    return c.side !== a.side && dist(a, c) < (force ? 2.1 : 1.9) && (force || Math.cos(angDiff(c.fa, Math.atan2(a.y - c.y, a.x - c.x))) < 0.1);
+  }
   private startPoke(a: Sk, forceLift = false) {
     // from behind or beside the carrier a poke at the puck is a stick lift instead (A in the NHL scheme: always a lift)
     const c = this.puck.carrier;
-    const lift = !!c && c.side !== a.side && dist(a, c) < (forceLift ? 2.1 : 1.9) && (forceLift || Math.cos(angDiff(c.fa, Math.atan2(a.y - c.y, a.x - c.x))) < 0.1);
+    const lift = !!c && this.liftFrom(a, c, forceLift);
     a.act = { k: 'poke', t0: this.tau, done: false, lift };
     a.cool = this.tau + 0.7;
   }
@@ -3044,65 +3180,169 @@ export class PlayRink {
       }
     }
   }
-  private resolvePoke(a: Sk) {
-    const p = this.puck, reach = { x: a.x + Math.cos(a.fa) * 1.35, y: a.y + Math.sin(a.fa) * 1.35 };
-    const c = p.carrier;
-    if (a.act?.k === 'poke' && a.act.lift && c && c.side !== a.side) {
-      // a stick lift: his stick comes up off the ice, the puck stays where it was — the lifter usually has it
-      if (dist(a, c) < 1.6) {
-        const pr = clamp(0.5 + (a.def - c.hands) / 120 - (c.act?.k === 'deke' && c.act.kind === 'spin' ? 0.3 : 0), 0.15, 0.85) * (c.boardPlay ? 0.6 : c.protect ? 0.8 : 1) * this.diffOf(a) / Math.sqrt(this.diffOf(c));
-        if (this.rand() < pr) {
-          // the lifter steps in and takes the puck off him (the AI's lift leaves it in the skates half the time)
-          c.act = null; c.stagger = this.tau + 0.3; c.cool = Math.max(c.cool, this.tau + 0.5);
-          if (a.manual || this.rand() < 0.5) this.steal(a, c);
-          else { this.loose(c.vx * 0.25, c.vy * 0.25); p.noTouch = c; p.noTouchUntil = this.tau + 0.5; }
-          this.play('takeaway', a.side, `Подбил клюшку: ${a.name}`, a);
-        } else {
-          // the stick comes up off his and too high, or chops at his hands; a high stick that draws blood is 2+2
-          const r = this.rand();
-          if (r < 0.012) this.foul(a, PEN_REASON.slash, c);
-          else if (r < 0.022) { const blood = this.rand() < 0.25; c.stagger = Math.max(c.stagger, this.tau + 0.4); this.foul(a, PEN_REASON.high, c, blood ? 4 : 2); }
-        }
-      }
-      return;
+  /**
+   * What a stick laid along `pts` (the blade's path: a poke's thrust, a sweep's arc — nearest first) touches first
+   * on the carrier c: the puck, his blade, his shaft, or his skates. The carrier's stick runs from his hands (in
+   * front of his chest) to the blade cupping the puck; his skates are a disc under him.
+   */
+  private stickContact(pts: V2[], c: Sk): { what: 'puck' | 'blade' | 'shaft' | 'legs'; at: V2; i: number } | null {
+    const p = this.puck, b = { x: p.x, y: p.y };
+    const h = { x: c.x + Math.cos(c.fa) * 0.3, y: c.y + Math.sin(c.fa) * 0.3 };
+    const hb = Math.hypot(h.x - b.x, h.y - b.y) || 1, heel = { x: b.x + (h.x - b.x) / hb * 0.3, y: b.y + (h.y - b.y) / hb * 0.3 };
+    for (let i = 0; i < pts.length; i++) {
+      const q = pts[i];
+      if (dist(q, b) < 0.17) return { what: 'puck', at: q, i };
+      if (segDist(q, b, heel) < 0.13) return { what: 'blade', at: q, i };
+      if (segDist(q, heel, h) < 0.09) return { what: 'shaft', at: q, i };
+      // his body is wider when he protects the puck (✕) or pins it on the boards (△): it covers more of the puck
+      if (dist(q, c) < (c.boardPlay ? 0.48 : c.protect ? 0.42 : 0.3)) return { what: 'legs', at: q, i };
     }
+    return null;
+  }
+  /**
+   * The blade's path of a poke from a toward `dir`: from the end of his natural reach out to full stretch. `side`
+   * shifts where it starts across his body (a lift reaching round the carrier's hip on the forehand or backhand).
+   */
+  private pokePath(a: Sk, dir: number, from = 0.25, to = 1.6, side = 0): V2[] {
+    const out: V2[] = [], ox = a.x - Math.sin(dir) * side, oy = a.y + Math.cos(dir) * side;
+    for (let r = from; r <= to + 1e-9; r += 0.05) out.push({ x: ox + Math.cos(dir) * r, y: oy + Math.sin(dir) * r });
+    return out;
+  }
+  /** A blade path bent round a point (his hip) on to a target: from `from` metres out, null if longer than `reach`. */
+  private bentPath(a: V2, via: V2, to: V2, from: number, reach: number): V2[] | null {
+    const l1 = dist(a, via), l2 = dist(via, to);
+    if (l1 + l2 > reach || l1 < from) return null;
+    const out: V2[] = [];
+    for (let r = from; r <= l1 + l2 + 1e-9; r += 0.05) {
+      if (r <= l1) out.push({ x: a.x + (via.x - a.x) * r / l1, y: a.y + (via.y - a.y) * r / l1 });
+      else { const u = (r - l1) / (l2 || 1); out.push({ x: via.x + (to.x - via.x) * u, y: via.y + (to.y - via.y) * u }); }
+    }
+    return out;
+  }
+  /**
+   * Where a stick goes: the manager's man pokes the way he faces (helped onto the puck when it is roughly
+   * there); the AI aims at the puck, less precisely on the easy levels. A lift goes for the carrier's stick instead
+   * of the puck — the first point along his shaft it can reach without his skates in the way, straight on or
+   * reaching round his hip; `null` when there is none (the stick would only find his legs).
+   */
+  private pokeLine(a: Sk, lift = a.act?.k === 'poke' && !!a.act.lift, noisy = true): { dir: number; pts: V2[] } | null {
+    const p = this.puck, toPuck = Math.atan2(p.y - a.y, p.x - a.x), off = angDiff(a.fa, toPuck), c = p.carrier;
+    // (the manager's lift is helped onto the carrier's stick like the AI's, below — without the AI's misses)
+    if (a.manual && !(lift && c && c.side !== a.side)) { const dir = Math.abs(off) < 0.6 ? a.fa + off * 0.85 : a.fa; return { dir, pts: this.pokePath(a, dir) }; }
+    if (a.manual) noisy = false;
+    const noise = noisy ? (this.rand() - 0.5) * 0.24 / this.diffOf(a) : 0;
+    if (c && c.side !== a.side && lift) {
+      const h = { x: c.x + Math.cos(c.fa) * 0.3, y: c.y + Math.sin(c.fa) * 0.3 };
+      for (const side of [0, 0.4, -0.4]) for (const f of [0.55, 0.35, 0.75, 0.2, 0.9]) {
+        const t = { x: h.x + (p.x - h.x) * f, y: h.y + (p.y - h.y) * f };
+        const o = { x: a.x, y: a.y }, d0 = Math.atan2(t.y - o.y, t.x - o.x);
+        // aim from the shifted start so the line still runs through the target
+        const ox = a.x - Math.sin(d0) * side, oy = a.y + Math.cos(d0) * side, dir = Math.atan2(t.y - oy, t.x - ox);
+        if (Math.hypot(t.x - ox, t.y - oy) > 1.6) continue;
+        const hit = this.stickContact(this.pokePath(a, dir, 0.45, 1.6, side), c);
+        if (hit && hit.what !== 'legs') return { dir: dir + noise, pts: this.pokePath(a, dir + noise, 0.45, 1.6, side) };
+      }
+      // from behind: the blade round his hip (past it on whichever side is nearer) and in onto his shaft
+      const px = -Math.sin(c.fa), py = Math.cos(c.fa), near = (a.x - c.x) * px + (a.y - c.y) * py >= 0 ? 1 : -1;
+      for (const sd of [near, -near]) {
+        const hip = { x: c.x + px * 0.46 * sd + Math.cos(c.fa) * 0.1, y: c.y + py * 0.46 * sd + Math.sin(c.fa) * 0.1 };
+        for (const f of [0.5, 0.25, 0.8]) {
+          const t = { x: h.x + (p.x - h.x) * f + (noisy ? (this.rand() - 0.5) * 0.12 / this.diffOf(a) : 0), y: h.y + (p.y - h.y) * f };
+          const pts = this.bentPath(a, hip, t, 0.45, 1.9);
+          if (!pts) continue;
+          const hit = this.stickContact(pts, c);
+          if (hit && hit.what !== 'legs') return { dir: Math.atan2(hip.y - a.y, hip.x - a.x), pts };
+        }
+      }
+      return null;
+    }
+    return { dir: toPuck + noise, pts: this.pokePath(a, toPuck + noise) };
+  }
+  /**
+   * The stick in the carrier's skates instead of on the puck: whether he goes down depends on his speed and his
+   * balance — down, it is a trip; staying up but held up, a hook now and then (the referee's call either way).
+   */
+  private stickInLegs(a: Sk, c: Sk, sweep = false) {
+    const spd = Math.hypot(c.vx, c.vy);
+    const pFall = clamp(0.12 + spd / 14 - (c.bal - 60) / 160, 0.06, 0.75) * (sweep ? 0.8 : 1);
+    if (this.rand() < pFall) {
+      this.knockDown(c, 'front', 1, 0.85);
+      if (this.rand() < 0.8) this.foul(a, PEN_REASON.trip, c);
+      else this.play('loose', a.side, `${c.name} падает после контакта клюшкой — свисток молчит`, c);
+    } else {
+      c.stagger = Math.max(c.stagger, this.tau + 0.3);
+      c.vx *= 0.75; c.vy *= 0.75;
+      const behind = Math.cos(angDiff(c.fa, Math.atan2(a.y - c.y, a.x - c.x))) < -0.2;
+      if (this.rand() < (behind ? 0.12 : 0.04)) this.foul(a, PEN_REASON.hook, c);
+    }
+  }
+  /**
+   * A poke check / a stick lift resolved by where the sticks actually meet (no dice for the takeaway itself):
+   * on the puck — it is knocked off his blade along the thrust (met close in, the poker gathers it); on his blade —
+   * it is jarred loose at his feet; on the shaft — a lift takes his stick off the ice and the puck stays, a chop
+   * makes him fumble it; in his skates — he may go down: a trip.
+   */
+  private resolvePoke(a: Sk) {
+    const p = this.puck, c = p.carrier;
+    const lift = a.act?.k === 'poke' && !!a.act.lift;
     if (c && c.side !== a.side) {
-      const inReach = dist(reach, p) < 0.8 || (dist(a, p) < 1.7 && Math.cos(angDiff(a.fa, Math.atan2(p.y - a.y, p.x - a.x))) > 0.6);
-      const dk = c.act?.k === 'deke' ? c.act.kind : null;
-      if (inReach) {
-        // quick hands side to side (the manager's stickhandling) keep the puck away from a reaching stick
-        const dangle = c.manual && this.tau - (this.seatOf(c)?.handleSwing ?? -9) < 0.45 ? 0.14 : 0;
-        // the puck protected (✕: his body between it and the stick) or pinned in his skates on the boards (△) is hard to reach
-        const shield = c.boardPlay ? 0.35 : c.protect ? 0.45 : 1;
-        const pr = clamp(0.42 + ((a.check + a.def) / 2 - c.hands) / 140 - (dk === 'toe' || dk === 'between' ? 0.42 : dk ? 0.28 : 0) - dangle, 0.06, 0.85) * shield * this.diffOf(a) / Math.sqrt(this.diffOf(c));
-        if (this.rand() < pr) {
-          c.act = null; c.cool = Math.max(c.cool, this.tau + 0.4);
-          // a clean poke: the puck comes onto his stick (good hands keep it; the manager's man most of the time,
-          // the AI's less often — it pokes a lot), otherwise it is knocked loose toward him
-          if (this.rand() < (a.manual ? clamp(0.65 + (a.hands - 60) / 100, 0.5, 0.92) : 0.3)) this.steal(a, c);
-          else {
-            const dx = a.x - p.x, dy = a.y - p.y, d = Math.hypot(dx, dy) || 1, ang = Math.atan2(dy, dx) + (this.rand() - 0.5) * 0.9;
-            this.loose(Math.cos(ang) * Math.min(3, d * 2.2) + a.vx * 0.5, Math.sin(ang) * Math.min(3, d * 2.2) + a.vy * 0.5);
-            p.noTouch = c; p.noTouchUntil = this.tau + 0.45;
-          }
-          this.play('takeaway', a.side, `Отбор клюшкой: ${a.name}`, a);
-          return;
-        }
+      const line = this.pokeLine(a);
+      // a lift that cannot get to his stick goes through to his skates (or he pulls it back)
+      const dir = line?.dir ?? Math.atan2(p.y - a.y, p.x - a.x);
+      const hit = this.stickContact(line?.pts ?? this.pokePath(a, dir, 0.45), c);
+      if (!hit) return;
+      // the carrier turned his body into it while the stick was on its way: a defender who reads it pulls up
+      if (hit.what === 'legs' && this.holdsBack(a)) return;
+      const reachAt = dist(a, hit.at);
+      const take = (how: string) => { c.act = null; c.cool = Math.max(c.cool, this.tau + 0.4); this.play('takeaway', a.side, `${how}: ${a.name}`, a); };
+      if (lift && (hit.what === 'shaft' || hit.what === 'blade')) {
+        // his stick comes up off the ice: the puck stays where it was (it keeps a little of his speed)
+        take('Подбил клюшку');
+        c.stagger = this.tau + 0.3; c.cool = Math.max(c.cool, this.tau + 0.5);
+        if (dist(this.blade(a), p) < 0.9) this.steal(a, c);
+        else { this.loose(c.vx * 0.25, c.vy * 0.25); p.noTouch = c; p.noTouchUntil = this.tau + 0.5; }
+        // a lift that rides up his shaft into his hands or face: a high stick (2+2 if it draws blood)
+        if (this.rand() < (hit.what === 'shaft' ? 0.05 : 0.015)) { const blood = this.rand() < 0.25; c.stagger = Math.max(c.stagger, this.tau + 0.4); this.foul(a, PEN_REASON.high, c, blood ? 4 : 2); }
+        return;
       }
-      // a stick in the legs instead of on the puck: a trip or a hook
-      // (from behind it is a hook more often than not; a trip takes his skates away and puts him down)
-      if (dist(a, c) < 1.2) {
-        const behind = Math.cos(angDiff(c.fa, Math.atan2(a.y - c.y, a.x - c.x))) < -0.2;
-        if (this.rand() < (behind ? 0.15 : 0.08)) {
-          const trip = this.rand() < (behind ? 0.35 : 0.65);
-          if (trip && this.rand() < 0.6) this.knockDown(c, 'front', 1, 0.85);
-          else c.stagger = Math.max(c.stagger, this.tau + 0.35);
-          this.foul(a, trip ? PEN_REASON.trip : PEN_REASON.hook, c);
-        }
+      if (hit.what === 'puck') {
+        take(lift ? 'Подбил клюшку' : 'Отбор клюшкой');
+        // met within his own reach: the blade pulls it onto his stick; at full stretch it is only knocked away
+        // (soft hands cushion a poke now and then: the puck stays on his blade)
+        if (this.rand() < clamp((c.hands - a.check) / 160 + 0.08, 0.02, 0.3)) { c.stagger = Math.max(c.stagger, this.tau + 0.12); return; }
+        if (reachAt < 1.25 && Math.hypot(a.vx - c.vx, a.vy - c.vy) < 6) { this.steal(a, c); return; }
+        const n = { x: p.x - hit.at.x, y: p.y - hit.at.y }, nd = Math.hypot(n.x, n.y) || 1;
+        const kx = Math.cos(dir) * 0.6 + n.x / nd * 0.4, ky = Math.sin(dir) * 0.6 + n.y / nd * 0.4, kd = Math.hypot(kx, ky) || 1;
+        const sp = 1.6 + 1.8 * clamp((reachAt - 0.6) / 1, 0, 1) + (a.check - 60) / 50;
+        this.loose(c.vx * 0.35 + kx / kd * sp, c.vy * 0.35 + ky / kd * sp);
+        p.noTouch = c; p.noTouchUntil = this.tau + 0.45;
+        return;
       }
+      if (hit.what === 'blade') {
+        // his blade knocked aside: the puck squirts off it at his feet
+        take('Выбил шайбу с крюка');
+        // a chop on the blade that follows through onto his hands or legs: a slash
+        if (this.rand() < 0.025) this.foul(a, PEN_REASON.slash, c);
+        this.loose(c.vx * 0.8 + Math.cos(dir) * 1.3, c.vy * 0.8 + Math.sin(dir) * 1.3);
+        p.noTouch = c; p.noTouchUntil = this.tau + 0.25;
+        return;
+      }
+      if (hit.what === 'shaft') {
+        // a chop on his stick: a strong pair of hands holds on, otherwise the puck gets away from him
+        if (this.rand() < clamp(0.35 + (c.hands - 60) / 80, 0.15, 0.8)) { c.stagger = Math.max(c.stagger, this.tau + 0.15); }
+        else { take('Выбил клюшку'); this.loose(c.vx * 0.7 + Math.cos(dir) * 0.6, c.vy * 0.7 + Math.sin(dir) * 0.6); p.noTouch = c; p.noTouchUntil = this.tau + 0.25; }
+        // too hard on the stick (or on his hands) is a slash; a lift that comes up high, a high stick (2+2 if it draws blood)
+        const r = this.rand();
+        if (r < (lift ? 0.012 : 0.03)) this.foul(a, PEN_REASON.slash, c);
+        else if (lift && r < 0.022) { const blood = this.rand() < 0.25; c.stagger = Math.max(c.stagger, this.tau + 0.4); this.foul(a, PEN_REASON.high, c, blood ? 4 : 2); }
+        return;
+      }
+      // in his skates
+      this.stickInLegs(a, c);
       return;
     }
     // a loose puck or a pass within reach: knocked toward him
+    const reach = { x: a.x + Math.cos(a.fa) * 1.35, y: a.y + Math.sin(a.fa) * 1.35 };
     if (!c && !p.dead && dist(reach, p) < 0.9 && p.h < 0.4 && !p.shot) {
       const dx = a.x - p.x, dy = a.y - p.y, d = Math.hypot(dx, dy) || 1;
       p.vx = (dx / d) * 2.5; p.vy = (dy / d) * 2.5; p.leg++; p.passTo = null;
@@ -3185,9 +3425,16 @@ export class PlayRink {
     a.stun = sec; a.fall = sec; a.fallK = kind; a.fallS = side; a.fallAt = this.tau; a.act = null;
     if (this.puck.carrier === a) { this.loose(a.vx * 0.5 + (this.rand() - 0.5) * 2, a.vy * 0.5 + (this.rand() - 0.5) * 2); this.puck.noTouch = a; this.puck.noTouchUntil = this.tau + 0.5; }
   }
-  private foul(a: Sk, reason: string, victim: Sk, min: 2 | 4 | 5 = 2) {
+  private foul(a: Sk, reason: string, victim: Sk, min: 2 | 4 | 5 = 2, kind?: PenKind) {
     if (!this.rules.penalties || this.pending.some(p => p.player === a)) return;
-    this.pending.push({ side: a.side, player: a, reason, min });
+    // the most dangerous of the majors: a match penalty now and then instead of the 5 + ДдКМ
+    if (min === 5 && !kind && (reason === PEN_REASON.head || reason === PEN_REASON.behind) && this.rand() < 0.08) kind = 'match';
+    const ps = min === 2 && !kind && this.breakaway(a, victim, reason) ? victim : undefined;
+    this.pending.push({ side: a.side, player: a, reason, min, ...(kind ? { kind } : {}), ...(ps ? { ps } : {}) });
+    // a man who went down too easily: the referee gives him a minor for embellishment as well (4-on-4)
+    if (!ps && min === 2 && victim.fall > 0 && (reason === PEN_REASON.hook || reason === PEN_REASON.hold) && this.rand() < 0.06 && !this.pending.some(p => p.player === victim)) {
+      this.pending.push({ side: victim.side, player: victim, reason: PEN_REASON.dive, min: 2 });
+    }
     // the infraction acted out (it is decided at the contact: the move picks up from the check or the stick already there)
     const mv = foulMove(reason);
     if (mv) a.foulMv = { kind: mv, t0: this.tau - 0.08 };
@@ -3195,6 +3442,27 @@ export class PlayRink {
     void victim;
     // the other team has the puck: the referee waits until the offending team touches it
     if (this.puck.carrier?.side === a.side) this.whistlePenalty();
+  }
+  /**
+   * A clean breakaway fouled from behind (KHL rule: a penalty shot): the man fouled had the puck in the attacking
+   * half, nobody but the goalie between him and the net, and the foul was a trip, a hook, a hold or a slash.
+   */
+  private breakaway(a: Sk, victim: Sk, reason: string): boolean {
+    if (this.opts.kind === 'ot3' || victim.goalie) return false;
+    if (![PEN_REASON.trip, PEN_REASON.hook, PEN_REASON.hold, PEN_REASON.slash].includes(reason as typeof PEN_REASON.trip)) return false;
+    const p = this.puck, had = p.carrier === victim || this.tau - victim.ownAt < 0.6;
+    if (!had) return false;
+    const s = victim.side, me = loc(s, victim);
+    if (me.x < RED + 2) return false;
+    // a clear chance: past the far blue line or close to it, skating at the net
+    if (me.x < OPP_BLUE - 4 || Math.hypot(me.x - OPP_GOAL, me.y - MID) > 24) return false;
+    const vToNet = loc(s, { x: victim.x + victim.vx, y: victim.y + victim.vy }).x - me.x;
+    if (vToNet < 2.5) return false;
+    // the foul from behind: the fouler behind him, both skating the same way
+    const behind = Math.cos(angDiff(victim.fa, Math.atan2(a.y - victim.y, a.x - victim.x))) < -0.3;
+    if (!behind) return false;
+    // nobody (but the fouler) between him and the net
+    return !this.skaters((1 - s) as Side, false).some(d => d !== a && loc(s, d).x > me.x - 0.5);
   }
   private delayedWhistle() {
     if (!this.pending.length) return;
@@ -3492,7 +3760,7 @@ export class PlayRink {
     // a power-play goal ends the earliest minor of the short-handed team; a goal during a delayed penalty waives it
     if (strength === 'PP') {
       // (a major is served in full; a goal in the first half of a double minor ends only its first two minutes)
-      const boxed = [...this.agents.values()].filter(a => a.side !== side && a.on === 'box' && a.boxMin !== 5).sort((a, b) => a.boxUntil - b.boxUntil)[0];
+      const boxed = [...this.agents.values()].filter(a => a.side !== side && a.on === 'box' && a.boxMin !== 5 && !a.coin && !a.ejected).sort((a, b) => a.boxUntil - b.boxUntil)[0];
       if (boxed) boxed.boxUntil = boxed.boxMin === 4 && boxed.boxUntil - this.clock > 120 ? this.clock + 120 : this.clock;
     }
     if (this.pending.length && this.pending[0].side !== side) {

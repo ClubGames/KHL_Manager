@@ -1,3 +1,4 @@
+import { EJECT_END } from './penalties';
 import type { AttackStyle, ForecheckStyle, GameEvent, Player, Team } from '../types';
 import type { FoulMove, Key, LiveFrame, ReplayClip, Track } from './rinkPlayback';
 import { FOUL_MOVE_DUR, foulMove } from './rinkPlayback';
@@ -781,21 +782,23 @@ export class RinkAI {
     const s = this.sideOf(id);
     const a = this.agent(id, s);
     const pim = e.pim ?? 2;
-    a.pim = pim;
-    a.boxUntil = pim >= 10 ? e.sec + pim * 60 : Math.max(e.sec + 1, e.boxUntil ?? e.penUntil?.[s] ?? e.sec + pim * 60);
+    // (the minutes a power-play goal can cut short: a minor, a double minor)
+    a.pim = e.penKind === 'minor' || e.penKind === 'bench' ? 2 : e.penKind === 'double' ? 4 : pim;
+    // an ejected man (ДдКМ, a match penalty, a major with its ДдКМ) never comes back
+    a.boxUntil = e.ejected ? EJECT_END : pim >= 10 && !e.penKind ? e.sec + pim * 60 : Math.max(e.sec + 1, e.boxUntil ?? e.penUntil?.[s] ?? e.sec + pim * 60);
     // the numbers follow the engine's box timeline (the penalty event carries it; a misconduct is replaced)
     this.baseSkaters = this.menNow();
     if (a.on === 'ice') { a.leave = 'box'; if (this.puck.carrier === a) this.loosePuck(0, 0); }
     else { a.on = 'box'; const seat = this.boxSeat(a); a.x = seat.x; a.y = seat.y; }
     // the infraction (the engine writes it after a dash): the referee shows its signal
-    const reason = e.text.includes('—') ? e.text.split('—').pop()!.trim() : '';
+    const reason = e.text.includes('—') ? e.text.split('—').pop()!.split('.')[0].trim() : '';
     // the infraction acted out by the offender (the duel brought him to the man he fouls), peaking at the call
     const mv = foulMove(reason);
     if (mv && a.on === 'ice') {
       this.fouls.push({ id: a.id, kind: mv, t0: this.tau - FOUL_MOVE_DUR[mv] * .4 });
       if (this.fouls.length > 40) this.fouls.splice(0, 20);
     }
-    this.play('penalty', s, `Удаление: ${a.name}${reason ? ` — ${reason}` : ''}, ${pim} мин`, a);
+    this.play('penalty', s, `Удаление: ${a.name}${reason ? ` — ${reason}` : ''}, ${e.penLen ?? `${pim} мин`}`, a);
     if (this.mode === 'play') this.startStop('penalty', zoneDot(s, this.puck.y));
   }
   private doHit(e: GameEvent) {
