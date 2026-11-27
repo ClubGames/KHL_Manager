@@ -403,7 +403,7 @@ export function LiveScene3D(props: Props) {
             for (let i = ai.plays.length - 1; i >= 0; i--) {
               const p = ai.plays[i];
               if (p.tau < liveTau - 1.5) break;
-              if (p.kind !== 'penalty' || p.text.startsWith('Отложенный') || p.tau > liveTau || seenPen.has(p.tau)) continue;
+              if (p.kind !== 'penalty' || p.text.startsWith('Отложенный') || p.text.startsWith('Штрафной бросок') || p.tau > liveTau || seenPen.has(p.tau)) continue;
               seenPen.add(p.tau);
               const fp = ai.frameAt(p.tau), who = fp.skaters.find(x => x.id === p.player), at = toWorld(who?.pos ?? fp.puck);
               const crewNow = crewFor(ai).officials;

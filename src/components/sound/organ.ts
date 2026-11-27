@@ -1,7 +1,7 @@
 // The arena organ, synthesized: a drawbar organ (sine partials at 16', 8', 4', 2 2/3', 2') with a rotating-speaker
 // shimmer. The riffs are original short phrases written for the game (no borrowed tunes); some end with a rhythm the
 // crowd claps back.
-import { audio, tone } from './engine';
+import { audio, output, tone } from './engine';
 
 const hz = (midi: number) => 440 * 2 ** ((midi - 69) / 12);
 /** [midi notes (a chord), start beat, length in beats] */
@@ -22,14 +22,30 @@ export const RIFFS: Record<string, Riff> = {
   goal: { bpm: 176, notes: [...[0, 2, 4, 5, 7, 9, 11].map((k, i): Note => [[C4 + k], i * .5, .45]), [[C4 + 12, C4 + 16, C4 + 19, C4 + 24], 3.5, 2.5]] },
 };
 
+/** The organ plays through a gate into the music bus: closing it silences the notes already scheduled. */
+let gate: { g: GainNode; ctx: AudioContext } | null = null;
+function gateOf(e: NonNullable<ReturnType<typeof audio>>): GainNode {
+  if (!gate || gate.ctx !== e.ctx) { const g = e.ctx.createGain(); g.connect(output(e, 'music')); gate = { g, ctx: e.ctx }; }
+  return gate.g;
+}
+/** Silences the organ now, the rest of a riff included (the match screen closes). */
+export function stopOrgan(seconds = .3) {
+  if (!gate) return;
+  const { g, ctx } = gate, t = ctx.currentTime;
+  g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(0, t + seconds);
+  setTimeout(() => { try { g.disconnect(); } catch { /* gone */ } }, (seconds + .1) * 1000);
+  gate = null;
+}
+
 /** One organ note (a chord) at `t` for `dur` seconds. */
 function organNote(midi: number[], t: number, dur: number, vel = 1) {
   const e = audio(); if (!e) return;
+  const out = gateOf(e);
   for (const m of midi) {
     const f = hz(m);
     // drawbars 8 8 6 0 0 0 4 0 0-ish: fundamental, sub-octave, octave, twelfth, fifteenth
     for (const [mult, g] of [[1, .32], [.5, .2], [2, .2], [3, .1], [4, .08]] as const) {
-      tone(e, { t, f: f * mult, type: 'sine', vib: [6.3, f * mult * .0035], env: { a: .008, hold: Math.max(.02, dur - .05), d: .09 }, gain: g * vel / Math.sqrt(midi.length), bus: 'music' });
+      tone(e, { t, f: f * mult, type: 'sine', vib: [6.3, f * mult * .0035], env: { a: .008, hold: Math.max(.02, dur - .05), d: .09 }, gain: g * vel / Math.sqrt(midi.length), bus: 'music', out });
     }
   }
 }

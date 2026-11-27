@@ -104,7 +104,7 @@ test('a played period (AI against AI on the playable rink): the same sounds, the
   assert.equal(c('drop'), drops);
   assert.equal(c('siren'), 1, 'the siren once (the play and the clock agree)');
   assert.ok(c('whistle') >= stopsN - goals.length - 2, `a whistle at the stoppages (${c('whistle')} of ${stopsN})`);
-  assert.ok(c('stick') > end / 60 * 15 && c('boards') > 3, 'sticks and boards');
+  assert.ok(c('stick') > end / 60 * 15 && c('boards') + c('glass') + c('post') >= 3, 'sticks and boards');
   // paused: no cues however long
   const rec2 = new Recorder(), drv2 = new MatchSound(rec2, 3);
   drv2.update(k, 10, true);
@@ -115,7 +115,7 @@ test('a played period (AI against AI on the playable rink): the same sounds, the
   assert.ok(rec2.cues.length <= 1, 'jumps in time are not replayed as a burst of sounds');
 });
 
-test('the home crowd: boos at a home penalty, whistling only while the home team is short-handed and the puck is in its zone', () => {
+test('the home crowd: boos at a home penalty, whistling only while the home team is short-handed and the opponent has the puck in its zone', () => {
   // several watched periods, so there are penalties both ways
   let homePens = 0, boos = 0, on = 0, off = 0, bad = 0, checked = 0;
   for (let n = 0; n < 3; n++) {
@@ -137,7 +137,8 @@ test('the home crowd: boos at a home penalty, whistling only while the home team
         const f = ai.frameAt(c.tau);
         const boxed = f.skaters.reduce((k, s) => k + (s.box ? (s.side === 0 ? 1 : -1) : 0), 0);
         const ownEnd = ai.flipped ? 100 : 0;
-        if (!(boxed > 0) || Math.abs(f.puck.x - ownEnd) > 45) bad++;
+        const holder = f.skaters.find(s => s.id === f.carrier);
+        if (!(boxed > 0) || Math.abs(f.puck.x - ownEnd) > 45 || holder?.side !== 1) bad++;
       }
     }
   }

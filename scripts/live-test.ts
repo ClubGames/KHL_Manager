@@ -31,7 +31,8 @@ for (let n = 0; n < N; n++) {
       const e = evs[i];
       const prevShots = live.shots[0] + live.shots[1];
       // (d) what the scoreboard indicator says right before this goal vs. how the engine scored it
-      if (e.type === 'goal' && e.period <= 3) {
+      // (a penalty-shot goal is one on one, whatever the clock's manpower)
+      if (e.type === 'goal' && e.period <= 3 && !e.text.includes('штрафной бросок')) {
         const mp = manpower(live, e.sec).state;
         const ti = e.team === h.id ? 0 : 1;
         if (e.pp) { ppGoals++; if (mp !== ti) ppWrong++; }

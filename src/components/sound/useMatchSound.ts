@@ -2,9 +2,9 @@
 import { useEffect, useRef } from 'react';
 import { audio, audioAny, installSoundUnlock } from './engine';
 import { Crowd } from './crowd';
-import { crowdVerdict, loadClips, playClip } from './clips';
+import { crowdVerdict, loadClips, playClip, stopClips } from './clips';
 import { MatchSound, type Cue, type SoundSink, type SoundSource } from './matchSound';
-import { playRiff, stoppageRiff } from './organ';
+import { playRiff, stopOrgan, stoppageRiff } from './organ';
 import * as sfx from './sfx';
 
 class WebSink implements SoundSink {
@@ -130,4 +130,6 @@ export function useCrowdVerdict(done: boolean, homeWon: boolean) {
     if (done && !was.current) crowdVerdict(homeWon);
     was.current = done;
   }, [done, homeWon]);
+  // the match screen closes (back to the menus): the verdict, the horn, the boos — everything stops
+  useEffect(() => () => { stopClips(); stopOrgan(); }, []);
 }

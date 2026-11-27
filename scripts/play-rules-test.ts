@@ -126,7 +126,7 @@ test('over the glass from his own zone, straight out: a delay-of-game minor, the
   assert.equal(k.mode, 'stop');
   assert.equal(p.stopInfo.reason, 'penalty');
   const pen = k.drain().find((o: any) => o.type === 'penalty') as any;
-  assert.ok(pen && pen.player === a.id && pen.reason.startsWith('задержка игры') && pen.min === 2, 'the minor is called at once');
+  assert.ok(pen && pen.player === a.id && pen.reason.startsWith('выброс шайбы') && pen.min === 2, 'the minor is called at once');
   assert.ok(p.stopInfo.dot.x < 30, 'the faceoff is in the offending team\'s end');
   assert.ok(k.plays.some((q: any) => q.kind === 'out' && q.text.includes('за стекло')));
   assert.equal(penaltyGesture(pen.reason), 'delay');
@@ -159,7 +159,7 @@ test('the new penalties: holding, high-sticking (2+2 with blood), goalie interfe
   }
   console.log(`   ${(total / periods).toFixed(1)} per period:`, JSON.stringify(reasons));
   assert.ok(Object.keys(reasons).length >= 8, 'many kinds of penalties are called');
-  for (const k of ['высота клюшки', 'задержка руками']) assert.ok(reasons[k], k);
+  for (const k of ['игра высоко поднятой клюшкой', 'задержка соперника']) assert.ok(reasons[k], k);
   assert.ok(total / periods > 2 && total / periods < 5, 'about as many as in the KHL');
   // every reason has the referee's signal (and the new ones their own)
   assert.equal(penaltyGesture('удар локтем'), 'elbow');
@@ -169,6 +169,12 @@ test('the new penalties: holding, high-sticking (2+2 with blood), goalie interfe
   assert.equal(penaltyGesture('помеха вратарю'), 'interference');
   assert.equal(penaltyGesture('задержка руками'), 'hold');
   assert.equal(penaltyGesture('высота клюшки'), 'highstick');
+  // the KHL's wording of the played match's calls
+  assert.equal(penaltyGesture('задержка соперника'), 'hold');
+  assert.equal(penaltyGesture('игра высоко поднятой клюшкой'), 'highstick');
+  assert.equal(penaltyGesture('атака игрока, не владеющего шайбой'), 'interference');
+  assert.equal(penaltyGesture('атака в голову или шею'), 'head');
+  assert.equal(penaltyGesture('выброс шайбы за пределы площадки'), 'delay');
 });
 
 test('goalie interference: an attacker running into the goalie in his crease is called; too many men when the early man plays the puck', () => {

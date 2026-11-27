@@ -200,6 +200,8 @@ export type ToneOpts = {
   t?: number; f: number; fTo?: number; glide?: number; type?: OscillatorType; env: Env; gain?: number; pan?: number; bus?: Bus;
   /** vibrato / trill: rate (Hz) and depth (Hz) */
   vib?: [number, number]; filter?: { type: BiquadFilterType; f: number; q?: number };
+  /** where it plays into instead of the bus (a gate the caller can close: the organ's riffs) */
+  out?: AudioNode;
 };
 /** An oscillator with an envelope (resonances, the post's ring, the whistle's pea, the horn's reeds, the organ). */
 export function tone(e: Engine, o: ToneOpts) {
@@ -220,7 +222,7 @@ export function tone(e: Engine, o: ToneOpts) {
     node.connect(f); node = f;
   }
   const g = ctx.createGain();
-  node.connect(g); g.connect(output(e, o.bus ?? 'sfx', o.pan));
+  node.connect(g); g.connect(o.out ?? output(e, o.bus ?? 'sfx', o.pan));
   const end = envelope(g, t, { ...o.env, peak: (o.env.peak ?? 1) * (o.gain ?? 1) });
   osc.start(t); osc.stop(end + .05);
   if (lfo) { lfo.start(t); lfo.stop(end + .05); }

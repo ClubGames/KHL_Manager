@@ -150,9 +150,11 @@ export function penaltyCaption(text: string): { name: string; reason: string } {
   const body = text.replace(/^Удаление:\s*/, '');
   const [name, ...rest] = body.split(' — ');
   const reason = rest.join(' — ').replace(/^\s+|\s+$/g, '');
-  const tail = name.match(/^(.*?),\s*(\d+ мин)$/);
+  // the length: "2 мин", "2+2 мин", "2+10 мин", "5 мин + ДдКМ", "ДдКМ", "матч-штраф"
+  const LEN = '((?:\\d+(?:\\+\\d+)? мин(?: \\+ ДдКМ)?)|ДдКМ|матч-штраф)';
+  const tail = name.match(new RegExp(`^(.*?),\\s*${LEN}$`));
   if (tail) return { name: tail[1].trim(), reason: tail[2] };
-  return { name: name.trim(), reason: reason.replace(/,\s*(\d+ мин)$/, ' ($1)') };
+  return { name: name.trim(), reason: reason.replace(new RegExp(`,\\s*${LEN}$`), ' ($1)') };
 }
 /** The infraction's replay: from a few seconds before it (the delayed call marks it, else just before the whistle). */
 export function penaltyReplay(callTau: number, infractionTau: number | null, text: string, player?: string): ReplaySpec {

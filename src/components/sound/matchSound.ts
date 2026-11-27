@@ -7,7 +7,7 @@
 //   slap shot — told apart by the puck's speed and where it goes), a pass received, the puck off the boards / the
 //   glass, hockey stops, how much skating there is;
 // - the crowd: its excitement follows the puck (the home team attacking lifts it), "ooh" at a post or a big chance,
-//   boos at a home penalty, whistling while the home team is short-handed and the opponent is in its zone; the organ
+//   boos at a home penalty, whistling while the home team is short-handed and the opponent has the puck in its zone; the organ
 //   plays some stoppages. (The arena is always the home team's: its fans are the ones heard.)
 import type { LiveFrame } from '../../game/rinkPlayback';
 import type { RinkPlay } from '../../game/rinkAI';
@@ -292,11 +292,13 @@ export class MatchSound {
     this.shotBuzz *= Math.exp(-dt / 1.6);
     this.goalCheer *= Math.exp(-dt / 6);
     // the fans whistle while their team is short-handed (more of its skaters in the box — coincidental penalties
-    // cancel out) and the puck is in its zone; a few tenths of a second either way before it starts or stops
+    // cancel out) and the opponent has the puck in its zone; a few tenths of a second either way before it starts or
+    // stops (a loose puck, a clearance, a whistle: it dies away)
     let boxed = 0;
     for (const s of f.skaters) if (s.box) boxed += s.side === 0 ? 1 : -1;
     const ownEnd = src.flipped ? L : 0; // the end the home team defends
-    const want = boxed > 0 && !stopped && Math.abs(X - ownEnd) < RINK.blueLine + .5;
+    const holder = carrier ? f.skaters.find(s => s.id === carrier) : undefined;
+    const want = boxed > 0 && !stopped && holder?.side === 1 && !holder.goalie && Math.abs(X - ownEnd) < RINK.blueLine + .5;
     if (want === this.whistling) this.whistleFlip = null;
     else if (this.whistleFlip === null) this.whistleFlip = tau;
     else if (tau - this.whistleFlip > (want ? .5 : .8)) this.setWhistling(want);
