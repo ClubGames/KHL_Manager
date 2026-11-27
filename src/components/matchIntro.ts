@@ -40,6 +40,7 @@ export type IntroPose = {
   /** raising the stick to the crowd 0…1 */ wave: number;
   /** on his bench seat */ sit: boolean;
   /** the right hand out for a handshake 0…1 (and the shake's own time) */ shake: number;
+  /** walking on his skates off the ice (the tunnel, the bench floor, the officials' corridor) 0…1, skating 0 */ walk?: number;
 };
 export type IntroShot = { id: string; side: 0 | 1; kind: 'goalie' | 'captain' | 'leader'; t0: number; t1: number };
 type P2 = { x: number; z: number };
@@ -71,6 +72,10 @@ export const INTRO_TIMES = { anthem: 8, posts: 5.5, settle: 5.4 };
 export const OFFICIALS_ZONE: readonly P2[] = [{ x: -.65, z: HW - 1.0 }, { x: .65, z: HW - 1.0 }, { x: -2.15, z: HW - .85 }, { x: 2.15, z: HW - .85 }];
 /** Stride length of the entrance's long glides (m per stride cycle): an easy rhythm, not quick little steps. */
 export const INTRO_STRIDE = 5.2;
+/** Metres walked per walking cycle (two steps) on skates off the ice: short, careful steps. */
+export const WALK_CYCLE = 1.3;
+/** Off the ice (z beyond the boards on the benches' side or the officials' side) he walks; onto the ice he starts skating. */
+export const walkWeight = (z: number) => clamp((Math.abs(z) - (HW - .3)) / .5, 0, 1);
 const SHOT = 3.2;
 
 const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
@@ -271,7 +276,7 @@ export function introPoses(plan: IntroPlan, t: number): Map<string, IntroPose> {
     if (tt < r.out) {
       // out of the tunnel at a walk, a step over the bench, through the gate
       const w = tunnelWalk(s.side), u = Math.min(w.len, (tt - r.walk) * INTRO_PACE.walk), p = along(w, u);
-      return { x: p.x, y: walkHop(p.z), z: p.z, heading: head(p.dx, p.dz), speed: INTRO_PACE.walk, visible: true, wave: 0, sit: false, shake: 0 };
+      return { x: p.x, y: walkHop(p.z), z: p.z, heading: head(p.dx, p.dz), speed: INTRO_PACE.walk, visible: true, wave: 0, sit: false, shake: 0, walk: walkWeight(p.z) };
     }
     const faceIn = team.end > 0 ? Math.PI : 0;
     // the captains greet the officials in their zone and each other
@@ -356,7 +361,7 @@ export function introOfficials(plan: IntroPlan, t: number, places: P2[]): (Intro
     let pose = { ...a };
     if (t > S) { const k = keyed([{ t: S + .2, x: a.x, z: a.z, face: a.heading }, { t: S + .2 + clamp(dist(a, p) / 5.8, 3.2, INTRO_TIMES.settle - .2), x: p.x, z: p.z }], t); pose = { x: k.x, z: k.z, heading: k.heading ?? a.heading, speed: k.speed, visible: true }; }
     const shaking = i < 2 && t < S && !!hs?.refShake(t);
-    return { x: pose.x, y: 0, z: pose.z, heading: pose.heading, speed: pose.speed, visible: pose.visible, wave: 0, sit: false, shake: shaking ? 1 : 0, gesture: shaking ? 'shake' : 'none' };
+    return { x: pose.x, y: 0, z: pose.z, heading: pose.heading, speed: pose.speed, visible: pose.visible, wave: 0, sit: false, shake: shaking ? 1 : 0, gesture: shaking ? 'shake' : 'none', walk: pose.visible && pose.speed > 0 ? walkWeight(pose.z) : 0 };
   });
 }
 
@@ -430,7 +435,7 @@ const mixCam = (a: Cam, b: Cam, k: number): Cam => ({
  * The entrance's camera: a high sweep over the dark arena, a low shot at the bench as each team walks out of its
  * tunnel, a crane on the near side following it round its loop, a slow pan along the lines through the anthem, wide
  * while the goalies and officials go to their places, a two-shot of the handshake, the close-ups, and for the
- * settle the faceoff camera coming down from high over the centre circle.
+ * settle the faceoff camera from above the centre circle.
  */
 export function introCamera(plan: IntroPlan, t: number, poses = introPoses(plan, t)): Cam {
   const T = plan.t;

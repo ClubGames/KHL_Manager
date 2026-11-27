@@ -6,7 +6,7 @@ import type { PlayerFigure } from './playerModel';
 import { acquireRenderer, addStageLights, compileScene, kitFor, loadModel, officialKit, onCacheRedraw, releaseRenderer, sharedProps, takeArena, takeFigures, type FigureRequest } from './replayCache';
 import { crewFor, penaltyGesture, type Official } from './officialCrew';
 import { buildArenaShow } from './arenaShow';
-import { INTRO_STRIDE, introCamera, introChapter, introCoaches, introOfficials, introPoses, introShotAt, introShow, planIntro, type IntroPlan, type IntroSkater } from './matchIntro';
+import { INTRO_STRIDE, WALK_CYCLE, introCamera, introChapter, introCoaches, introOfficials, introPoses, introShotAt, introShow, planIntro, type IntroPlan, type IntroSkater } from './matchIntro';
 import { goalLines, seasonLine } from './statLines';
 import { announceCamera, announceGesture, ANNOUNCE, boxCamera, bumpCamera, bumpPlan, bumpPose, bumpReach, celebrateCamera, FACEOFF_CAM, faceoffCamera, GOAL_SHOW, goalReplay, mixCam, MOMENT_GAP, momentReplay, penaltyCaption, penaltyReplay, pickMoment, replayAngle, replayCamera, replayLength, replayTau, type BumpPlan, type ReplaySpec } from './liveShow';
 import { NET_X } from './replayMotion';
@@ -332,6 +332,8 @@ export function LiveScene3D(props: Props) {
       const seenPen = new Set<number>();
       const seenGoals = new Set<number>();
       let lastMomentClock = -Infinity, stopSeen = NaN, stopChecked = false;
+      // the faceoff camera at every stoppage: when this stoppage began (match s) and the last one it was shown for
+      let foStop = NaN, foShown = NaN;
       const tvFocus = { x: 0, z: 0, init: false };
       const startReplay = () => { tickerRef.current.hold = true; tickerRef.current.slow = false; lastAngle = ''; tvFocus.init = false; forget(); };
       const endTv = () => { tv = null; tickerRef.current.hold = false; tickerRef.current.slow = false; showUi(null); forget(); foWanted = 0; };
@@ -362,7 +364,7 @@ export function LiveScene3D(props: Props) {
         if (introWanted && !introStarted && (figuresDone || now - mountAt > 8000)) beginIntro(now, ai);
         if (intro && (skipIntro.current || (now - intro.t0) / 1000 >= intro.plan.t.length)) endIntro();
         if (intro) dirty = true;
-        if (!motion || motionOf !== ai) { motion = ai.motion ?? new LiveMotion(ai); motionOf = ai; focus.init = false; actors.forEach(a => { a.lx = NaN; a.save = null; a.on = undefined; a.off = a.enter = undefined; }); if (tv) endTv(); foCam = null; foWanted = -1; crewHist.length = 0; }
+        if (!motion || motionOf !== ai) { motion = ai.motion ?? new LiveMotion(ai); motionOf = ai; focus.init = false; actors.forEach(a => { a.lx = NaN; a.save = null; a.on = undefined; a.off = a.enter = undefined; }); if (tv) endTv(); foCam = null; foWanted = -1; foStop = foShown = NaN; crewHist.length = 0; }
         const liveTau = tickerRef.current.tau ?? 0;
         if (tv && (skipShow.current || !replaysRef.current)) endTv();
         skipShow.current = false;
@@ -439,11 +441,18 @@ export function LiveScene3D(props: Props) {
           else if (tv.kind === 'penalty') { tv.phase = 'box'; tv.t0 = now; tickerRef.current.hold = false; tickerRef.current.slow = true; tvFocus.init = false; forget(); }
           else endTv();
         }
-        // after the broadcast's own pictures: the faceoff camera, when a faceoff is coming
-        if (foWanted >= 0 && !tv && !intro) {
+        // the faceoff camera, from above over the dot: after the broadcast's own pictures, and at every other stoppage
+        // once it has run a moment (the replay of the moment before the whistle goes first)
+        {
           const fl = ai.frameAt(liveTau);
-          foCam = fl.stopped && fl.dot ? { t0: now - foWanted * FACEOFF_CAM.descend * 1000, dot: toWorld(fl.dot), playAt: NaN } : null;
-          foWanted = -1;
+          if (!fl.stopped) foStop = NaN;
+          else if (Number.isNaN(foStop)) foStop = liveTau;
+          if (foWanted >= 0 && !tv && !intro) {
+            foCam = fl.stopped && fl.dot ? { t0: now - foWanted * FACEOFF_CAM.descend * 1000, dot: toWorld(fl.dot), playAt: NaN } : null;
+            foWanted = -1; foShown = foStop;
+          } else if (!foCam && !tv && !intro && foWanted < 0 && fl.stopped && fl.dot && foShown !== foStop && liveTau - foStop >= FACEOFF_CAM.after) {
+            foCam = { t0: now, dot: toWorld(fl.dot), playAt: NaN }; foShown = foStop;
+          }
         }
         if (foCam) dirty = true;
         const replaying = tv?.phase === 'replay';
@@ -718,24 +727,26 @@ export function LiveScene3D(props: Props) {
             a.group.visible = p.visible;
             if (!p.visible) { a.lx = NaN; continue; }
             const fresh = Number.isNaN(a.lx), moved = fresh ? 0 : Math.hypot(p.x - a.lx, p.z - a.lz);
-            // long, easy strides: the stride phase from the distance skated
-            a.phase += moved / INTRO_STRIDE * Math.PI * 2; a.lx = p.x; a.lz = p.z;
+            // long, easy strides: the stride phase from the distance skated (steps while he walks off the ice)
+            const wk = p.walk ?? 0;
+            a.phase += moved * (1 / INTRO_STRIDE + (1 / WALK_CYCLE - 1 / INTRO_STRIDE) * wk) * Math.PI * 2; a.lx = p.x; a.lz = p.z;
             const turn = fresh || realDt <= 0 ? 0 : angleDiff(a.heading, p.heading) / realDt;
             a.group.position.set(p.x, p.y, p.z); a.group.rotation.set(0, p.heading, 0); a.heading = p.heading;
             if (!a.figure) continue;
             a.group.updateMatrixWorld(true);
             if (p.sit) { a.figure.sit({ seat: BENCH.seatTop, look: 0 }); continue; }
             if (s.goalie && p.speed < .5) a.figure.goalie({ drop: 0, look: 0 });
-            else a.figure.skate(a.phase, clamp(p.speed / 9, 0, 1), undefined, p.wave, { bank: clamp(turn * p.speed * .03, -.3, .3), shake: p.shake, t: it });
+            else a.figure.skate(a.phase, clamp(p.speed / 9, 0, 1), undefined, p.wave, { bank: clamp(turn * p.speed * .03, -.3, .3) * (1 - wk), shake: p.shake, t: it, walk: wk });
           }
           const crewNow = crewFor(ai).officials;
           introOfficials(plan, it, crewNow.map(c => ({ x: c.x, z: c.z }))).forEach((p, i) => {
             const o = officials[i];
             o.group.visible = p.visible; o.group.position.set(p.x, 0, p.z); o.group.rotation.set(0, p.heading, 0);
-            const moved = Number.isNaN(o.lx) ? 0 : Math.hypot(p.x - o.lx, p.z - o.lz); o.lx = p.x; o.lz = p.z; o.ph += moved / 3.4 * Math.PI * 2;
+            const wk = p.walk ?? 0;
+            const moved = Number.isNaN(o.lx) ? 0 : Math.hypot(p.x - o.lx, p.z - o.lz); o.lx = p.x; o.lz = p.z; o.ph += moved * (1 / 3.4 + (1 / WALK_CYCLE - 1 / 3.4) * wk) * Math.PI * 2;
             if (!o.figure) return;
             o.group.updateMatrixWorld(true);
-            o.figure.officiate({ phase: o.ph, amp: clamp(p.speed / 6, 0, 1), gesture: p.gesture, t: it, look: 0 });
+            o.figure.officiate({ phase: o.ph, amp: clamp(p.speed / 6, 0, 1), gesture: p.gesture, t: it, look: 0, walk: wk });
           });
           // the coaches walk out of the tunnel after their players (a gentle bob for the steps)
           introCoaches(plan, it).forEach(c => {
