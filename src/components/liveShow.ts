@@ -116,17 +116,19 @@ export function celebrateCamera(t: number, scorer: { x: number; z: number }): Ca
 }
 
 /**
- * The faceoff after a break in the broadcast (the entrance, a replay, a penalty): the camera starts high over the
- * faceoff circle looking straight down and comes down to a low broadcast angle at the dot while the players take
- * their places (`k` 0…1); the match camera takes over once the puck is dropped.
+ * Every faceoff, from above: the camera over the faceoff circle looking down at the dot — the dot in the middle of
+ * the picture, wherever on the ice it is (an end-zone circle is not off at the side of the screen) — easing down a
+ * little while the players take their places (`k` 0…1); the match camera takes over once the puck is dropped. The
+ * far side of the rink stays at the top of the picture, as on the match camera.
+ * `after`: how long a stoppage runs (s of the match) before the camera goes up over the dot (a replay of the big
+ * moment before the whistle is chosen first, see MOMENT_GAP).
  */
-export const FACEOFF_CAM = { descend: 3.2, handover: 1.1 };
+export const FACEOFF_CAM = { descend: 3.2, handover: 1.1, after: 1.1 };
 export function faceoffCamera(dot: { x: number; z: number }, k: number): Cam {
   const u = clamp(k, 0, 1), e = u * u * (3 - 2 * u);
-  // the far circles: from the near side; the camera stays inside the arena
-  const z0 = clamp(dot.z + 1.2, -12, 12), z1 = clamp(dot.z + 8.6, -6, 14.2);
-  const pos = { x: dot.x * (1 - .12 * e), y: 17 + (3.6 - 17) * e, z: z0 + (z1 - z0) * e };
-  return { pos, look: { x: dot.x, y: .5 * e, z: dot.z + (1 - e) * .01 }, fov: 50 - 10 * e };
+  // a slight tilt from the near side (≈ 80° down) gives the players some depth; the look stays on the dot
+  const pos = { x: dot.x, y: 17 + (12.5 - 17) * e, z: dot.z + .05 + 2.1 * e };
+  return { pos, look: { x: dot.x, y: 0, z: dot.z }, fov: 46 - 4 * e };
 }
 export const mixCam = (a: Cam, b: Cam, k: number): Cam => {
   const l = (x: number, y: number) => x + (y - x) * k;

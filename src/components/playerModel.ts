@@ -37,7 +37,19 @@ export type OfficialPose = {
   /** a pointing arm's target in character space */ aim?: T.Vector3 | null;
   /** head turn toward the play (rad, + to his left) */ look?: number;
   /** at a faceoff ('ready'): the windup before the throw 0…1 — the hand with the puck comes up */ windup?: number;
+  /** walking on the skates off the ice (out of the officials' corridor) 0…1; `phase` then counts steps (matchIntro's WALK_CYCLE) */ walk?: number;
 };
+
+/** The body over a walking stride: lowest as the weight lands on a foot, up over the standing leg. */
+const walkCrouch = (phase: number) => .05 + .018 * Math.cos(phase * 2);
+/**
+ * One foot of a walk on skates (character space, side +1 left / -1 right): forward and back under the hip, lifted
+ * clear of the floor as it swings through (the blade must not drag), set down flat — not the skating push out sideways.
+ */
+function walkFoot(ph: number, side: number): { foot: T.Vector3; yaw: number } {
+  const swing = Math.max(0, Math.cos(ph));
+  return { foot: vec(.13 * side, .023 + LIFT * .2 + .14 * Math.pow(swing, 1.5), .02 + .3 * Math.sin(ph)), yaw: side * .07 };
+}
 
 /** Goalie pose. Points are in character space (+x the goalie's left, +z out of the net). */
 export type GoaliePose = {
@@ -380,9 +392,11 @@ export class PlayerFigure {
    * down on one knee, sliding (the celebration after a goal).
    * Everything is solved for a right shot and mirrored for a left one.
    */
-  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number; check?: number; poke?: number; move?: LiveMove; moveT?: number; stagger?: number; down?: number; shake?: number; pump?: number; kneel?: number; bump?: number; t?: number; stance?: LiveStance; stanceT?: number; handle?: number; now?: number } = {}) {
+  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number; check?: number; poke?: number; move?: LiveMove; moveT?: number; stagger?: number; down?: number; shake?: number; pump?: number; kneel?: number; bump?: number; t?: number; stance?: LiveStance; stanceT?: number; handle?: number; now?: number; walk?: number } = {}) {
     this.reset();
     const m = this.hand, kind = opts.kind ?? 'wrist';
+    // walking on the skates (off the ice: out of the tunnel, over the bench floor): upright, a step with each foot
+    const walk = smooth(clamp01(opts.walk ?? 0));
     const chk = smooth(clamp01(opts.check ?? 0)), poke = smooth(clamp01(opts.poke ?? 0));
     const bank = clamp01(Math.abs(opts.bank ?? 0) / .4) * .4 * Math.sign(opts.bank ?? 0) * (1 - cheer);
     const deke = (opts.deke ?? 0) * m; // in the right-shot frame
@@ -399,10 +413,10 @@ export class PlayerFigure {
     const hdl = Math.max(-1, Math.min(1, opts.handle ?? 0)), shove = w('push'), now = opts.now ?? 0;
     const kneel = Math.max(smooth(clamp01(opts.kneel ?? 0)), blk * .9);
     // Deeper knee bend on a hard stride, a little bob with every push.
-    const crouch = lerp(.1 + .07 * amp + .012 * amp * Math.cos(phase * 2), .02, cheer) + Math.abs(bank) * .08 + Math.abs(deke) * .06 + chk * .1 + poke * .07
+    const crouch = lerp(.1 + .07 * amp + .012 * amp * Math.cos(phase * 2), .02, cheer) * (1 - walk) + walk * walkCrouch(phase) + Math.abs(bank) * .08 + Math.abs(deke) * .06 + chk * .1 + poke * .07
       + toe * .08 + btw * .16 + spin * .12 + hip * .14 - pin * .04 + lift * .05 - stag * .03 + rch * .14 + down * .22 + kneel * .42
       + ot * .06 + vis * .08 + hus * .04 + Math.abs(hdl) * .05 + shove * .05;
-    this.rig.position.set(.035 * Math.sin(phase) * amp * (1 - cheer) + bank * .1 + (opts.deke ?? 0) * .12 + wob * .08 + hip * .12 * m, LIFT - crouch, 0);
+    this.rig.position.set(.035 * Math.sin(phase) * lerp(amp, .7, walk) * (1 - cheer) + bank * .1 + (opts.deke ?? 0) * .12 + wob * .08 + hip * .12 * m, LIFT - crouch, 0);
     // Shot profile: load (stick back, shoulders closed), whip through the puck, follow through.
     const s = shot === undefined ? -9 : shot;
     // a shot fake: the windup comes up and is held, the puck stays on the blade
@@ -414,10 +428,10 @@ export class PlayerFigure {
     const twist = ((back ? .45 : -.55) * load + (back ? -.4 : .4) * follow) * size + deke * .5 + chk * .5 - poke * .3
       + toe * .3 + (mv === 'between' ? Math.sin(2 * Math.PI * mu) * .35 : 0) + hip * .9 + pin * .35 + wob * .3 - rch * .45
       - ot * .4 + hdl * .22 * m;
-    const lean = lerp(.2 + .14 * amp + .1 * load * size, -.05, cheer) + chk * .22 + poke * .28 + btw * .25 + spin * .2 + toe * .1 - pin * .05 + lift * .18 - stag * .35 + rch * .42 - down * .45
+    const lean = lerp(lerp(.2 + .14 * amp, .07, walk) + .1 * load * size, -.05, cheer) + chk * .22 + poke * .28 + btw * .25 + spin * .2 + toe * .1 - pin * .05 + lift * .18 - stag * .35 + rch * .42 - down * .45
       - blk * .2 + vis * .06 + hus * .16 + shove * .22 + Math.abs(hdl) * .08;
     // Shoulders counter-rotate the stride a little (real skaters swing the upper body against the legs).
-    const swing = .07 * amp * Math.sin(phase) * (1 - load) * (1 - follow) * (1 - cheer) * (1 + 1.6 * hus) * (1 - blk);
+    const swing = .07 * lerp(amp, 1.2, walk) * Math.sin(phase) * (1 - load) * (1 - follow) * (1 - cheer) * (1 + 1.6 * hus) * (1 - blk);
     this.turn('Abdomen', _t1.setFromAxisAngle(Z, -bank * .45 - (opts.deke ?? 0) * .25 - hip * .35 * m + wob * .2).multiply(_t2.setFromAxisAngle(X, lean * .55)));
     this.turn('Torso', _t1.setFromAxisAngle(Y, (twist * .6 + swing) * m).multiply(_t2.setFromAxisAngle(X, lean * .3)).multiply(_q.setFromAxisAngle(Z, -bank * .35)));
     this.turn('Chest', _t1.setFromAxisAngle(Y, (twist * .4 + swing * .6) * m).multiply(_t2.setFromAxisAngle(X, lean * .25)));
@@ -435,10 +449,13 @@ export class PlayerFigure {
       yaw[i] = side * (.1 + .32 * amp * push) + bank * .3;
       // on one knee: the left skate planted ahead, the right shin flat on the ice behind
       if (kneel > 0) feet[i].lerp(i ? vec(-.16, .1, -.62) : vec(.2, .023 + LIFT * .2, .38), kneel);
+      if (walk > 0) { const wf = walkFoot(ph, side); feet[i].lerp(wf.foot, walk); yaw[i] = lerp(yaw[i], wf.yaw, walk); }
     });
     this.legs(feet, [vec(.25, -.1, 1), vec(-.25, -.1, 1)], yaw);
     // Stick (right-shot frame): blade on the ice at the forehand side, ≈1 m ahead, 0.55 m right.
     let carry = vec(-.52 + .07 * Math.sin(phase) * amp + deke * .8, .0, .98), carryTop = vec(.1 + deke * .2, 1.02 - crouch, .3);
+    // walking: the stick carried low in front, the blade off the floor, swinging a little with the steps
+    if (walk > 0) { carry = mixV(carry, vec(-.42, .16, .74 + .06 * Math.sin(phase)), walk); carryTop = mixV(carryTop, vec(.12, .98 - crouch, .24), walk); }
     const reachW = opts.reach ? clamp01(opts.reachWeight ?? 0) : 0;
     if (reachW > 0 && opts.reach) {
       // The blade's middle goes onto the puck: heel a little behind and to the forehand side of it.
@@ -665,8 +682,9 @@ export class PlayerFigure {
     const t = o.t, g = o.gesture, amp = clamp01(o.amp);
     const into = smooth(Math.min(1, t / .22)); // arms swing into a signal
     const ready = g === 'ready' ? smooth(Math.min(1, t / .4)) : g === 'drop' ? 1 - smooth((t - .25) / .3) : 0;
-    const crouch = .06 + .05 * amp + ready * .14 + (g === 'trip' ? .08 * into : 0);
-    this.rig.position.set(.03 * Math.sin(o.phase) * amp, LIFT - crouch, 0);
+    const walk = smooth(clamp01(o.walk ?? 0));
+    const crouch = (.06 + .05 * amp + ready * .14 + (g === 'trip' ? .08 * into : 0)) * (1 - walk) + walk * walkCrouch(o.phase);
+    this.rig.position.set(.03 * Math.sin(o.phase) * lerp(amp, .7, walk), LIFT - crouch, 0);
     const lean = .1 + .12 * amp + ready * .45 + (g === 'trip' ? .3 * into : 0) + (g === 'goal' ? .08 : 0);
     const look = Math.max(-1.2, Math.min(1.2, o.look ?? 0));
     const swing = .06 * amp * Math.sin(o.phase);
@@ -680,6 +698,7 @@ export class PlayerFigure {
       const ph = o.phase + (i ? Math.PI : 0), push = Math.max(0, Math.sin(ph)), back = Math.sin(ph);
       feet[i].set((.16 + .16 * push * amp + ready * .1) * side, .023 + LIFT * .2 + .05 * amp * smooth(Math.max(0, -Math.sin(ph + .5))), .05 - .22 * amp * back);
       yaw[i] = side * (.12 + .25 * amp * push);
+      if (walk > 0) { const wf = walkFoot(ph, side); feet[i].lerp(wf.foot, walk); yaw[i] = lerp(yaw[i], wf.yaw, walk); }
     });
     this.legs(feet, [vec(.25, -.1, 1), vec(-.25, -.1, 1)], yaw);
     // shoulders (character space) — the arms are solved onto targets around them

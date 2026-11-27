@@ -242,11 +242,15 @@ test('the entrance: officials out of their corridor, each team out of its tunnel
   // the officials walk out of their own corridor (across the ice from the benches) before the teams
   const o0 = introOfficials(plan, T.officials + .1, places);
   assert.ok(o0[0].visible && o0[0].z > RINK_HW && Math.abs(o0[0].x - OFFICIALS_DOOR_X) < .3, 'the referee out of the officials\' corridor');
+  assert.equal(o0[0].walk, 1, 'the referee walks in his corridor');
   assert.equal(out(T.away - .1, 1), 0); assert.equal(out(T.away - .1, 0), 0);
   // the visitors walk out of their tunnel (nobody appears out of thin air), the home team after them
   const firstA = s.filter(x => x.side === 1).map(x => plan.route.get(x.id)!.walk).sort((p, q) => p - q)[0];
   const p0 = at(firstA + .05).get(lineup(s, 1)[0].id)!;
   assert.ok(p0.visible && Math.abs(p0.z - TUNNEL.z) < .5, `out of the tunnel (${p0.z.toFixed(1)})`);
+  // walking (a step with each foot) off the ice, skating once on it
+  assert.equal(p0.walk, 1, 'walks out of the tunnel');
+  { const r = plan.route.get(lineup(s, 1)[0].id)!, onIce = at(r.out + .5).get(lineup(s, 1)[0].id)!; assert.ok(onIce.visible && !(onIce.walk ?? 0), 'skates on the ice'); }
   assert.ok(out(T.away + 1, 1) >= 2 && out(T.away + 1, 0) === 0, 'the visitors come out first');
   // walking out of the tunnel and through the bench: on the floor, no hop over the seat
   for (let t = firstA; t < A.out + 2; t += 1 / 30) for (const x of lineup(s, 1)) { const p = at(t).get(x.id)!; if (p.visible && p.z < -RINK_HW) assert.ok(p.y <= .06, `${x.id} at ${t.toFixed(2)}: y ${p.y.toFixed(2)}`); }
@@ -330,11 +334,11 @@ test('the entrance: officials out of their corridor, each team out of its tunnel
   // the show: dark through the entrance, the lights back for the faceoff; whose colours
   assert.ok(introShow(plan, T.home + 1).level > .95 && introShow(plan, T.length).level < .01);
   assert.equal(introShow(plan, T.away + 4).team, 1); assert.equal(introShow(plan, T.home + 1).team, 0);
-  // the camera: inside the arena; close to the man in his close-up; at the end high over the centre circle coming down
+  // the camera: inside the arena; close to the man in his close-up; at the end from above the centre circle (the dot in the middle)
   for (let t = 0; t < T.length; t += .25) { const c = introCamera(plan, t); assert.ok(c.pos.y > 1 && Math.abs(c.pos.x) < 40 && Math.abs(c.pos.z) < 32, `camera at ${t}`); }
   for (const shot of plan.shots) { const t = (shot.t0 + shot.t1) / 2, c = introCamera(plan, t), p = at(t).get(shot.id)!; assert.ok(Math.hypot(c.pos.x - p.x, c.pos.z - p.z) < 4.5 && c.fov < 34, shot.kind); }
   const hi = introCamera(plan, T.settle + .05), lo = introCamera(plan, T.length);
-  assert.ok(hi.pos.y > 12 && Math.hypot(hi.look.x, hi.look.z) < 1 && lo.pos.y < 5, `the faceoff camera comes down (${hi.pos.y.toFixed(1)} → ${lo.pos.y.toFixed(1)})`);
+  assert.ok(hi.pos.y > 12 && Math.hypot(hi.look.x, hi.look.z) < 1 && Math.hypot(lo.look.x, lo.look.z) < 1e-9 && lo.pos.y < hi.pos.y && lo.pos.y > 9, `the faceoff camera from above (${hi.pos.y.toFixed(1)} → ${lo.pos.y.toFixed(1)})`);
   assert.ok(T.length > 45, `a proper show (${T.length.toFixed(0)} s), skippable`);
 });
 

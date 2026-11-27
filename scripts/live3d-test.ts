@@ -135,11 +135,18 @@ test('every live camera stays in the arena, above the ice, and looks at the play
   }
 });
 
-test('the faceoff camera: from high over the dot down to it, then the match camera; a penalty: the call, the replay, the box', () => {
+test('the faceoff camera: from above, the dot in the middle of the picture, then the match camera; a penalty: the call, the replay, the box', () => {
   const dot = { x: -20, z: 7 };
   const hi = faceoffCamera(dot, 0), lo = faceoffCamera(dot, 1), mid = faceoffCamera(dot, .5);
   assert.ok(hi.pos.y > 14 && Math.hypot(hi.pos.x - dot.x, hi.pos.z - dot.z) < 2 && Math.hypot(hi.look.x - dot.x, hi.look.z - dot.z) < .1, 'straight above the circle');
-  assert.ok(lo.pos.y < 5 && lo.pos.y < mid.pos.y && mid.pos.y < hi.pos.y && Math.hypot(lo.look.x - dot.x, lo.look.z - dot.z) < .5, 'down to the dot');
+  for (const c of [hi, mid, lo]) {
+    // centred: the camera looks at the dot itself, straight across (no sideways offset), steeply down
+    assert.ok(Math.hypot(c.look.x - dot.x, c.look.z - dot.z) < 1e-9 && Math.abs(c.pos.x - dot.x) < 1e-9, 'the dot in the middle');
+    assert.ok(Math.atan2(c.pos.y - c.look.y, Math.hypot(c.pos.x - c.look.x, c.pos.z - c.look.z)) > 1.3, 'from above');
+    assert.ok(c.pos.z >= dot.z, 'the far side at the top of the picture');
+  }
+  assert.ok(lo.pos.y < mid.pos.y && mid.pos.y < hi.pos.y && lo.pos.y > 9, 'eases down, stays high');
+  assert.ok(FACEOFF_CAM.after > .9, 'after the stoppage replay check');
   for (let k = 0; k <= 1; k += .05) { const c = faceoffCamera(dot, k), n = faceoffCamera(dot, k + .05); assert.ok(Math.hypot(c.pos.x - n.pos.x, c.pos.y - n.pos.y, c.pos.z - n.pos.z) < 1.6, 'smooth'); }
   const game = { pos: { x: 0, y: 9, z: 22 }, look: { x: -10, y: 0, z: 0 }, fov: 45 };
   assert.deepEqual(mixCam(lo, game, 0), lo); assert.deepEqual(mixCam(lo, game, 1), game);
