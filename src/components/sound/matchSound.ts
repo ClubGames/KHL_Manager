@@ -7,7 +7,8 @@
 //   slap shot — told apart by the puck's speed and where it goes), a pass received, the puck off the boards / the
 //   glass, hockey stops, how much skating there is;
 // - the crowd: its excitement follows the puck (the home team attacking lifts it), "ooh" at a post or a big chance,
-//   a groan at a home penalty; the organ plays some stoppages.
+//   boos at a home penalty, whistling while the home team is short-handed and the opponent is in its zone; the organ
+//   plays some stoppages. (The arena is always the home team's: its fans are the ones heard.)
 import type { LiveFrame } from '../../game/rinkPlayback';
 import type { RinkPlay } from '../../game/rinkAI';
 import { RINK } from '../../game/rinkGeometry';
@@ -25,7 +26,9 @@ export type Cue =
   | { k: 'goal'; home: boolean; pan: number }
   | { k: 'siren' }
   | { k: 'skateStop'; power: number; pan: number }
-  | { k: 'ooh' } | { k: 'groan' } | { k: 'applause'; k2: number }
+  | { k: 'ooh' } | { k: 'boo' } | { k: 'applause'; k2: number }
+  /** the home fans whistling: on — their team is short-handed and the opponent attacks; off — the attack is over */
+  | { k: 'fansWhistle'; on: boolean }
   | { k: 'organ'; riff: 'stoppage' | 'goal' };
 
 export interface SoundSink {
@@ -79,6 +82,9 @@ export class MatchSound {
   private lastOrgan = -999;
   private shotBuzz = 0;
   private goalCheer = 0;
+  /** the fans' whistling: on or not, and since when the reason for the change has held */
+  private whistling = false;
+  private whistleFlip: number | null = null;
   private rand: () => number;
 
   constructor(private sink: SoundSink, seed = 1) {
@@ -98,7 +104,18 @@ export class MatchSound {
     this.sk.clear();
     this.release = null;
     this.stopSince = null;
+    this.setWhistling(false);
   }
+
+  private setWhistling(on: boolean) {
+    this.whistleFlip = null;
+    if (on === this.whistling) return;
+    this.whistling = on;
+    this.sink.cue({ k: 'fansWhistle', on });
+  }
+
+  /** The match screen closes or the period is over: the whistling stops. */
+  quiet() { this.setWhistling(false); }
 
   /** Called every animation frame with the presentation time; `running` false: paused (the crowd quietens). */
   update(src: SoundSource, tau: number, running: boolean) {
@@ -109,7 +126,7 @@ export class MatchSound {
       this.goalCheer *= .995;
       this.sink.skating(0);
       this.sink.crowd(running ? .3 + this.goalCheer * .6 : .25);
-      if (!running) this.lastTau = tau;
+      if (!running) { this.lastTau = tau; this.setWhistling(false); }
       return;
     }
     const f = src.frameAt(tau);
@@ -150,7 +167,7 @@ export class MatchSound {
           } else if (p.side === 0 && this.shotBuzz > .4) this.sink.cue({ k: 'ooh' });
           break;
         case 'penalty':
-          if (!p.text.startsWith('Отложенный')) { this.recentPenalty = tau; if (p.side === 0) this.sink.cue({ k: 'groan' }); }
+          if (!p.text.startsWith('Отложенный')) { this.recentPenalty = tau; if (p.side === 0) this.sink.cue({ k: 'boo' }); }
           break;
         case 'freeze':
           if (p.text.startsWith('Сирена')) this.siren(tau);
@@ -274,6 +291,15 @@ export class MatchSound {
     const zone = clamp(1 - dHome / 20, 0, 1) * .55 + clamp(1 - dAway / 20, 0, 1) * .2;
     this.shotBuzz *= Math.exp(-dt / 1.6);
     this.goalCheer *= Math.exp(-dt / 6);
+    // the fans whistle while their team is short-handed (more of its skaters in the box — coincidental penalties
+    // cancel out) and the puck is in its zone; a few tenths of a second either way before it starts or stops
+    let boxed = 0;
+    for (const s of f.skaters) if (s.box) boxed += s.side === 0 ? 1 : -1;
+    const ownEnd = src.flipped ? L : 0; // the end the home team defends
+    const want = boxed > 0 && !stopped && Math.abs(X - ownEnd) < RINK.blueLine + .5;
+    if (want === this.whistling) this.whistleFlip = null;
+    else if (this.whistleFlip === null) this.whistleFlip = tau;
+    else if (tau - this.whistleFlip > (want ? .5 : .8)) this.setWhistling(want);
     const excite = stopped ? .2 + this.goalCheer * .7 : .25 + zone + this.shotBuzz * .5 + this.goalCheer * .7;
     this.sink.crowd(clamp(excite, 0, 1));
   }

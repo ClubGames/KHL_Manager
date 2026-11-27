@@ -1,5 +1,5 @@
-// The arena crowd. First choice: real recordings of indoor crowds (CC0, src/assets/crowd/CREDITS.md) — a murmur
-// bed, louder stands for the dangerous moments, the roar after a goal, applause and an "ooh" — looped with the
+// The arena crowd. First choice: real recordings — the club's own arena bed (src/assets/sounds/crowd_bed.mp3, under
+// it all the match long) with the CC0 indoor crowds of src/assets/crowd/CREDITS.md: louder stands for the dangerous moments, the roar after a goal, applause and an "ooh" — looped with the
 // game's own crossfades so no seam is heard. Should they fail to load (an old web view's decoder), the crowd is
 // synthesized as before:
 // The arena crowd, synthesized. Thousands of people heard from the ice are mostly a wash — a sea of voices too many
@@ -10,7 +10,8 @@
 // Two murmur loops of different lengths (13 s and 9.4 s) play together, so the crowd never audibly repeats, and
 // everything goes through the hall's echo (engine.ts). Built once, spread over frames so the page never stalls.
 import { audioAny, noise, output, type Bus } from './engine';
-import murmurUrl from '../../assets/crowd/murmur.mp3?url';
+import { clip, fadeClip, loadClips, playClip, type ClipHandle } from './clips';
+import bedUrl from '../../assets/sounds/crowd_bed.mp3?url';
 import standsUrl from '../../assets/crowd/stands.mp3?url';
 import cheerUrl from '../../assets/crowd/cheer.mp3?url';
 import applauseUrl from '../../assets/crowd/applause.mp3?url';
@@ -125,8 +126,9 @@ function recLoop(ctx: BaseAudioContext, b: AudioBuffer, head: number, tail: numb
 async function recorded(ctx: BaseAudioContext): Promise<Buffers | null> {
   try {
     const dec = async (u: string) => ctx.decodeAudioData(await (await fetch(u)).arrayBuffer());
-    const [m, st, ch, ap, oh] = await Promise.all([murmurUrl, standsUrl, cheerUrl, applauseUrl, oohUrl].map(dec));
-    const murmur = recLoop(ctx, m, .06, .06, 1.5, .2);
+    const [m, st, ch, ap, oh] = await Promise.all([bedUrl, standsUrl, cheerUrl, applauseUrl, oohUrl].map(dec));
+    // the arena bed (100 s): its last two seconds run into its start
+    const murmur = recLoop(ctx, m, .05, .05, 2, .2);
     await nextFrame();
     const ooh = recLoop(ctx, oh, .03, 0, 0, .3);
     return { murmur, murmur2: murmur, stands: recLoop(ctx, st, .06, .06, 1, .2), cheer: recLoop(ctx, ch, .4, 1.1, 1.2, .22), applause: recLoop(ctx, ap, .25, 1.6, .9, .2), ooh, rec: true };
@@ -205,7 +207,7 @@ export class Crowd {
     if (this.nodes || this.stopped) return;
     const e = audioAny();
     if (!e || e.ctx.state !== 'running') return;
-    if (!this.bufs) { if (!this.e) { this.e = e; void getBuffers(e).then(b => { this.bufs = b; }); } return; }
+    if (!this.bufs) { if (!this.e) { this.e = e; void loadClips(e); void getBuffers(e).then(b => { this.bufs = b; }); } return; }
     const { ctx } = e;
     const loop = (buf: AudioBuffer, rate: number, bus: Bus, f?: number, pan = 0, at = Math.random() * buf.duration) => {
       const src = ctx.createBufferSource(); src.buffer = buf; src.loop = true; src.playbackRate.value = rate;
@@ -308,6 +310,33 @@ export class Crowd {
     src.start(t, Math.random() * 4); src.stop(t + 1.7);
   }
 
+  /**
+   * The fans' joy (the club's recording) over the bed: `k` how loud (1 a home goal; quiet — the visitors' sector — after
+   * an away goal), `pan` where in the stands. False when the recording is not there (the caller roars instead).
+   */
+  joy(k = 1, pan = 0): boolean {
+    if (this.stopped || !clip('joy')) return false;
+    return !!playClip('joy', { bus: 'crowd', gain: k, pan, attack: .15 });
+  }
+
+  /** The home crowd booing for `seconds` (a penalty, a goal against): a stretch of the recording, faded in and out. */
+  boo(k = .6, seconds = 4): boolean {
+    const b = clip('boo');
+    if (this.stopped || !b) return false;
+    const len = Math.min(seconds, b.duration - .5);
+    fadeClip(this.booing, .3);
+    this.booing = playClip('boo', { bus: 'crowd', gain: k, attack: .4, offset: Math.random() * Math.max(0, b.duration - len - .5), length: len, fade: Math.min(1.5, len * .4) });
+    return !!this.booing;
+  }
+  private booing: ClipHandle | null = null;
+
+  /** The home fans whistling (their team short-handed, the opponent in its zone): on — it swells; off — it dies away. */
+  whistling(on: boolean) {
+    if (on && !this.whistle && !this.stopped) this.whistle = playClip('whistle', { bus: 'crowd', gain: .9, attack: .7, loop: true, offset: Math.random() * 10 });
+    else if (!on && this.whistle) { fadeClip(this.whistle, 1.2); this.whistle = null; }
+  }
+  private whistle: ClipHandle | null = null;
+
   /** The crowd claps a rhythm (answering the organ): `beats` in seconds from now. */
   clap(beats: number[]) {
     const e = audioAny();
@@ -320,6 +349,8 @@ export class Crowd {
 
   /** Fades the crowd out and frees it (the match screen closes). */
   stop() {
+    this.whistling(false);
+    fadeClip(this.booing, .4); this.booing = null;
     this.stopped = true;
     if (!this.nodes || !this.e) return;
     const t = this.e.ctx.currentTime;

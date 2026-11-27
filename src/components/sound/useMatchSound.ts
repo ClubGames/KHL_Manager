@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react';
 import { audio, audioAny, installSoundUnlock } from './engine';
 import { Crowd } from './crowd';
+import { crowdVerdict, loadClips, playClip } from './clips';
 import { MatchSound, type Cue, type SoundSink, type SoundSource } from './matchSound';
 import { playRiff, stoppageRiff } from './organ';
 import * as sfx from './sfx';
@@ -23,15 +24,25 @@ class WebSink implements SoundSink {
       case 'block': sfx.block(c.pan); break;
       case 'whistle': sfx.whistle(c.long); break;
       case 'drop': sfx.faceoffDrop(c.pan); break;
-      case 'siren': sfx.periodSiren(); this.crowdNoise.applaud(.6, 4); break;
+      // the club's own siren and horn (sounds/), the synthesized ones should the files not decode
+      case 'siren': if (!playClip('siren')) sfx.periodSiren(); this.crowdNoise.whistling(false); this.crowdNoise.applaud(.6, 4); break;
       case 'skateStop': sfx.skateStop(c.power, c.pan); break;
       case 'ooh': this.crowdNoise.ooh(false); break;
-      case 'groan': this.crowdNoise.ooh(true); break;
+      case 'boo': if (!this.crowdNoise.boo(.5, 3.5)) this.crowdNoise.ooh(true); break;
+      case 'fansWhistle': this.crowdNoise.whistling(c.on); break;
       case 'applause': this.crowdNoise.applaud(c.k2, 3); break;
       case 'goal':
         sfx.netRipple(c.pan);
-        if (c.home) { sfx.goalHorn(); this.crowdNoise.roar(1, 6); }
-        else { this.crowdNoise.ooh(true); this.crowdNoise.applaud(.3, 2.5); }
+        if (c.home) {
+          if (!playClip('horn')) sfx.goalHorn();
+          // the fans' joy over the bed (the recorded roar a little under it); without the recording the roar alone
+          if (this.crowdNoise.joy(1)) this.crowdNoise.roar(.45, 6); else this.crowdNoise.roar(1, 6);
+        } else {
+          // the visitors' sector cheers, quietly and off to one side; the home stands boo
+          const joy = this.crowdNoise.joy(.3, .6);
+          if (!this.crowdNoise.boo(.55, 4.5)) this.crowdNoise.ooh(true);
+          if (!joy) this.crowdNoise.applaud(.3, 2.5);
+        }
         break;
       case 'organ': {
         const r = playRiff(c.riff === 'goal' ? 'goal' : stoppageRiff());
@@ -97,6 +108,7 @@ export function useMatchSound(ai: SoundSource | null, ticker: { tau?: number }, 
     const me = Symbol('match-sound');
     const sink = new WebSink();
     const driver = new MatchSound(sink, (Math.random() * 2 ** 31) | 0);
+    void loadClips();
     let raf = 0;
     const tick = () => {
       if (owner === null) owner = me;
@@ -106,4 +118,16 @@ export function useMatchSound(ai: SoundSource | null, ticker: { tau?: number }, 
     raf = requestAnimationFrame(tick);
     return () => { cancelAnimationFrame(raf); if (owner === me) owner = null; sink.close(); };
   }, [ai, ticker]);
+}
+
+/**
+ * The home crowd's verdict when the match is over (joy for a win, boos for a loss): call from the match screen as the
+ * match ends — `done` turns true. Not for a match that was already over when the screen opened.
+ */
+export function useCrowdVerdict(done: boolean, homeWon: boolean) {
+  const was = useRef(done);
+  useEffect(() => {
+    if (done && !was.current) crowdVerdict(homeWon);
+    was.current = done;
+  }, [done, homeWon]);
 }

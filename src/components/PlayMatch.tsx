@@ -18,6 +18,7 @@ import { ShootoutBoard } from './Shootout';
 import type { FigureRequest } from './replayCache';
 import { anyGamepad, CAPTURED, COMMAND_KEYS, detectDevice, emptyTouch, gamepadPad, keyboardPad, mergePads, mouseDown, mouseMove, mousePad, mouseUp, newMouse, stickVector, type Command, type InputDevice, type MouseState, type TouchState } from './playInput';
 import { suspendPadNav } from '../gamepadNav';
+import { useCrowdVerdict } from './sound/useMatchSound';
 
 /**
  * A match the manager plays himself, NHL style: he skates one of his players — the puck carrier when his team has
@@ -127,6 +128,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   const sim = useRef(makeUserSim(s, game)).current.sim;
   const settings = useSettings();
   const [phase, setPhase] = useState<Phase>('intro');
+  useCrowdVerdict(phase === 'final', sim.score[0] > sim.score[1]);
   const [paused, setPaused] = useState(false);
   const [help, setHelp] = useState(false);
   const [busy, setBusy] = useState(false);

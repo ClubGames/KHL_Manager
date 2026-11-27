@@ -63,7 +63,7 @@ test('a watched period (rink AI): whistles, faceoffs, goals, hits, saves, sticks
   const c = (k: Cue['k'], f?: (c: Cue) => boolean) => rec.count(k, f);
   const minutes = end / 60;
   console.log(`   ${minutes.toFixed(1)} min: stops ${stopsN} whistles ${c('whistle')} drops ${c('drop')}/${drops} goals ${c('goal')}/${goals.length} (home horn ${c('goal', x => x.k === 'goal' && x.home)}/${homeGoals}) hits ${c('check')}/${plays('hit').length} saves ${c('save')}/${plays('save').length}`);
-  console.log(`   passes ${c('stick', x => x.k === 'stick' && x.kind === 'pass')} shots ${c('stick', x => x.k === 'stick' && x.kind === 'shot')} slaps ${c('stick', x => x.k === 'stick' && x.kind === 'slap')} receptions ${c('stick', x => x.k === 'stick' && x.kind === 'receive')} boards ${c('boards')} glass ${c('glass')} stops ${c('skateStop')} sirens ${c('siren')} organ ${c('organ')} ooh ${c('ooh')} groan ${c('groan')}`);
+  console.log(`   passes ${c('stick', x => x.k === 'stick' && x.kind === 'pass')} shots ${c('stick', x => x.k === 'stick' && x.kind === 'shot')} slaps ${c('stick', x => x.k === 'stick' && x.kind === 'slap')} receptions ${c('stick', x => x.k === 'stick' && x.kind === 'receive')} boards ${c('boards')} glass ${c('glass')} stops ${c('skateStop')} sirens ${c('siren')} organ ${c('organ')} ooh ${c('ooh')} boo ${c('boo')} fans whistle ${c('fansWhistle', x => x.k === 'fansWhistle' && x.on)}`);
   console.log(`   crowd: home pressing ${avg(rec.crowdBy.near).toFixed(2)}, centre ${avg(rec.crowdBy.mid).toFixed(2)}, own end ${avg(rec.crowdBy.far).toFixed(2)}; skating ${avg(rec.skate).toFixed(2)}`);
   assert.equal(c('goal'), goals.length, 'a cue for every goal');
   assert.equal(c('goal', x => x.k === 'goal' && x.home), homeGoals, 'the horn for the home goals only');
@@ -113,6 +113,38 @@ test('a played period (AI against AI on the playable rink): the same sounds, the
   // a jump (a replay of a moment, back in time) is skipped silently
   drv2.update(k, 200, true); drv2.update(k, 60, true); drv2.update(k, 60.02, true);
   assert.ok(rec2.cues.length <= 1, 'jumps in time are not replayed as a burst of sounds');
+});
+
+test('the home crowd: boos at a home penalty, whistling only while the home team is short-handed and the puck is in its zone', () => {
+  // several watched periods, so there are penalties both ways
+  let homePens = 0, boos = 0, on = 0, off = 0, bad = 0, checked = 0;
+  for (let n = 0; n < 3; n++) {
+    const sim = new GameSim(H, A, r.players);
+    const start = sim.sec, evs = sim.simPeriod();
+    const ai = new RinkAI(evs, H, A, r.players, start, sim.sec, { flip: n === 1 }).runToEnd();
+    const end = ai.frames[ai.frames.length - 1].tau;
+    const rec = listen(ai, end + 1);
+    homePens += ai.plays.filter(p => p.kind === 'penalty' && p.side === 0 && !p.text.startsWith('Отложенный')).length;
+    boos += rec.count('boo');
+    // the cues alternate on, off, on … and each "on" comes while home skaters outnumber away ones in the box
+    let state = false;
+    for (const c of rec.cues) {
+      if (c.k !== 'fansWhistle') continue;
+      assert.notEqual(c.on, state, 'the whistling turns on and off in turn');
+      state = c.on; c.on ? on++ : off++;
+      if (c.on) {
+        checked++;
+        const f = ai.frameAt(c.tau);
+        const boxed = f.skaters.reduce((k, s) => k + (s.box ? (s.side === 0 ? 1 : -1) : 0), 0);
+        const ownEnd = ai.flipped ? 100 : 0;
+        if (!(boxed > 0) || Math.abs(f.puck.x - ownEnd) > 45) bad++;
+      }
+    }
+  }
+  console.log(`   home penalties ${homePens}, boos ${boos}; fans' whistling on ${on} / off ${off}`);
+  assert.equal(boos, homePens, 'boos for each home penalty');
+  assert.equal(bad, 0, `the whistling only when short-handed with the puck in the home zone (${bad} of ${checked})`);
+  assert.ok(on - off <= 1, 'every whistling also stops');
 });
 
 test('the rink geometry the driver relies on', () => {

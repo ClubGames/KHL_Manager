@@ -25,6 +25,7 @@ import { ATTACK_STYLE_INFO, FORECHECK_INFO, freshnessTone, goalieFreshness, PULL
 import { formatMoney } from '../game/ratings';
 import { intermissionHints, promoteToPP1, swapInLineup, type CoachHint } from '../game/assistant';
 import { BreakStats } from './BreakStats';
+import { useCrowdVerdict } from './sound/useMatchSound';
 
 const RATE: Record<1 | 2 | 4, number> = { 1: 30, 2: 60, 4: 120 };
 /** Seconds between shootout attempts at each speed: one shooter at a time, with a moment to see the result. */
@@ -76,6 +77,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const [period, setPeriod] = useState(0);
   const [kind, setKind] = useState<BlockKind>('reg');
   const [status, setStatus] = useState<'intro' | 'playing' | 'break' | 'done'>('intro');
+  // the home crowd's verdict at the end (joy for a win, boos for a loss)
+  useCrowdVerdict(status === 'done', sim.score[0] > sim.score[1]);
   const [speed, setSpeed] = useState<1 | 2 | 4>(() => getSettings().matchSpeed);
   const [curLines, setCurLines] = useState<[number, number]>([0, 0]);
   const [score, setScore] = useState<[number, number]>([0, 0]);
