@@ -105,6 +105,7 @@ class PlayTicker {
   hold = false;
   slow = false;
   shows = false;
+  ui = false;
 }
 
 export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => void }) {
@@ -126,6 +127,8 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   const [, setTick] = useState(0);
   const rink = useRef<PlayRink | null>(null);
   const ticker = useRef(new PlayTicker()).current;
+  const [show, setShow] = useState(false);
+  const showRef = useRef(false);
   const keys = useRef(new Set<string>());
   const touch = useRef<TouchState>(emptyTouch());
   const mouse = useRef<MouseState>(newMouse());
@@ -325,6 +328,8 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       if (gp.connected !== padOnRef.current) { padOnRef.current = gp.connected; setPadOn(gp.connected); }
       for (const c of gp.commands) if (!prevCommands.current.has(c)) commandRef.current(c);
       prevCommands.current = gp.commands;
+      // the broadcast's own picture (the entrance, a replay): the touch controls step aside for its «skip» button
+      if (ticker.ui !== showRef.current) { showRef.current = ticker.ui; setShow(ticker.ui); }
       // the 3D picture is being prepared: the match waits (a few seconds at most)
       // … and the teams' entrance before the first period (skippable, capped)
       if (ticker.wait && waited < 8) { waited += dt; raf = requestAnimationFrame(loop); return; }
@@ -483,7 +488,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
             <Button size="sm" onClick={() => command('timeout')} data-play-timeout-skip>Продолжить игру</Button>
           </div>
         )}
-        {phase === 'playing' && touchUI && !paused && !hud?.to && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} faceoff={!!hud?.faceoff} context={hud?.context ?? 'carry'} timeout={!!hud?.tol && !hud?.to} />}
+        {phase === 'playing' && touchUI && !paused && !hud?.to && !show && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} faceoff={!!hud?.faceoff} context={hud?.context ?? 'carry'} timeout={!!hud?.tol && !hud?.to} />}
       </main>
 
       {/* Intro: what to press */}

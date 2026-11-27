@@ -84,7 +84,7 @@ function create(): Engine | null {
       reverb.buffer = arenaImpulse(ctx);
       const wet = ctx.createGain(); wet.gain.value = .5;
       reverb.connect(wet); wet.connect(master);
-      for (const [b, k] of [[bus.crowd, .7], [bus.music, .45], [bus.sfx, .16]] as const) { const g = ctx.createGain(); g.gain.value = k; b.connect(g); g.connect(reverb); }
+      for (const [b, k] of [[bus.crowd, .3], [bus.music, .45], [bus.sfx, .16]] as const) { const g = ctx.createGain(); g.gain.value = k; b.connect(g); g.connect(reverb); }
     } catch { reverb = null; }
     engine = { ctx, master, bus, noise: makeNoise(ctx, 2, false), pink: makeNoise(ctx, 4, true), reverb };
     applySettings(getSettings());

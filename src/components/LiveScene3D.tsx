@@ -56,7 +56,7 @@ const doorOf = (seat: { x: number; z: number }) => {
 
 /** What the 3D view tells the match loop: wait for the first picture, hold the clock (the entrance, a replay), play
  *  in real time (a goal celebration), and that it shows the goals' replays itself (no replay window then). */
-export type LiveTicker = { tau?: number; wait?: boolean; hold?: boolean; slow?: boolean; shows?: boolean };
+export type LiveTicker = { tau?: number; wait?: boolean; hold?: boolean; slow?: boolean; shows?: boolean; /** the broadcast's own picture is up (the entrance, a replay, a caption with its «skip» button): the touch controls step aside */ ui?: boolean };
 /** The broadcast captions over the picture. */
 type Ui = { mode: 'intro' | 'celebrate' | 'replay' | 'call'; title: string; name?: string; sub?: string; color?: string; /** the close-up's numbers (season, match) */ lines?: string[] };
 const SHOT_LABEL = { goalie: 'Вратарь', captain: 'Капитан', leader: 'Лидер команды' } as const;
@@ -119,7 +119,7 @@ export function LiveScene3D(props: Props) {
     tickerRef.current.shows = replaysRef.current;
     skipIntro.current = false; skipShow.current = false;
     const dispose = () => {
-      tickerRef.current.wait = false; tickerRef.current.hold = false; tickerRef.current.slow = false; tickerRef.current.shows = false;
+      tickerRef.current.wait = false; tickerRef.current.hold = false; tickerRef.current.slow = false; tickerRef.current.shows = false; tickerRef.current.ui = false;
       stopped = true; cancelAnimationFrame(raf); observer?.disconnect(); unbind.forEach(f => f()); releases.forEach(f => f()); releaseArena();
       geometries.forEach(g => g.dispose()); materials.forEach(m => m.dispose());
       if (renderer) { renderer.domElement.remove(); releaseRenderer(renderer); }
@@ -276,7 +276,7 @@ export function LiveScene3D(props: Props) {
       let settled = false, camSpeed = 0;
       // the captions over the picture: React state, set only when they change
       let uiKey = '';
-      const showUi = (u: Ui | null) => { const k = u ? `${u.mode}|${u.title}|${u.name ?? ''}|${u.sub ?? ''}|${u.lines?.join('/') ?? ''}` : ''; if (k !== uiKey) { uiKey = k; setUi(u); } };
+      const showUi = (u: Ui | null) => { tickerRef.current.ui = !!u || !!intro; const k = u ? `${u.mode}|${u.title}|${u.name ?? ''}|${u.sub ?? ''}|${u.lines?.join('/') ?? ''}` : ''; if (k !== uiKey) { uiKey = k; setUi(u); } };
       const forget = () => { actors.forEach(a => { a.lx = NaN; a.save = null; a.on = undefined; a.off = a.enter = undefined; }); focus.init = false; lastTau = NaN; dirty = true; };
       // the teams' entrance (see matchIntro): everybody dressed skates out, the reserves end on their seats
       let intro: { t0: number; plan: IntroPlan; ids: Set<string> } | null = null, introStarted = false;
@@ -287,7 +287,7 @@ export function LiveScene3D(props: Props) {
         // the reserves keep the seats they skated to
         introSeats.forEach((slot, id) => { const a = actors.get(id); if (a && !a.seat) { a.seat = `b${slot}`; a.sitAt = undefined; } });
         introSeats.clear();
-        intro = null; tickerRef.current.hold = false; setIntroOn(false); showUi(null);
+        intro = null; tickerRef.current.hold = false; tickerRef.current.ui = false; setIntroOn(false); showUi(null);
         arena.resetProps();
         // the camera is already down at the centre circle: it waits there for the drop
         foWanted = 1;
@@ -318,6 +318,7 @@ export function LiveScene3D(props: Props) {
           list.push({ id: r.id, side: r.side, goalie: r.goalie, start: false, x: 0, z: 0, seat, captain: captains[r.side] === r.id, rating: players[r.id]?.overall });
         }
         intro = { t0: now, plan: planIntro(list), ids };
+        tickerRef.current.ui = true;
         actors.forEach(a => { a.off = a.enter = undefined; a.on = undefined; a.lx = NaN; });
         setIntroOn(true);
       };

@@ -111,7 +111,7 @@ await test('a host ↔ guest match: the guest sees the host\'s rink, skates his 
   guest.loaded(); await sleep(15);
   assert.equal(host.view.phase, 'playing'); assert.equal(guest.view.phase, 'playing');
   // the guest pushes his stick toward the host's net and shoots now and then; the host stands
-  let i = 0, guestCtl = 0, steps = 0, lagMax = 0;
+  let i = 0, guestCtl = 0, steps = 0, lagMax = 0, rings = 0;
   const t0 = Date.now();
   while (host.rink && !host.rink.ended && i < 60 * 200) {
     const gp: PadState = { ...NO_PAD, mx: 1, my: Math.sin(i / 40) * 0.5, shoot: i % 50 < 20, faceoff: i % 70 < 3 };
@@ -121,6 +121,13 @@ await test('a host ↔ guest match: the guest sees the host\'s rink, skates his 
     const hud = guest.rink?.hud();
     if (host.rink?.mode === 'play') { steps++; if (hud?.ctl && gctx.players[hud.ctl]?.teamId === gctx.home.id) guestCtl++; }
     if (guest.rink && host.rink) lagMax = Math.max(lagMax, host.rink.tau - guest.rink.tau);
+    // the yellow ring: each screen marks its own man only (both seats are humans on the host's rink)
+    if (i % 30 === 0 && host.rink && guest.rink?.frames.length) {
+      const hc = host.rink.frameAt(host.rink.lastTau).skaters.filter(x => x.ctrl), gc = guest.rink.frameAt(guest.rink.frames[guest.rink.frames.length - 1].tau).skaters.filter(x => x.ctrl);
+      assert.ok(hc.length <= 1 && hc.every(x => x.side === hctx.mySide), `the host's ring on his own man (${hc.map(x => x.side)})`);
+      assert.ok(gc.length <= 1 && gc.every(x => x.side === gctx.mySide), `the guest's ring on his own man (${gc.map(x => x.side)})`);
+      rings += hc.length + gc.length;
+    }
     i++;
   }
   await sleep(30);
@@ -130,6 +137,7 @@ await test('a host ↔ guest match: the guest sees the host\'s rink, skates his 
   assert.ok(bytes.host / secs < 140 * 1024, 'well inside a home Wi-Fi');
   assert.ok(steps > 0 && guestCtl / steps > 0.85, `the guest's HUD shows his own man (${guestCtl}/${steps})`);
   assert.ok(lagMax < 0.4, 'the copy keeps up');
+  assert.ok(rings > 50, `the rings are there (${rings})`);
   assert.equal(host.view.phase, 'break', 'the period ended');
   assert.equal(guest.view.phase, 'break');
   assert.deepEqual(guest.view.score, host.view.score);
@@ -164,6 +172,9 @@ await test('a host ↔ guest match: the guest sees the host\'s rink, skates his 
   const t2 = host.rink!.tau;
   run(0.5);
   assert.equal(host.rink!.tau, t2, 'the guest\'s replay holds the host');
+  await sleep(15);
+  assert.equal(guest.view.held, true, 'the guest is told the host waits');
+  assert.ok(Math.abs(guest.rink!.tau - host.rink!.tau) < 1e-6, `every frame up to the stop reached the guest (${guest.rink!.tau} / ${host.rink!.tau})`);
   guest.hold(false); await sleep(15);
   run(0.5);
   assert.ok(host.rink!.tau > t2 + 0.4, 'and lets it go');

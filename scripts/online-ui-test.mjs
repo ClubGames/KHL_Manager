@@ -79,6 +79,9 @@ try {
   // the guest skates: hold D for a moment (his HUD names his man)
   await guest.keyboard.down('KeyD'); await guest.waitForTimeout(700); await guest.keyboard.up('KeyD');
   await guest.locator('[data-play-ctl]').waitFor({ timeout: 5000 });
+  // the yellow ring: each screen marks its own man only
+  assert.equal(await guest.locator('[data-rink-ctrl]').count(), 1, 'one ring on the guest\'s screen');
+  assert.equal(await host.locator('[data-rink-ctrl]').count(), 1, 'one ring on the host\'s screen');
   await guest.screenshot({ path: '/tmp/online-match-guest.png' });
   await host.screenshot({ path: '/tmp/online-match-host.png' });
   // the guest's menu: the match goes on (the host plays on, the AI takes the guest's team), the host is told

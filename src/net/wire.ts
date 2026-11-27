@@ -53,6 +53,9 @@ export interface MatchView {
   away?: [boolean, boolean];
   /** the timeouts each side still has */
   timeouts?: [boolean, boolean];
+  /** the host waits for a screen (an entrance, a replay): the guest's picture catches up to the last frame, so a
+   *  replay the host's screen started at that moment starts on the guest's too */
+  held?: boolean;
   /** a shootout / overtime finish */
   beyond: '' | 'ОТ' | 'Б';
 }
