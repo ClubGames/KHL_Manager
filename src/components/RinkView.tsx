@@ -143,7 +143,7 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
     </div>}
     {show3d ? (
       <div className={cn('relative bg-[#081421] overflow-hidden', fill ? 'flex-1 min-h-0' : 'w-full')} style={fill ? undefined : { aspectRatio: '16 / 9' }} data-rink-3d>
-        <LiveScene3D ai={ai!} ticker={ticker} home={home} away={away} players={players} roster={roster ?? []} camera={settings.matchCamera} quality={resolveReplayQuality(settings.replayQuality)} onFail={() => setFailed3d(true)} intro={intro && settings.matchIntro} replays={settings.matchReplays} />
+        <LiveScene3D ai={ai!} ticker={ticker} home={home} away={away} players={players} roster={roster ?? []} camera={settings.matchCamera} zoom={settings.matchZoom} quality={resolveReplayQuality(settings.replayQuality)} onFail={() => setFailed3d(true)} intro={intro && settings.matchIntro} replays={settings.matchReplays} />
         {/* above the phone controls of the played match (their stick zone covers the left of the picture): the camera
             list opens down over it and must take the taps */}
         <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1 z-30" data-live-view-controls>

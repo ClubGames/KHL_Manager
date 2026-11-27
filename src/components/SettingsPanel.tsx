@@ -116,6 +116,9 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
         <Row label="Камера 3D-матча">
           <Choice id="matchCamera" value={s.matchCamera} onChange={(v) => set({ matchCamera: v })} options={LIVE_CAMERAS} />
         </Row>
+        <Row label="Зум камеры в матче" hint="Насколько близко камера 3D-матча (в том числе когда играете сами): крупнее — игроки больше, дальше — видно больше площадки. Колесо мыши и щипок двумя пальцами по-прежнему меняют зум на ходу.">
+          <Choice id="matchZoom" value={s.matchZoom} onChange={(v) => set({ matchZoom: v })} options={[[.7, 'Крупно'], [.85, 'Ближе'], [1, 'Обычно'], [1.2, 'Дальше'], [1.45, 'Общий план']]} />
+        </Row>
         <Row label="Мини-карта 2D поверх 3D" hint="Маленькая площадка сверху в углу 3D-картинки.">
           <Toggle id="matchMinimap" value={s.matchMinimap} onChange={(v) => set({ matchMinimap: v })} />
         </Row>
@@ -142,6 +145,9 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
         </Row>
         <Row label="Экранное управление" hint="Виртуальный стик и кнопки на сенсорном экране. «Авто»: на телефонах и планшетах.">
           <Choice id="playTouch" value={s.playTouch} onChange={(v) => set({ playTouch: v })} options={[['auto', 'Авто'], ['on', 'Вкл'], ['off', 'Выкл']]} />
+        </Row>
+        <Row label="Время в большинстве и меньшинстве" hint="Как идут часы, пока одна из команд играет в неполном составе. «Как период» — с той же скоростью, что и весь период. «Реальное» — штраф отыгрывается полностью: 2 минуты удаления — 2 настоящие минуты. «×2» и «×4» — реальное время, ускоренное в 2 или 4 раза (но не быстрее, чем идёт период).">
+          <Choice id="playPenaltyClock" value={s.playPenaltyClock} onChange={(v) => set({ playPenaltyClock: v })} options={[['period', 'Как период'], ['real', 'Реальное'], [2, '×2'], [4, '×4']]} />
         </Row>
       </Section>
 

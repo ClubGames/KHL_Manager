@@ -1,5 +1,6 @@
 import type { GameEvent, Lineup, Player, ShotZone, Strength, Team } from '../types';
-import type { Key, LiveFrame, ReplayClip, Track } from './rinkPlayback';
+import type { FoulMove, Key, LiveFrame, ReplayClip, Track } from './rinkPlayback';
+import { FOUL_MOVE_DUR, foulMove } from './rinkPlayback';
 import type { RinkPlay, PlayKind } from './rinkAI';
 import { BOARDS_H, FACEOFF_SPOTS, RINK, glassTop, inBenchFront } from './rinkGeometry';
 import { goalieSavePct } from './ratings';
@@ -70,7 +71,9 @@ export const NO_PAD: PadState = { mx: 0, my: 0, sprint: false, shoot: false, pas
 /** The kinds of dekes and body checks (the 3D figures act them out). */
 export type DekeKind = 'side' | 'toe' | 'between' | 'spin' | 'fake';
 export type CheckKind = 'shoulder' | 'hip' | 'pin';
-export type MoveKind = DekeKind | CheckKind | 'lift' | 'reach' | 'push';
+/** The clock while short-handed (see PlayOpts.penaltyClock). */
+export type PenaltyClock = 'period' | 'real' | 2 | 4;
+export type MoveKind = DekeKind | CheckKind | 'lift' | 'reach' | 'push' | FoulMove;
 /**
  * A held stance the 3D figure shows: down to block a shot, the stick cocked for a one-timer, tapping the stick for
  * a pass, the defensive «vision» stance (skating backwards facing the puck, stick out in front), a hustle burst.
@@ -95,6 +98,12 @@ export interface PlayRinkOptions {
   flip?: boolean;
   /** real minutes a 20-minute period takes (the clock runs 20 / periodMinutes times faster) */
   periodMinutes?: number;
+  /**
+   * How fast the clock runs while one side is short-handed (power play / penalty kill): 'period' — like the rest of
+   * the period (a 2-minute minor lasts 2 × periodMinutes / 20 real minutes), 'real' — real time (the whole 2 minutes
+   * are played), 2 / 4 — real time ×2 / ×4. Never slower than real time, never faster than the period's clock.
+   */
+  penaltyClock?: PenaltyClock;
   difficulty?: Difficulty;
   rules?: Partial<PlayRules>;
   goalies?: [string | null, string | null];
@@ -139,8 +148,9 @@ const ZONE_MULT: Record<ShotZone, number> = { crease: 2.04, slot: 1.46, circles:
 const WINDUP: Record<ReleaseKind, number> = { wrist: .32, snap: .2, slap: .55, backhand: .3, tip: .1, pass: .24, saucer: .26 };
 const FOLLOW: Record<ReleaseKind, number> = { wrist: .45, snap: .38, slap: .5, backhand: .45, tip: .25, pass: .32, saucer: .42 };
 const NET_X = RINK.length / 2 - RINK.goalLine;
-/** Calibration of the goal chance of a shot on target (AI against AI: a save % of about .910, as in the KHL). */
-const GOAL_CAL = 1.5;
+/** Calibration of the goal chance of a shot on target (AI against AI: a save % of about .910, as in the KHL — the AI
+ *  takes its real chances, so the shots on net are better ones on average). */
+const GOAL_CAL = 1.25;
 /** The calls of the played match, in the wording of the KHL (and of the text simulation's list). */
 const PEN_REASON = {
   trip: 'подножка', hook: 'задержка клюшкой', interference: 'атака игрока без шайбы', charge: 'атака с разгона', board: 'толчок на борт', slash: 'удар клюшкой',
@@ -152,6 +162,8 @@ const clamp = (x: number, a: number, b: number) => Math.max(a, Math.min(b, x));
 const dist = (a: V2, b: V2) => Math.hypot(a.x - b.x, a.y - b.y);
 /** The skill stick's charge: a slap / snap shot loads to full power in about a third of a second. */
 const stickPower = (held: number) => clamp(0.6 + held * 1.15, 0.6, 1);
+/** A one-timer swung through at most this long before the pass arrives still meets the puck (s): the timing window. */
+const ONE_TIMER_WINDOW = 0.45;
 /** The shot button's charge: held longer, harder (full in a little under half a second). */
 const buttonPower = (held: number) => clamp(0.25 + held / 0.6, 0.25, 1);
 const smooth01 = (v: number) => { const t = clamp(v, 0, 1); return t * t * (3 - 2 * t); };
@@ -227,6 +239,15 @@ interface Sk {
   tx: number; ty: number; urg: number; back: boolean;
   decideAt: number; carryT: V2 | null; lastPuck: number; spot: number;
   rolled: number; oneTimer: boolean; dekeBeat: number; dekeF: number; dekeR: number; stagger: number;
+  /**
+   * The manager's one-timer: the windup began at `otAt` (the stick pulled back or the shot button pressed while the
+   * pass was on its way), by which control; `otFire` when it was swung through (or the button let go) — the shot then
+   * goes off the pass the moment it arrives, if that is soon enough; `otHold`: the pass arrived with the stick still back,
+   * the puck sits on the blade for the slap shot.
+   */
+  otAt?: number; otBy?: 'stick' | 'button'; otFire?: number; otHold?: boolean;
+  /** the infraction he just committed, acted out (a high stick, a trip, an elbow…) from `t0` */
+  foulMv?: { kind: FoulMove; t0: number };
   /** the last moment he had the puck on his stick (carried, shot or passed): a hit within the grace after it is no interference */
   ownAt: number;
   /** a fall: how, which way (side falls: ±1), when it began */
@@ -288,7 +309,7 @@ export class PlayRink {
   private pressAt = { shoot: -1, pass: -1 };
   private lineIdx: [number, number] = [0, 0];
   /** skill-stick gesture state: when it was pulled back (-1: not), when it was last at rest, the last sideways flick, the turn swept */
-  private ss = { back: -1, loadEnd: -1, rest: 0, ang: 0, sweep: 0, sweepAt: 0, wasOut: false, ot: false, still: 0, backSweep: 0, handSide: 0 as 0 | 1 | -1, sideAt: -9, pend: null as null | { at: number; f: number; l: number; s: 1 | -1; sweep: number; drag: boolean } };
+  private ss = { back: -1, loadEnd: -1, rest: 0, ang: 0, sweep: 0, sweepAt: 0, wasOut: false, ot: false, otEnd: -1, still: 0, backSweep: 0, handSide: 0 as 0 | 1 | -1, sideAt: -9, pend: null as null | { at: number; f: number; l: number; s: 1 | -1; sweep: number; drag: boolean } };
   /** the skill stick held out with the puck: where the blade carries it (lateral −1…1 to the left of his facing, forward −1…1) */
   private handle: { lat: number; fwd: number } | null = null;
   /** the last quick side-to-side of the stickhandling (a man reaching in has a harder time) */
@@ -386,14 +407,16 @@ export class PlayRink {
     const p = this.puck;
     const context = me && p.carrier === me ? 'carry' : s !== null && (p.carrier?.side === s || (p.passTo && p.passTo.side === s)) ? 'support' : 'defend';
     const act = me?.act;
-    const power = act?.k === 'windup' ? (act.what === 'shot' ? (this.ss.back >= 0 ? stickPower(this.tau - this.ss.back) : buttonPower(this.tau - act.t0)) : clamp((this.tau - act.t0) / 0.5, 0, 1)) : 0;
+    const otLoad = me?.oneTimer && me.otAt !== undefined && !act ? (me.otBy === 'stick' ? stickPower : buttonPower)(this.tau - me.otAt) : 0;
+    const power = act?.k === 'windup' ? (act.what === 'shot' ? (this.ss.back >= 0 ? stickPower(this.tau - this.ss.back) : buttonPower(this.tau - act.t0)) : clamp((this.tau - act.t0) / 0.5, 0, 1)) : otLoad;
     const labels = context === 'carry' ? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' } : context === 'support' ? { shoot: 'В касание', pass: 'Дай пас', deke: 'Финт' } : { shoot: 'Силовой', pass: 'Смена', deke: 'Отбор' };
     // the draw: «ready» while the referee holds the puck, «now» once it falls (until the draw is decided)
     const fo = this.mode === 'faceoff' ? this.fo : null;
     const foCue = fo && !fo.done && !fo.gather && s !== null ? (this.tau >= fo.drop ? 'now' : 'ready') : null;
     const foCall = this.foCall && this.tau < this.foCall.until ? this.foCall.text : null;
     // the move he is making right now (the HUD names it: a deke on a button press is otherwise easy to miss)
-    const move = act?.k === 'deke' ? DEKE_NAME[act.kind] : act?.k === 'poke' ? (act.lift ? 'подбил клюшку' : 'отбор клюшкой') : null;
+    const move = act?.k === 'deke' ? DEKE_NAME[act.kind] : act?.k === 'poke' ? (act.lift ? 'подбил клюшку' : 'отбор клюшкой')
+      : me?.otHold && act?.k === 'windup' ? 'щелчок в касание — бей!' : me?.oneTimer && !act ? 'замах в касание' : null;
     return { ctl: this.ctl, power, context, labels, energy: me?.energy ?? 1, faceoff: this.mode === 'faceoff', foCue, foCall, move };
   }
   /** The manager hands his skater back to the AI (the rest of the period is simulated). */
@@ -552,6 +575,12 @@ export class PlayRink {
   private goalieOf(side: Side) { return this.onIce(side).find(a => a.goalie && !a.leaving) ?? null; }
   private boxCount(side: Side) { return [...this.agents.values()].filter(a => a.side === side && a.on === 'box').length; }
   /** How many skaters side s should have: five (three in the 3-on-3 overtime) less the men in the box. */
+  /** Period-clock seconds per real second now: the special-teams clock while the sides are uneven (penalties). */
+  clockRate(): number {
+    const pc = this.opts.penaltyClock ?? 'period';
+    if (pc === 'period' || this.manpower(0) === this.manpower(1)) return this.rate;
+    return Math.min(this.rate, pc === 'real' ? 1 : pc);
+  }
   private manpower(s: Side): number {
     const mine = Math.min(2, this.boxCount(s)), theirs = Math.min(2, this.boxCount((1 - s) as Side));
     // KHL 3-on-3 overtime: a penalty gives the other team a fourth (fifth) skater instead
@@ -827,7 +856,7 @@ export class PlayRink {
     if (this.mode === 'end') { this.record(); return; }
     if (this.mode === 'stop') { this.stepStop(); this.record(); return; }
     if (this.mode === 'faceoff') { this.stepFaceoff(press); this.record(); return; }
-    this.clock += STEP * this.rate;
+    this.clock += STEP * this.clockRate();
     if (this.clock >= this.len) { this.clock = this.len; this.play('freeze', null, 'Сирена: конец периода'); this.startStop('end', { x: 30, y: 15 }, 1.2); this.record(); return; }
     this.boxes();
     this.energy();
@@ -1211,11 +1240,13 @@ export class PlayRink {
     if (teamHas) {
       // without the puck on offence: call for it, or get the stick ready for a one-timer
       if (press.pass) { this.callForPass = this.tau + 1.2; this.play('loose', s, `${me.name}: «Пас!»`, me); }
-      if (press.shoot) me.oneTimer = true;
-      if (release.shoot && !(p.passTo === me)) me.oneTimer = false;
+      // the shot button: pressed — the windup for a one-timer; let go while the pass is coming — the shot goes off the
+      // pass as it arrives (held until it arrives — the puck stops on the blade and the release shoots)
+      if (press.shoot) { me.oneTimer = true; me.otAt = this.tau; me.otBy = 'button'; me.otFire = undefined; }
+      if (release.shoot && me.oneTimer && me.otBy === 'button') { if (p.passTo === me) me.otFire = this.tau; else me.oneTimer = false; }
       return;
     }
-    me.oneTimer = false;
+    me.oneTimer = false; me.otHold = false;
     const ready = !me.act && this.tau > me.cool;
     // NHL defence on the gamepad: RB poke check, A stick lift, Y board pin (the body checks are on the right stick)
     if (press.poke && ready) { this.startPoke(me); return; }
@@ -1260,6 +1291,11 @@ export class PlayRink {
       }
       ss.handSide = sd; ss.sideAt = this.tau;
     }
+    if (m < 0.3 && ss.ot && !hasPuck && teamHas) {
+      // a one-timer windup swung forward passes through the centre: a moment's grace before it counts as let go
+      if (ss.otEnd < 0) ss.otEnd = this.tau;
+      if (this.tau - ss.otEnd < 0.2) return false;
+    }
     if (m < 0.3) {
       // back to rest: a pending flick goes
       if (ss.pend && hasPuck) { const pd = ss.pend; ss.pend = null; this.flick(me, pd); }
@@ -1273,7 +1309,7 @@ export class PlayRink {
         me.act = null;
         if (held > 0.18 && this.tau > me.cool - 0.3) this.deke(me, 0, 0, undefined, 'fake');
       }
-      if (ss.ot) { me.oneTimer = false; ss.ot = false; }
+      if (ss.ot) { if (!me.otFire) me.oneTimer = false; ss.ot = false; ss.otEnd = -1; }
       ss.back = -1; ss.loadEnd = -1; ss.rest = this.tau; ss.wasOut = false; ss.sweep = 0; ss.handSide = 0;
       return false;
     }
@@ -1343,8 +1379,18 @@ export class PlayRink {
       return false;
     }
     if (teamHas) {
-      // without the puck on offence: the stick held back is loaded for a one-timer
-      if (m > 0.55 && f < -0.5 * m) { me.oneTimer = true; ss.ot = true; }
+      // without the puck on offence: the stick held back is the windup for a one-timer (the longer, the harder); swung
+      // forward while the pass is on its way, the shot goes off the pass as it arrives — the timing is his
+      if (m > 0.55 && f < -0.5 * m) {
+        if (!ss.ot || !me.oneTimer) { me.otAt = this.tau; me.otFire = undefined; }
+        me.oneTimer = true; me.otBy = 'stick'; ss.ot = true; ss.otEnd = -1;
+        return false;
+      }
+      if (ss.ot && f > 0.3 * m && m > 0.45) {
+        ss.ot = false; ss.otEnd = -1; ss.rest = -9;
+        if (this.puck.passTo === me) me.otFire = this.tau; else me.oneTimer = false;
+        return true;
+      }
       return false;
     }
     if (pad.nhl) {
@@ -1774,14 +1820,18 @@ export class PlayRink {
       // a called-for pass from the manager's skater
       const ctlMe = this.ctl ? this.agents.get(this.ctl) : undefined;
       if (ctlMe && ctlMe.side === s && this.tau < this.callForPass && ctlMe !== a && this.passLaneOk(a, ctlMe)) { this.callForPass = 0; this.passTo(a, ctlMe, false); return; }
+      const prime = me.x > OPP_BLUE + 0.5 && me.x < OPP_GOAL - 0.4 && lane && (shotZone(me) === 'crease' || shotZone(me) === 'slot');
       if (me.x > OPP_BLUE + 0.5 && me.x < OPP_GOAL - 0.4) {
         const z = shotZone(me);
-        const base = { crease: 0.4, slot: 0.13, circles: 0.028, point: 0.02, perimeter: 0.005 }[z];
+        const base = { crease: 0.4, slot: 0.13, circles: 0.022, point: 0.015, perimeter: 0.004 }[z];
         const traffic = this.skaters(s).some(m => m !== a && dist(loc(s, m), net) < 3);
         // the longer the team has had it in the zone, the readier to put it on net
         const urge = 1 + clamp(this.tau - a.lastPuck - 1.5, 0, 2) * 0.15;
         let ps = base * (lane ? 1 : 0.3) * (a.shoot / 72) * (z === 'point' && traffic ? 1.6 : 1) * urge;
         if (this.opts.kind !== 'reg' && this.zoneIn[s]) ps *= 1.2;
+        // a real chance — in the slot or at the crease with a lane to the net: he puts it on net (quickly, not after a
+        // look around for a pass); a man right on him rushes it a little less often
+        if (prime) ps = (z === 'crease' ? 0.8 : 0.6) * clamp(a.shoot / 72, 0.8, 1.2) * (pressure < 1.2 ? 0.5 : 1);
         // in alone on the goalie: a move first (the shot comes at the next decision)
         if ((z === 'crease' || (z === 'slot' && dist(me, net) < 6.5)) && pressure > 1.6 && this.tau > a.cool && this.tau - a.dekeBeat > 1.5 && this.rand() < 0.22 * (a.hands / 75) * k) {
           this.deke(a, 0, 0, undefined, this.aiDekeKind(a, true)); a.decideAt = this.tau + 0.35; return;
@@ -1799,8 +1849,9 @@ export class PlayRink {
       const held = this.tau - a.lastPuck;
       if (best) {
         const fwd = loc(s, best.m).x - me.x;
-        const better = best.v > myVal + 0.12 + chain * 0.06 && held > 0.35 && this.rand() < 0.6;
-        const bailout = pressure < 1.7 && held > 0.25 && (fwd > -4 || pressure < 1.0) && best.v > myVal - 0.15 && this.rand() < 0.5;
+        // with a real chance of his own only a clearly better one (a tap-in at the far post) is worth the pass
+        const better = best.v > myVal + (prime ? 0.3 : 0.12 + chain * 0.06) && held > 0.35 && this.rand() < 0.6;
+        const bailout = pressure < (prime ? 1.0 : 1.7) && held > 0.25 && (fwd > -4 || pressure < 1.0) && best.v > myVal - 0.15 && this.rand() < 0.5;
         // breakout: in our own end the first look is the outlet pass, not a blind clear
         const outlet = me.x < BLUE && pressure < 3 && best.v > myVal - 0.2 && this.rand() < 0.7;
         if (better || bailout || outlet) { this.passTo(a, best.m, false); return; }
@@ -1998,6 +2049,8 @@ export class PlayRink {
     const both = this.rand() < 0.55;
     if (both || this.rand() < 0.5) this.pending.push({ side: a.side, player: a, reason: PEN_REASON.rough, min: 2 });
     if (both || !this.pending.some(q => q.player === a)) this.pending.push({ side: d.side, player: d, reason: PEN_REASON.rough, min: 2 });
+    // the shoves and punches of the scrum
+    for (const q of this.pending) if ((q.player === a || q.player === d) && q.reason === PEN_REASON.rough) q.player.foulMv = { kind: 'fRough', t0: this.tau };
   }
 
   /* ---------------- actions: shots, passes, dekes, checks, pokes ---------------- */
@@ -2444,6 +2497,9 @@ export class PlayRink {
   private foul(a: Sk, reason: string, victim: Sk, min: 2 | 4 | 5 = 2) {
     if (!this.rules.penalties || this.pending.some(p => p.player === a)) return;
     this.pending.push({ side: a.side, player: a, reason, min });
+    // the infraction acted out (it is decided at the contact: the move picks up from the check or the stick already there)
+    const mv = foulMove(reason);
+    if (mv) a.foulMv = { kind: mv, t0: this.tau - 0.08 };
     this.play('penalty', a.side, `Отложенный штраф: ${a.name} — ${reason}${min === 5 ? ' (большой штраф)' : ''}`, a);
     void victim;
     // the other team has the puck: the referee waits until the offending team touches it
@@ -2843,6 +2899,7 @@ export class PlayRink {
   private take(a: Sk, intercept: boolean) {
     const p = this.puck;
     const wasPass = p.passTo === a && p.passBy?.side === a.side;
+    a.otHold = false;
     const prevSide = this.touches.length ? this.touches[this.touches.length - 1].side : null;
     if (prevSide !== null && prevSide !== a.side) this.touches = [];
     // a pass that was meant to reach him keeps the chain; anything else from the other side breaks it
@@ -2856,8 +2913,28 @@ export class PlayRink {
     if (intercept) this.play('interception', a.side, `Перехват: ${a.name}`, a);
     // the manager's control goes to the teammate who gets the puck
     if (this.opts.userSide === a.side) this.ctl = a.id;
-    // a one-timer: the stick was loaded as the pass arrived
-    if (wasPass && a.oneTimer && a.manual) { a.oneTimer = false; this.shoot(a, 0.85, 0.5, null, Math.hypot(a.x - (a.side ? GOAL : OPP_GOAL), a.y - MID) > 11 ? 'slap' : 'snap'); return; }
+    // the manager's one-timer: swung through as the pass arrived — the shot goes off the pass at once (the windup's
+    // length is its power); still wound up — the puck stops on the blade and the swing forward (or the button let go)
+    // is the slap shot; swung far too early — a whiff, he just takes the pass
+    if (wasPass && a.oneTimer && a.manual) {
+      const t0 = a.otAt ?? this.tau, by = a.otBy ?? 'button';
+      a.oneTimer = false;
+      if (a.otFire !== undefined) {
+        const fired = a.otFire, early = this.tau - fired;
+        a.otFire = undefined;
+        if (early < ONE_TIMER_WINDOW) {
+          // the windup: from the stick going back (or the button) to the swing through
+          const wind = Math.max(0, fired - t0);
+          const far = Math.hypot(a.x - (a.side ? GOAL : OPP_GOAL), a.y - MID) > 9;
+          this.shoot(a, (by === 'stick' ? stickPower : buttonPower)(wind), Math.max(wind, 0.4), this.aimVec, far || wind > 0.32 ? 'slap' : 'snap');
+          return;
+        }
+        this.play('loose', a.side, `${a.name}: замах раньше времени — принял шайбу`, a);
+      } else {
+        a.act = { k: 'windup', t0, what: 'shot' }; a.otHold = true;
+        if (by === 'stick') { this.ss.back = t0; this.ss.loadEnd = -1; }
+      }
+    }
     if (wasPass && !a.manual && this.rand() < 0.35 && shotZone(loc(a.side, a)) !== 'perimeter' && loc(a.side, a).x > OPP_BLUE + 4 && this.laneOpen(a, { x: OPP_GOAL, y: MID }, 0.7)) {
       this.shoot(a, 0.8, 0.4, null, loc(a.side, a).x < OPP_GOAL - 12 ? 'slap' : 'snap');
     }
@@ -2899,7 +2976,7 @@ export class PlayRink {
         id: a.id, side: a.side, goalie: a.goalie, box: a.on === 'box' && !a.boxGo, x: a.x, y: a.y, fa: a.fa, ctrl: a.id === this.ctl,
         // going down takes a moment (the body tips over), getting up the last 0.35 s
         fall: a.fall > 0 ? smooth01(Math.min(1, (this.tau - a.fallAt) / 0.28)) * smooth01(Math.min(1, a.fall / 0.35)) : 0, fk: a.fallK, fs: a.fallS,
-        check: a.act?.k === 'check' ? Math.sin(Math.PI * clamp((this.tau - a.act.t0) / 0.42, 0, 1)) : 0,
+        check: a.act?.k === 'check' && !a.foulMv ? Math.sin(Math.PI * clamp((this.tau - a.act.t0) / 0.42, 0, 1)) : 0,
         poke: a.act?.k === 'poke' ? Math.sin(Math.PI * clamp((this.tau - a.act.t0) / 0.38, 0, 1)) : 0,
         deke: a.act?.k === 'deke' && (a.act.kind === 'side' || a.act.kind === 'toe') ? a.act.s * Math.sin(Math.PI * clamp((this.tau - a.act.t0) / DEKE_DUR[a.act.kind], 0, 1)) * 0.55 : 0,
         ...this.moveOf(a),
@@ -2919,7 +2996,9 @@ export class PlayRink {
   private stanceOf(a: Sk): { st: Stance | null; stT: number } {
     let k: Stance | null = null;
     const p = this.puck, c = p.carrier;
-    if (!a.goalie && a.on === 'ice' && a.stun <= 0 && !a.act) {
+    // (the manager's one-timer held on the blade keeps the stick cocked until he swings)
+    if (a.otHold && a.act?.k === 'windup' && a.on === 'ice') k = 'oneTimer';
+    else if (!a.goalie && a.on === 'ice' && a.stun <= 0 && !a.act) {
       const cl = c && c.side !== a.side ? loc(c.side, c) : null;
       if (this.blockBy === a || (cl && c!.act?.k === 'windup' && c!.act.what === 'shot' && dist(a, c!) < 6 && segDist(a, c!, loc(c!.side, { x: OPP_GOAL, y: MID })) < 0.9)) k = 'block';
       else if ((a.oneTimer && a.manual) || (p.passTo === a && !c && p.passBy?.side === a.side && loc(a.side, a).x > OPP_BLUE + 4 && dist(loc(a.side, a), { x: OPP_GOAL, y: MID }) < 15)) k = 'oneTimer';
@@ -2933,6 +3012,11 @@ export class PlayRink {
   /** The move a skater is acting out (a deke, a check, a stick lift) and how far into it he is, 0…1. */
   private moveOf(a: Sk): { mv: MoveKind | null; mt: number } {
     const act = a.act;
+    if (a.foulMv) {
+      const u = (this.tau - a.foulMv.t0) / FOUL_MOVE_DUR[a.foulMv.kind];
+      if (u >= 0 && u < 1 && (a.on === 'ice' || a.boxGo)) return { mv: a.foulMv.kind, mt: u }; // (also on his way to the box: an immediate whistle)
+      if (u >= 1) a.foulMv = undefined;
+    }
     if (act?.k === 'deke') return { mv: act.kind, mt: clamp((this.tau - act.t0) / DEKE_DUR[act.kind], 0, 1) };
     if (act?.k === 'check') return { mv: act.light ? 'push' : act.kind, mt: clamp((this.tau - act.t0) / 0.42, 0, 1) };
     if (act?.k === 'poke' && act.lift) return { mv: 'lift', mt: clamp((this.tau - act.t0) / 0.38, 0, 1) };

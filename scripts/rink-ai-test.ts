@@ -6,6 +6,7 @@ import { parseRosterText } from '../src/game/roster';
 import { GameSim } from '../src/game/engine';
 import { RINK_M, RinkAI } from '../src/game/rinkAI';
 import { FACEOFF_SPOTS } from '../src/game/rinkGeometry';
+import { foulMove } from '../src/game/rinkPlayback';
 import type { GameEvent } from '../src/types';
 
 const r = parseRosterText(readFileSync('scripts/fixtures/test-roster.json', 'utf8'));
@@ -288,6 +289,27 @@ test('lines: the right number of skaters, defensemen on the blue line, quick cha
   // not statues: defenders keep moving (≈3.4 m/s on average — they skate backwards at 84 % speed, keep a gap and absorb contacts)
   assert.ok(st.spd / st.spdN > 3.15, `defenders in their end move at ${(st.spd / st.spdN).toFixed(2)} m/s`);
   assert.ok(f(st.stall) < 0.01 && st.holdSum / st.holds < 1.6, `stalling carriers ${(100 * f(st.stall)).toFixed(2)}%, average hold ${(st.holdSum / st.holds).toFixed(2)} s`);
+});
+
+test('penalties are acted out by the offender (a hit to the head, a trip, a slash…), not only announced', () => {
+  let called = 0, shown = 0;
+  const kinds = new Set<string>();
+  for (const { evs, ai } of periods) for (const e of evs) {
+    if (e.type !== 'penalty' || !e.player) continue;
+    const mv = foulMove(e.text.includes('—') ? e.text.split('—').pop()!.trim() : '');
+    if (!mv) continue;
+    called++;
+    const t = ai.tauOf(e);
+    if (t === undefined || t === null) continue;
+    let seen = false;
+    for (let dt = -1; dt <= 1; dt += 1 / 30) {
+      const f = ai.frameAt(t + dt).skaters.find(x => x.id === e.player);
+      if (f?.move === mv) { seen = true; kinds.add(mv); break; }
+    }
+    if (seen) shown++;
+  }
+  console.log(`   infractions acted out: ${shown}/${called} [${[...kinds].join(', ')}]`);
+  assert.ok(called > 0 && shown >= called * 0.5, 'most infractions are acted out by the offender at the call');
 });
 
 console.log(`\n${pass} rink AI tests passed`);

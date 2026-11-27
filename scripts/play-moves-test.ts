@@ -8,6 +8,7 @@ import { parseRosterText } from '../src/game/roster';
 import { NO_PAD, PlayRink, screenToRink, type PadState, type PlayOut } from '../src/game/playRink';
 import { autoCamera, CAMERAS, cameraPose, LIVE_CAMERAS, liveCameraPose, STATIC_CAMERAS, VIEW_LABEL, type ReplayView } from '../src/components/replayCameras';
 import { detectDevice, emptyTouch, gamepadPad, keyboardPad, mergePads } from '../src/components/playInput';
+import { foulMove, FOUL_MOVE_DUR } from '../src/game/rinkPlayback';
 import type { Team } from '../src/types';
 
 const r = parseRosterText(readFileSync('scripts/fixtures/test-roster.json', 'utf8'));
@@ -165,6 +166,39 @@ test('interference: no call on a man who just lost the puck (the grace after it)
   assert.equal(justLost.n, 0, 'a man who just lost the puck may be hit');
   assert.equal(onPuck.n, 0, 'a check that began while he had the puck is fair');
   assert.ok(late.n > late.landed * 0.3, 'a hit on a man long without the puck is interference');
+  p.pending = [];
+});
+
+test('infractions are acted out: a hit to the head — the forearm to the head (not a shoulder check), a trip — the stick into the skates, and so on', () => {
+  // the KHL wording of the played rink and of the text simulation
+  const want: [string, string | null][] = [['удар в голову', 'fHead'], ['удар локтем', 'fElbow'], ['удар коленом', 'fKnee'], ['подножка', 'fTrip'],
+    ['задержка клюшкой', 'fHook'], ['задержка руками', 'fHold'], ['задержка', 'fHold'], ['удар клюшкой', 'fSlash'], ['высота клюшки', 'fHigh'],
+    ['грубость', 'fRough'], ['толчок на борт', 'fBoard'], ['атака сзади', 'fBoard'], ['задержка игры (выброс шайбы за пределы площадки)', null],
+    ['атака с разгона', null], ['помеха вратарю', null]];
+  for (const [reason, mv] of want) assert.equal(foulMove(reason), mv, reason);
+  const k = make(52), p = priv(k);
+  toPlay(k);
+  p.mode = 'play';
+  const a = p.skaters(0)[0], t = p.skaters(1)[0];
+  clear(k, [a, t]);
+  const seen: Record<string, number> = {};
+  for (const reason of ['удар в голову', 'подножка', 'удар клюшкой', 'удар коленом']) {
+    p.pending = [];
+    a.x = 30; a.y = 15; a.vx = 0; a.vy = 0; t.x = 31; t.y = 15;
+    p.foul(a, reason, t);
+    const kind = foulMove(reason)!;
+    // the man who committed it plays the infraction in the frames for about its length, then skates on
+    let frames = 0;
+    for (let i = 0; i < 90; i++) {
+      k.advance(1 / 60);
+      const f = k.frameAt(p.tau).skaters.find(x => x.id === a.id);
+      if (f?.move === kind) frames++;
+      p.mode = 'play';
+    }
+    seen[kind] = frames;
+    assert.ok(frames > FOUL_MOVE_DUR[kind] * 60 * 0.6 && frames <= FOUL_MOVE_DUR[kind] * 60 + 2, `${reason}: acted out (${frames} frames)`);
+  }
+  console.log('   infraction frames', JSON.stringify(seen));
   p.pending = [];
 });
 

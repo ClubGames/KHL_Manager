@@ -1,5 +1,6 @@
 import type { AttackStyle, ForecheckStyle, GameEvent, Player, Team } from '../types';
-import type { Key, LiveFrame, ReplayClip, Track } from './rinkPlayback';
+import type { FoulMove, Key, LiveFrame, ReplayClip, Track } from './rinkPlayback';
+import { FOUL_MOVE_DUR, foulMove } from './rinkPlayback';
 import { RINK } from './rinkGeometry';
 
 /*
@@ -118,6 +119,8 @@ const neutralDot = (s: Side, y: number): V2 => loc(s, { x: L - RINK.neutralDot, 
 export class RinkAI {
   readonly frames: Frame[] = [];
   readonly plays: RinkPlay[] = [];
+  /** Infractions acted out by the offender (a high stick, a trip, an elbow…): who, which, from when (tau). */
+  private fouls: { id: string; kind: FoulMove; t0: number }[] = [];
   readonly faceoffWins: [number, number] = [0, 0];
   readonly blocks: [number, number] = [0, 0];
   readonly icings: [number, number] = [0, 0];
@@ -274,6 +277,16 @@ export class RinkAI {
   get flipped() { return !!this.opts.flip; }
   /** Presentation x in rink percent (0…100), mirrored when the teams have switched ends. */
   private px(x: number) { return (this.opts.flip ? L - x : x) / 0.6; }
+  /** The infraction a man is acting out at `tau`, and how far into it. */
+  private foulAt(id: string, tau: number): { kind: FoulMove; t: number } | null {
+    for (let i = this.fouls.length - 1; i >= 0; i--) {
+      const f = this.fouls[i];
+      if (f.id !== id) continue;
+      const t = (tau - f.t0) / FOUL_MOVE_DUR[f.kind];
+      if (t >= 0 && t < 1) return { kind: f.kind, t };
+    }
+    return null;
+  }
   frameAt(tau: number): LiveFrame {
     const [a, b, u] = this.bracket(tau);
     const skaters: LiveFrame['skaters'] = [];
@@ -290,7 +303,8 @@ export class RinkAI {
       }
       // facing as a unit vector in presentation metres (mirrored lengthwise with the ends)
       const dir = { x: this.opts.flip ? -Math.cos(fa) : Math.cos(fa), y: Math.sin(fa) };
-      skaters.push({ id, side: this.sideOf(id), goalie: (a.flags[i] & 1) > 0, box: box || undefined, pos: { x: this.px(x), y: y / 0.3, h: 0 }, dir });
+      const fl = this.fouls.length ? this.foulAt(id, tau) : null;
+      skaters.push({ id, side: this.sideOf(id), goalie: (a.flags[i] & 1) > 0, box: box || undefined, pos: { x: this.px(x), y: y / 0.3, h: 0 }, dir, ...(fl ? { move: fl.kind, moveT: fl.t } : {}) });
     });
     const caption = [...this.plays].reverse().find(p => p.tau <= tau && tau - p.tau < 2.6);
     return {
@@ -775,6 +789,12 @@ export class RinkAI {
     else { a.on = 'box'; const seat = this.boxSeat(a); a.x = seat.x; a.y = seat.y; }
     // the infraction (the engine writes it after a dash): the referee shows its signal
     const reason = e.text.includes('—') ? e.text.split('—').pop()!.trim() : '';
+    // the infraction acted out by the offender (the duel brought him to the man he fouls), peaking at the call
+    const mv = foulMove(reason);
+    if (mv && a.on === 'ice') {
+      this.fouls.push({ id: a.id, kind: mv, t0: this.tau - FOUL_MOVE_DUR[mv] * .4 });
+      if (this.fouls.length > 40) this.fouls.splice(0, 20);
+    }
     this.play('penalty', s, `Удаление: ${a.name}${reason ? ` — ${reason}` : ''}, ${pim} мин`, a);
     if (this.mode === 'play') this.startStop('penalty', zoneDot(s, this.puck.y));
   }

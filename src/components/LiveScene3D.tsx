@@ -66,6 +66,8 @@ type Props = {
   /** everyone who may come on the ice (dressed players, both goalies): their figures are prepared up front */
   roster: FigureRequest[];
   camera: LiveCamera; quality: ReplayQuality;
+  /** the camera's zoom from the settings (below 1 closer, above 1 farther); the wheel / a pinch adjust it from there */
+  zoom?: number;
   /** WebGL unavailable / context lost: the parent shows the 2D rink instead */
   onFail: () => void;
   /** the start of the match: the teams' entrance with the laser show plays first (once per rink) */
@@ -78,8 +80,11 @@ const introPlayed = new WeakSet<object>();
 
 export function LiveScene3D(props: Props) {
   const host = useRef<HTMLDivElement>(null);
-  const live = useRef({ ai: props.ai, camera: props.camera, zoom: 1 });
+  const live = useRef({ ai: props.ai, camera: props.camera, zoom: props.zoom ?? 1 });
   live.current.ai = props.ai; live.current.camera = props.camera;
+  // a new zoom picked in the settings replaces the one the wheel / a pinch left
+  const zoomProp = useRef(props.zoom ?? 1);
+  if ((props.zoom ?? 1) !== zoomProp.current) { zoomProp.current = props.zoom ?? 1; live.current.zoom = clamp(zoomProp.current, ZOOM.min, ZOOM.max); }
   const [ready, setReady] = useState(false);
   const [introOn, setIntroOn] = useState(false);
   const [ui, setUi] = useState<Ui | null>(null);
