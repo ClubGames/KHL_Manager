@@ -50,10 +50,13 @@ function onDefence(g: number) {
   return { k, p, me, c };
 }
 
-test('the button map: RT pass, B shot, RB poke (and the draw), A lift, Y pin, LB, LT vision, L3 hustle; the d-pad does not skate', () => {
+test('the button map: RT pass, B ○ / X □ (no shot button: the right stick shoots), R3, RB poke (and the draw), A lift, Y pin, LB, LT vision, L3 hustle; the d-pad does not skate', () => {
   assert.equal(gp([0, 0, 0, 0], PAD.RT).pad.pass, true);
   assert.equal(gp([0, 0, 0, 0], PAD.A).pad.pass, false, 'A is not the pass any more');
-  assert.equal(gp([0, 0, 0, 0], PAD.B).pad.shoot, true);
+  assert.equal(gp([0, 0, 0, 0], PAD.B).pad.shoot, false, 'B is not a shot any more');
+  assert.equal(gp([0, 0, 0, 0], PAD.B).pad.o, true);
+  assert.equal(gp([0, 0, 0, 0], PAD.X).pad.sq, true);
+  assert.equal(gp([0, 0, 0, 0], PAD.R3).pad.r3, true);
   assert.equal(gp([0, 0, 0, 0], PAD.RT).pad.shoot, false, 'RT is not a shot');
   const rb = gp([0, 0, 0, 0], PAD.RB).pad;
   assert.ok(rb.poke && rb.faceoff, 'RB: poke check, and the draw at a faceoff');

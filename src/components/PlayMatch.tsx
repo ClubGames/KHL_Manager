@@ -30,7 +30,7 @@ type Phase = 'intro' | 'playing' | 'break' | 'shootout' | 'final';
 interface Hud {
   clock: number; len: number; score: [number, number]; shots: [number, number]; men: [number, number];
   boxed: [{ id: string; left: number }[], { id: string; left: number }[]]; delayed: 0 | 1 | null; mode: PlayRink['mode'];
-  ctl: string | null; power: number; context: 'carry' | 'support' | 'defend'; labels: { shoot: string; pass: string; deke: string }; energy: number; faceoff: boolean; foCue: 'ready' | 'now' | null; foCall: string | null; pulled: boolean; move: string | null;
+  ctl: string | null; power: number; context: 'carry' | 'support' | 'defend' | 'celebrate' | 'stop'; labels: { shoot: string; pass: string; deke: string }; energy: number; faceoff: boolean; foCue: 'ready' | 'now' | null; foCall: string | null; pulled: boolean; move: string | null;
   /** the timeout under way; whether the manager still has his; his unit on the ice in words */
   to: { side: 0 | 1; left: number } | null; tol: boolean; line: string;
 }
@@ -45,10 +45,13 @@ const KEY_HELP: [string, string][] = [
   ['K / E', 'пас в сторону стика; держать — пас верхом; в обороне — смена игрока; в атаке без шайбы — «дай пас»'],
   ['L / Q', 'финт (с рывком — вертушка, стик назад — протяжка, дважды — между ног); в замахе — ложный замах; в обороне — отбор клюшкой (сзади — подбить клюшку)'],
   ['U / Z', 'модификатор (как LB): в обороне — блокировать бросок (держать); с шайбой: + K/E — пас верхом, + L/Q — особые финты (стик назад — между ног, вбок — протяжка, прямо — ложный бросок)'],
-  ['I / X', 'в обороне — подбить клюшку'],
-  ['O / Y', 'в обороне — прижать к борту'],
+  ['I / X', 'в обороне — подбить клюшку; с шайбой (держать) — прикрыть шайбу корпусом'],
+  ['O / Y', 'в обороне — прижать к борту; с шайбой у борта (держать) — игра в коньках; дважды — драка'],
   ['H / 1', 'в обороне — толчок (Пробел/J — силовой приём плечом)'],
-  ['M / 3', 'контроль обзора (держать): лицом к шайбе, отход спиной'],
+  ['M / 3', 'контроль обзора (держать): лицом к шайбе, отход спиной; с шайбой — держать лицо в одну сторону, коротко — вертушка'],
+  ['; / 5', 'R3: с шайбой — пнуть шайбу коньком, под пас — принять на конёк; в обороне — силовой бедром'],
+  ['6', 'драка с ближайшим соперником (в игре — сразу свисток; пять минут обоим)'],
+  [', / .', 'после гола (с I/X, O/Y, M/3, K/E, ;) — празднование: ○ и □'],
   ['N / 2', 'ускорение (держится, пока катитесь; ещё раз — выкл.)'],
   ['Пробел без шайбы', 'в атаке — держать стик для броска в одно касание (пас прилетит — бросок сразу)'],
   ['F', 'вбрасывание: нажмите, когда судья бросает шайбу (Пробел и K тоже работают, но окно уже)'],
@@ -75,25 +78,33 @@ const PAD_HELP: [string, string][] = [
   ['Правый стик: вниз и вверх', 'щелчок (дольше вниз — сильнее)'],
   ['Правый стик: рывки и круги', 'финты: рывок вбок — финт, вбок туда-обратно — между ног, круг — вертушка, вниз и отпустить — ложный замах'],
   ['LB + правый стик', 'особые финты: вбок — протяжка, вниз — между ног, вверх — ложный бросок'],
-  ['RT', 'пас: коротко — мягкий, держать — сильнее; LB + RT — пас верхом'],
+  ['LB + рывок левого стика', 'финт одним касанием: вбок — финт, назад — между ног, вперёд — протяжка'],
+  ['RT', 'пас: коротко — мягкий, держать — сильнее; LB + RT — пас верхом; LB во время замаха — отменить пас'],
   ['RT держать + правый стик', 'быстрое ведение без случайных финтов (отпустите RT со стиком в центре — пас)'],
+  ['RB + правый стик вверх', 'вброс шайбы в зону (RB подержать — подброс над клюшками)'],
+  ['A (держать)', 'прикрыть шайбу корпусом'],
+  ['Y (держать) у борта', 'игра в коньках у борта'],
+  ['LT', 'держать — лицо в одну сторону, катиться в любую; коротко — вертушка'],
+  ['R3', 'пнуть шайбу коньком; без шайбы, когда летит пас, — принять на конёк'],
   ['L3', 'ускорение (пока катитесь)'],
   ['D-pad вправо', 'смена звена нападения'],
-  ['B', 'бросок кнопкой (держать — сильнее), дополнительно'],
   ['Оборона', ''],
   ['LT', 'контроль обзора: игрок смотрит на шайбу, отходит спиной'],
   ['LB', 'блокировать бросок (держать): шире и надёжнее, но медленнее'],
-  ['RB', 'отбор клюшкой'],
+  ['RB', 'отбор клюшкой; держать — клюшкой по льду из стороны в сторону'],
+  ['LB + RB', 'бросок под шайбу (лечь, перекрыть бросок или пас)'],
   ['RT', 'сменить игрока (ближе к шайбе или в сторону левого стика)'],
   ['Y', 'прижать к борту'],
   ['A', 'подбить клюшку'],
   ['Правый стик вверх', 'толчок'],
   ['Правый стик вниз и вверх', 'силовой приём плечом'],
-  ['B', 'силовой приём кнопкой (плечом, бедром или к борту — по ситуации)'],
+  ['R3', 'силовой приём бедром'],
   ['D-pad вверх / вниз', 'форчекинг / выход из зоны (переключение тактики)'],
   ['D-pad влево', 'смена пары защитников'],
   ['Прочее', ''],
   ['RB / R3 / правый стик', 'вбрасывание: в момент, когда судья бросает шайбу'],
+  ['Y дважды', 'драка с ближайшим соперником (пять минут обоим, команды в равных составах)'],
+  ['После гола', 'празднование: A, B, X, Y; LT — верхом на клюшке, RT — на колене, R3 — кулак (и вместе с ними)'],
   ['Back', 'снять / вернуть вратаря'],
   ['Start', 'пауза (там же — тайм-аут, 30 с, один на матч)'],
 ];
@@ -133,7 +144,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   const touch = useRef<TouchState>(emptyTouch());
   const mouse = useRef<MouseState>(newMouse());
   const goals = useRef<GoalItem[]>([]);
-  const carry = useRef<[[string, number][], [string, number][]] | null>(null);
+  const carry = useRef<[[string, number, boolean?][], [string, number, boolean?][]] | null>(null);
   /** each team's timeout still to take this match (one per game) */
   const timeouts = useRef<[boolean, boolean]>([true, true]);
   const toastId = useRef(0);
@@ -182,7 +193,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
     }
     sim.beginPlayed(k);
     const start = sim.sec;
-    const box = carry.current ? ([carry.current[0].map(([id, end]) => [id, end - start]), carry.current[1].map(([id, end]) => [id, end - start])] as [[string, number][], [string, number][]]) : undefined;
+    const box = carry.current ? ([carry.current[0].map(([id, end, coin]) => [id, end - start, coin]), carry.current[1].map(([id, end, coin]) => [id, end - start, coin])] as [[string, number, boolean?][], [string, number, boolean?][]]) : undefined;
     rink.current = new PlayRink({
       home: H, away: A, players: P, lineups: [sim.team(0).lineup, sim.team(1).lineup], userSide: userIdx, kind: k,
       flip: endsSwitched(sim.period), periodMinutes: settings.playPeriod, penaltyClock: settings.playPenaltyClock, difficulty: settings.playDifficulty, autoSwitch: settings.playAutoSwitch,
@@ -727,19 +738,22 @@ function FloatStick({ className, R, hint, onVec, data }: { className: string; R:
  * for a slap / snap shot, flick for a wrist shot, sideways for dekes, a poke check on defence) in the middle of
  * the right half, and the buttons at the right edge.
  */
-type TouchKey = 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff' | 'lb' | 'lift' | 'pin' | 'push' | 'vision' | 'hustle';
+type TouchKey = 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff' | 'lb' | 'lift' | 'pin' | 'push' | 'vision' | 'hustle' | 'r3' | 'fight' | 'o' | 'sq';
+type TouchContext = 'carry' | 'support' | 'defend' | 'celebrate' | 'stop';
 /** The extra buttons above the main ones, by the situation (the gamepad's NHL buttons). */
-const TOUCH_EXTRA: Record<'carry' | 'support' | 'defend', [TouchKey, string, string][]> = {
-  carry: [['lb', 'Верхом', 'держать: пас верхом, финты — особые'], ['hustle', 'Ускор.', 'ускорение']],
-  support: [['hustle', 'Ускор.', 'ускорение']],
-  defend: [['lb', 'Блок', 'держать: блокировать бросок'], ['lift', 'Подбить', 'подбить клюшку'], ['pin', 'К борту', 'прижать к борту'], ['push', 'Толчок', 'толчок'], ['vision', 'Обзор', 'держать: лицом к шайбе, спиной назад']],
+const TOUCH_EXTRA: Record<TouchContext, [TouchKey, string, string][]> = {
+  carry: [['lb', 'Верхом', 'держать: пас верхом, финты — особые'], ['lift', 'Прикрыть', 'держать: прикрыть шайбу корпусом'], ['pin', 'У борта', 'держать у борта: игра в коньках'], ['r3', 'Конёк', 'пнуть шайбу коньком'], ['hustle', 'Ускор.', 'ускорение']],
+  support: [['r3', 'На конёк', 'принять пас на конёк'], ['hustle', 'Ускор.', 'ускорение']],
+  defend: [['lb', 'Блок', 'держать: блокировать бросок'], ['lift', 'Подбить', 'подбить клюшку'], ['pin', 'К борту', 'прижать к борту'], ['push', 'Толчок', 'толчок'], ['r3', 'Бедро', 'силовой приём бедром'], ['vision', 'Обзор', 'держать: лицом к шайбе, спиной назад']],
+  celebrate: [['o', 'Лук', 'лук и стрела'], ['pin', 'Трибуны', 'слышу трибуны'], ['vision', 'Клюшка', 'верхом на клюшке'], ['r3', 'Кулак', 'кулак (и вместе с клюшкой / коленом)']],
+  stop: [['fight', 'Драка', 'сбросить перчатки с ближайшим соперником']],
 };
 /** The shortest press a touch button gives the rink (ms): several of its 1/60 s steps. */
 const TAP_MS = 110;
 
-export function TouchControls({ touch, labels, onCommand, pulled, faceoff, context = 'carry', timeout = true }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean; faceoff: boolean; context?: 'carry' | 'support' | 'defend'; /** the timeout can still be called */ timeout?: boolean }) {
+export function TouchControls({ touch, labels, onCommand, pulled, faceoff, context = 'carry', timeout = true }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean; faceoff: boolean; context?: TouchContext; /** the timeout can still be called */ timeout?: boolean }) {
   // a button that disappears with the situation (defence → attack) is let go
-  useEffect(() => { for (const k of ['lb', 'lift', 'pin', 'push', 'vision', 'hustle'] as const) if (!TOUCH_EXTRA[context].some(([x]) => x === k)) touch.current[k] = false; }, [context, touch]);
+  useEffect(() => { for (const k of ['lb', 'lift', 'pin', 'push', 'vision', 'hustle', 'r3', 'fight', 'o', 'sq'] as const) if (!TOUCH_EXTRA[context].some(([x]) => x === k)) touch.current[k] = false; }, [context, touch]);
   useEffect(() => () => { touch.current = emptyTouch(); }, [touch]);
   useEffect(() => { if (!faceoff) touch.current.faceoff = false; }, [faceoff, touch]);
   // A quick tap is held down for a moment: a press and a release inside one frame would never reach the rink
@@ -772,7 +786,7 @@ export function TouchControls({ touch, labels, onCommand, pulled, faceoff, conte
   // thumb; pass next to it; the deke, the switch and the burst in an arc above; the situation's extras in an outer arc
   // (all reached by rolling the thumb, none hidden under another). Positions from the bottom-right corner, px.
   // (on defence the pass button switches the player already: no second «Смена» there)
-  const outer: [TouchKey, string, string][] = [...(context === 'defend' ? [] : [['swap', 'Смена', 'сменить игрока'] as [TouchKey, string, string]]), ...TOUCH_EXTRA[context]];
+  const outer: [TouchKey, string, string][] = [...(context === 'defend' || context === 'celebrate' || context === 'stop' ? [] : [['swap', 'Смена', 'сменить игрока'] as [TouchKey, string, string]]), ...TOUCH_EXTRA[context]];
   /** A button of `size` on the arc of radius r round the shot button's centre, at angle a (π: left of it, π/2: above). */
   const arc = (a: number, r: number, size: number) => ({ right: Math.max(2, 40 - Math.cos(a) * r - size / 2), bottom: 40 + Math.sin(a) * r - size / 2 });
   const ring = (i: number, n: number) => arc(n > 1 ? Math.PI + (Math.PI * .5 - Math.PI) * (i / (n - 1)) : Math.PI * .75, 180, 50);

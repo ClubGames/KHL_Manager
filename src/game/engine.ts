@@ -44,7 +44,7 @@ interface SimSnap {
 /** A play of a period played on the rink (see GameSim.recordPlayed). Coordinates as in the shot map (0…100). */
 export type PlayedRecord =
   | { type: 'shot'; side: TI; shooter: string; goalie: string | null; outcome: 'goal' | 'save' | 'miss' | 'block'; post?: boolean; blocker?: string; assists: string[]; strength: Strength; shotType: NonNullable<GameEvent['shotType']>; x: number; y: number; xg: number; zone: ShotZone; ice: [(string | null)[], (string | null)[]] }
-  | { type: 'penalty'; side: TI; player: string; min: 2 | 4 | 5; reason: string }
+  | { type: 'penalty'; side: TI; player: string; min: 2 | 4 | 5; reason: string; /** a coincidental major (a fight): served in full, the team not short-handed */ coin?: boolean }
   | { type: 'hit'; side: TI; player: string; victim: string }
   | { type: 'info'; side: TI; text: string };
 
@@ -63,6 +63,8 @@ export interface Pen {
   min: number;
   start: number;
   end: number;
+  /** a coincidental major (a fight, five minutes to each side): served, but nobody is short-handed for it */
+  coin?: boolean;
 }
 /** Skaters a team has with `n` penalties running: never fewer than three. */
 export const skatersFor = (running: number) => 5 - Math.min(2, running);
@@ -397,12 +399,12 @@ export class GameSim {
   }
   /** Absolute second at which each team is back at full strength (queued penalties included). */
   private penUntil(): [number, number] {
-    const last = (i: TI) => this.pens[i].reduce((m, x) => Math.max(m, x.end), 0);
+    const last = (i: TI) => this.pens[i].reduce((m, x) => (x.coin ? m : Math.max(m, x.end)), 0);
     return [last(0), last(1)];
   }
   /** Penalties running at second `t`. */
   private running(i: TI, t = this.sec): Pen[] {
-    return this.pens[i].filter((x) => x.start <= t && t < x.end);
+    return this.pens[i].filter((x) => !x.coin && x.start <= t && t < x.end);
   }
   /** Skaters on the ice for each team right now (5, 4 or 3). */
   men(t = this.sec): [number, number] {
@@ -412,13 +414,13 @@ export class GameSim {
   private penSlot(i: TI): number {
     const list = this.pens[i];
     const cands = [this.sec, ...list.map((x) => x.end).filter((t) => t > this.sec)].sort((a, b) => a - b);
-    for (const t of cands) if (list.filter((x) => x.start <= t && t < x.end).length < 2) return t;
+    for (const t of cands) if (list.filter((x) => !x.coin && x.start <= t && t < x.end).length < 2) return t;
     return cands[cands.length - 1];
   }
   /** Queued penalties move up when a running one ends early. */
   private reschedule(i: TI) {
-    const waiting = this.pens[i].filter((x) => x.start > this.sec).sort((a, b) => a.start - b.start);
-    this.pens[i] = this.pens[i].filter((x) => x.start <= this.sec);
+    const waiting = this.pens[i].filter((x) => x.start > this.sec && !x.coin).sort((a, b) => a.start - b.start);
+    this.pens[i] = this.pens[i].filter((x) => x.start <= this.sec || x.coin);
     for (const w of waiting) {
       const start = this.penSlot(i);
       this.pens[i].push({ ...w, start, end: start + w.min * 60 });
@@ -438,7 +440,8 @@ export class GameSim {
   }
   /** The penalty box as [start, end] pairs per team, for the live scoreboard and the rink. */
   private boxNow(): [[number, number][], [number, number][]] {
-    return [this.pens[0].map((x): [number, number] => [x.start, x.end]), this.pens[1].map((x): [number, number] => [x.start, x.end])];
+    // (coincidental majors leave nobody short-handed: not in the strength the scoreboard and the rink read)
+    return [this.pens[0].filter((x) => !x.coin).map((x): [number, number] => [x.start, x.end]), this.pens[1].filter((x) => !x.coin).map((x): [number, number] => [x.start, x.end])];
   }
   /** Minutes of goalies already replaced this game, and the second the goalie now in net came in. */
   private gMin: Record<string, number> = {};
@@ -1139,6 +1142,12 @@ export class GameSim {
       this.line(r.player).pim += min;
       this.stats[i].pim += min;
       this.pens[i] = this.pens[i].filter((x) => x.end > this.sec);
+      if (r.coin) {
+        // a fight: five minutes each, the teams at full strength (no power play)
+        this.pens[i].push({ player: r.player, min, start: this.sec, end: this.sec + min * 60, coin: true });
+        this.push({ type: 'penalty', team: teamId, player: r.player, pim: min, pp: false, penUntil: this.penUntil(), boxUntil: this.sec + min * 60, text: `Штраф ${min} мин: ${this.P[r.player]?.name ?? ''} (${this.label(i)}) — ${r.reason} (взаимный)` });
+        return this.events[this.events.length - 1];
+      }
       const start = this.penSlot(i), boxUntil = start + min * 60;
       this.pens[i].push({ player: r.player, min, start, end: boxUntil });
       this.stats[o].ppChances++;
@@ -1202,8 +1211,9 @@ export class GameSim {
     return this.events.slice(start);
   }
   /** Penalties still running at the end of a played block: [player, end] per team (they carry over to the next one). */
-  playedBox(): [[string, number][], [string, number][]] {
-    return [this.pens[0].filter((x) => x.end > this.sec).map((x): [string, number] => [x.player, x.end]), this.pens[1].filter((x) => x.end > this.sec).map((x): [string, number] => [x.player, x.end])];
+  playedBox(): [[string, number, boolean?][], [string, number, boolean?][]] {
+    const of = (i: TI) => this.pens[i].filter((x) => x.end > this.sec).map((x): [string, number, boolean?] => (x.coin ? [x.player, x.end, true] : [x.player, x.end]));
+    return [of(0), of(1)];
   }
 
   private takeHit(i: TI, iceI: (string | null)[], iceO: (string | null)[]) {
