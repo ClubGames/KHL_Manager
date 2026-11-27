@@ -151,6 +151,21 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
         </Row>
       </Section>
 
+      <Section title="Звук" hint="Все звуки созданы прямо в игре синтезатором (без записанных сэмплов и чужих аудиофайлов), так что никаких авторских прав. Звучат матчи — и тот, что вы смотрите, и тот, где играете сами.">
+        <Row label="Звук в матчах" hint="Клюшки и шайба, борт и стекло, штанга, силовые приёмы, сейвы, свисток судьи, сирена и гудок после гола, болельщики и органист. Быстро выключить можно и кнопкой «Звук» на площадке.">
+          <Toggle id="sound" value={s.sound} onChange={(v) => set({ sound: v })} />
+        </Row>
+        <Row label="Громкость" disabled={!s.sound}>
+          <Choice id="soundVolume" value={s.soundVolume} onChange={(v) => set({ soundVolume: v })} options={[[.25, '25%'], [.5, '50%'], [.75, '75%'], [1, '100%']]} disabled={!s.sound} />
+        </Row>
+        <Row label="Болельщики" hint="Гул трибун, который нарастает у ворот соперника, рёв после гола хозяев, «у-у-у» после штанги, аплодисменты." disabled={!s.sound}>
+          <Choice id="soundCrowd" value={s.soundCrowd} onChange={(v) => set({ soundCrowd: v })} options={[['off', 'Выкл'], ['quiet', 'Тихо'], ['normal', 'Обычно'], ['loud', 'Громко']]} disabled={!s.sound} />
+        </Row>
+        <Row label="Органист" hint="Короткие мелодии органа на остановках и после гола хозяев; на некоторые трибуны отвечают хлопками." disabled={!s.sound}>
+          <Toggle id="soundOrgan" value={s.soundOrgan} onChange={(v) => set({ soundOrgan: v })} disabled={!s.sound} />
+        </Row>
+      </Section>
+
       <Section title="Симуляция">
         <Row label="Открывать протокол после симуляции матча" hint="Если симуляция сыграла один матч вашей команды, сразу открывается его протокол с повторами голов.">
           <Toggle id="simOpenReport" value={s.simOpenReport} onChange={(v) => set({ simOpenReport: v })} />

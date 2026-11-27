@@ -72,6 +72,16 @@ try {
   await page.keyboard.press('KeyC');
   await page.waitForTimeout(300);
   assert.ok(await page.locator('[data-play-hud]').count(), 'HUD');
+  // the match sound: started by the first click (the dev server lets the test reach the engine module), the speaker
+  // button on the rink switches it off and on
+  const soundState = () => page.evaluate(async () => { try { const m = await import('/src/components/sound/engine.ts'); const e = m.audioAny(); return e ? e.ctx.state + (m.audio() ? '+on' : '+off') : 'none'; } catch { return 'n/a'; } });
+  const st0 = await soundState();
+  if (st0 !== 'n/a') assert.equal(st0, 'running+on', 'the match sound runs after the first click');
+  await page.locator('[data-live-sound-toggle]').click();
+  assert.equal(await page.locator('[data-live-sound-toggle]').getAttribute('aria-pressed'), 'false', 'the speaker button mutes');
+  if (st0 !== 'n/a') assert.equal(await soundState(), 'none', 'muted: no sound');
+  await page.locator('[data-live-sound-toggle]').click();
+  if (st0 !== 'n/a') assert.equal(await soundState(), 'running+on', 'unmuted: the sound is back');
   // ---- pause and simulate the rest
   await page.keyboard.press('Escape');
   await page.locator('[data-play-resume]').waitFor();

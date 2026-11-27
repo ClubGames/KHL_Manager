@@ -57,6 +57,14 @@ export type Settings = {
   playAutoSwitch: boolean;
   /** a played match: on-screen controls on a touch screen (stick and buttons) */
   playTouch: 'auto' | 'on' | 'off';
+  /** match sound (all of it synthesized in the app: sticks, boards, whistle, horn, the crowd, the organ) */
+  sound: boolean;
+  /** master volume 0…1 */
+  soundVolume: number;
+  /** how loud the crowd is */
+  soundCrowd: 'off' | 'quiet' | 'normal' | 'loud';
+  /** the arena organ at stoppages and after home goals */
+  soundOrgan: boolean;
   /** a played match: the clock while one side is short-handed — like the period, real time, or real time ×2 / ×4 */
   playPenaltyClock: PenaltyClock;
 };
@@ -70,12 +78,14 @@ export function defaultSettings(): Settings {
     videoHeight: coarse() ? 720 : 1080, videoFps: 30, videoSlowmo: true, videoGraphics: true, videoQuality: 'view',
     matchSpeed: 2, matchRink2d: true, matchView: '3d', matchCamera: 'broadcast', matchZoom: 1, matchMinimap: true, matchIntro: true, matchReplays: true, matchAdvice: true, simOpenReport: true, simConfirm: true,
     playPeriod: 5, playDifficulty: 'pro', playAutoSwitch: true, playTouch: 'auto', playPenaltyClock: 'period',
+    sound: true, soundVolume: .75, soundCrowd: 'normal', soundOrgan: true,
   };
 }
 
 const CAMS: ReplayCamera[] = ['auto', 'broadcast', 'ice', 'net', 'goal', 'chase', 'end', 'sky', 'stands', 'corner', 'overhead', 'blue', 'rail', 'puck'];
 export const REPLAY_SPEEDS = [.25, .5, .75, 1, 1.5, 2];
 export const MATCH_ZOOMS = [.7, .85, 1, 1.2, 1.45];
+export const SOUND_VOLUMES = [.25, .5, .75, 1];
 
 /** Keeps only known keys with valid values (anything else falls back to the default). */
 export function sanitizeSettings(raw: unknown): Settings {
@@ -92,6 +102,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     videoSlowmo: bool('videoSlowmo'), videoGraphics: bool('videoGraphics'), videoQuality: one('videoQuality', ['fast', 'view'] as const),
     matchSpeed: one('matchSpeed', [1, 2, 4] as const), matchRink2d: bool('matchRink2d'), matchView: one('matchView', ['2d', '3d'] as const), matchCamera: one('matchCamera', ['broadcast', 'high', 'ice', 'end', 'overhead', 'dynamic', 'zone', 'vertical'] as const), matchZoom: one('matchZoom', MATCH_ZOOMS), matchMinimap: bool('matchMinimap'), matchIntro: bool('matchIntro'), matchReplays: bool('matchReplays'), matchAdvice: bool('matchAdvice'), simOpenReport: bool('simOpenReport'), simConfirm: bool('simConfirm'),
     playPeriod: one('playPeriod', [3, 5, 8, 12, 20] as const), playDifficulty: one('playDifficulty', ['rookie', 'pro', 'star'] as const), playAutoSwitch: bool('playAutoSwitch'), playTouch: one('playTouch', ['auto', 'on', 'off'] as const), playPenaltyClock: one('playPenaltyClock', ['period', 'real', 2, 4] as const),
+    sound: bool('sound'), soundVolume: one('soundVolume', SOUND_VOLUMES), soundCrowd: one('soundCrowd', ['off', 'quiet', 'normal', 'loud'] as const), soundOrgan: bool('soundOrgan'),
   };
 }
 

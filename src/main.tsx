@@ -5,10 +5,13 @@ import "./index.css";
 import App from "./App";
 import { initPlatform } from "./platform";
 import { initGamepadNav } from "./gamepadNav";
+import { installSoundUnlock } from "./components/sound/engine";
 
 // neither may keep the interface from starting (a WebView without some API, a phone sensor listed as a gamepad…)
 try { initPlatform(); } catch (e) { console.error("platform init failed:", e); }
 try { initGamepadNav(); } catch (e) { console.error("gamepad navigation init failed:", e); }
+// the match sound starts on the first tap / click (browsers allow audio only from a gesture)
+try { installSoundUnlock(); } catch (e) { console.error("sound init failed:", e); }
 
 /** Tells the boot watchdog in index.html that React has drawn the interface. */
 function Mounted({ children }: { children: ReactNode }) {
