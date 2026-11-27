@@ -63,6 +63,8 @@ export type GoaliePose = {
   poke?: T.Vector3 | null; pokeWeight?: number;
   /** head and shoulders follow the puck beyond his body angle (rad, + to his left) */
   look?: number;
+  /** the frozen puck: caught in the glove (held up at the chest) or covered on the ice under him, 0..1 into it */
+  hold?: 'glove' | 'cover' | null; holdW?: number;
 };
 
 type Rest = { pos: T.Vector3; quat: T.Quaternion };
@@ -407,20 +409,34 @@ export class PlayerFigure {
     // infractions (see FoulMove): a quick rise into the act, held, then out (`fw` the envelope of each)
     const fw = (k: LiveMove) => (mv === k ? smooth(clamp01(mu / .22)) * (1 - smooth(clamp01((mu - .72) / .28))) : 0);
     const fHead = fw('fHead'), fElbow = fw('fElbow'), fKnee = fw('fKnee'), fSlash = fw('fSlash'), fHigh = fw('fHigh'), fTrip = fw('fTrip');
-    const fHook = fw('fHook'), fHold = fw('fHold'), fCross = fw('fCross'), fRough = fw('fRough'), fBoard = fw('fBoard');
-    const fArm = Math.max(fHead, fElbow, fHold, fRough);
+    const fHook = fw('fHook'), fHold = fw('fHold'), fCross = fw('fCross'), fBoard = fw('fBoard');
+    let fRough = fw('fRough');
     const stag = clamp01(opts.stagger ?? 0), wob = stag * Math.sin(stag * 18), down = smooth(clamp01(opts.down ?? 0));
+    // the manager's goal celebrations (moveT over the whole of it): in quickly, held, out at the end
+    const cw = (k: LiveMove) => (mv === k ? smooth(clamp01(mu / .1)) * (1 - smooth(clamp01((mu - .86) / .14))) : 0);
+    const cArms = cw('cel1'), cBow = cw('cel2'), cSky = cw('cel3'), cEar = cw('cel4');
+    const cStick = Math.max(cw('celStick'), cw('celStickPump')), cKnee = Math.max(cw('celKnee'), cw('celKneePump'));
+    const cPump = Math.max(cw('celPump'), cw('celStickPump'), cw('celKneePump'));
+    if (cArms > 0) cheer = Math.max(cheer, cArms);
+    if (cPump > 0) opts = { ...opts, pump: Math.max(opts.pump ?? 0, cPump), t: (opts.now ?? 0) };
+    if (cKnee > 0) opts = { ...opts, kneel: Math.max(opts.kneel ?? 0, cKnee) };
+    // a fight: the gloves off, punches with the right (as roughing, harder), the left holding his jersey
+    const fgt = mv === 'fight' ? smooth(clamp01(mu / .08)) : 0;
+    const kick = w('kick'), dive = mv === 'dive' ? smooth(clamp01(mu / .2)) : 0;
+    fRough = Math.max(fRough, fgt);
+    const fArm = Math.max(fHead, fElbow, fHold, fRough);
     // held stances (the played match): blocking — down on one knee, the stick flat across; a one-timer — the stick
     // cocked; calling for the puck — the blade tapping the ice; vision — wide, the stick out in front; hustle — leaning
     // into a burst; the manager's stickhandling turns the shoulders with the puck
     const stw = smooth(clamp01(opts.stanceT ?? 0)), st = opts.stance;
-    const blk = st === 'block' ? stw : 0, ot = st === 'oneTimer' ? stw : 0, call = st === 'call' ? stw : 0, vis = st === 'vision' ? stw : 0, hus = st === 'hustle' ? stw : 0;
+    const prot = st === 'protect' ? stw : 0, brd = st === 'board' ? stw : 0, swp = st === 'sweep' ? stw : 0;
+    const blk = Math.max(st === 'block' ? stw : 0, dive), ot = st === 'oneTimer' ? stw : 0, call = st === 'call' ? stw : 0, vis = st === 'vision' ? stw : 0, hus = st === 'hustle' ? stw : 0;
     const hdl = Math.max(-1, Math.min(1, opts.handle ?? 0)), shove = w('push'), now = opts.now ?? 0;
-    const kneel = Math.max(smooth(clamp01(opts.kneel ?? 0)), blk * .9);
+    const kneel = Math.max(smooth(clamp01(opts.kneel ?? 0)), (st === 'block' ? stw : 0) * .9);
     // Deeper knee bend on a hard stride, a little bob with every push.
     const crouch = lerp(.1 + .07 * amp + .012 * amp * Math.cos(phase * 2), .02, cheer) * (1 - walk) + walk * walkCrouch(phase) + Math.abs(bank) * .08 + Math.abs(deke) * .06 + chk * .1 + poke * .07
       + toe * .08 + btw * .16 + spin * .12 + hip * .14 - pin * .04 + lift * .05 - stag * .03 + rch * .14 + down * .22 + kneel * .42
-      + ot * .06 + vis * .08 + hus * .04 + Math.abs(hdl) * .05 + shove * .05
+      + ot * .06 + vis * .08 + hus * .04 + Math.abs(hdl) * .05 + shove * .05 + prot * .1 + brd * .2 + swp * .12 + cStick * .2 + fgt * .06 - kick * .04
       - fHead * .05 + fTrip * .14 + fKnee * .05 + fHook * .05 + fCross * .04 + fBoard * .06 - fRough * .03;
     this.rig.position.set(.035 * Math.sin(phase) * lerp(amp, .7, walk) * (1 - cheer) + bank * .1 + (opts.deke ?? 0) * .12 + wob * .08 + hip * .12 * m, LIFT - crouch, 0);
     // Shot profile: load (stick back, shoulders closed), whip through the puck, follow through.
@@ -433,11 +449,11 @@ export class PlayerFigure {
     // a body check turns the lead shoulder (the one away from the stick) into the man; a poke reaches with the top hand
     const twist = ((back ? .45 : -.55) * load + (back ? -.4 : .4) * follow) * size + deke * .5 + chk * .5 - poke * .3
       + toe * .3 + (mv === 'between' ? Math.sin(2 * Math.PI * mu) * .35 : 0) + hip * .9 + pin * .35 + wob * .3 - rch * .45
-      - ot * .4 + hdl * .22 * m
+      - ot * .4 + hdl * .22 * m - prot * .55 + brd * .25 + cBow * .5
       // the free arm's shoulder driven into the man (head, elbow, punches), the stick swung across (slash, trip)
       - (fHead * .55 + fElbow * .5 + fRough * (.3 + .25 * Math.sin(now * 9))) + fSlash * .3 + fTrip * .35 - fHook * .2;
     const lean = lerp(lerp(.2 + .14 * amp, .07, walk) + .1 * load * size, -.05, cheer) + chk * .22 + poke * .28 + btw * .25 + spin * .2 + toe * .1 - pin * .05 + lift * .18 - stag * .35 + rch * .42 - down * .45
-      - blk * .2 + vis * .06 + hus * .16 + shove * .22 + Math.abs(hdl) * .08
+      - blk * .2 + vis * .06 + hus * .16 + shove * .22 + Math.abs(hdl) * .08 + prot * .12 + brd * .3 + swp * .2 + cStick * .1 - cSky * .1 - cEar * .05
       + fHead * .12 + fElbow * .06 + fTrip * .3 + fHook * .14 + fCross * .24 + fBoard * .3 - fHold * .04 + fRough * .04 + fSlash * .1;
     // Shoulders counter-rotate the stride a little (real skaters swing the upper body against the legs).
     const swing = .07 * lerp(amp, 1.2, walk) * Math.sin(phase) * (1 - load) * (1 - follow) * (1 - cheer) * (1 + 1.6 * hus) * (1 - blk);
@@ -459,6 +475,12 @@ export class PlayerFigure {
       // on one knee: the left skate planted ahead, the right shin flat on the ice behind
       if (kneel > 0) feet[i].lerp(i ? vec(-.16, .1, -.62) : vec(.2, .023 + LIFT * .2, .38), kneel);
       if (walk > 0) { const wf = walkFoot(ph, side); feet[i].lerp(wf.foot, walk); yaw[i] = lerp(yaw[i], wf.yaw, walk); }
+      // a kick of the puck: the right skate swung forward and across under the body, then back
+      if (kick > 0 && i === 1) { feet[i].lerp(vec(-.02, .07, .48), kick); yaw[i] = lerp(yaw[i], .7, kick); }
+      // board play: wide, low, the skates working the puck between them
+      if (brd > 0) feet[i].x += side * .1 * brd;
+      // riding the stick: the skates together, gliding
+      if (cStick > 0) feet[i].lerp(vec(side * .14, .023 + LIFT * .2, i ? -.12 : .12), cStick);
       // a knee: the leg on the man's side swung out, the knee first, the skate off the ice
       if (fKnee > 0 && i === 1) { feet[i].lerp(vec(-.46, .3, .22), fKnee); yaw[i] = lerp(yaw[i], -.6, fKnee); }
     });
@@ -525,6 +547,32 @@ export class PlayerFigure {
     if (hus > 0) {
       // a burst: the stick in close, swinging with the stride
       carry = mixV(carry, vec(-.45 + .12 * Math.sin(phase), .05, .75), hus * .7); carryTop = mixV(carryTop, vec(.14, 1.0 - crouch, .22), hus * .6);
+    }
+    if (prot > 0) {
+      // protecting the puck: the stick out wide on the forehand side, the body (the lead shoulder) turned into the man
+      carry = mixV(carry, vec(-1.0, 0, .62), prot); carryTop = mixV(carryTop, vec(.06, .96 - crouch, .22), prot);
+    }
+    if (brd > 0) {
+      // on the boards: the blade down in his skates, the shaft almost upright, his body over the puck
+      carry = mixV(carry, vec(-.18, 0, .32), brd); carryTop = mixV(carryTop, vec(.1, .92 - crouch, .3), brd);
+    }
+    if (swp > 0) {
+      // a stick sweep: the blade flat on the ice in a wide arc in front, side to side
+      const sw = Math.sin(now * 8.5);
+      carry = mixV(carry, vec(-.35 + .8 * sw, 0, 1.25 - .25 * Math.abs(sw)), swp); carryTop = mixV(carryTop, vec(.05 + .1 * sw, .9 - crouch, .45), swp);
+    }
+    if (kick > 0) { carry = mixV(carry, vec(-.6, .02, .7), kick * .7); }
+    if (fgt > 0) {
+      // the gloves are off: the stick dropped at his feet
+      carry = mixV(carry, vec(-.9, 0, .1), fgt); carryTop = mixV(carryTop, vec(-.2, .03, 1.1), fgt);
+    }
+    if (cStick > 0) {
+      // riding the stick like a horse: the shaft between the legs, the blade on the ice behind, the knob out in front
+      carry = mixV(carry, vec(-.05, 0, -.75), cStick); carryTop = mixV(carryTop, vec(.0, .78 - crouch, .45), cStick);
+    }
+    if (cBow > 0) {
+      // the bow and arrow: the stick held out level in front like a bow
+      carry = mixV(carry, vec(.45, 1.35 - crouch, .75), cBow); carryTop = mixV(carryTop, vec(-.25, 1.3 - crouch, .55), cBow);
     }
     if (stag > 0) { carry = mixV(carry, vec(-.75, .35, .6), stag * .6); carryTop = mixV(carryTop, vec(.2, 1.15 - crouch, .25), stag * .5); }
     if (rch > 0) {
@@ -602,6 +650,16 @@ export class PlayerFigure {
         : vec(-.06, 1.5 - crouch, .3 + .32 * Math.pow(Math.max(0, Math.sin(now * 9)), .7));
       const pole = fHead === fArm || fElbow === fArm ? vec(-1, .55, .35) : fHold === fArm ? vec(-1, -.6, -.2) : vec(-1, -.3, -.4);
       this.arm('R', this.world(cur.lerp(hand, fArm)), this.dirWorld(pole));
+    } else if (cBow > 0 || cSky > 0 || cEar > 0) {
+      // the free right hand: the bowstring drawn back to the cheek / a finger up at the sky / a glove cupped at the ear
+      const b = this.bones, k = Math.max(cBow, cSky, cEar);
+      const cur = this.root.worldToLocal(b.HandR.getWorldPosition(new T.Vector3()));
+      const draw = smooth(clamp01((mu - .1) / .25)), tt2 = opts.now ?? 0;
+      const hand = cBow === k ? vec(lerp(-.2, -.12, draw), 1.45 - crouch, lerp(.5, .05, draw))
+        : cSky === k ? vec(-.22, 2.05 - crouch, .18)
+        : vec(-.24 + .02 * Math.sin(tt2 * 5), 1.62 - crouch, .02);
+      const pole = cSky === k ? vec(-1, .2, -.2) : vec(-1, -.4, -.5);
+      this.arm('R', this.world(cur.lerp(hand, k)), this.dirWorld(pole));
     } else if (shake > 0 || pump > 0 || bump > 0) {
       const b = this.bones;
       const now = this.root.worldToLocal(b.HandR.getWorldPosition(new T.Vector3()));
@@ -626,6 +684,9 @@ export class PlayerFigure {
     const m = this.hand;
     const sv = pose.save ? vec(pose.save.x * m, pose.save.y, pose.save.z) : null, w = sv ? smooth(pose.saveWeight ?? 0) : 0;
     let drop = clamp01(pose.drop), glove = 0, blocker = 0, padL = 0, padR = 0;
+    const hw = pose.hold ? smooth(clamp01(pose.holdW ?? 1)) : 0, gHold = pose.hold === 'glove' ? hw : 0, cHold = pose.hold === 'cover' ? hw : 0;
+    // covering it: down in the butterfly, bent over the puck
+    drop = Math.max(drop, cHold);
     if (sv && w > 0) {
       if (sv.y < .42) {
         drop = Math.max(drop, w); // along the ice: butterfly, the pad slides out toward a puck wide of him
@@ -639,7 +700,7 @@ export class PlayerFigure {
     const crouch = lerp(.2, .5, d) + tpush * .06 - (glove + blocker) * (1 - d) * .04;
     const slide = (padL - padR) * .14 + lat * .05;
     this.rig.position.set(slide, LIFT - crouch, -.08 * d);
-    const lean = lerp(.4, .18, d) + tpush * .1;
+    const lean = lerp(.4, .18, d) + tpush * .1 + cHold * .42 - gHold * .08;
     const reachX = sv ? Math.max(-1, Math.min(1, sv.x)) * w : 0; // leans into the save
     const look = Math.max(-.8, Math.min(.8, (pose.look ?? 0) * m));
     this.turn('Abdomen', _t1.setFromAxisAngle(Z, (-reachX * .32 - (padL - padR) * .1) * m).multiply(_t2.setFromAxisAngle(X, lean * .55)));
@@ -680,9 +741,18 @@ export class PlayerFigure {
     const g = this.stick(this.mir(heel), this.mir(top), -1, -m);
     const stance = vec(.5, lerp(.9, .85, d) - crouch * .45 + .2 * d, .38);
     const gloveAt = sv ? vec(Math.max(.2, Math.min(1.15, sv.x)), Math.max(.25, Math.min(1.75, sv.y + .05)), Math.max(.15, Math.min(.65, sv.z + .1))) : stance;
-    const left = this.mir(mixV(stance, gloveAt, glove));
-    const gp = this.mir(vec(1, -.8 + glove * .9, -.3)), bp = this.mir(vec(-1, -.8 + blocker * .7, -.3));
+    let gl = mixV(stance, gloveAt, glove);
+    // the puck held: the glove closed up at his chest; covered: the glove flat on the ice in front, over the puck
+    if (gHold > 0) gl = mixV(gl, vec(.26, 1.12 - crouch * .3, .3), gHold);
+    if (cHold > 0) gl = mixV(gl, vec(.04, .07, .5), cHold);
+    const left = this.mir(gl);
+    const gp = this.mir(vec(1, -.8 + Math.max(glove, gHold) * .9, -.3)), bp = this.mir(vec(-1, -.8 + blocker * .7, -.3));
     if (m > 0) this.arms(left, g.top, gp, bp); else this.arms(g.top, left, bp, gp);
+  }
+
+  /** Where the goalie's catching glove is in the world (the frozen puck goes there). */
+  gloveWorld(out = new T.Vector3()): T.Vector3 {
+    return (this.hand > 0 ? this.bones.HandL : this.bones.HandR).getWorldPosition(out);
   }
 
   /**

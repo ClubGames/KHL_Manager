@@ -67,7 +67,7 @@ export interface BlockInit {
   period: number;
   score: [number, number];
   goalies: [string | null, string | null];
-  box?: [[string, number][], [string, number][]];
+  box?: [[string, number, boolean?][], [string, number, boolean?][]];
   /** each side's timeout still to take this match */
   timeouts?: [boolean, boolean];
   ids: string[];

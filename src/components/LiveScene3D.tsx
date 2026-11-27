@@ -663,7 +663,17 @@ export function LiveScene3D(props: Props) {
             const attacker = !!carrier && carrier.side !== a.side;
             const pokeWeight = attacker && pw.y < .2 && pl.z > .4 && pd < 2.8 ? smooth01((2.8 - pd) / 1.0) * .85 : 0;
             const drop = Math.max(!attacker && pw.y < .3 && pl.z > -.3 && pd < 2.2 ? .6 * smooth01((2.2 - pd) / .8) : 0, save && a.save && a.save.y < .45 ? saveWeight * .8 : 0);
-            a.figure.goalie({ drop, lateral: clamp(lateral, -1, 1), save, saveWeight, poke: pl, pokeWeight, look: clamp(angleDiff(a.heading, facePuck), -1.2, 1.2) });
+            // the frozen puck: in his glove at the chest, or covered under him — the puck goes where his glove is
+            const hold = p.move === 'glove' || p.move === 'cover' ? p.move : null;
+            a.figure.goalie({ drop, lateral: clamp(lateral, -1, 1), save: hold ? null : save, saveWeight: hold ? 0 : saveWeight, poke: pl, pokeWeight: hold ? 0 : pokeWeight, look: clamp(angleDiff(a.heading, facePuck), -1.2, 1.2), hold, holdW: p.moveT ?? 1 });
+            if (hold && !f.faceoff) {
+              a.group.updateMatrixWorld(true);
+              const gw = a.figure.gloveWorld(local);
+              if (hold === 'glove') puck.position.set(gw.x, Math.max(PUCK_H / 2, gw.y - .04), gw.z);
+              else puck.position.set(gw.x, PUCK_H / 2, gw.z);
+              puckShadow.position.set(puck.position.x, .012, puck.position.z); puckShadow.visible = puck.position.y > .05;
+              trail.visible = false;
+            }
             continue;
           }
           // Heading: the rink AI's own facing (forward along the motion, backwards facing the puck when he retreats,
@@ -697,7 +707,8 @@ export function LiveScene3D(props: Props) {
           const cheer = goal && goal.side === p.side ? clamp((tau - goal.tau) / .3, 0, 1) * (1 - smooth01((tau - goal.tau - 4) / 1.5)) * (gp?.player === p.id ? 1 : .7) : 0;
           // the scorer himself: a fist pump, and (some of them) down on one knee sliding
           let pump = 0, kneel = 0;
-          if (goal && gp?.player === p.id) {
+          // (a celebration the manager picked replaces the automatic one)
+          if (goal && gp?.player === p.id && !p.move?.startsWith('cel')) {
             const gt = tau - goal.tau, style = [...p.id].reduce((h, c) => h + c.charCodeAt(0), 0) % 2;
             pump = smooth01((gt - .45) / .3) * (1 - smooth01((gt - 3.6) / .6));
             if (style) kneel = smooth01((gt - .3) / .35) * (1 - smooth01((gt - 2.4) / .5));

@@ -69,7 +69,7 @@ export class HostMatch implements MatchSide {
   readonly sim: GameSim;
   view = blankView();
   rink: PlayRink | null = null;
-  private carry: [[string, number][], [string, number][]] | null = null;
+  private carry: [[string, number, boolean?][], [string, number, boolean?][]] | null = null;
   /** each side's timeout still to take this match */
   private timeouts: [boolean, boolean] = [true, true];
   private guestPads: PadState[] = [];
@@ -111,7 +111,7 @@ export class HostMatch implements MatchSide {
     const s = this.sim;
     s.beginPlayed(k);
     const start = s.sec;
-    const box = this.carry ? ([this.carry[0].map(([id, end]) => [id, end - start]), this.carry[1].map(([id, end]) => [id, end - start])] as [[string, number][], [string, number][]]) : undefined;
+    const box = this.carry ? ([this.carry[0].map(([id, end, coin]) => [id, end - start, coin]), this.carry[1].map(([id, end, coin]) => [id, end - start, coin])] as [[string, number, boolean?][], [string, number, boolean?][]]) : undefined;
     const init: Omit<BlockInit, 'ids'> = { kind: k, flip: endsSwitched(s.period), period: s.period, score: [s.score[0], s.score[1]], goalies: [s.goalies[0] ?? s.team(0).lineup.starterG, s.goalies[1] ?? s.team(1).lineup.starterG], box, timeouts: this.timeouts };
     const rink = new PlayRink(rinkOptions(this.ctx, init, [this.ctx.mySide, this.guest]));
     const ids = rink.agentIds();

@@ -125,8 +125,10 @@ export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: R
   return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[shot], duration: 8, release, goal, tracks: tracks.map(tr => ({ ...tr, keys: tr.keys.map(mirror) })), puck: puck.map(mirror), scorer: e.player, attacking: side, dir: flip ? -1 : 1, shot };
 }
 
-/** Moves of the played match the 3D figures act out: dekes (side, toe drag, between the legs, spin-o-rama, shot fake), body checks (shoulder, hip, board pin), a stick lift — and the infractions (FoulMove). */
-export type LiveMove = 'side' | 'toe' | 'between' | 'spin' | 'fake' | 'shoulder' | 'hip' | 'pin' | 'lift' | 'reach' | 'push' | FoulMove;
+/** Moves of the played match the 3D figures act out: dekes (side, toe drag, between the legs, spin-o-rama, shot fake), body checks (shoulder, hip, board pin), a stick lift, a kick off the skate, a dive, a fight, the goalie's freeze (glove / cover), the goal celebrations — and the infractions (FoulMove). */
+export type LiveMove = 'side' | 'toe' | 'between' | 'spin' | 'fake' | 'shoulder' | 'hip' | 'pin' | 'lift' | 'reach' | 'push' | FoulMove
+  /** a kick of the puck off the skate, a dive to block, a fight, the goalie's freeze (glove / covered), the goal celebrations */
+  | 'kick' | 'dive' | 'fight' | 'glove' | 'cover' | 'cel1' | 'cel2' | 'cel3' | 'cel4' | 'celStick' | 'celKnee' | 'celPump' | 'celStickPump' | 'celKneePump';
 /**
  * The infraction itself, acted out by the man who commits it: a forearm / elbow up into the head, an elbow, a knee,
  * a slash (the stick raised and chopped down), a high stick, a trip (the stick swept into the skates), a hook (the
@@ -152,8 +154,8 @@ export function foulMove(reason: string): FoulMove | null {
   if (t.includes('сзади') || t.includes('на борт')) return 'fBoard';
   return null;
 }
-/** Held stances of the played match: blocking a shot, a one-timer ready, calling for a pass, the defensive vision stance, a hustle burst. */
-export type LiveStance = 'block' | 'oneTimer' | 'call' | 'vision' | 'hustle';
+/** Held stances of the played match: blocking a shot, a one-timer ready, calling for a pass, the defensive vision stance, a hustle burst, protecting the puck, board play, a stick sweep. */
+export type LiveStance = 'block' | 'oneTimer' | 'call' | 'vision' | 'hustle' | 'protect' | 'board' | 'sweep';
 export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: Point; goalie?: boolean; box?: boolean; /** facing (unit vector, metres: x along the rink, y across) when the rink AI knows it */ dir?: { x: number; y: number };
   /** the played match: the skater the manager controls; body language 0…1 (a fall, a body check, a poke check) and a deke (−1…1) */
   ctrl?: boolean; fall?: number; check?: number; poke?: number; deke?: number;

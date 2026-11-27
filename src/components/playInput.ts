@@ -6,7 +6,7 @@ import type { PadState } from '../game/playRink';
  * Keys are read by their physical code (KeyW, not «w»), so the controls do not depend on the keyboard layout —
  * a Russian layout works the same.
  */
-export type Action = 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff' | 'mod' | 'lift' | 'pin' | 'push' | 'vision' | 'hustle';
+export type Action = 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff' | 'mod' | 'lift' | 'pin' | 'push' | 'vision' | 'hustle' | 'r3' | 'fight' | 'o' | 'sq';
 export type Command = 'pause' | 'pull' | 'change' | 'replay' | 'changeF' | 'changeD' | 'forecheck' | 'breakout' | 'timeout';
 
 export const KEYS: Record<Action, string[]> = {
@@ -25,6 +25,12 @@ export const KEYS: Record<Action, string[]> = {
   push: ['KeyH', 'Digit1'],
   vision: ['KeyM', 'Digit3'],
   hustle: ['KeyN', 'Digit2'],
+  // R3 (a kick of the puck off the skate / taking a pass on it; a hip check on defence), the fight (△ twice on a
+  // pad), ○ and □ (the goal celebrations)
+  r3: ['Semicolon', 'Digit5'],
+  fight: ['Digit6'],
+  o: ['Comma'],
+  sq: ['Period'],
 };
 export const COMMAND_KEYS: Record<Command, string[]> = {
   pause: ['Escape', 'KeyP'],
@@ -51,17 +57,20 @@ export const CAPTURED = new Set([...Object.keys(MOVE), ...Object.values(KEYS).fl
  * stickhandling without dekes), LB + right stick special dekes, LB + RT saucer pass, L3 hustle, d-pad right an
  * offensive line change. Defence: RT switch player, RB poke check, A stick lift, Y board pin, LB block shot, LT vision
  * control, right stick up a push check / down then up a shoulder check, d-pad up forecheck, d-pad down breakout, d-pad
- * left a defensive line change. B shoots on offence (an extra, not in the NHL list). RB / R3 / the right stick win a
- * draw. Back pulls the goalie, Start pauses.
+ * left a defensive line change. With the puck: A held protects it, Y held on the boards plays it in the skates, LT
+ * held keeps the facing (a tap: a spin-o-rama), LB + a flick of the left stick one-touch dekes, RB + the right stick
+ * a dump-in (RB held a while: a flip), R3 kicks it off the skate. Defence: RB held a stick sweep, LB + RB a dive,
+ * R3 a hip check. Y twice drops the gloves. After a goal A / B / X / Y, LT, RT and R3 pick the celebration.
+ * RB / R3 / the right stick win a draw. Back pulls the goalie, Start pauses.
  */
 export const PAD = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, L3: 10, R3: 11, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 } as const;
-export const PAD_BUTTONS: Record<Action, number[]> = { shoot: [PAD.B], pass: [PAD.RT], deke: [], swap: [], sprint: [], faceoff: [PAD.RB, PAD.R3], mod: [PAD.LB], lift: [PAD.A], pin: [PAD.Y], push: [], vision: [PAD.LT], hustle: [PAD.L3] };
+export const PAD_BUTTONS: Record<Action, number[]> = { shoot: [], pass: [PAD.RT], deke: [], swap: [], sprint: [], faceoff: [PAD.RB, PAD.R3], mod: [PAD.LB], lift: [PAD.A], pin: [PAD.Y], push: [], vision: [PAD.LT], hustle: [PAD.L3], r3: [PAD.R3], fight: [], o: [PAD.B], sq: [PAD.X] };
 export const PAD_COMMANDS: Partial<Record<Command, number[]>> = { pause: [PAD.START], pull: [PAD.BACK], changeF: [PAD.RIGHT], changeD: [PAD.LEFT], forecheck: [PAD.UP], breakout: [PAD.DOWN] };
 
-/** The touch screen: the sticks, the main buttons, and the extra ones (lb — the modifier, lift, pin, push, vision, hustle). */
+/** The touch screen: the sticks, the main buttons, and the extra ones (lb — the modifier, lift, pin, push, vision, hustle, r3, fight, ○, □). */
 export interface TouchState { mx: number; my: number; sx: number; sy: number; shoot: boolean; pass: boolean; deke: boolean; swap: boolean; sprint: boolean; faceoff: boolean;
-  lb: boolean; lift: boolean; pin: boolean; push: boolean; vision: boolean; hustle: boolean }
-export const emptyTouch = (): TouchState => ({ mx: 0, my: 0, sx: 0, sy: 0, shoot: false, pass: false, deke: false, swap: false, sprint: false, faceoff: false, lb: false, lift: false, pin: false, push: false, vision: false, hustle: false });
+  lb: boolean; lift: boolean; pin: boolean; push: boolean; vision: boolean; hustle: boolean; r3: boolean; fight: boolean; o: boolean; sq: boolean }
+export const emptyTouch = (): TouchState => ({ mx: 0, my: 0, sx: 0, sy: 0, shoot: false, pass: false, deke: false, swap: false, sprint: false, faceoff: false, lb: false, lift: false, pin: false, push: false, vision: false, hustle: false, r3: false, fight: false, o: false, sq: false });
 
 export function keyboardPad(down: ReadonlySet<string>): PadState {
   let mx = 0, my = 0;
@@ -70,7 +79,7 @@ export function keyboardPad(down: ReadonlySet<string>): PadState {
   if (m > 1) { mx /= m; my /= m; }
   const on = (a: Action) => KEYS[a].some(k => down.has(k));
   return { mx, my, shoot: on('shoot'), pass: on('pass'), deke: on('deke'), swap: on('swap'), sprint: on('sprint'), faceoff: on('faceoff'),
-    lb: on('mod'), lift: on('lift'), pin: on('pin'), push: on('push'), vision: on('vision'), hustle: on('hustle') };
+    lb: on('mod'), lift: on('lift'), pin: on('pin'), push: on('push'), vision: on('vision'), hustle: on('hustle'), r3: on('r3'), fight: on('fight'), o: on('o'), sq: on('sq') };
 }
 
 type PadLike = { axes: readonly number[]; buttons: readonly { pressed: boolean; value: number }[] };
@@ -91,7 +100,7 @@ export function gamepadPad(pads: readonly (PadLike | null)[] | null | undefined)
       mx, my, sx, sy, shoot: on('shoot'), pass: on('pass'), deke: false, swap: false, sprint: false,
       // a draw is also won with the right stick, as in NHL
       faceoff: on('faceoff') || Math.hypot(sx, sy) > 0.6,
-      nhl: true, poke: btn(PAD.RB), lift: on('lift'), pin: on('pin'), lb: on('mod'), vision: on('vision'), hustle: on('hustle'),
+      nhl: true, poke: btn(PAD.RB), lift: on('lift'), pin: on('pin'), lb: on('mod'), vision: on('vision'), hustle: on('hustle'), r3: on('r3'), o: on('o'), sq: on('sq'),
     },
     commands, connected: true,
   };
@@ -114,7 +123,7 @@ export function mergePads(...pads: PadState[]): PadState {
   const any = (k: keyof PadState) => pads.some(p => !!p[k]);
   const out: PadState = { mx, my, sx, sy, shoot: any('shoot'), pass: any('pass'), deke: any('deke'), swap: any('swap'), sprint: any('sprint'), faceoff: any('faceoff') };
   // the extra buttons (every device has them now); the NHL scheme itself only when a gamepad is in use
-  Object.assign(out, { poke: any('poke'), lift: any('lift'), pin: any('pin'), lb: any('lb'), vision: any('vision'), hustle: any('hustle'), push: any('push') });
+  Object.assign(out, { poke: any('poke'), lift: any('lift'), pin: any('pin'), lb: any('lb'), vision: any('vision'), hustle: any('hustle'), push: any('push'), r3: any('r3'), fight: any('fight'), o: any('o'), sq: any('sq') });
   if (any('nhl')) out.nhl = true;
   return out;
 }
