@@ -200,7 +200,7 @@ test('faceoffs in the played match: lined up from the first frame, at a whistle 
   const f0 = k.frameAt(0);
   assert.ok(f0.skaters.filter(s => !s.goalie).every(s => Math.abs(W(s.pos).z) < 9), 'the opening faceoff: everybody at his place at once');
   let last = new Map<string, { x: number; z: number }>(), worst = 0, hMax = 0, rose = 0, faceoffs = 0, wasFace = false;
-  for (let i = 0; i < 240 * 60 && !k.ended; i++) {
+  for (let i = 0; i < 320 * 60 && !k.ended; i++) {
     k.advance(1 / 60, NO_PAD); k.drain();
     const f = k.frameAt(k.lastTau);
     for (const s of f.skaters) { const w = W(s.pos), l = last.get(s.id); if (l && !s.box) worst = Math.max(worst, Math.hypot(w.x - l.x, w.z - l.z)); }
@@ -209,7 +209,7 @@ test('faceoffs in the played match: lined up from the first frame, at a whistle 
     wasFace = !!f.faceoff;
   }
   assert.ok(worst < 1, `nobody jumps (${worst.toFixed(2)} m in a frame)`);
-  assert.ok(faceoffs > 3 && hMax > 1.3 && rose > 0, `the windup lifts the puck (${hMax.toFixed(2)} m)`);
+  assert.ok(faceoffs > 3 && hMax > 1.3 && rose > 0, `the windup lifts the puck (${hMax.toFixed(2)} m, ${faceoffs} faceoffs, rose ${rose})`);
   assert.ok(FO_DROP.windup > .2 && FO_DROP.battle > .3);
 });
 

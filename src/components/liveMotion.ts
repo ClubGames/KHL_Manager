@@ -31,6 +31,8 @@ export interface LiveSource {
   aimMarker?(): { x: number; y: number; z: number; charge: number } | null;
   /** set by the 3D view: a screen point (client px) → rink percent on the ice, for the mouse */
   screenPick?: ((cx: number, cy: number) => { x: number; y: number } | null) | null;
+  /** the played match: a timeout under way (whose, seconds left) — the coaches and the camera go to that bench */
+  timeoutNow?(): { side: 0 | 1; left: number } | null;
 }
 export interface LiveMotionLike {
   update(): void;

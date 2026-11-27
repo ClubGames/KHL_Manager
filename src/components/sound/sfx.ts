@@ -152,3 +152,10 @@ export function skateStop(power: number, pan = 0) {
   noise(e, { t, env: { a: .02, d: .22 + .2 * p, curve: 'lin' }, filter: 'bandpass', f: 5200, fTo: 2600, q: .9, gain: .12 + .2 * p, pan });
   noise(e, { t, env: { a: .03, d: .25 + .2 * p }, filter: 'highpass', f: 1800, gain: .05 + .08 * p, pan, pink: true });
 }
+
+/** One push of a skate blade (`power` 0…1): a short, airy scrape, its pitch a little different every time. */
+export function stride(power: number, pan = 0) {
+  const e = audio(); if (!e) return;
+  const t = e.ctx.currentTime + .005, p = clamp01(power);
+  noise(e, { t, env: { a: .035 + Math.random() * .03, d: .12 + Math.random() * .1, curve: 'lin' }, filter: 'bandpass', f: jitter(3800, .25), fTo: jitter(2900, .2), q: 1.1, gain: .035 + .05 * p, pan, pink: true });
+}

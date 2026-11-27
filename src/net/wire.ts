@@ -4,7 +4,7 @@
 import type { GameEvent, Lineup, Player } from '../types';
 import type { PadState, PenaltyClock, PlayOut, RinkFrame, RinkTick, Side } from '../game/playRink';
 
-export const PROTO = 1;
+export const PROTO = 2;
 /** TCP port of the host's game; the UDP port its «game here» beacons go to (see lan.ts). */
 export const LAN_PORT = 47810;
 export const BEACON_PORT = 47811;
@@ -47,8 +47,12 @@ export interface MatchView {
   soEvents: GameEvent[];
   /** who is ready for the next period (index: side) */
   ready: [boolean, boolean];
-  /** the side that paused the game (null: running) */
+  /** the side that paused the game (null: running) — online the match never stops for a menu now (see `away`) */
   paused: Side | null;
+  /** who is in his menu right now (the match goes on, the AI skates his team meanwhile) */
+  away?: [boolean, boolean];
+  /** the timeouts each side still has */
+  timeouts?: [boolean, boolean];
   /** a shootout / overtime finish */
   beyond: '' | 'ОТ' | 'Б';
 }
@@ -61,6 +65,8 @@ export interface BlockInit {
   score: [number, number];
   goalies: [string | null, string | null];
   box?: [[string, number][], [string, number][]];
+  /** each side's timeout still to take this match */
+  timeouts?: [boolean, boolean];
   ids: string[];
 }
 
@@ -86,7 +92,10 @@ export type NetMsg =
   | { t: 'view'; v: MatchView }
   | { t: 'pad'; p: PadState }
   | { t: 'cmd'; c: string }
+  /** in the menu (on) / back (off): the match goes on, his team plays itself meanwhile */
   | { t: 'pause'; on: boolean }
+  /** guest → host: its screen holds the play (the teams' entrance, a goal's replay) — the host waits for it */
+  | { t: 'hold'; on: boolean }
   /** guest → host: ready for the next period / the end of the match screen */
   | { t: 'next' }
   /** host → guest: back to the lobby (a rematch) */
@@ -99,14 +108,14 @@ const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
 /** A frame as arrays with the people as indices into the period's id table (a third of the JSON). */
 export function packFrame(f: RinkFrame, index: Map<string, number>): PackedFrame {
-  const sk = f.sk.map(s => [index.get(s.id) ?? -1, s.side, s.goalie ? 1 : 0, s.box ? 1 : 0, r3(s.x), r3(s.y), r3(s.fa), s.ctrl ? 1 : 0, r3(s.fall), s.fk, s.fs, r3(s.check), r3(s.poke), r3(s.deke), s.mv, r3(s.mt), r3(s.stag), s.st, r3(s.stT), r3(s.hl)]);
+  const sk = f.sk.map(s => [index.get(s.id) ?? -1, s.side, s.goalie ? 1 : 0, s.box ? 1 : 0, r3(s.x), r3(s.y), r3(s.fa), s.ctrl ? 1 : 0, r3(s.fall), s.fk, s.fs, r3(s.check), r3(s.poke), r3(s.deke), s.mv, r3(s.mt), r3(s.stag), s.st, r3(s.stT), r3(s.hl), r3(s.hop)]);
   return [r3(f.tau), r3(f.clock), r3(f.px), r3(f.py), r3(f.ph), f.carrier, f.stop, r3(f.ox), r3(f.oy), r3(f.dx), r3(f.dy), sk];
 }
 export function unpackFrame(a: PackedFrame, ids: string[]): RinkFrame {
   const sk = (a[11] as (number | string | null)[][]).map(e => ({
     id: ids[e[0] as number] ?? '?', side: e[1] as Side, goalie: !!e[2], box: !!e[3], x: e[4] as number, y: e[5] as number, fa: e[6] as number, ctrl: !!e[7],
     fall: e[8] as number, fk: e[9] as RinkFrame['sk'][number]['fk'], fs: e[10] as 1 | -1, check: e[11] as number, poke: e[12] as number, deke: e[13] as number,
-    mv: e[14] as RinkFrame['sk'][number]['mv'], mt: e[15] as number, stag: e[16] as number, st: e[17] as RinkFrame['sk'][number]['st'], stT: e[18] as number, hl: e[19] as number,
+    mv: e[14] as RinkFrame['sk'][number]['mv'], mt: e[15] as number, stag: e[16] as number, st: e[17] as RinkFrame['sk'][number]['st'], stT: e[18] as number, hl: e[19] as number, hop: (e[20] as number) || 0,
   }));
   return { tau: a[0] as number, clock: a[1] as number, px: a[2] as number, py: a[3] as number, ph: a[4] as number, carrier: a[5] as number, stop: a[6] as 0 | 1 | 2, ox: a[7] as number, oy: a[8] as number, dx: a[9] as number, dy: a[10] as number, sk, ids: sk.map(s => s.id) };
 }

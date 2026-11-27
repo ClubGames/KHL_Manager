@@ -31,6 +31,8 @@ interface Hud {
   clock: number; len: number; score: [number, number]; shots: [number, number]; men: [number, number];
   boxed: [{ id: string; left: number }[], { id: string; left: number }[]]; delayed: 0 | 1 | null; mode: PlayRink['mode'];
   ctl: string | null; power: number; context: 'carry' | 'support' | 'defend'; labels: { shoot: string; pass: string; deke: string }; energy: number; faceoff: boolean; foCue: 'ready' | 'now' | null; foCall: string | null; pulled: boolean; move: string | null;
+  /** the timeout under way; whether the manager still has his; his unit on the ice in words */
+  to: { side: 0 | 1; left: number } | null; tol: boolean; line: string;
 }
 export interface GoalItem { event: GameEvent; tau: number; clip?: ReplayClip; period: number }
 interface Toast { id: number; text: string; tone: 'goal' | 'pen' | 'info' }
@@ -54,6 +56,7 @@ const KEY_HELP: [string, string][] = [
   ['V', 'смена звена'],
   ['T / B', 'тактика: форчекинг / выход из зоны (переключение)'],
   ['G', 'снять / вернуть вратаря'],
+  ['4', 'тайм-аут (30 с, один на матч)'],
   ['R', 'повтор последнего гола'],
   ['Esc / P', 'пауза'],
   ['Мышь: курсор', 'прицел: бросок идёт в ту сторону ворот, где курсор (метка на воротах), пас — партнёру у курсора'],
@@ -92,7 +95,7 @@ const PAD_HELP: [string, string][] = [
   ['Прочее', ''],
   ['RB / R3 / правый стик', 'вбрасывание: в момент, когда судья бросает шайбу'],
   ['Back', 'снять / вернуть вратаря'],
-  ['Start', 'пауза'],
+  ['Start', 'пауза (там же — тайм-аут, 30 с, один на матч)'],
 ];
 
 class PlayTicker {
@@ -128,6 +131,8 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   const mouse = useRef<MouseState>(newMouse());
   const goals = useRef<GoalItem[]>([]);
   const carry = useRef<[[string, number][], [string, number][]] | null>(null);
+  /** each team's timeout still to take this match (one per game) */
+  const timeouts = useRef<[boolean, boolean]>([true, true]);
   const toastId = useRef(0);
   const prevCommands = useRef(new Set<Command>());
   const root = useRef<HTMLDivElement>(null);
@@ -179,6 +184,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       home: H, away: A, players: P, lineups: [sim.team(0).lineup, sim.team(1).lineup], userSide: userIdx, kind: k,
       flip: endsSwitched(sim.period), periodMinutes: settings.playPeriod, penaltyClock: settings.playPenaltyClock, difficulty: settings.playDifficulty, autoSwitch: settings.playAutoSwitch,
       goalies: [sim.goalies[0] ?? sim.team(0).lineup.starterG, sim.goalies[1] ?? sim.team(1).lineup.starterG], box, score: [sim.score[0], sim.score[1]], period: sim.period,
+      timeouts: [timeouts.current[0], timeouts.current[1]],
     });
     ticker.tau = 0; ticker.sec = 0;
     setPaused(false);
@@ -202,6 +208,10 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       } else if (o.type === 'waived') {
         sim.recordPlayed(k.clock, { type: 'info', side: o.side, text: o.text });
         toast(o.text);
+      } else if (o.type === 'timeout') {
+        const name = (o.side ? A : H).name;
+        sim.recordPlayed(k.clock, { type: 'info', side: o.side, text: `Тайм-аут: ${name}` });
+        toast(o.side === userIdx ? 'Тайм-аут — тренер объясняет, игроки отдыхают' : `Тайм-аут взял соперник (${name})`, 'info', 2600);
       } else if (o.type === 'icing') toast('Проброс', 'info', 1600);
       else if (o.type === 'offside') toast('Офсайд', 'info', 1600);
     }
@@ -219,6 +229,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
     keepClips(k);
     sim.endPlayed(k.clock);
     carry.current = sim.playedBox();
+    timeouts.current = [k.timeoutLeft[0], k.timeoutLeft[1]];
     rink.current = null;
     setPhase(sim.status === 'done' ? 'final' : 'break');
   };
@@ -260,6 +271,13 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
     if (c === 'forecheck') toast(`Форчекинг: ${k.cycleForecheck(userIdx)}`);
     if (c === 'breakout') toast(`Выход из зоны: ${k.cycleBreakout(userIdx)}`);
     if (c === 'replay') { const g = goals.current[goals.current.length - 1]; if (g) openReplay(g); }
+    if (c === 'timeout') timeout(k);
+  };
+  const timeout = (k: PlayRink) => {
+    if (k.timeoutNow()) { k.endTimeout(); return; }
+    const r = k.callTimeout(userIdx);
+    if (r === 'next') toast('Тайм-аут — при следующей остановке игры');
+    else if (r === null) toast(k.timeoutLeft[userIdx] ? 'Тайм-аут уже заказан' : 'Тайм-аут уже взят в этом матче');
   };
   const commandRef = useRef(command); commandRef.current = command;
 
@@ -321,7 +339,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       if (now - hudAt > 90 || k.ended) {
         hudAt = now;
         const h = k.hud();
-        setHud({ clock: k.clock, len: k.len, score: [k.score[0], k.score[1]], shots: [sim.shots[0], sim.shots[1]], men: k.men(), boxed: k.boxed(), delayed: k.delayed, mode: k.mode, pulled: k.pulled[userIdx], ...h });
+        setHud({ clock: k.clock, len: k.len, score: [k.score[0], k.score[1]], shots: [sim.shots[0], sim.shots[1]], men: k.men(), boxed: k.boxed(), delayed: k.delayed, mode: k.mode, pulled: k.pulled[userIdx], ...h, to: k.timeoutNow(), tol: k.timeoutLeft[userIdx], line: k.lineOn(userIdx) });
       }
       if (k.ended) { endBlock(); return; }
       raf = requestAnimationFrame(loop);
@@ -413,6 +431,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
         {/* HUD: the controlled player, the shot meter */}
         {phase === 'playing' && hud && (
           <div className={cn('absolute pointer-events-none flex flex-col gap-1 w-[min(46vw,220px)] z-10', touchUI ? 'left-1/2 -translate-x-1/2 bottom-2 w-[min(34vw,200px)]' : 'left-2 bottom-2')} data-play-hud>
+            <LineChip line={hud.line} touchUI={touchUI} />
             {ctlName && (
               <div className={cn('rounded-sm px-2 py-1 text-white text-xs', touchUI ? 'bg-black/25 [text-shadow:0_1px_2px_rgba(0,0,0,.85)]' : 'bg-black/55 backdrop-blur-sm')}>
                 <div className="flex items-center gap-1.5"><b className="text-[#ffd23f] tabular">#{ctlName.number}</b><span className="truncate" data-play-ctl>{ctlName.name}</span><span className="ml-auto text-[10px] text-white/60">{ctlName.position}</span></div>
@@ -452,10 +471,19 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
           <div className="absolute right-2 bottom-2 flex gap-1.5 z-10">
             <Button size="sm" onClick={() => command('change')} data-play-change>Смена звена <kbd className="opacity-60">V</kbd></Button>
             <Button size="sm" variant={hud?.pulled ? 'primary' : 'secondary'} onClick={() => command('pull')} data-play-pull>{hud?.pulled ? 'Вернуть вратаря' : 'Снять вратаря'} <kbd className="opacity-60">G</kbd></Button>
+            <Button size="sm" onClick={() => command('timeout')} disabled={!hud?.tol || !!hud?.to} data-play-timeout>Тайм-аут <kbd className="opacity-60">4</kbd></Button>
           </div>
         )}
 
-        {phase === 'playing' && touchUI && !paused && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} faceoff={!!hud?.faceoff} context={hud?.context ?? 'carry'} />}
+        {phase === 'playing' && hud?.to && !paused && (
+          <div className="absolute left-1/2 -translate-x-1/2 top-3 z-20 flex flex-col items-center gap-1.5 rounded-sm bg-black/65 px-4 py-2 text-white shadow-lg fade-in" data-play-timeout-on={hud.to.side === userIdx ? 'mine' : 'theirs'}>
+            <div className="text-[11px] uppercase tracking-[.2em] text-white/70">Тайм-аут · {(hud.to.side ? A : H).name}</div>
+            <div className="font-display text-2xl tabular leading-none" data-play-timeout-left>0:{String(Math.ceil(hud.to.left)).padStart(2, '0')}</div>
+            <div className="text-[11px] text-white/70">{hud.to.side === userIdx ? 'Тренер объясняет установку, игроки отдыхают' : 'Соперник отдыхает и получает установку'}</div>
+            <Button size="sm" onClick={() => command('timeout')} data-play-timeout-skip>Продолжить игру</Button>
+          </div>
+        )}
+        {phase === 'playing' && touchUI && !paused && !hud?.to && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} faceoff={!!hud?.faceoff} context={hud?.context ?? 'carry'} timeout={!!hud?.tol && !hud?.to} />}
       </main>
 
       {/* Intro: what to press */}
@@ -487,6 +515,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
             <Button variant="primary" size="lg" onClick={() => setPaused(false)} data-play-resume>Продолжить</Button>
             <Button onClick={() => { rink.current?.requestChange(userIdx); setPaused(false); }}>Смена звена</Button>
             <Button onClick={() => { const kk = rink.current; if (kk) kk.setPulled(userIdx, !kk.pulled[userIdx]); setPaused(false); }}>{hud?.pulled ? 'Вернуть вратаря' : 'Снять вратаря'}</Button>
+            <Button onClick={() => { setPaused(false); if (rink.current) timeout(rink.current); }} disabled={!hud?.tol || !!hud?.to} data-play-pause-timeout>{hud?.tol ? 'Тайм-аут (30 с)' : 'Тайм-аут уже взят'}</Button>
             <Button variant="ghost" onClick={() => setHelp((h) => !h)}>{help ? 'Скрыть управление' : 'Управление'}</Button>
             {goals.current.length > 0 && <Button variant="ghost" onClick={() => openReplay(goals.current[goals.current.length - 1])}>Повтор последнего гола</Button>}
             <Button variant="ghost" onClick={simRest} disabled={busy} data-play-simrest>{busy ? 'Симуляция…' : 'Досимулировать матч'}</Button>
@@ -703,7 +732,7 @@ const TOUCH_EXTRA: Record<'carry' | 'support' | 'defend', [TouchKey, string, str
 /** The shortest press a touch button gives the rink (ms): several of its 1/60 s steps. */
 const TAP_MS = 110;
 
-export function TouchControls({ touch, labels, onCommand, pulled, faceoff, context = 'carry' }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean; faceoff: boolean; context?: 'carry' | 'support' | 'defend' }) {
+export function TouchControls({ touch, labels, onCommand, pulled, faceoff, context = 'carry', timeout = true }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean; faceoff: boolean; context?: 'carry' | 'support' | 'defend'; /** the timeout can still be called */ timeout?: boolean }) {
   // a button that disappears with the situation (defence → attack) is let go
   useEffect(() => { for (const k of ['lb', 'lift', 'pin', 'push', 'vision', 'hustle'] as const) if (!TOUCH_EXTRA[context].some(([x]) => x === k)) touch.current[k] = false; }, [context, touch]);
   useEffect(() => () => { touch.current = emptyTouch(); }, [touch]);
@@ -732,30 +761,59 @@ export function TouchControls({ touch, labels, onCommand, pulled, faceoff, conte
     onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
   });
   // see-through: a faint tint and a thin outline (the label keeps a shadow so it reads over the ice), solid only while pressed
-  const btn = 'rounded-full border border-white/30 bg-black/15 active:bg-white/30 text-white/85 font-semibold [text-shadow:0_1px_2px_rgba(0,0,0,.85)] flex items-center justify-center touch-none';
+  const btn = 'absolute rounded-full border border-white/30 bg-black/15 active:bg-white/30 active:scale-95 transition-transform text-white/90 font-semibold [text-shadow:0_1px_2px_rgba(0,0,0,.85)] flex items-center justify-center text-center leading-none touch-none select-none';
+  const pill = 'rounded-full bg-black/25 text-white/90 text-[11px] px-3 py-1.5 border border-white/25 [text-shadow:0_1px_2px_rgba(0,0,0,.85)] active:bg-white/30 disabled:opacity-40';
+  // The right thumb's cluster, laid out like the mobile hockey games: the shot the biggest, in the corner under the
+  // thumb; pass next to it; the deke, the switch and the burst in an arc above; the situation's extras in an outer arc
+  // (all reached by rolling the thumb, none hidden under another). Positions from the bottom-right corner, px.
+  // (on defence the pass button switches the player already: no second «Смена» there)
+  const outer: [TouchKey, string, string][] = [...(context === 'defend' ? [] : [['swap', 'Смена', 'сменить игрока'] as [TouchKey, string, string]]), ...TOUCH_EXTRA[context]];
+  /** A button of `size` on the arc of radius r round the shot button's centre, at angle a (π: left of it, π/2: above). */
+  const arc = (a: number, r: number, size: number) => ({ right: Math.max(2, 40 - Math.cos(a) * r - size / 2), bottom: 40 + Math.sin(a) * r - size / 2 });
+  const ring = (i: number, n: number) => arc(n > 1 ? Math.PI + (Math.PI * .5 - Math.PI) * (i / (n - 1)) : Math.PI * .75, 180, 50);
+  const inner = { pass: arc(Math.PI, 100, 64), deke: arc(Math.PI * .75, 100, 54), sprint: arc(Math.PI * .5, 100, 54) };
+  const at = (right: number, bottom: number, size: number) => ({ right: `calc(max(.5rem, env(safe-area-inset-right)) + ${right}px)`, bottom: `calc(max(.5rem, env(safe-area-inset-bottom)) + ${bottom}px)`, width: size, height: size });
   return (
-    <div className="absolute inset-0 z-20 pointer-events-none" data-play-touch>
-      <FloatStick className="left-0 top-[18%] bottom-0 w-[44%]" R={56} data="data-play-stick-zone" onVec={(x, y) => { touch.current.mx = x; touch.current.my = y; }}
+    <div className="absolute inset-0 z-20 pointer-events-none" data-play-touch={context}>
+      <FloatStick className="left-0 top-[16%] bottom-0 w-[42%]" R={56} data="data-play-stick-zone" onVec={(x, y) => { touch.current.mx = x; touch.current.my = y; }}
         hint={<div className="absolute left-[max(1.25rem,env(safe-area-inset-left))] bottom-6 w-28 h-28 rounded-full border border-dashed border-white/25 flex items-center justify-center text-[10px] text-white/50">стик</div>} />
-      <FloatStick className="left-[48%] right-[176px] top-[18%] bottom-0" R={60} data="data-play-skill-zone" onVec={(x, y) => { touch.current.sx = x; touch.current.sy = y; }}
-        hint={<div className="absolute right-2 bottom-14 w-28 h-28 rounded-full border border-dashed border-ice/35 flex flex-col items-center justify-center text-center text-[9px] leading-tight text-white/55 [text-shadow:0_1px_2px_rgba(0,0,0,.85)] px-2"><b className="text-[10px] text-ice/80">клюшка</b>назад и вперёд — щелчок<br />рывок вперёд — кистевой<br />вбок — финт</div>} />
-      <div className="absolute right-[max(.75rem,env(safe-area-inset-right))] bottom-[max(.75rem,env(safe-area-inset-bottom))] pointer-events-auto grid grid-cols-2 grid-rows-3 gap-2 w-[160px] h-[210px]" data-play-buttons>
-        <button type="button" className={cn(btn, 'col-start-1 row-start-1 text-[11px]')} {...hold('deke')} data-touch="deke">{labels.deke}</button>
-        <button type="button" className={cn(btn, 'col-start-2 row-start-1 text-[11px]')} {...hold('swap')} data-touch="swap">Смена</button>
-        <button type="button" className={cn(btn, 'col-start-1 row-start-2 text-[11px]')} {...hold('sprint')} data-touch="sprint">Рывок</button>
-        <button type="button" className={cn(btn, 'col-start-2 row-start-2 text-[11px]')} {...hold('pass')} data-touch="pass">{labels.pass}</button>
-        <button type="button" className={cn(btn, 'col-start-1 col-span-2 row-start-3 text-sm bg-accent/25 border-accent/55')} {...hold('shoot')} data-touch="shoot">{labels.shoot}</button>
+      <FloatStick className="left-[44%] right-[250px] top-[16%] bottom-0" R={60} data="data-play-skill-zone" onVec={(x, y) => { touch.current.sx = x; touch.current.sy = y; }}
+        hint={<div className="absolute right-2 bottom-10 w-28 h-28 rounded-full border border-dashed border-ice/35 flex flex-col items-center justify-center text-center text-[9px] leading-tight text-white/55 [text-shadow:0_1px_2px_rgba(0,0,0,.85)] px-2"><b className="text-[10px] text-ice/80">клюшка</b>назад и вперёд — щелчок<br />рывок вперёд — кистевой<br />вбок — финт</div>} />
+      <div className="absolute inset-0 pointer-events-none" data-play-buttons>
+        <button type="button" className={cn(btn, 'pointer-events-auto text-sm bg-accent/30 border-accent/60')} style={at(0, 0, 80)} {...hold('shoot')} data-touch="shoot">{labels.shoot}</button>
+        <button type="button" className={cn(btn, 'pointer-events-auto text-xs')} style={at(inner.pass.right, inner.pass.bottom, 64)} {...hold('pass')} data-touch="pass">{labels.pass}</button>
+        <button type="button" className={cn(btn, 'pointer-events-auto text-[11px]')} style={at(inner.deke.right, inner.deke.bottom, 54)} {...hold('deke')} data-touch="deke">{labels.deke}</button>
+        <button type="button" className={cn(btn, 'pointer-events-auto text-[11px]')} style={at(inner.sprint.right, inner.sprint.bottom, 54)} {...hold('sprint')} data-touch="sprint">Рывок</button>
       </div>
-      <div className="absolute right-[max(.75rem,env(safe-area-inset-right))] bottom-[calc(max(.75rem,env(safe-area-inset-bottom))+220px)] pointer-events-auto grid grid-cols-3 gap-1.5 w-[160px]" data-play-extra={context}>
-        {TOUCH_EXTRA[context].map(([k, label, title]) => <button key={k} type="button" title={title} aria-label={title} className={cn(btn, 'h-11 text-[10px] leading-none')} {...hold(k)} data-touch={k}>{label}</button>)}
+      <div className="absolute inset-0 pointer-events-none" data-play-extra={context}>
+        {outer.map(([k, label, title], i) => { const p = ring(i, outer.length); return <button key={k} type="button" title={title} aria-label={title} className={cn(btn, 'pointer-events-auto text-[10px]', k === 'swap' ? 'bg-black/15' : 'bg-black/25 border-white/20')} style={at(p.right, p.bottom, 50)} {...hold(k)} data-touch={k}>{label}</button>; })}
       </div>
-      {/* the draw: one big button next to the others (over the skill-stick zone, idle at a draw), pressed as the puck falls */}
-      {faceoff && <button type="button" className={cn(btn, 'z-10 pointer-events-auto absolute right-[calc(max(.75rem,env(safe-area-inset-right))+172px)] bottom-[calc(max(.75rem,env(safe-area-inset-bottom))+56px)] w-36 h-16 text-sm bg-ice/35 border-ice/70 text-white')} {...hold('faceoff')} data-touch="faceoff">Вбрасывание</button>}
-      <div className="absolute right-[max(.75rem,env(safe-area-inset-right))] top-12 pointer-events-auto flex flex-col gap-1.5">
-        <button type="button" className="rounded-sm bg-black/20 text-white/85 text-[10px] px-2 py-1 border border-white/20 [text-shadow:0_1px_2px_rgba(0,0,0,.85)]" onClick={() => onCommand('change')} data-touch="change">Смена звена</button>
-        <button type="button" className="rounded-sm bg-black/20 text-white/85 text-[10px] px-2 py-1 border border-white/20 [text-shadow:0_1px_2px_rgba(0,0,0,.85)]" onClick={() => onCommand('pull')} data-touch="pull">{pulled ? 'Вернуть вратаря' : 'Снять вратаря'}</button>
+      {/* the draw: one big button left of the cluster, pressed as the puck falls */}
+      {faceoff && <button type="button" className={cn(btn, 'z-10 pointer-events-auto rounded-2xl text-sm bg-ice/35 border-ice/70 text-white')} style={{ ...at(232, 10, 0), width: 136, height: 64 }} {...hold('faceoff')} data-touch="faceoff">Вбрасывание</button>}
+      {/* the bench's calls: a row at the top right, out of the thumbs' way */}
+      <div className="absolute right-[max(.5rem,env(safe-area-inset-right))] top-[calc(env(safe-area-inset-top)+3.1rem)] pointer-events-auto flex gap-1.5" data-play-calls>
+        <button type="button" className={pill} onClick={() => onCommand('change')} data-touch="change">Смена звена</button>
+        <button type="button" className={pill} onClick={() => onCommand('pull')} data-touch="pull">{pulled ? 'Вратаря в ворота' : 'Снять вратаря'}</button>
+        <button type="button" className={pill} onClick={() => onCommand('timeout')} disabled={!timeout} data-touch="timeout">Тайм-аут</button>
       </div>
     </div>
   );
 }
 
+/** The manager's unit on the ice (forwards and the defence pair); it lights up for a moment when a new one goes out. */
+export function LineChip({ line, touchUI }: { line: string; touchUI: boolean }) {
+  // shown once it has held for a moment (a change on the fly passes through mixed units for a second)
+  const [shown, setShown] = useState(line);
+  const [fresh, setFresh] = useState(0);
+  useEffect(() => {
+    if (line === shown) return;
+    const t = window.setTimeout(() => { setShown(line); setFresh((n) => n + 1); }, line === 'смешанный состав' ? 1600 : 500);
+    return () => window.clearTimeout(t);
+  }, [line, shown]);
+  if (!shown) return null;
+  return (
+    <div key={fresh} className={cn('rounded-sm px-2 py-0.5 text-[10px] text-white flex items-center gap-1.5', touchUI ? 'bg-black/25 [text-shadow:0_1px_2px_rgba(0,0,0,.85)]' : 'bg-black/55', fresh > 0 && 'fade-in')} data-play-line={shown}>
+      <span className="text-white/60 uppercase tracking-wide">На льду</span><b className={cn('font-semibold', fresh > 0 ? 'text-ice' : '')}>{shown}</b>
+    </div>
+  );
+}

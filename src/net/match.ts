@@ -30,8 +30,10 @@ export function buildCtx(packs: [TeamPack, TeamPack], settings: MatchSettings, r
 const blankView = (): MatchView => ({ phase: 'loading', period: 1, status: 'playing', score: [0, 0], shots: [0, 0], hits: [0, 0], periodScores: [], goals: [], events: [], soEvents: [], ready: [false, false], paused: null, beyond: '' });
 
 /** The commands of the pause menu and the hot keys (line changes, the goalie, tactics). */
-export type MatchCommand = 'pull' | 'change' | 'changeF' | 'changeD' | 'forecheck' | 'breakout';
-const COMMANDS = new Set<string>(['pull', 'change', 'changeF', 'changeD', 'forecheck', 'breakout']);
+export type MatchCommand = 'pull' | 'change' | 'changeF' | 'changeD' | 'forecheck' | 'breakout' | 'timeout';
+const COMMANDS = new Set<string>(['pull', 'change', 'changeF', 'changeD', 'forecheck', 'breakout', 'timeout']);
+/** The longest one screen may hold the play for itself (the entrance with the anthem; a replay is far shorter). */
+const HOLD_MAX = 150;
 
 export interface MatchEvents {
   /** the view changed (phase, score, goals, pause) */
@@ -55,7 +57,10 @@ export interface MatchSide {
   shots(): [number, number];
   /** ready for the next period / the next screen */
   next(): void;
+  /** the menu open (on) / closed: the match goes on, the AI plays this side's team meanwhile */
   pause(on: boolean): void;
+  /** this screen holds the play (the entrance, a replay): the host waits until neither screen holds it */
+  hold(on: boolean): void;
   command(c: MatchCommand): void;
   onMessage(m: NetMsg): void;
 }
@@ -65,12 +70,17 @@ export class HostMatch implements MatchSide {
   view = blankView();
   rink: PlayRink | null = null;
   private carry: [[string, number][], [string, number][]] | null = null;
+  /** each side's timeout still to take this match */
+  private timeouts: [boolean, boolean] = [true, true];
   private guestPads: PadState[] = [];
   private guestLast: PadState = NO_PAD;
   private loadedBy: [boolean, boolean] = [false, false];
   private index = new Map<string, number>();
   private outs: PlayOut[] = [];
   private readonly guest: Side;
+  /** each screen's hold (index: side) and since when (seconds of real time the host has run) */
+  private holds: [number, number] = [-1, -1];
+  private clock = 0;
   constructor(readonly ctx: OnlineCtx, private send: (m: NetMsg) => void, private ev: MatchEvents) {
     this.sim = new GameSim({ id: ctx.home.id, lineup: ctx.lineups[0], name: ctx.home.name }, { id: ctx.away.id, lineup: ctx.lineups[1], name: ctx.away.name }, ctx.players, false, null);
     this.guest = (1 - ctx.mySide) as Side;
@@ -102,14 +112,15 @@ export class HostMatch implements MatchSide {
     s.beginPlayed(k);
     const start = s.sec;
     const box = this.carry ? ([this.carry[0].map(([id, end]) => [id, end - start]), this.carry[1].map(([id, end]) => [id, end - start])] as [[string, number][], [string, number][]]) : undefined;
-    const init: Omit<BlockInit, 'ids'> = { kind: k, flip: endsSwitched(s.period), period: s.period, score: [s.score[0], s.score[1]], goalies: [s.goalies[0] ?? s.team(0).lineup.starterG, s.goalies[1] ?? s.team(1).lineup.starterG], box };
+    const init: Omit<BlockInit, 'ids'> = { kind: k, flip: endsSwitched(s.period), period: s.period, score: [s.score[0], s.score[1]], goalies: [s.goalies[0] ?? s.team(0).lineup.starterG, s.goalies[1] ?? s.team(1).lineup.starterG], box, timeouts: this.timeouts };
     const rink = new PlayRink(rinkOptions(this.ctx, init, [this.ctx.mySide, this.guest]));
     const ids = rink.agentIds();
     this.index = new Map(ids.map((id, i) => [id, i]));
     this.rink = rink; this.guestPads = []; this.guestLast = NO_PAD; this.loadedBy = [false, false]; this.outs = [];
     this.send({ t: 'block', init: { ...init, ids } });
     this.ev.rink(rink);
-    this.push({ phase: 'loading', ready: [false, false], paused: null });
+    this.holds = [-1, -1];
+    this.push({ phase: 'loading', ready: [false, false], paused: null, away: [false, false], timeouts: [rink.timeoutLeft[0], rink.timeoutLeft[1]] });
   }
   loaded() { this.markLoaded(this.ctx.mySide); }
   private markLoaded(side: Side) {
@@ -121,7 +132,11 @@ export class HostMatch implements MatchSide {
   forceStart() { if (this.view.phase === 'loading' && this.rink) this.push({ phase: 'playing' }); }
   /** Shots on goal of the match so far (the books). */
   shots(): [number, number] { return [this.sim.shots[0], this.sim.shots[1]]; }
-  get running() { return this.view.phase === 'playing' && this.view.paused === null && !!this.rink; }
+  get running() { return this.view.phase === 'playing' && !!this.rink; }
+  hold(on: boolean) { this.holdBy(this.ctx.mySide, on); }
+  private holdBy(side: Side, on: boolean) { if (on && this.holds[side] < 0) this.holds[side] = this.clock; else if (!on) this.holds[side] = -1; }
+  /** A screen holds the play (one stuck for longer than HOLD_MAX is not waited for). */
+  get held() { return this.holds.some(h => h >= 0 && this.clock - h < HOLD_MAX); }
   /** The guest's pad for the next step: each one he sent is played at least one step (a quick tap is not lost). */
   private nextGuestPad(): PadState {
     if (this.guestPads.length > 6) this.guestPads.splice(0, this.guestPads.length - 2); // fallen behind: catch up
@@ -132,7 +147,8 @@ export class HostMatch implements MatchSide {
   /** Real time `dt` with the host's pad: the rink, the books, the guest's tick. */
   advance(dt: number, pad: PadState) {
     const k = this.rink;
-    if (!k || !this.running) return;
+    this.clock += dt;
+    if (!k || !this.running || this.held) return;
     // the seats: [the host, the guest] (whichever side each plays)
     k.advance(dt, () => [pad, this.nextGuestPad()]);
     const out = k.drain();
@@ -153,6 +169,7 @@ export class HostMatch implements MatchSide {
         }
       } else if (o.type === 'penalty' || o.type === 'hit') { this.sim.recordPlayed(k.clock, o); if (o.type === 'penalty') changed = true; }
       else if (o.type === 'waived') this.sim.recordPlayed(k.clock, { type: 'info', side: o.side, text: o.text });
+      else if (o.type === 'timeout') { this.sim.recordPlayed(k.clock, { type: 'info', side: o.side, text: `Тайм-аут: ${(o.side ? this.ctx.away : this.ctx.home).name}` }); this.view = { ...this.view, timeouts: [k.timeoutLeft[0], k.timeoutLeft[1]] }; changed = true; }
     }
     if (changed) this.push();
   }
@@ -166,8 +183,9 @@ export class HostMatch implements MatchSide {
     this.outs = [];
     this.sim.endPlayed(k.clock);
     this.carry = this.sim.playedBox();
+    this.timeouts = [k.timeoutLeft[0], k.timeoutLeft[1]];
     this.rink = null;
-    this.push({ phase: this.sim.status === 'done' ? 'final' : 'break', ready: [false, false], paused: null });
+    this.push({ phase: this.sim.status === 'done' ? 'final' : 'break', ready: [false, false], paused: null, away: [false, false] });
     // (the rink stays on the screen until the next one comes: the goal clips are cut from it)
   }
   next() { this.readyBy(this.ctx.mySide); }
@@ -181,10 +199,13 @@ export class HostMatch implements MatchSide {
     else this.startBlock();
   }
   pause(on: boolean) { this.pauseBy(this.ctx.mySide, on); }
+  /** A player in his menu: the match goes on (the other is still playing), the AI takes his team meanwhile. */
   private pauseBy(side: Side, on: boolean) {
-    if (this.view.phase !== 'playing') return;
-    if (on && this.view.paused === null) this.push({ paused: side });
-    else if (!on && this.view.paused !== null) this.push({ paused: null });
+    const away: [boolean, boolean] = [...(this.view.away ?? [false, false])] as [boolean, boolean];
+    if (away[side] === on) return;
+    away[side] = on;
+    this.rink?.setAway(side === this.ctx.mySide ? 0 : 1, on);
+    this.push({ away });
   }
   command(c: MatchCommand) { const t = this.commandBy(this.ctx.mySide, c); if (t) this.ev.toast(t); }
   private commandBy(side: Side, c: MatchCommand): string | null {
@@ -196,6 +217,12 @@ export class HostMatch implements MatchSide {
     if (c === 'changeD') { k.requestChange(side, 'D'); return 'Смена пары защитников'; }
     if (c === 'forecheck') return `Форчекинг: ${k.cycleForecheck(side)}`;
     if (c === 'breakout') return `Выход из зоны: ${k.cycleBreakout(side)}`;
+    if (c === 'timeout') {
+      const now = k.timeoutNow();
+      if (now) { if (now.side === side) k.endTimeout(); return null; }
+      const r = k.callTimeout(side);
+      return r === 'next' ? 'Тайм-аут — при следующей остановке игры' : r === null ? (k.timeoutLeft[side] ? 'Тайм-аут уже заказан' : 'Тайм-аут уже взят в этом матче') : null;
+    }
     return null;
   }
   onMessage(m: NetMsg) {
@@ -203,6 +230,7 @@ export class HostMatch implements MatchSide {
     if (m.t === 'loaded') this.markLoaded(this.guest);
     else if (m.t === 'next') this.readyBy(this.guest);
     else if (m.t === 'pause') this.pauseBy(this.guest, m.on);
+    else if (m.t === 'hold') this.holdBy(this.guest, m.on);
     else if (m.t === 'cmd' && COMMANDS.has(m.c)) { const t = this.commandBy(this.guest, m.c as MatchCommand); if (t) this.send({ t: 'cmd', c: t }); }
   }
 }
@@ -212,7 +240,7 @@ function rinkOptions(ctx: OnlineCtx, init: Omit<BlockInit, 'ids'>, humans: Side[
   return {
     home: ctx.home, away: ctx.away, players: ctx.players, lineups: ctx.lineups, userSide: humans[0], humans, kind: init.kind, flip: init.flip,
     periodMinutes: ctx.settings.periodMinutes, penaltyClock: ctx.settings.penaltyClock, difficulty: 'pro', autoSwitch: true,
-    goalies: init.goalies, box: init.box, score: init.score, period: init.period,
+    goalies: init.goalies, box: init.box, score: init.score, period: init.period, timeouts: init.timeouts,
   };
 }
 
@@ -226,6 +254,8 @@ export class GuestMatch implements MatchSide {
   loaded() { if (this.view.phase === 'loading' && this.rink) this.send({ t: 'loaded' }); }
   next() { this.send({ t: 'next' }); }
   pause(on: boolean) { this.send({ t: 'pause', on }); }
+  private holding = false;
+  hold(on: boolean) { if (on !== this.holding) { this.holding = on; this.send({ t: 'hold', on }); } }
   command(c: MatchCommand) { this.send({ t: 'cmd', c }); }
   /** The guest's pad for the host (sent every frame it changes, and every 100 ms all the same). */
   private lastPad = '';
@@ -261,6 +291,7 @@ export function outToast(o: PlayOut, mySide: Side, P: Record<string, Player>): {
   }
   if (o.type === 'penalty') return { text: `Удаление: ${P[o.player]?.name ?? ''} — ${o.reason}, ${o.min} мин`, tone: 'pen', ms: 2600 };
   if (o.type === 'waived') return { text: o.text, tone: 'info', ms: 2600 };
+  if (o.type === 'timeout') return { text: o.side === mySide ? 'Тайм-аут — тренер объясняет, игроки отдыхают' : 'Тайм-аут взял соперник', tone: 'info', ms: 2600 };
   if (o.type === 'icing') return { text: 'Проброс', tone: 'info', ms: 1600 };
   if (o.type === 'offside') return { text: 'Офсайд', tone: 'info', ms: 1600 };
   return null;

@@ -7,7 +7,7 @@ import type { PadState } from '../game/playRink';
  * a Russian layout works the same.
  */
 export type Action = 'shoot' | 'pass' | 'deke' | 'swap' | 'sprint' | 'faceoff' | 'mod' | 'lift' | 'pin' | 'push' | 'vision' | 'hustle';
-export type Command = 'pause' | 'pull' | 'change' | 'replay' | 'changeF' | 'changeD' | 'forecheck' | 'breakout';
+export type Command = 'pause' | 'pull' | 'change' | 'replay' | 'changeF' | 'changeD' | 'forecheck' | 'breakout' | 'timeout';
 
 export const KEYS: Record<Action, string[]> = {
   shoot: ['Space', 'KeyJ'],
@@ -36,6 +36,7 @@ export const COMMAND_KEYS: Record<Command, string[]> = {
   changeD: [],
   forecheck: ['KeyT'],
   breakout: ['KeyB'],
+  timeout: ['Digit4'],
 };
 const MOVE: Record<string, [number, number]> = {
   KeyW: [0, -1], ArrowUp: [0, -1], KeyS: [0, 1], ArrowDown: [0, 1],
