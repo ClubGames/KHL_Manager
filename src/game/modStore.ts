@@ -3,6 +3,12 @@
 // ./mods/<id>/… from it — the roster, the calendar, logos and photos then load from the same paths as the mods
 // shipped with the game, in a new career as well as in a saved one after a restart.
 // The database layout is shared with public/mod-sw.js: keep both in step.
+//
+// The Android app does without the service worker: a worker left registered in its WebView could keep the page from
+// loading at all after the app was closed or updated (a plain coloured screen). There the files are also written into
+// the app's own storage (files/mods/<id>/…) and MainActivity answers ./mods/<id>/… from there; the app deletes any
+// worker registration before its WebView starts.
+import { Capacitor } from '@capacitor/core';
 import { modsInZip, readZip } from './zip';
 
 export const MOD_DB = 'khl-mods';
@@ -16,6 +22,55 @@ export interface StoreResult { installed: { id: string; name: string; replaced: 
 
 const TYPES: Record<string, string> = { json: 'application/json', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', svg: 'image/svg+xml', avif: 'image/avif', txt: 'text/plain; charset=utf-8', md: 'text/plain; charset=utf-8' };
 export const fileType = (rel: string) => TYPES[rel.split('.').pop()?.toLowerCase() ?? ''] ?? 'application/octet-stream';
+
+/** The Android app: stored mods live on disk, no service worker. */
+export function androidApp(): boolean {
+  try { return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'; } catch { return false; }
+}
+const DISK_KEY = 'khl.modsOnDisk';
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(blob);
+  });
+}
+async function fs() { return import('@capacitor/filesystem'); }
+/** Writes one stored mod's files to the app's storage (Android), replacing what was there. */
+async function writeModToDisk(id: string, files: { rel: string; blob: Blob }[]): Promise<void> {
+  const { Filesystem, Directory } = await fs();
+  try { await Filesystem.rmdir({ path: `mods/${id}`, directory: Directory.Data, recursive: true }); } catch { /* not there yet */ }
+  for (const f of files) await Filesystem.writeFile({ path: `mods/${id}/${f.rel}`, data: await blobToBase64(f.blob), directory: Directory.Data, recursive: true });
+}
+let diskReady: Promise<boolean> | null = null;
+/**
+ * Android: the stored mods are on disk (once: mods installed by an older version of the app were only in IndexedDB,
+ * they are copied over). Resolves false when that failed (the mods' files will not load).
+ */
+export function modsOnDisk(): Promise<boolean> {
+  if (diskReady) return diskReady;
+  diskReady = (async () => {
+    try { if (localStorage.getItem(DISK_KEY) === '1' || !hasStoredMods()) return true; } catch { return true; }
+    try {
+      const db = await openModDb();
+      const mods = await reqP(db.transaction('mods').objectStore('mods').getAll() as IDBRequest<StoredMod[]>);
+      for (const m of mods) {
+        const keys = await reqP(db.transaction('files').objectStore('files').getAllKeys(prefix(m.id)));
+        const files: { rel: string; blob: Blob }[] = [];
+        for (const k of keys) { const b = await storedFile(m.id, String(k).slice(m.id.length + 1)); if (b) files.push({ rel: String(k).slice(m.id.length + 1), blob: b }); }
+        await writeModToDisk(m.id, files);
+      }
+      try { localStorage.setItem(DISK_KEY, '1'); } catch { /* private mode */ }
+      return true;
+    } catch (e) {
+      console.warn('stored mods to disk:', e);
+      diskReady = null;
+      return false;
+    }
+  })();
+  return diskReady;
+}
 
 let dbp: Promise<IDBDatabase> | null = null;
 export function openModDb(): Promise<IDBDatabase> {
@@ -93,6 +148,10 @@ export async function storeModZip(data: Uint8Array, archiveName: string): Promis
     mods.put({ id: pack.id, name, installed: Date.now(), files: files.length, bytes: files.reduce((s, f) => s + f.size, 0) } satisfies StoredMod);
     const replaced = !!(await old);
     await fin;
+    if (androidApp()) {
+      try { await writeModToDisk(pack.id, files); }
+      catch (e) { result.errors.push(`${name}: не удалось записать файлы мода в память приложения (${String((e as Error)?.message ?? e)})`); continue; }
+    }
     result.installed.push({ id: pack.id, name, replaced });
   }
   if (result.installed.length) setFlag(true);
@@ -106,13 +165,14 @@ export async function removeStoredMod(id: string): Promise<void> {
   tx.objectStore('files').delete(prefix(id));
   tx.objectStore('mods').delete(id);
   await fin;
+  if (androidApp()) { try { const { Filesystem, Directory } = await fs(); await Filesystem.rmdir({ path: `mods/${id}`, directory: Directory.Data, recursive: true }); } catch { /* not on disk */ } }
   const left = await reqP(db.transaction('mods').objectStore('mods').count());
   if (!left) setFlag(false);
 }
 
 /** Stored mods can be installed here: a page served over http(s) with service workers, IndexedDB and inflate. */
 export function canStoreMods(): boolean {
-  return typeof window !== 'undefined' && typeof navigator !== 'undefined' && 'serviceWorker' in navigator && typeof indexedDB !== 'undefined'
+  return typeof window !== 'undefined' && typeof navigator !== 'undefined' && (androidApp() || 'serviceWorker' in navigator) && typeof indexedDB !== 'undefined'
     && typeof DecompressionStream !== 'undefined' && /^https?:$/.test(location.protocol) && (window.isSecureContext ?? true);
 }
 
@@ -122,6 +182,8 @@ export function canStoreMods(): boolean {
  */
 export async function ensureModWorker(timeoutMs = 5000): Promise<boolean> {
   if (!canStoreMods()) return false;
+  // the Android app serves them itself (MainActivity), from disk
+  if (androidApp()) return modsOnDisk();
   try {
     const sw = navigator.serviceWorker;
     await sw.register(MOD_SW, { scope: './' });
@@ -138,5 +200,11 @@ export async function ensureModWorker(timeoutMs = 5000): Promise<boolean> {
 
 /** At start-up: a player with stored mods gets the worker running before a saved career needs its files. */
 export function initModWorker(): void {
+  if (androidApp()) {
+    // no worker in the app (an old registration is dropped; MainActivity deletes them before the WebView starts too)
+    void navigator.serviceWorker?.getRegistrations?.().then((rs) => rs.forEach((r) => void r.unregister())).catch(() => {});
+    if (hasStoredMods()) void modsOnDisk();
+    return;
+  }
   if (hasStoredMods() && canStoreMods()) void ensureModWorker();
 }
