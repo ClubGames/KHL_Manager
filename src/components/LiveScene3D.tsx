@@ -12,7 +12,7 @@ import { announceCamera, announceGesture, ANNOUNCE, boxCamera, bumpCamera, bumpP
 import { NET_X } from './replayMotion';
 import { liveCameraPose, toWorld, ZOOM, type LiveCamera } from './replayCameras';
 import { RINK } from '../game/rinkGeometry';
-import { benchSeat, boxSeat, BENCH, BOX, DOORS } from './arenaBenches';
+import { benchSeat, boxSeat, BENCH, BOX, DOORS, TUNNEL } from './arenaBenches';
 
 export { LIVE_CAMERAS, type LiveCamera } from './replayCameras';
 import { releaseHeading } from './replayMotion';
@@ -154,7 +154,9 @@ export function LiveScene3D(props: Props) {
         if (a.seat?.startsWith('b')) return Number(a.seat.slice(1));
         leaveSeat(a);
         // fill from the middle of the bench out; the backup goalie at the far end
-        const order = Array.from({ length: BENCH.slots }, (_, i) => i).sort((x, y) => Math.abs(x - 7.5) - Math.abs(y - 7.5));
+        // (the slot in front of the tunnel, where the seat has its passage, is the last one used)
+        const gapSlot = Math.round(((TUNNEL.gapX(a.side) - BENCH.x[a.side]) / (BENCH.length - .9) + .5) * BENCH.slots - .5);
+        const order = Array.from({ length: BENCH.slots }, (_, i) => i).sort((x, y) => +(x === gapSlot) - +(y === gapSlot) || Math.abs(x - 7.5) - Math.abs(y - 7.5));
         const slot = a.goalie ? (benchUsed[a.side].has(BENCH.slots - 1) ? order.find(i => !benchUsed[a.side].has(i)) : BENCH.slots - 1) : order.find(i => !benchUsed[a.side].has(i));
         const s = slot ?? 0; benchUsed[a.side].add(s); a.seat = `b${s}`; a.sitAt = undefined; return s;
       };

@@ -38,6 +38,8 @@ export const DOORS: readonly DoorSpot[] = [
 export const gateDoor = (side: 0 | 1) => DOORS.find(d => d.kind === 'bench' && d.side === side && Math.abs(d.x) > Math.abs(BENCH.x[side]))!;
 /** The tunnels to the dressing rooms (the mouth in the stands wall behind each bench) and the officials' corridor
  *  across the ice; the gap in the bench's back wall the players walk through. */
+/** Half the width of the passage through the bench seat in front of the tunnel (the seat slot there is the last one used). */
+export const SEAT_GAP = .36;
 export const TUNNEL = { z: -(HW + 4.7), gapX: (side: 0 | 1) => BENCH.x[side] - .25, officialsZ: HW + 4.7 };
 /** Where the coaches stand behind their bench (offset from the bench centre, facing the ice). */
 export const COACH_DX = [-2.4, 1.2, 2.6] as const;
@@ -248,10 +250,13 @@ export function buildBenches(b: BenchBuild) {
     const team = side ? away : home, L = BENCH.length;
     p.world();
     p.box(FLOOR, L, .05, 2.45, [x0, .025, bz]);
-    p.box(SEAT, L - .4, .4, .42, [x0, .2, BENCH.seatZ]);
-    p.box(team.primaryColor, L - .4, .08, .45, [x0, .44, BENCH.seatZ]);
-    // the back wall, with a gap in front of the tunnel (the players walk in from the dressing room through it)
+    // the seat, with a passage in front of the tunnel (the players walk in from the dressing room through it)
     const gx = TUNNEL.gapX(side as 0 | 1), g0 = gx - .7, g1 = gx + .7, a0 = x0 - L / 2, a1 = x0 + L / 2;
+    for (const [u, v] of [[x0 - (L - .4) / 2, gx - SEAT_GAP], [gx + SEAT_GAP, x0 + (L - .4) / 2]]) {
+      p.box(SEAT, v - u, .4, .42, [(u + v) / 2, .2, BENCH.seatZ]);
+      p.box(team.primaryColor, v - u, .08, .45, [(u + v) / 2, .44, BENCH.seatZ]);
+    }
+    // the back wall, with a gap in front of the tunnel
     for (const [u, v] of [[a0, g0], [g1, a1]]) {
       p.box(D, v - u, 1.25, .12, [(u + v) / 2, .625, wallZ]);
       p.box(CAP, v - u + .02, .05, .18, [(u + v) / 2, 1.275, wallZ]);

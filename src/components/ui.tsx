@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ButtonHTMLAttributes, HTMLAttributes, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '../utils/cn';
 import type { PosCode, Team } from '../types';
 import { overallColor, POS_RU } from '../game/ratings';
@@ -272,7 +273,8 @@ export function useClosing(): [boolean, (done: () => void) => void] {
   return [closing, start];
 }
 
-export function Modal({ open, onClose, title, children, width = 'max-w-2xl' }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode; width?: string }) {
+/** A window: a bottom sheet on phones, centred on larger screens — or centred everywhere with `center`. */
+export function Modal({ open, onClose, title, children, width = 'max-w-2xl', center = false }: { open: boolean; onClose: () => void; title?: ReactNode; children: ReactNode; width?: string; center?: boolean }) {
   // After `open` turns false the window stays a moment with its last content and plays the closing animation.
   const [shown, setShown] = useState(open);
   const last = useRef<{ title?: ReactNode; children: ReactNode }>({ title, children });
@@ -307,14 +309,14 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl' }: {
   if (!open && !shown) return null;
   const closing = !open;
   const view = closing ? last.current : { title, children };
-  return (
+  const win = (
     <div
-      className={cn('fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-[2px]', closing && 'fade-out pointer-events-none')}
+      className={cn('fixed inset-0 z-50 flex justify-center bg-black/70 backdrop-blur-[2px]', center ? 'items-center p-3 sm:p-4 pt-[max(.75rem,env(safe-area-inset-top))] pb-[max(.75rem,env(safe-area-inset-bottom))]' : 'items-end sm:items-center p-0 sm:p-4', closing && 'fade-out pointer-events-none')}
       onMouseDown={(e) => !closing && e.target === e.currentTarget && onClose()}
       data-modal-closing={closing || undefined}
     >
-      <div className={cn('w-full bg-panel border-t sm:border border-line rounded-t-xl sm:rounded-md shadow-2xl max-h-[92dvh] flex flex-col pb-[env(safe-area-inset-bottom)] sm:pb-0', closing ? 'pop-out' : 'fade-in', width)}>
-        <div className="sm:hidden land:hidden flex justify-center pt-2 pb-0.5">
+      <div className={cn('w-full bg-panel border-line shadow-2xl max-h-[92dvh] flex flex-col', center ? 'border rounded-md' : 'border-t sm:border rounded-t-xl sm:rounded-md pb-[env(safe-area-inset-bottom)] sm:pb-0', closing ? 'pop-out' : 'fade-in', width)} data-modal={center ? 'center' : 'sheet'}>
+        <div className={cn('sm:hidden land:hidden flex justify-center pt-2 pb-0.5', center && 'hidden')}>
           <span className="w-10 h-1 rounded-full bg-line" />
         </div>
         {view.title ? (
@@ -336,6 +338,10 @@ export function Modal({ open, onClose, title, children, width = 'max-w-2xl' }: {
       </div>
     </div>
   );
+  // on top of everything, on the page itself: a transformed / animated parent would make `fixed` relative to it
+  // (the window then sat far down a long page, under the panel instead of in the middle of the screen)
+  if (typeof document === 'undefined') return win;
+  return createPortal(win, document.fullscreenElement ?? document.body);
 }
 
 export function Bar({ value, color, height = 6, className }: { value: number; color?: string; height?: number; className?: string }) {

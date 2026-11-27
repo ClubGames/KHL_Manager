@@ -1459,8 +1459,9 @@ const BREAK_SECONDS = 20;
 
 function Overlay({ children, wide = false, closing = false }: { children: React.ReactNode; wide?: boolean; closing?: boolean }) {
   return (
-    <div className={cn('fixed inset-0 z-40 bg-bg/85 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto', closing && 'fade-out pointer-events-none')} data-overlay-closing={closing || undefined}>
-      <div className={cn('bg-panel border-t sm:border border-line rounded-t-xl sm:rounded-md p-4 sm:p-5 pb-[max(1rem,env(safe-area-inset-bottom))] sm:pb-5 w-full text-center shadow-2xl flex flex-col items-center max-h-[92dvh] overflow-y-auto overscroll-contain', closing ? 'pop-out' : 'fade-in', wide ? 'max-w-4xl' : 'max-w-xl')}>
+    // in the middle of the screen on phones too (the line swaps of the intermission, the pre-match window)
+    <div className={cn('fixed inset-0 z-40 bg-bg/85 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4 pt-[max(.5rem,env(safe-area-inset-top))] pb-[max(.5rem,env(safe-area-inset-bottom))] overflow-y-auto', closing && 'fade-out pointer-events-none')} data-overlay-closing={closing || undefined} data-overlay>
+      <div className={cn('bg-panel border border-line rounded-md p-4 sm:p-5 w-full text-center shadow-2xl flex flex-col items-center max-h-[92dvh] overflow-y-auto overscroll-contain', closing ? 'pop-out' : 'fade-in', wide ? 'max-w-4xl' : 'max-w-xl')}>
         {children}
       </div>
     </div>

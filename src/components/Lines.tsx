@@ -717,10 +717,11 @@ export function Lines() {
         />
       </div>
 
-      {/* Quick 1-Tap Slot Player Picker (Bottom Sheet on Mobile) */}
+      {/* Quick 1-tap slot player picker: in the middle of the screen (phones too) */}
       {picker && (
         <Modal
           open
+          center
           onClose={() => setPicker(null)}
           width="max-w-lg"
           title={<span className="font-display uppercase tracking-wide text-sm">{picker.title}</span>}

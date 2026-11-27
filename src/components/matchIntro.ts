@@ -66,7 +66,7 @@ const HL = RINK.length / 2, HW = RINK.width / 2, BLUE = HL - RINK.blueLine;
 /** Skating pace of the warm-up laps (m/s) and the gap between two players coming out (s). */
 export const INTRO_PACE = { lap: 5.2, gap: .5, peel: 4.6, officials: 4.2, walk: 2.4, coach: 1.35 };
 /** How long the anthem plays (s), the goalies' and officials' moves to their places after it, the captains' handshake. */
-export const INTRO_TIMES = { anthem: 8, posts: 5.5, hands: 7.4, settle: 5.4 };
+export const INTRO_TIMES = { anthem: 8, posts: 5.5, settle: 5.4 };
 /** The officials' zone (the referees' crease in front of the timekeepers): the two referees in the middle by the boards, the linesmen either side. */
 export const OFFICIALS_ZONE: readonly P2[] = [{ x: -.65, z: HW - 1.0 }, { x: .65, z: HW - 1.0 }, { x: -2.15, z: HW - .85 }, { x: 2.15, z: HW - .85 }];
 /** Stride length of the entrance's long glides (m per stride cycle): an easy rhythm, not quick little steps. */
@@ -111,8 +111,8 @@ export function tunnelWalk(side: 0 | 1): Path {
   const gx = TUNNEL.gapX(side), door = gateDoor(side);
   return path([{ x: gx, z: TUNNEL.z }, { x: gx, z: -(HW + 2.2) }, { x: gx, z: -(HW + .72) }, { x: door.x, z: -(HW + .72) }, { x: door.x, z: -HW + .6 }]);
 }
-const SEAT_Z = [-(HW + 1.78), -(HW + .92)];
-export const walkHop = (z: number, x: number, side: 0 | 1) => (Math.abs(x - TUNNEL.gapX(side)) < .2 && z > SEAT_Z[0] && z < SEAT_Z[1] ? .55 * Math.sin(Math.PI * (z - SEAT_Z[0]) / (SEAT_Z[1] - SEAT_Z[0])) : 0);
+/** Walking out of the tunnel: on the bench floor (through the passage in the seat: no step up), down onto the ice at the door. */
+export const walkHop = (z: number) => (z < -HW - .05 ? BENCH.floor : 0);
 /** Which end a team defends at the start (its starters' side of centre ice in the opening formation). */
 export function homeEnd(skaters: IntroSkater[], side: 0 | 1): 1 | -1 {
   const own = skaters.filter(s => s.side === side && s.start);
@@ -186,7 +186,7 @@ export function planIntro(skaters: IntroSkater[]): IntroPlan {
     }
   }
   const lineupT = H.peel, anthem = H.arrive + .6, posts = anthem + INTRO_TIMES.anthem, hands = posts + INTRO_TIMES.posts;
-  const present = hands + (A.captain && H.captain ? INTRO_TIMES.hands : .4);
+  const present = hands + (A.captain && H.captain ? HANDSHAKE.length : .4);
   // the close-ups: visitors first — the goalie (at his net by now), the captain, the leader — then the home team
   const shots: IntroShot[] = [];
   let t = present;
@@ -227,19 +227,35 @@ function keyed(keys: Key[], t: number): { x: number; z: number; heading: number 
   return { x: z.x, z: z.z, heading: z.face ?? null, speed: 0 };
 }
 
-/** The captains' handshake at centre ice: their key points (out of the line, the shake, back into it). */
+/** The captains' greeting (s from `plan.t.hands`): they skate to the officials' zone, shake hands with the referee on
+ *  their side, then with the other one (crossing, one behind the other), then with each other there; back into line. */
+export const HANDSHAKE = { arrive: 5.5, shake: 1.2, cross: 1.4, meet: 1, back: 7, length: 18.9 };
+/** Where a captain stands to shake a referee's hand (in front of him, toward the ice; both right hands out). */
+const facing = (r: P2): P2 => ({ x: r.x + .2, z: r.z - .95 });
 function handshake(plan: IntroPlan) {
   const [H, A] = plan.teams, t0 = plan.t.hands;
   if (!H.captain || !A.captain) return null;
-  const spot = (team: Team) => plan.route.get(team.captain!.id)!.spot!;
-  const faceIn = (e: number) => (e > 0 ? Math.PI : 0); // toward centre from his end
+  const S = HANDSHAKE, ta = t0 + S.arrive, tb = ta + S.shake + S.cross, tc = tb + S.shake + S.meet, te = tc + S.shake;
+  const up = -Math.PI / 2; // facing +z: the referees by the boards
+  const refOf = (e: number) => (OFFICIALS_ZONE[0].x * e > 0 ? 0 : 1);
   const keys = (team: Team): Key[] => {
-    const e = team.end, sp = spot(team), f = faceIn(e);
-    return [{ t: t0, ...sp, face: f }, { t: t0 + 2.5, x: e * .5, z: 0, face: f }, { t: t0 + 4.3, x: e * .5, z: 0, face: f }, { t: t0 + 6.9, ...sp, face: f }];
+    const e = team.end, sp = plan.route.get(team.captain!.id)!.spot!, f = e > 0 ? Math.PI : 0;
+    const first = facing(OFFICIALS_ZONE[refOf(e)]), second = facing(OFFICIALS_ZONE[1 - refOf(e)]);
+    // the one coming from +x passes behind the other on the way to his second referee
+    const via: Key[] = e > 0 ? [{ t: ta + S.shake + S.cross * .5, x: (first.x + second.x) / 2, z: first.z - 1.1 }] : [];
+    // they meet a step back from the referees, on the side each crossed to
+    const meet = { x: second.x > 0 ? .45 : -.45, z: second.z - 1 }, mf = meet.x > 0 ? Math.PI : 0;
+    return [{ t: t0, ...sp, face: f }, { t: ta, ...first, face: up }, { t: ta + S.shake, ...first, face: up }, ...via,
+      { t: tb, ...second, face: up }, { t: tb + S.shake, ...second, face: up }, { t: tc, ...meet, face: mf }, { t: te, ...meet, face: mf },
+      // back to their sides of the ice: past each other, one nearer the boards
+      ...(e > 0 ? [{ t: te + .8, x: meet.x, z: meet.z - 1.45 }, { t: te + 2.1, x: -meet.x * 3.3, z: meet.z - 1.45 }] : [{ t: te + .8, ...meet }, { t: te + 2.1, x: -meet.x * 3.3, z: meet.z + .15 }]),
+      { t: te + S.back, ...sp, face: f }];
   };
   const bell = (a: number, b: number, t: number) => (t > a && t < b ? Math.sin(Math.PI * smooth((t - a) / (b - a))) : 0);
-  const shakeCaps = (t: number) => bell(t0 + 2.4, t0 + 4.4, t);
-  return { capH: keys(H), capA: keys(A), shakeCaps, ids: [H.captain.id, A.captain.id] };
+  const shakes = (t: number) => bell(ta + .1, ta + S.shake - .1, t) + bell(tb + .1, tb + S.shake - .1, t) + bell(tc + .1, tc + S.shake - .1, t);
+  /** a referee's right hand out: with the captains, one after the other */
+  const refShake = (t: number) => (t >= ta && t < ta + S.shake) || (t >= tb && t < tb + S.shake);
+  return { capH: keys(H), capA: keys(A), shakeCaps: shakes, refShake, ids: [H.captain.id, A.captain.id], ta, tb, tc, te };
 }
 
 /** Where everyone is at time t of the entrance. */
@@ -255,10 +271,10 @@ export function introPoses(plan: IntroPlan, t: number): Map<string, IntroPose> {
     if (tt < r.out) {
       // out of the tunnel at a walk, a step over the bench, through the gate
       const w = tunnelWalk(s.side), u = Math.min(w.len, (tt - r.walk) * INTRO_PACE.walk), p = along(w, u);
-      return { x: p.x, y: walkHop(p.z, p.x, s.side), z: p.z, heading: head(p.dx, p.dz), speed: INTRO_PACE.walk, visible: true, wave: 0, sit: false, shake: 0 };
+      return { x: p.x, y: walkHop(p.z), z: p.z, heading: head(p.dx, p.dz), speed: INTRO_PACE.walk, visible: true, wave: 0, sit: false, shake: 0 };
     }
     const faceIn = team.end > 0 ? Math.PI : 0;
-    // the captains at centre ice
+    // the captains greet the officials in their zone and each other
     if (hs && (s.id === hs.ids[0] || s.id === hs.ids[1]) && tt >= plan.t.hands) {
       const k = keyed(s.id === hs.ids[0] ? hs.capH : hs.capA, tt);
       return { x: k.x, y: 0, z: k.z, heading: k.heading ?? faceIn, speed: k.speed, visible: true, wave: 0, sit: false, shake: hs.shakeCaps(tt) };
@@ -323,7 +339,7 @@ export function officialsWalk(): Path {
 
 /** The officials: out of their corridor to the red line for the anthem, then to their zone, then to their places. */
 export function introOfficials(plan: IntroPlan, t: number, places: P2[]): (IntroPose & { gesture: 'none' | 'shake' })[] {
-  const S = plan.t.settle, P = plan.t.posts, walk = officialsWalk(), walkDur = walk.len / (INTRO_PACE.walk * .9);
+  const S = plan.t.settle, P = plan.t.posts, walk = officialsWalk(), walkDur = walk.len / (INTRO_PACE.walk * .9), hs = handshake(plan);
   return places.map((p, i) => {
     const t0 = plan.t.officials + i * .7;
     const gate = walk.pts[walk.pts.length - 1], line = { x: 0, z: -2.6 - i * 2.1 }, zone = OFFICIALS_ZONE[i] ?? OFFICIALS_ZONE[0];
@@ -339,7 +355,8 @@ export function introOfficials(plan: IntroPlan, t: number, places: P2[]): (Intro
     const a = at(Math.min(t, S));
     let pose = { ...a };
     if (t > S) { const k = keyed([{ t: S + .2, x: a.x, z: a.z, face: a.heading }, { t: S + .2 + clamp(dist(a, p) / 5.8, 3.2, INTRO_TIMES.settle - .2), x: p.x, z: p.z }], t); pose = { x: k.x, z: k.z, heading: k.heading ?? a.heading, speed: k.speed, visible: true }; }
-    return { x: pose.x, y: 0, z: pose.z, heading: pose.heading, speed: pose.speed, visible: pose.visible, wave: 0, sit: false, shake: 0, gesture: 'none' };
+    const shaking = i < 2 && t < S && !!hs?.refShake(t);
+    return { x: pose.x, y: 0, z: pose.z, heading: pose.heading, speed: pose.speed, visible: pose.visible, wave: 0, sit: false, shake: shaking ? 1 : 0, gesture: shaking ? 'shake' : 'none' };
   });
 }
 
@@ -434,8 +451,12 @@ export function introCamera(plan: IntroPlan, t: number, poses = introPoses(plan,
     return { pos: { x: px - e * d, y: shot.kind === 'goalie' ? 1.55 : 1.7, z: pz + side + u * .3 }, look: { x: px, y: shot.kind === 'goalie' ? 1.15 : 1.42, z: pz }, fov: 30 };
   }
   if (t >= T.hands && t < T.present) {
-    const u = t - T.hands;
-    return { pos: { x: Math.sin(u * .18) * 2.6, y: 2.3, z: 7.4 - Math.min(1, u / 9) }, look: { x: 0, y: 1.25, z: 0 }, fov: 36 };
+    // the captains skate over (wide from the ice), the greetings in the officials' zone close, back into line wide
+    const u = t - T.hands, H = HANDSHAKE, z0 = OFFICIALS_ZONE[0].z;
+    const wide: Cam = { pos: { x: Math.sin(u * .12) * 3, y: 4.2, z: z0 - 15 }, look: { x: 0, y: 1, z: z0 - 4 }, fov: 50 };
+    const close: Cam = { pos: { x: Math.sin(u * .2) * 1.2, y: 1.9, z: z0 - 5.6 }, look: { x: 0, y: 1.3, z: z0 - 1 }, fov: 38 };
+    const inK = smooth((u - (H.arrive - 1.6)) / 1.6), outK = smooth((u - (H.length - H.back + .4)) / 1.6);
+    return mixCam(wide, close, inK * (1 - outK));
   }
   if (t >= T.posts) {
     // wide from the near side: the goalies skate to their nets, the officials come to their zone right below
