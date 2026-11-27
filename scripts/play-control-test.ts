@@ -195,6 +195,72 @@ test('the skill stick (right stick / touch): pull back and flick — slap or sna
   assert.ok(pokes > 0, 'a flick on defence pokes');
 });
 
+test('the one-timer: wound up while the pass comes, swung through as it arrives — off the pass; held — the slap from the blade; swung far too early — a whiff', () => {
+  type Ag = { id: string; side: 0 | 1; x: number; y: number; fa: number; vx: number; vy: number; act: { k: string } | null; on: string; goalie: boolean; oneTimer: boolean };
+  type Raw = { agents: Map<string, Ag>; puck: { x: number; y: number; vx: number; vy: number; carrier: Ag | null; passTo: Ag | null }; mode: string; tau: number; ctl: string | null; passTo: (a: Ag, m: Ag, saucer: boolean) => void; shoot: (...a: unknown[]) => void };
+  const trial = (seed: number, plan: 'timed' | 'hold' | 'early' | 'button') => {
+    const k = make(seed, { userSide: 0 }), raw = k as unknown as Raw;
+    for (let i = 0; i < 60 * 20 && raw.mode !== 'play'; i++) k.advance(1 / 60, NO_PAD);
+    assert.equal(raw.mode, 'play');
+    const mine = [...raw.agents.values()].filter(a => a.side === 0 && !a.goalie && a.on === 'ice');
+    const me = mine[0], mate = mine[1];
+    // the slot, the passer on the half wall, the opponents out of the way
+    Object.assign(me, { x: 47, y: 13, vx: 0, vy: 0, fa: 0, act: null }); Object.assign(mate, { x: 41, y: 4, vx: 0, vy: 0, fa: 1.2, act: null });
+    for (const o of raw.agents.values()) if (o.side === 1 && !o.goalie && o.on === 'ice') Object.assign(o, { x: 8, y: 15, vx: 0, vy: 0 });
+    raw.puck.carrier = mate; raw.puck.x = mate.x; raw.puck.y = mate.y;
+    // (in the zone already: no offside on the teleported men)
+    (k as unknown as { zoneIn: boolean[] }).zoneIn = [true, true];
+    raw.passTo(mate, me, false); raw.ctl = me.id;
+    const shots: { kind: string; power: number; at: number }[] = [];
+    const shoot = raw.shoot.bind(k);
+    raw.shoot = (a: unknown, ...x: unknown[]) => { if ((a as Ag).id === me.id) shots.push({ kind: String(x[3] ?? ''), power: Number(x[0]), at: raw.tau }); return shoot(a, ...x); };
+    let got = -1, move: string | null = null, frames = 0;
+    for (let i = 0; i < 150 && !shots.length; i++) {
+      const pk = raw.puck, eta = Math.hypot(pk.x - me.x, pk.y - me.y) / Math.max(1, Math.hypot(pk.vx, pk.vy));
+      const has = pk.carrier === me;
+      if (has && got < 0) got = raw.tau;
+      if (has && got >= 0) frames++;
+      let sy = 0, shootBtn = false;
+      if (plan === 'timed') sy = !has && eta > 0.12 ? 1 : -1;
+      else if (plan === 'hold') sy = !has || frames < 20 ? 1 : -1;
+      else if (plan === 'early') sy = i < 8 ? 1 : i < 12 ? -1 : 0;
+      else shootBtn = !has || frames < 20;
+      if (has && frames === 10) move = k.hud().move;
+      k.advance(1 / 60, { ...NO_PAD, sx: 0, sy, shoot: shootBtn });
+    }
+    return { shots, got, move, frames };
+  };
+  const timed = trial(71, 'timed');
+  assert.ok(timed.got >= 0 && timed.shots.length === 1 && timed.shots[0].at - timed.got < 0.05, `timed: off the pass (${JSON.stringify(timed)})`);
+  assert.ok(timed.shots[0].power >= 0.6 && ['slap', 'snap'].includes(timed.shots[0].kind), 'a hard one-timer');
+  const hold = trial(72, 'hold');
+  assert.ok(hold.got >= 0 && hold.shots.length === 1 && hold.shots[0].at - hold.got > 0.25 && hold.shots[0].kind === 'slap' && hold.shots[0].power > 0.9, `held: the slap from the blade when he swings (${JSON.stringify(hold)})`);
+  assert.match(hold.move ?? '', /касание/, 'the HUD says the one-timer is loaded');
+  const early = trial(73, 'early');
+  assert.ok(early.got >= 0 && early.shots.length === 0, `swung far too early: no shot off the pass (${JSON.stringify(early)})`);
+  const button = trial(74, 'button');
+  assert.ok(button.got >= 0 && button.shots.length === 1 && button.shots[0].at - button.got > 0.25, `the shot button held through the pass: the release shoots (${JSON.stringify(button)})`);
+});
+
+test('the special-teams clock: like the period, real time (a minor is two real minutes), or real time ×2 / ×4', () => {
+  const rate = (pc: 'period' | 'real' | 2 | 4, mins: number, pen: boolean) => {
+    const [H, A] = [teams[0], teams[1]];
+    const id = H.lineup.F[0][0]!;
+    const k = new PlayRink({ home: H, away: A, players: P, lineups: [H.lineup, A.lineup], userSide: null, kind: 'reg', periodMinutes: mins, seed: 7, penaltyClock: pc, box: pen ? [[[id, 600]], []] : undefined });
+    for (let i = 0; i < 60 * 30 && k.mode !== 'play'; i++) k.advance(1 / 60, NO_PAD);
+    const c0 = k.clock; let n = 0;
+    for (let i = 0; i < 60 * 3; i++) { const was = k.mode === 'play'; const c = k.clock; k.advance(1 / 60, NO_PAD); if (was && k.mode === 'play' && k.clock > c) n++; }
+    return n ? (k.clock - c0) / (n / 60) : NaN;
+  };
+  const near = (a: number, b: number, what: string) => assert.ok(Math.abs(a - b) < b * 0.08, `${what}: ${a.toFixed(2)} vs ${b}`);
+  near(rate('period', 5, true), 4, 'like the period: 4 clock seconds a second on a 5-minute period');
+  near(rate('real', 5, true), 1, 'real time on the power play');
+  near(rate(2, 5, true), 2, '×2');
+  near(rate(4, 3, true), 4, '×4');
+  near(rate(4, 8, true), 2.5, 'never faster than the period itself');
+  near(rate('real', 5, false), 4, 'even strength: the period clock');
+});
+
 test('the manager\'s poke check takes the puck onto his stick; the skill stick carries the puck; the aim marker follows the mouse', () => {
   const k = make(63, { userSide: 0 }), p = priv(k);
   type Ag = { id: string; side: 0 | 1; x: number; y: number; fa: number; vx: number; vy: number; act: unknown; cool: number; manual: boolean; stun: number; on: string; goalie: boolean };

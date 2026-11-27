@@ -125,8 +125,33 @@ export function buildReplayClip(e: GameEvent, home: Team, away: Team, players: R
   return { label: e.strength === 'EN' ? 'Бросок в пустые ворота' : labels[shot], duration: 8, release, goal, tracks: tracks.map(tr => ({ ...tr, keys: tr.keys.map(mirror) })), puck: puck.map(mirror), scorer: e.player, attacking: side, dir: flip ? -1 : 1, shot };
 }
 
-/** Moves of the played match the 3D figures act out: dekes (side, toe drag, between the legs, spin-o-rama, shot fake), body checks (shoulder, hip, board pin) and a stick lift. */
-export type LiveMove = 'side' | 'toe' | 'between' | 'spin' | 'fake' | 'shoulder' | 'hip' | 'pin' | 'lift' | 'reach' | 'push';
+/** Moves of the played match the 3D figures act out: dekes (side, toe drag, between the legs, spin-o-rama, shot fake), body checks (shoulder, hip, board pin), a stick lift — and the infractions (FoulMove). */
+export type LiveMove = 'side' | 'toe' | 'between' | 'spin' | 'fake' | 'shoulder' | 'hip' | 'pin' | 'lift' | 'reach' | 'push' | FoulMove;
+/**
+ * The infraction itself, acted out by the man who commits it: a forearm / elbow up into the head, an elbow, a knee,
+ * a slash (the stick raised and chopped down), a high stick, a trip (the stick swept into the skates), a hook (the
+ * blade round his waist, pulled), holding (a glove grabbing him), a cross-check (the shaft in both hands shoved into
+ * him), roughing (punches), boarding / checking from behind (both arms shoving him into the boards).
+ */
+export type FoulMove = 'fHead' | 'fElbow' | 'fKnee' | 'fSlash' | 'fHigh' | 'fTrip' | 'fHook' | 'fHold' | 'fCross' | 'fRough' | 'fBoard';
+/** How long each infraction takes (s): the move's progress 0…1 runs over it. */
+export const FOUL_MOVE_DUR: Record<FoulMove, number> = { fHead: .8, fElbow: .7, fKnee: .65, fSlash: .6, fHigh: .7, fTrip: .6, fHook: .9, fHold: .9, fCross: .6, fRough: 1.3, fBoard: .65 };
+/** The infraction move for a call (the KHL wording of the rinks and of the text simulation); null: a body check shows it (charging, interference) or nothing does. */
+export function foulMove(reason: string): FoulMove | null {
+  const t = reason.toLowerCase();
+  if (t.includes('в голову') || t.includes('голов')) return 'fHead';
+  if (t.includes('локт')) return 'fElbow';
+  if (t.includes('колен')) return 'fKnee';
+  if (t.includes('подножк')) return 'fTrip';
+  if (t.includes('задержка клюшкой') || t.includes('крюк')) return 'fHook';
+  if (t.includes('задержка руками') || t.includes('захват') || t.includes('удержание') || (t.includes('задержка') && !t.includes('игры'))) return 'fHold';
+  if (t.includes('толчок клюшкой') || t.includes('кросс') || t.includes('концом клюшки')) return 'fCross';
+  if (t.includes('удар клюшкой') || t.includes('рубящ')) return 'fSlash';
+  if (t.includes('высок') || t.includes('высота')) return 'fHigh';
+  if (t.includes('груб') || t.includes('драк')) return 'fRough';
+  if (t.includes('сзади') || t.includes('на борт')) return 'fBoard';
+  return null;
+}
 /** Held stances of the played match: blocking a shot, a one-timer ready, calling for a pass, the defensive vision stance, a hustle burst. */
 export type LiveStance = 'block' | 'oneTimer' | 'call' | 'vision' | 'hustle';
 export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: Point; goalie?: boolean; box?: boolean; /** facing (unit vector, metres: x along the rink, y across) when the rink AI knows it */ dir?: { x: number; y: number };

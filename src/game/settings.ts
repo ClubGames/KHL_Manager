@@ -4,6 +4,7 @@
 import { useSyncExternalStore } from 'react';
 import type { ReplayCamera } from '../components/replayCameras';
 import type { LiveCamera } from '../components/replayCameras';
+import type { PenaltyClock } from './playRink';
 
 export type ReplayQualitySetting = 'auto' | 'standard' | 'high' | 'ultra';
 export type AutoReplay = 'all' | 'mine' | 'off';
@@ -34,6 +35,8 @@ export type Settings = {
   matchView: '2d' | '3d';
   /** camera of the 3D match */
   matchCamera: LiveCamera;
+  /** how far the 3D match camera stands (its zoom: below 1 closer, above 1 farther; the wheel / a pinch still adjust it) */
+  matchZoom: number;
   /** small 2D rink in the corner of the 3D picture */
   matchMinimap: boolean;
   /** before the first period in 3D: the teams skate out (visitors first, then the home team) with a laser show */
@@ -54,6 +57,8 @@ export type Settings = {
   playAutoSwitch: boolean;
   /** a played match: on-screen controls on a touch screen (stick and buttons) */
   playTouch: 'auto' | 'on' | 'off';
+  /** a played match: the clock while one side is short-handed — like the period, real time, or real time ×2 / ×4 */
+  playPenaltyClock: PenaltyClock;
 };
 
 const KEY = 'khl.settings';
@@ -63,13 +68,14 @@ export function defaultSettings(): Settings {
   return {
     replay3d: true, autoReplay: 'all', replayQuality: 'auto', replaySpeed: 1, replayCamera: 'auto', replayPrewarm: true,
     videoHeight: coarse() ? 720 : 1080, videoFps: 30, videoSlowmo: true, videoGraphics: true, videoQuality: 'view',
-    matchSpeed: 2, matchRink2d: true, matchView: '3d', matchCamera: 'broadcast', matchMinimap: true, matchIntro: true, matchReplays: true, matchAdvice: true, simOpenReport: true, simConfirm: true,
-    playPeriod: 5, playDifficulty: 'pro', playAutoSwitch: true, playTouch: 'auto',
+    matchSpeed: 2, matchRink2d: true, matchView: '3d', matchCamera: 'broadcast', matchZoom: 1, matchMinimap: true, matchIntro: true, matchReplays: true, matchAdvice: true, simOpenReport: true, simConfirm: true,
+    playPeriod: 5, playDifficulty: 'pro', playAutoSwitch: true, playTouch: 'auto', playPenaltyClock: 'period',
   };
 }
 
 const CAMS: ReplayCamera[] = ['auto', 'broadcast', 'ice', 'net', 'goal', 'chase', 'end', 'sky', 'stands', 'corner', 'overhead', 'blue', 'rail', 'puck'];
 export const REPLAY_SPEEDS = [.25, .5, .75, 1, 1.5, 2];
+export const MATCH_ZOOMS = [.7, .85, 1, 1.2, 1.45];
 
 /** Keeps only known keys with valid values (anything else falls back to the default). */
 export function sanitizeSettings(raw: unknown): Settings {
@@ -84,8 +90,8 @@ export function sanitizeSettings(raw: unknown): Settings {
     replayCamera: one('replayCamera', CAMS), replayPrewarm: bool('replayPrewarm'),
     videoHeight: one('videoHeight', [720, 1080] as const), videoFps: one('videoFps', [30, 60] as const),
     videoSlowmo: bool('videoSlowmo'), videoGraphics: bool('videoGraphics'), videoQuality: one('videoQuality', ['fast', 'view'] as const),
-    matchSpeed: one('matchSpeed', [1, 2, 4] as const), matchRink2d: bool('matchRink2d'), matchView: one('matchView', ['2d', '3d'] as const), matchCamera: one('matchCamera', ['broadcast', 'high', 'ice', 'end', 'overhead', 'dynamic', 'zone', 'vertical'] as const), matchMinimap: bool('matchMinimap'), matchIntro: bool('matchIntro'), matchReplays: bool('matchReplays'), matchAdvice: bool('matchAdvice'), simOpenReport: bool('simOpenReport'), simConfirm: bool('simConfirm'),
-    playPeriod: one('playPeriod', [3, 5, 8, 12, 20] as const), playDifficulty: one('playDifficulty', ['rookie', 'pro', 'star'] as const), playAutoSwitch: bool('playAutoSwitch'), playTouch: one('playTouch', ['auto', 'on', 'off'] as const),
+    matchSpeed: one('matchSpeed', [1, 2, 4] as const), matchRink2d: bool('matchRink2d'), matchView: one('matchView', ['2d', '3d'] as const), matchCamera: one('matchCamera', ['broadcast', 'high', 'ice', 'end', 'overhead', 'dynamic', 'zone', 'vertical'] as const), matchZoom: one('matchZoom', MATCH_ZOOMS), matchMinimap: bool('matchMinimap'), matchIntro: bool('matchIntro'), matchReplays: bool('matchReplays'), matchAdvice: bool('matchAdvice'), simOpenReport: bool('simOpenReport'), simConfirm: bool('simConfirm'),
+    playPeriod: one('playPeriod', [3, 5, 8, 12, 20] as const), playDifficulty: one('playDifficulty', ['rookie', 'pro', 'star'] as const), playAutoSwitch: bool('playAutoSwitch'), playTouch: one('playTouch', ['auto', 'on', 'off'] as const), playPenaltyClock: one('playPenaltyClock', ['period', 'real', 2, 4] as const),
   };
 }
 
