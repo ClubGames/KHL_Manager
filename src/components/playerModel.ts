@@ -694,7 +694,13 @@ export class PlayerFigure {
     const pointAt = (target: T.Vector3 | null | undefined, down = 0) => {
       const s0 = vec(-sx, sy, sz);
       const d = target ? target.clone().sub(s0) : vec(-1, 0, 1);
-      d.y = Math.max(-.5, Math.min(.35, d.y * .2)) - down; d.normalize();
+      d.y = Math.max(-.5, Math.min(.35, d.y * .2)) - down;
+      // the right arm points to his right and forward: a target behind him or across his body is pointed at as far
+      // round as the shoulder goes (the arm never wraps behind the back or through the chest)
+      const flat = Math.hypot(d.x, d.z) || 1; d.x /= flat; d.z /= flat;
+      if (d.x > -.3) { d.x = -.3; d.z = Math.sign(d.z || 1) * Math.sqrt(1 - .09); }
+      if (d.z < -.35) { d.z = -.35; d.x = -Math.sqrt(1 - .35 * .35); }
+      d.normalize();
       return s0.addScaledVector(d, .62);
     };
     switch (g) {
@@ -734,9 +740,30 @@ export class PlayerFigure {
       }
       default: break;
     }
-    if (g !== 'none' && g !== 'ready' && g !== 'drop') { L = rest(1).lerp(L, into); R = rest(-1).lerp(R, into); }
+    // (the first signal of a fresh figure swings in from the side)
+    if (!this.offArms && g !== 'none' && g !== 'ready' && g !== 'drop') { L = rest(1).lerp(L, into); R = rest(-1).lerp(R, into); }
+    // From one signal to the next (the arm up → the infraction → the point to the box → down again) the hands and the
+    // elbows travel from where they were — never a snap back to the side and up again, never an elbow flipping over —
+    // and the hands swing a little out from the body on the way, not through it.
+    const m = this.offArms;
+    if (!m || m.g !== g || t < m.t0 - 1e-6) {
+      // (the throw at a faceoff is quick on purpose: no blending into it)
+      const from = m && !(m.g === 'ready' && g === 'drop') ? { L: m.L.clone(), R: m.R.clone(), PL: m.PL.clone(), PR: m.PR.clone() } : null;
+      this.offArms = { g, t0: t, from, L: L.clone(), R: R.clone(), PL: PL.clone(), PR: PR.clone() };
+    }
+    const a = this.offArms!;
+    if (a.from) {
+      const k = smooth(clamp01((t - a.t0) / .32)), bulge = Math.sin(Math.PI * k) * .14;
+      if (k >= 1) a.from = null;
+      else {
+        L = a.from.L.clone().lerp(L, k).add(vec(bulge, 0, bulge * .6)); R = a.from.R.clone().lerp(R, k).add(vec(-bulge, 0, bulge * .6));
+        PL = a.from.PL.clone().lerp(PL, k).normalize(); PR = a.from.PR.clone().lerp(PR, k).normalize();
+      }
+    }
+    a.L.copy(L); a.R.copy(R); a.PL.copy(PL); a.PR.copy(PR);
     this.arms(L, R, PL, PR);
   }
+  private offArms: { g: string; t0: number; from: { L: T.Vector3; R: T.Vector3; PL: T.Vector3; PR: T.Vector3 } | null; L: T.Vector3; R: T.Vector3; PL: T.Vector3; PR: T.Vector3 } | null = null;
 
   private shadowCasters: T.Object3D[] | null = null;
   /** Off the ice the figure needs no shadow (the bench is outside the shadow map anyway): saves the shadow pass. */

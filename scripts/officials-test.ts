@@ -248,6 +248,8 @@ test('the entrance: officials out of their corridor, each team out of its tunnel
   const p0 = at(firstA + .05).get(lineup(s, 1)[0].id)!;
   assert.ok(p0.visible && Math.abs(p0.z - TUNNEL.z) < .5, `out of the tunnel (${p0.z.toFixed(1)})`);
   assert.ok(out(T.away + 1, 1) >= 2 && out(T.away + 1, 0) === 0, 'the visitors come out first');
+  // walking out of the tunnel and through the bench: on the floor, no hop over the seat
+  for (let t = firstA; t < A.out + 2; t += 1 / 30) for (const x of lineup(s, 1)) { const p = at(t).get(x.id)!; if (p.visible && p.z < -RINK_HW) assert.ok(p.y <= .06, `${x.id} at ${t.toFixed(2)}: y ${p.y.toFixed(2)}`); }
   assert.equal(out(H.walk - .1, 0), 0, 'the home team after them');
   assert.ok(H.walk > A.out, 'the home team starts walking once the visitors are on the ice');
   // everybody dressed comes out, one after another (the starting goalie first, the backup last)
@@ -291,16 +293,24 @@ test('the entrance: officials out of their corridor, each team out of its tunnel
   zone.forEach((o, i) => assert.ok(Math.hypot(o.x - OFFICIALS_ZONE[i].x, o.z - OFFICIALS_ZONE[i].z) < .05, `official ${i} in the zone`));
   assert.ok(Math.abs(OFFICIALS_ZONE[0].x) < Math.abs(OFFICIALS_ZONE[2].x) && Math.abs(OFFICIALS_ZONE[1].x) < Math.abs(OFFICIALS_ZONE[3].x) && Math.sign(OFFICIALS_ZONE[2].x) !== Math.sign(OFFICIALS_ZONE[3].x), 'the referees between the linesmen');
   assert.ok(OFFICIALS_ZONE.every(z => z.z > RINK_HW - 1.5), 'by the boards on the timekeepers\' side');
-  // only then the captains: they meet at centre ice and shake hands (the officials stay in their zone)
-  let met = false, early = false;
-  for (let t = T.anthem; t < T.settle; t += .1) {
-    const p = at(t), ch = p.get('0-3')!, ca = p.get('1-9')!;
-    const shaking = Math.hypot(ch.x - ca.x, ch.z - ca.z) < 1.2 && ch.shake > .6 && ca.shake > .6;
-    if (shaking && t >= T.hands) met = true;
-    if ((ch.shake > 0 || ca.shake > 0) && t < T.hands) early = true;
-    if (t >= T.hands) introOfficials(plan, t, places).forEach((o, i) => assert.ok(Math.hypot(o.x - OFFICIALS_ZONE[i].x, o.z - OFFICIALS_ZONE[i].z) < .05 && o.gesture === 'none'));
+  // only then the captains: they skate to the officials' zone, shake hands with both referees there and with each
+  // other (the officials stay in their zone)
+  const met = new Set<string>();
+  let early = false;
+  for (let t = T.anthem; t < T.settle; t += .05) {
+    const p = at(t), ch = p.get('0-3')!, ca = p.get('1-9')!, refs = introOfficials(plan, t, places);
+    if ((ch.shake > 0 || ca.shake > 0 || refs.some(r => r.gesture === 'shake')) && t < T.hands) early = true;
+    if (t < T.hands) continue;
+    refs.forEach((o, i) => assert.ok(Math.hypot(o.x - OFFICIALS_ZONE[i].x, o.z - OFFICIALS_ZONE[i].z) < .05, 'the officials stay in their zone'));
+    for (const [c, n] of [[ch, 'h'], [ca, 'a']] as const) {
+      refs.slice(0, 2).forEach((r, i) => { if (Math.hypot(c.x - r.x, c.z - r.z) < 1.1 && c.shake > .6 && r.gesture === 'shake') met.add(`${n}${i}`); });
+      if (c.shake > .1) assert.ok(c.z > RINK_HW - 3 && Math.abs(c.x) < 2, `the greetings in the officials' zone (${c.x.toFixed(1)}, ${c.z.toFixed(1)})`);
+    }
+    if (Math.hypot(ch.x - ca.x, ch.z - ca.z) < 1.2 && ch.shake > .6 && ca.shake > .6) met.add('caps');
+    assert.ok(Math.hypot(ch.x - ca.x, ch.z - ca.z) > .8, `the captains do not skate through each other (${(t - T.hands).toFixed(2)}: ${ch.x.toFixed(2)},${ch.z.toFixed(2)} / ${ca.x.toFixed(2)},${ca.z.toFixed(2)})`);
   }
-  assert.ok(met && !early, 'the captains shake hands after the goalies and the officials are in place');
+  assert.ok(!early, 'the greetings after the goalies and the officials are in place');
+  assert.deepEqual([...met].sort(), ['a0', 'a1', 'caps', 'h0', 'h1'], [...met].join(' '));
   // the close-ups: the visitors' goalie, captain and leader, then the home team's
   assert.deepEqual(plan.shots.map(x => `${x.side}:${x.kind}`), ['1:goalie', '1:captain', '1:leader', '0:goalie', '0:captain', '0:leader']);
   assert.equal(plan.shots[1].id, '1-9'); assert.equal(plan.shots[4].id, '0-3');

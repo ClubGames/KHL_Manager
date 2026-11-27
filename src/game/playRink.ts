@@ -308,6 +308,12 @@ export class PlayRink {
   readonly breakout: [number, number] = [0, 0];
   private pairIdx: [number, number] = [0, 0];
   private ppIdx: [number, number] = [0, 0];
+  /** single changes: a tired man's place in his line taken by a fresher one from the bench (lineup id → who plays) */
+  private sub: [Map<string, string>, Map<string, string>] = [new Map(), new Map()];
+  /** when each side last sent forwards / defencemen off on the fly (the two never change together) */
+  private changedAt: [{ F: number; D: number }, { F: number; D: number }] = [{ F: -99, D: -99 }, { F: -99, D: -99 }];
+  /** called off with the puck on his stick: he goes as soon as he has given it up */
+  private offNext = new Set<string>();
   private changeCheck = 0;
   private aiTick = 0;
   private callForPass = 0;
@@ -573,7 +579,8 @@ export class PlayRink {
       ids = n >= 5 ? [...F, ...D] : n === 4 ? [F[0], F[1], ...D] : [F[0], F[1], D[0]];
       if (n > 5) ids.push(F[2]);
     }
-    const out = [...new Set(ids.filter(free))];
+    const swap = this.sub[s];
+    const out = [...new Set(ids.map(id => (id && swap.has(id) && free(swap.get(id)) ? swap.get(id)! : id)).filter(free))];
     // fill gaps with dressed men of the missing kind (defencemen first when a pair is short)
     const wantD = n >= 4 ? 2 : 1;
     const pool = [...Lu.F.flat(), ...Lu.D.flat(), Lu.u20F, Lu.u20D].filter(free);
@@ -666,14 +673,32 @@ export class PlayRink {
     this.out.push({ type: 'end' });
   }
   private setupFaceoff(dot: V2, icingSide: Side | null, gather = true) {
-    // changes at the whistle (the team that iced the puck may not change)
+    // changes at the whistle (the team that iced the puck may not change): forwards and defence each to their
+    // freshest line / pair when the men out there are tired, single tired men for a fresh one off the bench
     for (const s of [0, 1] as Side[]) {
       const sk2 = this.skaters(s);
-      const tired = sk2.length ? sk2.reduce((m, a) => m + a.energy, 0) / sk2.length < 0.74 : true;
       const wrongSize = sk2.length !== this.manpower(s) + (this.pulled[s] && !this.goalieOf(s) ? 1 : 0);
-      if (s === icingSide && !wrongSize) continue;
-      if (tired || this.changeNow[s]) this.nextUnit(s, tired ? 'all' : this.changeNow[s] || 'all');
-      if (tired || wrongSize || this.changeNow[s]) this.setUnit(s, true);
+      if (s === icingSide && !wrongSize) { this.changeNow[s] = false; continue; }
+      const want = this.changeNow[s], even = this.manpower(s) === this.manpower((1 - s) as Side);
+      let changed = false;
+      for (const kind of ['F', 'D'] as const) {
+        const on = sk2.filter(a => a.kindD === (kind === 'D'));
+        const e = on.length ? on.reduce((m, a) => m + a.energy, 0) / on.length : 1;
+        const next = this.freshest(s, kind), eNext = this.groupEnergy(s, kind, next);
+        if (want === 'all' || want === kind || (e < 0.82 && eNext > e + 0.08)) { this.setGroup(s, kind, next); changed = true; }
+      }
+      if (even) { if (changed) this.ppIdx[s]++; }
+      else {
+        // the power play / penalty kill: the fresher of its two units
+        const e = sk2.length ? sk2.reduce((m, a) => m + a.energy, 0) / sk2.length : 1;
+        const unitE = (k: number) => { this.ppIdx[s] = k; const u = this.unitFor(s); return u.reduce((m, id) => m + (this.agents.get(id)?.energy ?? 0), 0) / Math.max(1, u.length); };
+        const cur = this.ppIdx[s] % 2, mine = unitE(cur), other = unitE(cur + 1);
+        this.ppIdx[s] = want || (e < 0.8 && other > mine + 0.05) ? cur + 1 : cur;
+      }
+      // a man left out of breath in a unit that stays: the freshest of his kind on the bench takes his place
+      for (const a of this.unitFor(s).map(id => this.agents.get(id)!)) if (a.energy < 0.5) this.subFor(s, a, 0.75);
+      if (changed || wrongSize || this.unitFor(s).some(id => this.agents.get(id)?.on !== 'ice')) this.setUnit(s, true);
+      for (const a of this.skaters(s)) this.offNext.delete(a.id);
       this.changeNow[s] = false;
     }
     // a goalie returns to his net at a whistle unless the bench keeps him pulled
@@ -881,18 +906,68 @@ export class PlayRink {
       }
     }
   }
-  private nextUnit(s: Side, who: 'all' | 'F' | 'D' = 'all') {
-    const Lu = this.opts.lineups[s];
-    const lines = Math.max(1, Lu.F.filter(l => l.some(id => this.validSkater(id))).length), pairs = Math.max(1, Lu.D.filter(l => l.some(id => this.validSkater(id))).length);
-    // top lines play more: the fourth line is skipped every other rotation
-    if (who !== 'D') {
-      this.lineIdx[s] = (this.lineIdx[s] + 1) % lines;
-      if (this.lineIdx[s] === 3 && this.rand() < 0.4) this.lineIdx[s] = 0;
+  /** Average energy of side s's forward line / defence pair number i (the men who could go out: not in the box). */
+  private groupEnergy(s: Side, kind: 'F' | 'D', i: number): number {
+    const g = (kind === 'F' ? this.opts.lineups[s].F : this.opts.lineups[s].D)[i] ?? [];
+    const men = g.filter((id): id is string => this.validSkater(id) && this.agents.get(id)?.on !== 'box').map(id => this.agents.get(id)!);
+    return men.length ? men.reduce((m, a) => m + a.energy, 0) / men.length : -1;
+  }
+  /**
+   * The line / pair to send out next: the freshest of the others, the next in the rotation a little preferred and
+   * the fourth line / third pair a little less (top units play more).
+   */
+  private freshest(s: Side, kind: 'F' | 'D'): number {
+    const groups = kind === 'F' ? this.opts.lineups[s].F : this.opts.lineups[s].D, n = groups.length;
+    const cur = (kind === 'F' ? this.lineIdx[s] : this.pairIdx[s]) % Math.max(1, n);
+    let best = cur, top = -Infinity;
+    for (let i = 0; i < n; i++) {
+      const e = this.groupEnergy(s, kind, i);
+      if (i === cur || e < 0) continue;
+      const score = e - ((i - cur + n) % n) / n * 0.06 - (kind === 'F' ? (i >= 3 ? 0.07 : 0) : i >= 2 ? 0.04 : 0);
+      if (score > top) { top = score; best = i; }
     }
-    if (who !== 'F') this.pairIdx[s] = (this.pairIdx[s] + 1) % pairs;
+    return best;
+  }
+  private setGroup(s: Side, kind: 'F' | 'D', i: number) {
+    if (kind === 'F') this.lineIdx[s] = i; else this.pairIdx[s] = i;
+    // the single changes of that kind are over: the line / pair goes out as it is
+    for (const [k, v] of [...this.sub[s]]) if (this.agents.get(k)?.kindD === (kind === 'D') || this.agents.get(v)?.kindD === (kind === 'D')) this.sub[s].delete(k);
+  }
+  /** The freshest man of a's kind on the bench (above `min` energy) to take a's place in the unit; null: nobody. */
+  private subFor(s: Side, a: Sk, min: number): Sk | null {
+    const want = this.unitFor(s);
+    let best: Sk | null = null;
+    for (const b of this.agents.values()) if (b.side === s && !b.goalie && b.on === 'bench' && b.kindD === a.kindD && !want.includes(b.id) && b.energy > min && b.energy > (best?.energy ?? -1)) best = b;
+    if (!best) return null;
+    const key = [...this.sub[s]].find(([, v]) => v === a.id)?.[0] ?? a.id;
+    this.sub[s].set(key, best.id);
+    return best;
+  }
+  /** The next line and / or pair picked (the freshest), ahead of a change. */
+  nextUnit(s: Side, who: 'all' | 'F' | 'D' = 'all') {
+    if (who !== 'D') this.setGroup(s, 'F', this.freshest(s, 'F'));
+    if (who !== 'F') this.setGroup(s, 'D', this.freshest(s, 'D'));
     this.ppIdx[s]++;
   }
-  /** Changes on the fly: a tired unit goes off when the puck is not in its own end; the new man jumps on at the door. */
+  /**
+   * Whether side s can change on the fly without being caught short: never while the other team has the puck
+   * (unless it is deep in its own end and only forwards go), forwards once the puck is out past their own blue line
+   * with it in their hands or past centre, defencemen only with the puck past centre ice.
+   */
+  private safeToChange(s: Side, kind: 'F' | 'D', spent = false): boolean {
+    if (this.mode !== 'play') return false;
+    const c = this.puck.carrier, pl = loc(s, this.puck);
+    // out of breath altogether: any moment the other team is not coming at them will do
+    if (spent) return c && c.side !== s ? kind === 'F' && pl.x > RED + 4 : pl.x > BLUE + 2;
+    if (c && c.side !== s) return kind === 'F' && pl.x > OPP_BLUE + 3;
+    if (kind === 'D') return pl.x > RED + 2;
+    return pl.x > BLUE + 4 && (c?.side === s || pl.x > RED);
+  }
+  /**
+   * Changes on the fly. The forwards change as a line and the defencemen as a pair, never at the same time; a
+   * tired line / pair goes off only when it is safe; a man out of breath in a line that is still fine goes off on his
+   * own for the freshest man of his kind; the new man jumps on at the door.
+   */
   private changes() {
     if (this.tau < this.changeCheck) {
       // finish changes in progress: a man at the bench door is replaced at once
@@ -907,19 +982,54 @@ export class PlayRink {
       return;
     }
     this.changeCheck = this.tau + 0.5;
+    // the man who had the puck when his line was called off goes once he has given it up
+    for (const id of this.offNext) {
+      const a = this.agents.get(id);
+      if (!a || a.on !== 'ice') { this.offNext.delete(id); continue; }
+      const at = this.changedAt[a.side], other = a.kindD ? at.F : at.D;
+      if (a !== this.puck.carrier && this.tau - other > 2) { a.leaving = true; this.offNext.delete(id); at[a.kindD ? 'D' : 'F'] = this.tau; }
+    }
     for (const s of [0, 1] as Side[]) {
       const list = this.skaters(s, false);
-      if (!list.length || list.some(a => a.leaving)) continue;
-      const avg = list.reduce((m, a) => m + a.energy, 0) / list.length;
-      const pl = loc(s, this.puck);
-      const safe = pl.x > BLUE + 4 && (this.puck.carrier?.side === s || pl.x > RED);
-      const who = this.changeNow[s] || 'all';
-      if ((avg < 0.42 || this.changeNow[s]) && safe) {
-        this.nextUnit(s, who);
-        this.changeNow[s] = false;
-        for (const a of list) if (a.energy < (who === 'all' ? 0.7 : 1.01) && a !== this.puck.carrier && (who === 'all' || (who === 'D') === a.kindD)) a.leaving = true;
+      if (!list.length || list.length < this.skaters(s).length) continue;
+      const c = this.puck.carrier, forced = this.changeNow[s], at = this.changedAt[s];
+      // short-handed or on the power play the whole unit changes (its own lines), as before
+      if (this.manpower(s) !== this.manpower((1 - s) as Side)) {
+        const avg = list.reduce((m, a) => m + a.energy, 0) / list.length;
+        if ((avg < 0.42 || forced) && this.safeToChange(s, 'F')) {
+          this.ppIdx[s]++; this.changeNow[s] = false; at.F = at.D = this.tau;
+          for (const a of list) if ((forced || a.energy < 0.7) && a !== c) a.leaving = true;
+        }
         if (this.ctl && this.agents.get(this.ctl)?.leaving) this.pickControl(true);
+        continue;
       }
+      // the more tired group first; the other only a few seconds after the first is done
+      const kinds = (['F', 'D'] as const).map(kind => {
+        const on = list.filter(a => a.kindD === (kind === 'D'));
+        return { kind, on, e: on.length ? on.reduce((m, a) => m + a.energy, 0) / on.length : 1 };
+      }).sort((a, b) => a.e - b.e);
+      let done = false;
+      for (const { kind, on, e } of kinds) {
+        const asked = forced === 'all' || forced === kind;
+        if (!on.length || !(asked || e < (kind === 'F' ? 0.55 : 0.5))) continue;
+        const other = kind === 'F' ? at.D : at.F;
+        if (this.tau - other < (asked ? 2.5 : 5)) continue;
+        if (!this.safeToChange(s, kind, e < 0.2)) continue;
+        this.setGroup(s, kind, this.freshest(s, kind));
+        at[kind] = this.tau;
+        for (const a of on) if (asked || a.energy < 0.8) { if (a === c) this.offNext.add(a.id); else a.leaving = true; }
+        // asked for everybody: the defence goes once the forwards are off
+        this.changeNow[s] = forced === 'all' ? (kind === 'F' ? 'D' : 'F') : forced === kind ? false : forced;
+        done = true;
+        break;
+      }
+      // single changes: one man out of breath (not with the puck), when it is safe and no group change is near
+      if (!done && !forced && this.tau - Math.max(at.F, at.D) > 3) {
+        const worn = list.filter(a => a.energy < 0.3 && a !== c).sort((a, b) => a.energy - b.energy)[0];
+        const kind = worn?.kindD ? 'D' : 'F';
+        if (worn && this.safeToChange(s, kind, worn.energy < 0.12) && this.subFor(s, worn, 0.6)) { worn.leaving = true; at[kind] = this.tau; }
+      }
+      if (this.ctl && this.agents.get(this.ctl)?.leaving) this.pickControl(true);
     }
   }
   /** The replacement comes over the boards while `a` is still on his way in. */
@@ -1219,7 +1329,8 @@ export class PlayRink {
           this.shoot(me, stickPower(held), Math.max(held, 0.3), this.aimVec, held > 0.32 ? 'slap' : 'snap');
           return true;
         }
-        if (Math.abs(l) > 0.6 * m) {
+        // sideways: a toe drag — unless the stick is swinging on round in one go (a circle in the making: a spin)
+        if (Math.abs(l) > 0.6 * m && !(Math.abs(ss.sweep - ss.backSweep) > 1.2 && held < 0.3)) {
           ss.back = -1; if (me.act?.k === 'windup') me.act = null;
           this.deke(me, 0, 0, latSign, 'toe'); return true;
         }
@@ -2313,7 +2424,7 @@ export class PlayRink {
       else if (kind === 'shoulder' && !light && closing > 6.5 && fall && !fromBehind && r2 < 0.255) this.foul(a, PEN_REASON.head, t, 5);
       else if (kind === 'shoulder' && !light && r2 > 0.988) this.foul(a, PEN_REASON.elbow, t, closing > 7 && fall ? 5 : 2);
       else if (kind === 'hip' && fall && r2 > 0.97) this.foul(a, PEN_REASON.knee, t);
-      else if (kind === 'pin' && r2 > 0.96) this.foul(a, PEN_REASON.hold, t);
+      else if (kind === 'pin' && r2 > 0.94) this.foul(a, PEN_REASON.hold, t);
       return;
     }
     // he rides it out: they bump, the checker bounces off and both wobble; the puck stays with him
@@ -2323,7 +2434,7 @@ export class PlayRink {
     this.play('hit', t.side, `${t.name} устоял после силового ${a.name}`, t);
     // a bump on a man far from the play is still interference, though it is called less often; beaten, he grabs him
     if (!playing && late > 2 && this.rand() < 0.15) this.foul(a, PEN_REASON.interference, t);
-    else if (playing && this.rand() < 0.02) { t.vx *= 0.6; t.vy *= 0.6; this.foul(a, PEN_REASON.hold, t); }
+    else if (playing && this.rand() < 0.035) { t.vx *= 0.6; t.vy *= 0.6; this.foul(a, PEN_REASON.hold, t); }
   }
   /** Down on the ice: stunned for `sec` (getting up the last part), falling the given way. */
   private knockDown(a: Sk, kind: FallKind, side: 1 | -1, sec: number) {
