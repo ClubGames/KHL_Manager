@@ -3,6 +3,7 @@ import type { AttackStyle, ForecheckStyle, GameEvent, Player, Team } from '../ty
 import type { FoulMove, Key, LiveFrame, ReplayClip, Track } from './rinkPlayback';
 import { FOUL_MOVE_DUR, foulMove } from './rinkPlayback';
 import { RINK } from './rinkGeometry';
+import { boardsSide, foPlaces, foSpot } from './faceoffFormation';
 
 /*
  * Agent-based hockey for the 2D rink and the 3D replay.
@@ -107,6 +108,8 @@ const inBox = (p: V2, c: { x0: number; x1: number; y0: number; y1: number }, m: 
 const SHOT_SPEED: Record<string, number> = { slap: 36, snap: 30, wrist: 26, backhand: 21, tip: 24, rebound: 18 };
 const CATCH: Record<string, number> = { slap: 0.3, snap: 0.25, wrist: 0.65, backhand: 0.8, tip: 0.05, rebound: 0.15 };
 const FACEOFF_DOTS = { center: { x: 30, y: 15 } };
+/** The order the forwards line up in for a draw (the centre takes it). */
+const FO_ROLE_ORDER: Role[] = ['C', 'LW', 'RW', 'X', 'LD', 'RD'];
 /** Least time from the end of the whistle to the players set for a faceoff, and set → drop (the official skates
  *  to the dot, bends over, holds the puck out; see officialCrew). */
 export const FACEOFF_GATHER = 2.6, FACEOFF_SET = 1.1;
@@ -645,10 +648,16 @@ export class RinkAI {
     const d = this.stop?.dot ?? FACEOFF_DOTS.center;
     if (a.goalie) return loc(a.side, { x: GOAL + 0.9, y: MID });
     const l = loc(a.side, d);
-    const off: Record<Role, V2> = { C: { x: -0.9, y: 0 }, LW: { x: -1.3, y: -4.4 }, RW: { x: -1.3, y: 4.4 }, LD: { x: -7.2, y: -3.8 }, RD: { x: -7.2, y: 3.8 }, X: { x: -4.5, y: 1.5 } };
-    const o = off[a.role];
-    const list = this.skaters(a.side), same = list.filter(b => b.role === a.role), k = same.indexOf(a);
-    return inside(loc(a.side, { x: Math.max(GOAL + 1.5, l.x + o.x - k * 1.5), y: l.y + o.y + k * 1.5 }), 1);
+    // the forwards by role (the centre first), the defence on the points: a place of his own for everybody at any
+    // strength (faceoffFormation.ts — a unit without a «C» used to leave the dot to nobody, two «X» to share a place)
+    const rank = (r: Role) => FO_ROLE_ORDER.indexOf(r);
+    const list = this.skaters(a.side);
+    const F = list.filter(b => !this.kindD(b.id)).sort((p, q) => rank(p.role) - rank(q.role));
+    const D = list.filter(b => this.kindD(b.id)).sort((p, q) => rank(p.role) - rank(q.role));
+    const places = foPlaces(F.length, D.length, boardsSide(l));
+    const fi = F.indexOf(a), di = D.indexOf(a);
+    const q = fi >= 0 ? places.F[fi] : di >= 0 ? places.D[di] : null;
+    return q ? inside(loc(a.side, foSpot(l, q, GOAL + 1.5)), 1) : { x: a.x, y: a.y };
   }
   private stepStop() {
     const st = this.stop!;

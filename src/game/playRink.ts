@@ -4,6 +4,7 @@ import { FOUL_MOVE_DUR, foulMove } from './rinkPlayback';
 import type { RinkPlay, PlayKind } from './rinkAI';
 import { BOARDS_H, FACEOFF_SPOTS, RINK, glassTop, inBenchFront } from './rinkGeometry';
 import { goalieSavePct } from './ratings';
+import { boardsSide, foPlaces, foSpot, type FoPlace } from './faceoffFormation';
 import { EJECT_END, ejects, penLength, SHORT_MIN, type PenaltyCall, type PenKind } from './penalties';
 import { soNext, soShooter, soTally, type SoAttempt } from './shootout';
 
@@ -214,7 +215,7 @@ const smooth01 = (v: number) => { const t = clamp(v, 0, 1); return t * t * (3 - 
 /** The official who drops the puck stands this far from the dot, across the rink on its far side (m): his hand is over the dot. */
 const OFFICIAL_AT = 0.75;
 /** The longest the players take to skate to their faceoff places after a whistle (s). */
-const FO_GATHER_MAX = 7;
+const FO_GATHER_MAX = 11;
 /** The faceoff drop (s): the official's windup before the puck leaves his hand, its fall, the centres' battle for it before one wins it. */
 export const FO_DROP = { windup: 0.3, fall: 0.147, battle: 0.45 };
 const angDiff = (a: number, b: number) => { let d = b - a; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; return d; };
@@ -1258,13 +1259,12 @@ export class PlayRink {
     for (const s of [0, 1] as Side[]) {
       this.assignRoles(s);
       const list = this.skaters(s), d = loc(s, dot);
+      // the centre first (assignRoles), then the wingers; the defence on the points — a place of his own for everybody
+      // at any strength (faceoffFormation.ts; 4-on-4 used to send both defencemen to one spot)
       const F = list.filter(a => !a.kindD), D = list.filter(a => a.kindD);
-      const order = [...F, ...D];
-      const spots: V2[] = [{ x: d.x - 0.95, y: d.y }, { x: d.x - 1.1, y: d.y - 4.3 }, { x: d.x - 1.1, y: d.y + 4.3 }, { x: d.x - 6.5, y: d.y - 3.4 }, { x: d.x - 6.5, y: d.y + 3.4 }, { x: d.x - 4, y: d.y }];
-      // a short-handed unit: the defencemen take the back spots
-      const take = (a: Sk, i: number) => {
-        const sp = a.kindD && i < 3 && D.length + F.length < 5 ? spots[3 + D.indexOf(a)] ?? spots[i] : spots[i];
-        const l = inside({ x: Math.max(GOAL + 1.4, sp.x), y: sp.y }, 1);
+      const places = foPlaces(F.length, D.length, boardsSide(d));
+      const take = (a: Sk, q: FoPlace) => {
+        const l = inside(foSpot(d, q, GOAL + 1.4), 1);
         const g = loc(s, l);
         place.set(a.id, g);
         a.act = null; a.stun = 0; a.fall = 0; a.leaving = false;
@@ -1272,7 +1272,8 @@ export class PlayRink {
         if (!gather) { a.x = g.x; a.y = g.y; a.vx = 0; a.vy = 0; a.fa = s ? Math.PI : 0; a.hopTo = undefined; }
         a.tx = g.x; a.ty = g.y;
       };
-      order.forEach((a, i) => take(a, Math.min(i, spots.length - 1)));
+      F.forEach((a, i) => take(a, places.F[i]));
+      D.forEach((a, i) => take(a, places.D[i]));
       const g = this.goalieOf(s);
       if (g) { const n = loc(s, { x: GOAL + 1.0, y: MID }); place.set(g.id, n); if (!gather) { g.x = n.x; g.y = n.y; g.vx = 0; g.vy = 0; g.fa = s ? Math.PI : 0; } }
     }
@@ -1285,6 +1286,23 @@ export class PlayRink {
     const late = [...this.agents.values()].some(a => a.on === 'ice' && a.hopTo !== undefined && a.hopTo > this.tau) ? HOP_DOOR : 0;
     this.fo = { dot, setAt, drop: setAt + 1.5 + this.rand() * 0.6, done: false, gather, until: setAt + FO_GATHER_MAX + late, spots: place, decide: NaN };
     this.zoneIn = [loc(0, dot).x > OPP_BLUE, loc(1, dot).x > OPP_BLUE];
+  }
+  /** A man standing in the straight path to `to` (within 0.8 m of it, ahead): the point beside him to skate for. */
+  private inTheWay(a: Sk, to: V2): V2 | null {
+    const dx = to.x - a.x, dy = to.y - a.y, d = Math.hypot(dx, dy);
+    if (d < 1e-6) return null;
+    const ux = dx / d, uy = dy / d;
+    let best: Sk | null = null, bestAlong = Infinity, bestOff = 0;
+    for (const b of this.onIce()) {
+      if (b === a) continue;
+      const rx = b.x - a.x, ry = b.y - a.y, along = rx * ux + ry * uy, off = -rx * uy + ry * ux;
+      if (along <= 0.2 || along >= d + 0.3 || Math.abs(off) >= 0.8 || along >= bestAlong) continue;
+      best = b; bestAlong = along; bestOff = off;
+    }
+    if (!best) return null;
+    // pass on the side he leaves more room on (the target's side when it is level)
+    const sg = bestOff > 0 ? -1 : 1, gap = 1.05;
+    return { x: best.x - uy * sg * gap, y: best.y + ux * sg * gap };
   }
   private center(s: Side): Sk | null {
     const list = this.skaters(s), d = this.fo?.dot ?? this.puck;
@@ -1300,7 +1318,12 @@ export class PlayRink {
         a.manual = false;
         const sp = fo.spots.get(a.id);
         if (!sp) { if (a.goalie) this.goalieTarget(a); else { a.tx = a.x; a.ty = a.y; a.urg = 0.3; } }
-        else { a.tx = sp.x; a.ty = sp.y; const d = Math.hypot(sp.x - a.x, sp.y - a.y); a.urg = d > 8 ? 0.85 : 0.6; if (d > 0.3) ready = false; }
+        else {
+          a.tx = sp.x; a.ty = sp.y; const d = Math.hypot(sp.x - a.x, sp.y - a.y); a.urg = d > 8 ? 0.85 : 0.6; if (d > 0.6) ready = false;
+          // a man already set in the way (an opponent on the line): around him, not into him
+          const by = d > 0.6 ? this.inTheWay(a, sp) : null;
+          if (by) { a.tx = by.x; a.ty = by.y; }
+        }
         this.move(a);
         // close to the place: turn to face the dot like a player setting up
         if (sp && Math.hypot(sp.x - a.x, sp.y - a.y) < 1.5 && !a.goalie) a.fa += angDiff(a.fa, a.side ? Math.PI : 0) * 0.2;
