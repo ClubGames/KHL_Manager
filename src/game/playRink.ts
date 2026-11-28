@@ -1971,7 +1971,8 @@ export class PlayRink {
     if (press.poke) z.rbAt = this.tau;
     const rbHeld = pad.poke ? this.tau - z.rbAt : 0;
     // LT vision control on defence: he keeps his eyes (and chest) on the puck, backing up instead of turning
-    me.back = !!pad.vision && !hasPuck && !teamHas;
+    // … and without it he backs up by himself in front of a rush coming at him (turning to race back once beaten)
+    me.back = (!!pad.vision || this.autoBack(me, mag)) && !hasPuck && !teamHas;
     // … with the puck (L2 held): he keeps facing the way he faces and skates any way (a tap of L2: a spin-o-rama)
     z.faHold = hasPuck && pad.vision ? z.faHold ?? me.fa : undefined;
     me.keepFa = z.faHold;
@@ -2371,9 +2372,22 @@ export class PlayRink {
     if (d < 0.6) return { x: spot.x - Math.cos(a.fa) * 0.6, y: spot.y - Math.sin(a.fa) * 0.6 };
     return { x: spot.x - (dx / d) * 0.6, y: spot.y - (dy / d) * 0.6 };
   }
-  private setT(a: Sk, l: V2, s: Side, urg: number, back = false) {
+  private setT(a: Sk, l: V2, s: Side, urg: number, back?: boolean) {
     const g = loc(s, l), c = inside(g, 0.8);
-    a.tx = c.x; a.ty = c.y; a.urg = urg; a.back = back;
+    a.tx = c.x; a.ty = c.y; a.urg = urg; a.back = back ?? this.backIn(a, l, s);
+  }
+  /**
+   * A defenceman sent back toward his own net (`l` in his frame) while one of theirs carries the puck at him from up
+   * the ice skates there backwards, facing the play — he turns his back on the man only once the man is level with
+   * him or past (then he races back forwards), or when it is a long way back and the man is still far off.
+   */
+  private backIn(a: Sk, l: V2, s: Side): boolean {
+    const c = this.puck.carrier;
+    if (!a.kindD || a.goalie || !c || c.side === s) return false;
+    const me = loc(s, a), cl = loc(s, c), ahead = cl.x - me.x;
+    // (a rush: the carrier still outside our zone or just in — set up in our end it is coverage, man to man)
+    if (ahead < 0.8 || cl.x < BLUE - 3 || Math.abs(cl.y - me.y) > 12 || l.x > me.x - 0.3) return false;
+    return ahead < 14 && me.x - l.x < 22;
   }
   /** Greedy assignment of players to spots (a man keeps his spot unless another is much closer). */
   private assign(list: Sk[], spots: V2[], s: Side, urg: number, onside: boolean) {
@@ -2582,7 +2596,9 @@ export class PlayRink {
         return;
       }
       // beaten or too high against speed: turn and skate (forwards, flat out) to a spot deeper still, else backwards facing the play
-      const race = level || (high > 2.5 && speedIn > 3.5) || high > 6;
+      // (too high only matters when the man is close: with room in front of him he skates back backwards, facing the play)
+      const ahead = c.x - me.x;
+      const race = level || (high > 2.5 && speedIn > 3.5 && ahead < 2.5 + 0.4 * speedIn) || (high > 6 && ahead < 8);
       if (race) this.setT(a, { x: Math.max(GOAL + 4, sp.x - 2.5), y: sp.y + (MID - sp.y) * 0.4 }, s, 1, false);
       else this.setT(a, sp, s, high > 1 ? 1 : 0.95, speedIn > 1.5 || high > 0.5);
     });
@@ -2859,10 +2875,32 @@ export class PlayRink {
       else if (a.keepFa !== undefined) face = a.keepFa; // L2 held: he keeps his facing
       else if (sp > 0.7) face = Math.atan2(a.vy, a.vx);
     }
+    else if (a.back && sp > 1.2 && Math.abs(angDiff(Math.atan2(-a.vy, -a.vx), Math.atan2(this.puck.y - a.y, this.puck.x - a.x))) < 1.9) {
+      // backing up (away from the puck): his back the way he goes, not side-on — the head and shoulders turned a
+      // little to the puck (going at it he simply skates forwards, facing it)
+      const rev = Math.atan2(-a.vy, -a.vx);
+      face = rev + clamp(angDiff(rev, Math.atan2(this.puck.y - a.y, this.puck.x - a.x)), -0.35, 0.35);
+    }
     else if (a.back || sp < 1.3) face = Math.atan2(this.puck.y - a.y, this.puck.x - a.x);
     else face = Math.atan2(a.vy, a.vx);
     const rate = (sp > 4 ? 5.5 : 9) * dt;
     a.fa += clamp(angDiff(a.fa, face), -rate, rate);
+  }
+  /**
+   * The manager's man skates backwards by himself in front of a rush (as the AI defencemen do): one of theirs carrying
+   * the puck at him from up the ice, close enough to matter, and the stick not taking him up to meet the man (he is
+   * backing off or going across) — not in a burst (that is a race back). The moment the carrier is level with him or
+   * past, he turns and skates forwards again.
+   */
+  private autoBack(me: Sk, mag: number): boolean {
+    const c = this.puck.carrier;
+    if (!c || c.side === me.side || me.sprint || me.goalie) return false;
+    const s = me.side, ml = loc(s, me), cl = loc(s, c), f = s ? -1 : 1;
+    const ahead = cl.x - ml.x;
+    if (ahead < 0.6 || ahead > 15 || Math.abs(cl.y - ml.y) > 10 || ml.x > OPP_BLUE) return false;
+    // he is coming at us (or is already close), and the stick does not send the man up the ice at him
+    const coming = f * c.vx < -1 || ahead < 6;
+    return coming && f * me.wx <= 0.3 * Math.max(mag, 0.15);
   }
   private boards(a: Sk) {
     const c = inside(a, a.goalie ? 0.45 : 0.4);
