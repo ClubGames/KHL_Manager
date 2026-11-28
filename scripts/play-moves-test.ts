@@ -310,4 +310,26 @@ test('cameras: NHL-style live cameras stay in the arena, the vertical one turns 
   assert.ok(Math.max(...rail) - Math.min(...rail) > 0.5, 'the rail camera rides with the puck');
 });
 
+test('star signatures: a dangler goes between his legs, a sniper sells the shot and snaps it, a power forward slaps it from distance', () => {
+  const k = make(5); toPlay(k);
+  const p = priv(k), a = p.onIce().find((x: AnySk) => !x.goalie);
+  clear(k, [a]);
+  const kinds = (arch: string, star: number, close = false) => {
+    a.arch = arch; a.star = star; a.hands = 80; const c: Record<string, number> = {};
+    for (let i = 0; i < 400; i++) { const d = p.aiDekeKind(a, close); c[d] = (c[d] ?? 0) + 1; }
+    return c;
+  };
+  const dangler = kinds('dangler', 1), plain = kinds('twoWay', 0);
+  console.log(`   dekes: dangler ${JSON.stringify(dangler)} plain ${JSON.stringify(plain)}`);
+  assert.ok((dangler.between ?? 0) > (plain.between ?? 0) + 50, 'a star dangler goes between his legs far more');
+  const sniperClose = kinds('sniper', 1, true);
+  assert.ok((sniperClose.fake ?? 0) > 170, 'a sniper sells the shot in close');
+  // the release: far out (point) and in close
+  const wind = (arch: string, x: number) => { a.arch = arch; a.star = 1; a.x = a.side ? 60 - x : x; a.y = 15; return p.aiWind(a); };
+  assert.ok(wind('power', 38) > 0.55 && wind('offD', 38) > 0.55, 'slap shots from distance');
+  assert.ok(wind('power', 50) < 0.45, 'in close he snaps it');
+  assert.ok(wind('sniper', 40) < 0.38 && wind('sniper', 40) > 0.32, 'a sniper\'s quick snap');
+  assert.ok(wind('dangler', 50) < 0.28, 'a dangler\'s wrist shot in tight');
+});
+
 console.log(`\n${pass} play-moves tests passed`);

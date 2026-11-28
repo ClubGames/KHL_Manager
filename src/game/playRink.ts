@@ -1,3 +1,4 @@
+import { archetypeOf, starOf, type Archetype } from './playStyle';
 import type { GameEvent, Lineup, Player, ShotZone, Strength, Team } from '../types';
 import type { FoulMove, Key, LiveFrame, ReplayClip, Track } from './rinkPlayback';
 import { FOUL_MOVE_DUR, foulMove } from './rinkPlayback';
@@ -285,6 +286,8 @@ interface Sk {
   id: string; side: Side; goalie: boolean; name: string; hand: 1 | -1; kindD: boolean; role: Role;
   x: number; y: number; vx: number; vy: number; fa: number;
   max: number; acc: number; shoot: number; pass: number; hands: number; check: number; def: number; bal: number; fo: number; endur: number; ovr: number; rebound: number;
+  /** his way of playing (playStyle.ts): the dekes and the shots that are his own — the more so, the bigger the star (0…1) */
+  arch: Archetype; star: number;
   energy: number; on: 'ice' | 'bench' | 'box'; leaving: boolean; boxUntil: number;
   /** the length of the penalty he is serving (a major is not cut short by a goal, a double minor by its first two minutes) */
   boxMin?: 2 | 4 | 5;
@@ -898,7 +901,7 @@ export class PlayRink {
       shoot: sk(p, 'shooting'), pass: sk(p, 'passing'), hands: sk(p, 'puckControl', sk(p, 'puckHandling')), check: sk(p, 'checking'), def: sk(p, 'defense'),
       bal: sk(p, 'checking') * 0.5 + skate * 0.3 + sk(p, 'endurance', 70) * 0.2,
       fo: sk(p, 'puckControl', 62) * 0.45 + sk(p, 'checking') * 0.3 + sk(p, 'passing') * 0.25,
-      endur: sk(p, 'endurance', 70), ovr: p?.overall ?? 70, rebound: sk(p, 'reboundControl', 70),
+      endur: sk(p, 'endurance', 70), ovr: p?.overall ?? 70, rebound: sk(p, 'reboundControl', 70), arch: archetypeOf(p), star: starOf(p),
       energy: 1, on: 'bench', leaving: false, boxUntil: 0, stun: 0, fall: 0, act: null, cool: 0, ownAt: -9, fallK: 'back', fallS: 1, fallAt: -9,
       manual: false, wx: 0, wy: 0, sprint: false, tx: this.bench[side].x, ty: this.bench[side].y, urg: 0.6, back: false,
       decideAt: 0, carryT: null, lastPuck: -9, spot: -1, rolled: -1, oneTimer: false, dekeBeat: -9, dekeF: 1.6, dekeR: 6, stagger: 0,
@@ -2753,7 +2756,16 @@ export class PlayRink {
     const c = inside(loc(s, tl), 0.9);
     a.tx = c.x; a.ty = c.y; a.urg = pressure < 3 ? 1 : 0.85; a.back = false;
   }
-  private aiWind(a: Sk) { return 0.35 + (a.id.length % 3) * 0.08; }
+  /**
+   * How long an AI shooter loads his shot — his signature release: a sniper's quick snap, a dangler's wrist shot in
+   * tight, a power forward's or an attacking defenceman's slap shot from distance (a star sticks to it; others vary).
+   */
+  private aiWind(a: Sk) {
+    const own = 0.35 + (a.id.length % 3) * 0.08;
+    const far = dist(loc(a.side, a), { x: OPP_GOAL, y: MID }) > 13;
+    const sig = a.arch === 'sniper' ? 0.36 : a.arch === 'dangler' ? (far ? 0.36 : 0.25) : a.arch === 'power' || a.arch === 'offD' ? (far ? 0.6 : 0.4) : own;
+    return own + (sig - own) * (0.4 + 0.6 * a.star);
+  }
   private carryTarget(a: Sk, me: V2, pressure: number): V2 {
     const s = a.side;
     if (me.x < BLUE) return loc(s, { x: me.x + 10, y: me.y < MID ? 5 : 25 });
@@ -3371,6 +3383,13 @@ export class PlayRink {
   private aiDekeKind(a: Sk, closeGoalie: boolean): DekeKind {
     const r = this.rand(), h = a.hands;
     const behind = this.skaters((1 - a.side) as Side, false).some(o => dist(o, a) < 1.8 && Math.cos(angDiff(a.fa, Math.atan2(o.y - a.y, o.x - a.x))) < -0.2);
+    // his signature move, the more often the bigger the star: a dangler goes between his legs (and spins away from a
+    // man on his back), a sniper sells the shot in close (speed men and power forwards beat a man with their legs and
+    // their body — the skating and the carry — and deke as anyone does)
+    if ((r * 7.31) % 1 < 0.3 * a.star * a.star) { // (a second roll out of the same draw: the random stream stays as it was)
+      if (a.arch === 'dangler') return behind ? 'spin' : h > 70 ? 'between' : 'toe';
+      if (a.arch === 'sniper' && closeGoalie) return 'fake';
+    }
     if (behind && r < 0.45) return 'spin';
     if (closeGoalie) return r < 0.25 && h > 72 ? 'between' : r < 0.55 ? 'fake' : 'side';
     if (h > 76 && r < 0.15) return 'between';

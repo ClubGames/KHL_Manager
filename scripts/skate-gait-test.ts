@@ -4,6 +4,8 @@
 import assert from 'node:assert/strict';
 import { newGait, stepGait, strideRate, styleOf, type Kinematics } from '../src/components/skateGait';
 import { steer } from '../src/game/skating';
+import { archetypeOf } from '../src/game/playStyle';
+import type { Player } from '../src/types';
 
 let pass = 0;
 const test = (name: string, fn: () => void) => { fn(); pass++; console.log('✓', name); };
@@ -47,6 +49,26 @@ test('every man his own style: the same for the same man, not the same for all',
   assert.deepEqual(styleOf('ska-c01'), styleOf('ska-c01'));
   const ws = new Set(['a', 'b', 'c', 'd', 'e', 'f'].map(x => styleOf('ska-' + x).wide.toFixed(2)));
   assert.ok(ws.size > 3);
+});
+test('star styles: the archetype from his skills, shown the more the better he is', () => {
+  const man = (position: Player['position'], skills: Player['skills'], overall = 86, height = 184, weight = 86) => ({ position, skills, overall, height, weight });
+  const base = { skating: 72, shooting: 74, puckControl: 72, checking: 66, defense: 66, passing: 72 };
+  assert.equal(archetypeOf(man('C', { ...base, shooting: 86 })), 'sniper');
+  assert.equal(archetypeOf(man('LW', { ...base, puckControl: 86 })), 'dangler');
+  assert.equal(archetypeOf(man('RW', { ...base, skating: 86 })), 'speed');
+  assert.equal(archetypeOf(man('C', { ...base, checking: 80 }, 86, 193, 100)), 'power');
+  assert.equal(archetypeOf(man('C', base)), 'twoWay');
+  assert.equal(archetypeOf(man('D', { skating: 78, shooting: 76, puckControl: 78, passing: 80, defense: 70, checking: 64 })), 'offD');
+  assert.equal(archetypeOf(man('D', { skating: 66, shooting: 60, puckControl: 60, passing: 62, defense: 82, checking: 80 }, 86, 195, 102)), 'stayHome');
+  // a star dangler carries it far out in front, a star power forward stands taller and wider, a speed man low and leaning
+  const dangler = styleOf('x1', man('LW', { ...base, puckControl: 88 }, 88)), plainD = styleOf('x1', man('LW', { ...base, puckControl: 88 }, 68));
+  assert.ok(dangler.carry > 0.7 && dangler.carry > plainD.carry + 0.2, `carry ${dangler.carry.toFixed(2)} vs ${plainD.carry.toFixed(2)}`);
+  const power = styleOf('x2', man('C', { ...base, checking: 84 }, 88, 194, 102));
+  assert.ok(power.low < 0 && power.wide > 0.5 && power.blade > 0.4);
+  const speed = styleOf('x3', man('RW', { ...base, skating: 90 }, 88));
+  assert.ok(speed.low > 0.6 && speed.lean > 0.6);
+  // no player given (an id only): his own little quirks, no archetype
+  assert.equal(styleOf('x4').arch, 'twoWay'); assert.equal(styleOf('x4').star, 0);
 });
 /** Skates `sec` s from velocity (vx, 0) wanting (wx, wy) with acceleration 5.5 m/s²; returns the end state. */
 function skate(vx: number, wx: number, wy: number, sec: number) {

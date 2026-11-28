@@ -515,7 +515,7 @@ export class PlayerFigure {
       + toe * .08 + btw * .16 + spin * .12 + hip * .14 - pin * .04 + lift * .05 - stag * .03 + rch * .14 + down * .22 * (1 - lay) - lay * .06 + kneel * .42
       + ot * .06 + vis * .08 + hus * .04 + Math.abs(hdl) * .05 + shove * .05 + prot * .1 + brd * .2 + swp * .12 + cStick * .2 + fgt * .06 - kick * .04
       - fHead * .05 + fTrip * .14 + fKnee * .05 + fHook * .05 + fCross * .04 + fBoard * .06 - fRough * .03
-      + gBurst * .08 + gStop * .2 + gBack * .12 + Math.abs(gShuf) * .07 + (sty ? sty.low * .025 * (1 - walk) : 0)
+      + gBurst * .08 + gStop * .2 + gBack * .12 + Math.abs(gShuf) * .07 + (sty ? sty.low * .04 * (1 - walk) : 0)
       + pDir * .08 + tight * .05 + jw * .1 + handIce * .26;
     // Shot profile: load (stick back, shoulders closed), whip through the puck, follow through.
     const s = shot === undefined ? -9 : shot;
@@ -541,7 +541,9 @@ export class PlayerFigure {
       // a start: far forward over the toes; a stop: back against it, the skates out ahead; backwards: upright, sitting
       + gBurst * .62 - gStop * .3 - gBack * .12
       // a jolt from behind throws him forward, from the front back; over the front skate in a shot's follow-through
-      + jz * jw * .42 + Math.max(0, shift) * .08 + tight * .06;
+      + jz * jw * .42 + Math.max(0, shift) * .08 + tight * .06
+      // his own style: a speed man leans into it, a power forward stands taller
+      + (sty ? sty.lean * .12 * amp * plain - Math.max(0, -sty.low) * .05 * plain : 0);
     // Shoulders counter-rotate the stride a little (real skaters swing the upper body against the legs).
     const swing = .07 * lerp(amp, 1.2, walk) * Math.sin(phase) * (1 - load) * (1 - follow) * (1 - cheer) * (1 + 1.6 * hus) * (1 - blk);
     // a stop: the hips (and the legs with them) turned across the way he slides, the shoulders kept square to it
@@ -562,7 +564,7 @@ export class PlayerFigure {
       // Push out to the side and back, recover low and forward; the inside skate carries the turn.
       const wide = (.17 + .2 * push * amp) * side + brace * .07 * side + bank * .12 + (btw * .14 + hip * .1 + pin * .06 + stag * .08 + down * .14 + rch * .08 + vis * .08 + pDir * .1 + tight * .04) * side;
       const lift = .065 * amp * smooth(Math.max(0, -Math.sin(ph + .5)));
-      feet[i].set(wide * (1 + (sty ? sty.wide * .12 : 0)), .023 + LIFT * .2 + lift, .08 - .28 * amp * backS);
+      feet[i].set(wide * (1 + (sty ? sty.wide * .18 : 0)), .023 + LIFT * .2 + lift, .08 - .28 * amp * backS);
       yaw[i] = side * (.1 + .32 * amp * push) + bank * .3;
       const ice = .023 + LIFT * .2;
       // the start: short, quick, V-shaped pushes on the toes, the skates turned well out, high off the ice coming back
@@ -603,6 +605,13 @@ export class PlayerFigure {
     this.legs(feet, [vec(.25, -.1, 1), knee], yaw);
     // Stick (right-shot frame): blade on the ice at the forehand side, ≈1 m ahead, 0.55 m right.
     let carry = vec(-.52 + .07 * Math.sin(phase) * amp + deke * .8, .0, .98), carryTop = vec(.1 + deke * .2, 1.02 - crouch, .3);
+    // his own style of carrying it: a dangler far out in front and wide, the blade flat; a power forward in close with
+    // the blade riding a little off the ice; a stay-at-home defenceman the long stick out in the lane
+    if (sty && plain > 0) {
+      const cw = plain * (1 - walk), c = sty.carry * cw, bl = Math.max(0, sty.blade) * cw * (1 - gBack);
+      carry = vec(carry.x - .16 * Math.max(0, c), carry.y + .1 * bl, carry.z + .34 * c);
+      carryTop = vec(carryTop.x, carryTop.y + .03 * bl, carryTop.z + .14 * c);
+    }
     // walking: the stick carried low in front, the blade off the floor, swinging a little with the steps
     if (walk > 0) { carry = mixV(carry, vec(-.42, .16, .74 + .06 * Math.sin(phase)), walk); carryTop = mixV(carryTop, vec(.12, .98 - crouch, .24), walk); }
     // backwards (a defenceman's gap): the stick out in front along the ice in the top hand, taking away the lane
