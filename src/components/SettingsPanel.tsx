@@ -1,14 +1,15 @@
 import { createContext, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { APP_DOWNLOADS, APP_RELEASE, appVersion, gpuInfo, platform } from '../platform';
 import { UpdateCheckRow } from './UpdateBanner';
+import { ControlsSettings } from './ControlsSettings';
 import { CAMERAS, LIVE_CAMERAS } from './replayCameras';
 import { Button } from './ui';
 import { defaultSettings, REPLAY_SPEEDS, resetSettings, setSettings, useSettings, type Settings } from '../game/settings';
 import { cn } from '../utils/cn';
 
 /** The tabs of the window (a search looks through all of them). */
-export type SettingsTab = 'match' | 'play' | 'replays' | 'sound' | 'other';
-const TABS: [SettingsTab, string][] = [['match', 'Матч'], ['play', 'Игра за хоккеиста'], ['replays', 'Повторы и видео'], ['sound', 'Звук'], ['other', 'Прочее']];
+export type SettingsTab = 'match' | 'play' | 'controls' | 'replays' | 'sound' | 'other';
+const TABS: [SettingsTab, string][] = [['match', 'Матч'], ['play', 'Игра за хоккеиста'], ['controls', 'Управление'], ['replays', 'Повторы и видео'], ['sound', 'Звук'], ['other', 'Прочее']];
 const TAB_KEY = 'khl.settingsTab';
 
 /**
@@ -19,7 +20,9 @@ const TAB_KEY = 'khl.settingsTab';
 export type SettingsScope = 'all' | 'match';
 /** The settings a match starts with and keeps to its end: not offered in it. */
 export const FIXED_IN_MATCH: (keyof Settings)[] = ['playPeriod', 'playDifficulty', 'playPenaltyClock', 'matchSpeed'];
-const MATCH_TABS: SettingsTab[] = ['match', 'play', 'replays', 'sound'];
+const MATCH_TABS: SettingsTab[] = ['match', 'play', 'controls', 'replays', 'sound'];
+/** A setting not at its default (the controls are an object: compared by content). */
+const differs = (a: unknown, b: unknown) => a !== b && JSON.stringify(a) !== JSON.stringify(b);
 
 /** What the window shows now: the tab, or a search across all tabs. */
 type View = { tab: SettingsTab; query: string; scope: SettingsScope };
@@ -65,7 +68,7 @@ function Row({ label, hint, children, disabled, k }: { label: string; hint?: str
   if (view.scope === 'match' && keys.some(x => FIXED_IN_MATCH.includes(x))) return null;
   if (!settingMatches(view.query, label, hint)) return null;
   const d = defaultSettings();
-  const changed = keys.filter(x => s[x] !== d[x]);
+  const changed = keys.filter(x => differs(s[x], d[x]));
   const [first, rest] = hint ? splitHint(hint) : ['', ''];
   return (
     // a wide control (the camera list) goes under the label instead of squeezing it
@@ -178,7 +181,7 @@ export function SettingsPanel({ onClose, scope = 'all', closeLabel = 'Готов
   const root = useRef<HTMLDivElement>(null);
   const [empty, setEmpty] = useState(false);
   useLayoutEffect(() => { setEmpty(searching && !root.current?.querySelector('[data-setting-row]')); });
-  const changedIn = (keys: (keyof Settings)[]) => keys.filter(k => s[k] !== d[k]).length;
+  const changedIn = (keys: (keyof Settings)[]) => keys.filter(k => differs(s[k], d[k])).length;
   return (
     <ViewCtx.Provider value={view}>
     <div ref={root} className="space-y-3 text-left" data-settings data-settings-view={searching ? 'search' : tab} data-settings-scope={scope}>
@@ -259,6 +262,8 @@ export function SettingsPanel({ onClose, scope = 'all', closeLabel = 'Готов
           <Choice id="playTouch" value={s.playTouch} onChange={(v) => set({ playTouch: v })} options={[['auto', 'Авто'], ['on', 'Вкл'], ['off', 'Выкл']]} />
         </Row>
       </Section>
+
+      {(searching || tab === 'controls') && <ControlsSettings query={query} matches={settingMatches} />}
 
       <Section tab="replays" title="Повторы голов" hint="Повтор открывается после гола в матче, из ленты событий, из итогов и протокола матча.">
         <Row k="replay3d" label="3D-повторы" hint="Объёмная реконструкция с камерами и игроками. Если выключить, повторы показываются на 2D-схеме площадки: это легко для слабых устройств и экономит батарею.">
@@ -351,6 +356,7 @@ export function SettingsPanel({ onClose, scope = 'all', closeLabel = 'Готов
 const TAB_KEYS: Record<SettingsTab, (keyof Settings)[]> = {
   match: ['matchView', 'matchCamera', 'matchZoom', 'matchMinimap', 'matchIntro', 'matchReplays', 'matchSpeed', 'matchRink2d', 'matchAdvice'],
   play: ['playPeriod', 'playDifficulty', 'playPenaltyClock', 'playAutoSwitch', 'playTouch'],
+  controls: ['controls'],
   replays: ['replay3d', 'autoReplay', 'replayQuality', 'replayCamera', 'replaySpeed', 'replayPrewarm', 'videoHeight', 'videoFps', 'videoQuality', 'videoSlowmo', 'videoGraphics'],
   sound: ['sound', 'soundVolume', 'soundCrowd', 'soundOrgan'],
   other: ['simOpenReport', 'simConfirm'],

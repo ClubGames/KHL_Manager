@@ -13,7 +13,7 @@ import { LiveRink } from '../RinkView';
 import { GoalReplay } from '../GoalReplay';
 import { ShootoutBoard } from '../Shootout';
 import type { FigureRequest } from '../replayCache';
-import { anyGamepad, CAPTURED, COMMAND_KEYS, detectDevice, emptyTouch, gamepadPad, mouseDown, mouseMove, mouseUp, newMouse, type Command, type MouseState, type TouchState } from '../playInput';
+import { anyGamepad, bindKeys, CAPTURED, COMMAND_KEYS, detectDevice, emptyTouch, gamepadPad, mouseDown, mouseMove, mouseUp, newMouse, type Command, type MouseState, type TouchState } from '../playInput';
 import { Controls, framePad, GoalList, LineChip, Sheet, TouchControls, type GoalItem } from '../PlayMatch';
 import { buildCtx, GuestMatch, HostMatch, outToast, type MatchCommand, type MatchSide } from '../../net/match';
 import type { OnlineSession } from '../../net/session';
@@ -304,9 +304,9 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
 
         {playing && !touchUI && (
           <div className="absolute right-2 bottom-2 flex gap-1.5 z-10">
-            <Button size="sm" onClick={() => command('change')} data-play-change>Смена звена <kbd className="opacity-60">V</kbd></Button>
-            <Button size="sm" variant={hud?.pulled ? 'primary' : 'secondary'} onClick={() => command('pull')} data-play-pull>{hud?.pulled ? 'Вернуть вратаря' : 'Снять вратаря'} <kbd className="opacity-60">G</kbd></Button>
-            <Button size="sm" onClick={() => command('timeout')} disabled={!hud?.tol || !!hud?.to} data-play-timeout>Тайм-аут <kbd className="opacity-60">4</kbd></Button>
+            <Button size="sm" onClick={() => command('change')} data-play-change>Смена звена <kbd className="opacity-60">{bindKeys('change')}</kbd></Button>
+            <Button size="sm" variant={hud?.pulled ? 'primary' : 'secondary'} onClick={() => command('pull')} data-play-pull>{hud?.pulled ? 'Вернуть вратаря' : 'Снять вратаря'} <kbd className="opacity-60">{bindKeys('pull')}</kbd></Button>
+            <Button size="sm" onClick={() => command('timeout')} disabled={!hud?.tol || !!hud?.to} data-play-timeout>Тайм-аут <kbd className="opacity-60">{bindKeys('timeout')}</kbd></Button>
           </div>
         )}
         {playing && view.away?.[1 - mySide] && (
