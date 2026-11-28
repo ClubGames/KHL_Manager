@@ -89,6 +89,8 @@ export class OfficialCrew {
   private dropper = -1;
   private wasStop = false;
   private dropped = false;
+  /** the stage of a penalty shot being got ready in the last update (see LiveFrame.psStage) */
+  private psWas: LiveFrame['psStage'] = undefined;
   /** the highest the puck has been in his hand at this faceoff (the windup lifts it) */
   private peak = 0;
   private stoppedAt = NaN;
@@ -174,6 +176,9 @@ export class OfficialCrew {
       if (this.dropper >= 0) { const o = this.crew[this.dropper]; if (o.gesture === 'ready') signal(o, [{ g: 'drop', dur: .4 }]); }
       this.dropper = -1; this.dropped = false; this.peak = 0;
     }
+    // a penalty shot got ready: the shooter set behind the puck — the referee, backed off to the side, whistles
+    if (f.psStage === 'set' && this.psWas !== 'set' && !fresh && this.dropper >= 0) signal(this.crew[this.dropper], [{ g: 'armUp', dur: 1.1 }]);
+    this.psWas = f.psStage;
     this.wasStop = !!f.stopped;
     if (f.stopped && Number.isNaN(this.stoppedAt)) this.stoppedAt = tau;
     if (!f.stopped) this.stoppedAt = NaN;
@@ -233,8 +238,10 @@ export class OfficialCrew {
         if (next) this.begin(o, next, tau); else { o.gesture = 'none'; o.aim = null; }
       }
       // at the dot: upright until the players are set, then bent over with the puck held out
-      if (dropping && f.faceoff && !this.dropped && o.gesture === 'none' && Math.hypot(o.x - tx, o.z - tz) < 1.2) this.begin(o, { g: 'ready', dur: 1e9 }, tau);
-      if ((!dropping || !f.faceoff) && o.gesture === 'ready') { o.gesture = 'none'; }
+      // (a penalty shot: bent over the centre spot the same way while he puts the puck down)
+      const placing = f.psStage === 'place';
+      if (dropping && (f.faceoff || placing) && !this.dropped && o.gesture === 'none' && Math.hypot(o.x - tx, o.z - tz) < 1.2) this.begin(o, { g: 'ready', dur: 1e9 }, tau);
+      if ((!dropping || !(f.faceoff || placing)) && o.gesture === 'ready') { o.gesture = 'none'; }
       o.gt = tau - o.since;
     });
     return this.crew;

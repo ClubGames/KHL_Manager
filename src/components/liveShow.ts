@@ -9,7 +9,7 @@ import type { RinkPlay } from '../game/rinkAI';
  *
  * Pure (no three.js): rink presentation time `tau`, world metres (origin at centre ice). The tests run it in Node.
  */
-export type ReplayKind = 'goal' | 'save' | 'post' | 'hit' | 'miss' | 'penalty';
+export type ReplayKind = 'goal' | 'save' | 'post' | 'hit' | 'miss' | 'penalty' | 'shootout' | 'pshot';
 export type ReplaySpec = {
   kind: ReplayKind; from: number; to: number;
   /** the key moment: the slow motion runs around it and the camera cuts to the close angle before it */
