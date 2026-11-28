@@ -56,6 +56,7 @@ export function ClubOverview({
   chip,
   onPlayer,
   salaryCap,
+  compact,
 }: {
   team: Team;
   P: Record<string, Player>;
@@ -63,6 +64,8 @@ export function ClubOverview({
   chip: (p: Player) => ReactNode;
   onPlayer?: (id: string) => void;
   salaryCap?: number;
+  /** one column whatever the screen (a side panel) */
+  compact?: boolean;
 }) {
   const pr = useMemo(() => clubProfile(P, team, teams), [P, team, teams]);
   const coaches = [...(team.coaches ?? [])].sort((a, b) => Number(b.role === 'head') - Number(a.role === 'head'));
@@ -75,7 +78,7 @@ export function ClubOverview({
     </div>
   );
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-4" data-club-overview={team.id}>
+    <div className={cn('grid grid-cols-1 gap-4', !compact && 'md:grid-cols-2')} data-club-overview={team.id}>
       <div className="space-y-4 min-w-0">
         <Section title={`Сила состава · №${pr.rank} в лиге`}>
           <div className="space-y-1.5">

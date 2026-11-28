@@ -31,26 +31,41 @@ import { blockingTasks, buildInbox } from './game/inbox';
 import { SaveIndicator, SavesList } from './components/Saves';
 import { SettingsPanel } from './components/SettingsPanel';
 import { simulateDay, exitToMenu, exportCareer, roundName, saveNow, startNewGame, syncCoachMarketFromRoster, syncPlayersFromRoster, useGame, useSaveStatus } from './game/state';
-import { regularSeasonLength, seasonDate } from './game/schedule';
+import { nextUserGame, regularSeasonLength, seasonDate } from './game/schedule';
 import { effectivePayroll } from './game/cap';
 import { countRosterLegionnaires, teamForeignLimit } from './game/legionnaires';
 import { cn } from './utils/cn';
 import { GAME_NAME, GAME_NAME_EN } from './brand';
 
+// in the order of the groups below (the team, the season, transfers, the club)
 const NAV: { id: View; label: string; icon: string }[] = [
   { id: 'dashboard', label: 'Обзор', icon: 'dashboard' },
   { id: 'inbox', label: 'Входящие', icon: 'bell' },
   { id: 'roster', label: 'Состав', icon: 'roster' },
   { id: 'lines', label: 'Звенья', icon: 'lines' },
+  { id: 'management', label: 'Управление командой', icon: 'roster' },
   { id: 'schedule', label: 'Календарь', icon: 'calendar' },
   { id: 'standings', label: 'Таблица', icon: 'table' },
   { id: 'stats', label: 'Статистика', icon: 'chart' },
   { id: 'trades', label: 'Обмены', icon: 'trade' },
   { id: 'market', label: 'Рынок', icon: 'market' },
   { id: 'contracts', label: 'Контракты', icon: 'contract' },
-  { id: 'management', label: 'Управление командой', icon: 'roster' },
   { id: 'club', label: 'Инфраструктура', icon: 'trophy' },
 ];
+/** The sections in groups: the sidebar and «Все разделы» show a heading over each. */
+const NAV_GROUPS: [string, View[]][] = [
+  ['Главное', ['dashboard', 'offseason', 'inbox']],
+  ['Команда', ['roster', 'lines', 'management']],
+  ['Сезон', ['schedule', 'standings', 'stats']],
+  ['Трансферы', ['trades', 'market', 'contracts']],
+  ['Клуб', ['club', 'format']],
+];
+const grouped = (nav: View[]) => {
+  const out = NAV_GROUPS.map(([title, ids]) => ({ title, ids: ids.filter((v) => nav.includes(v)) })).filter((g) => g.ids.length);
+  const rest = nav.filter((v) => !NAV_GROUPS.some(([, ids]) => ids.includes(v)));
+  if (rest.length) out.push({ title: 'Ещё', ids: rest });
+  return out;
+};
 
 /** Labels of the landscape-phone rail: long words get soft hyphens (they wrap onto a second line instead of being cut). */
 const SHY = '\u00ad';
@@ -238,6 +253,26 @@ export default function App() {
   const curFol = effectivePayroll(U, s.players, s.phase);
   const fl = teamForeignLimit(U, s.league.foreignLimit);
   const legNum = countRosterLegionnaires(U.players, s.players);
+  // The next game in the header on every screen: today's — straight to «Играть матч» (play / watch / result);
+  // a later one — the overview, where the days are simulated up to it
+  const todayGame = (s.schedule[s.day] ?? []).find((g) => !g.played && (g.home === U.id || g.away === U.id)) ?? null;
+  const nextGame = s.phase === 'offseason' ? null : todayGame ?? nextUserGame(s, U.id);
+  const nextOpp = nextGame ? s.teams[nextGame.home === U.id ? nextGame.away : nextGame.home] : null;
+  const nextChip = nextGame && nextOpp ? (
+    <button
+      type="button"
+      onClick={() => (todayGame ? setChooseGame(todayGame) : switchView('dashboard'))}
+      className={cn('inline-flex items-center gap-1.5 pl-1.5 pr-2 py-1 rounded-sm border text-xs shrink-0 transition-colors', todayGame ? 'border-accent/70 bg-accent/15 text-text hover:bg-accent/25' : 'border-line text-muted hover:text-text')}
+      title={todayGame ? 'Матч сегодня: играть, смотреть или сразу результат' : 'Следующий матч — на обзоре'}
+      data-next-game={nextGame.id}
+    >
+      {todayGame && <Icon name="play" className="w-3.5 h-3.5 text-accent" />}
+      <span className="hidden sm:inline">{nextGame.home === U.id ? 'vs' : '@'}</span>
+      <TeamLogo team={nextOpp} size={18} />
+      <span className="font-semibold">{nextOpp.short}</span>
+      <span className={cn('tabular', todayGame ? 'text-accent' : 'text-muted')}>{todayGame ? 'сегодня' : nextGame.day === s.day + 1 ? 'завтра' : <><span className="hidden sm:inline">через </span>{nextGame.day - s.day} дн.</>}</span>
+    </button>
+  ) : null;
   const switchView = (v: View) => {
     setView(v);
     window.scrollTo?.({ top: 0 });
@@ -257,7 +292,7 @@ export default function App() {
       'flex items-center gap-3 transition-colors',
       mobile
         ? cn('flex-col justify-center text-[10px] gap-1 py-1.5 px-1 flex-1 min-w-0 min-h-[54px] border-t-2', active ? 'border-ice text-ice bg-ice/5' : 'border-transparent')
-        : 'px-4 py-2.5 text-sm border-l-2',
+        : 'px-4 py-1.5 text-sm border-l-2',
       active
         ? mobile
           ? 'text-ice'
@@ -360,7 +395,14 @@ export default function App() {
                 <div className="text-[11px] text-muted">{s.league.season} · {U.record.points} очков</div>
               </div>
             </div>
-            <nav className="flex-1 py-2 overflow-y-auto" data-pad-sections>{nav.map((v) => navItem(v))}</nav>
+            <nav className="flex-1 py-1 overflow-y-auto no-scrollbar" data-pad-sections>
+              {grouped(nav).map((g, i) => (
+                <div key={g.title} className="pb-0.5">
+                  {i > 0 && <div className="px-4 pt-1.5 pb-0.5 text-[10px] uppercase tracking-[0.18em] text-muted/70 font-semibold leading-tight">{g.title}</div>}
+                  {g.ids.map((v) => navItem(v))}
+                </div>
+              ))}
+            </nav>
             <div className="p-3 border-t border-line text-xs text-muted space-y-1.5">
               <div className="flex justify-between">
                 <span>Бюджет</span>
@@ -410,14 +452,15 @@ export default function App() {
               </button>
               <div className="font-display uppercase tracking-wide text-xs sm:text-sm">{seasonDate(s.day, regularSeasonLength(s.schedule), s.league.season)}</div>
               <Tag className="hidden sm:inline-flex" color={s.phase === 'playoffs' ? '#F2B544' : s.phase === 'offseason' ? '#8FD8F0' : '#93A4BC'}>{phaseLabel}</Tag>
-              <Tag className="sm:hidden" color={s.phase === 'playoffs' ? '#F2B544' : s.phase === 'offseason' ? '#8FD8F0' : '#93A4BC'}>{phaseShort}</Tag>
+              <Tag className={cn('sm:hidden', nextChip && 'hidden')} color={s.phase === 'playoffs' ? '#F2B544' : s.phase === 'offseason' ? '#8FD8F0' : '#93A4BC'}>{phaseShort}</Tag>
               {s.phase === 'offseason' && view !== 'offseason' && (
                 <Button size="sm" variant="primary" onClick={() => switchView('offseason')}>
                   <Icon name="trophy" /> <span className="hidden sm:inline">Межсезонье →</span><span className="sm:hidden">Драфт/ТО</span>
                 </Button>
               )}
+              {nextChip}
               <div className="ml-auto flex items-center gap-2 sm:gap-3">
-                <div className="hidden md:flex land:hidden items-center gap-2 text-xs text-muted">
+                <div className="hidden 2xl:flex land:hidden items-center gap-2 text-xs text-muted">
                   <span>День {Math.min(s.day + 1, s.schedule.length)} / {s.schedule.length}</span>
                   <span>·</span>
                   <span>Сезон {s.league.season}</span>
@@ -520,8 +563,11 @@ export default function App() {
               </div>
             </div>
           </div>
+          {grouped(nav).map((g) => (
+          <div key={g.title} className="mb-2.5">
+          <div className="text-[10px] uppercase tracking-[0.18em] text-muted font-semibold mb-1">{g.title}</div>
           <div className="grid grid-cols-2 gap-2">
-            {nav.map((v) => {
+            {g.ids.map((v) => {
               const item = NAV.find((n) => n.id === v);
               const label = v === 'offseason' ? 'Межсезонье' : v === 'format' ? 'Формат JSON' : item?.label ?? v;
               const icon = v === 'offseason' ? 'trophy' : v === 'format' ? 'code' : item?.icon ?? 'dashboard';
@@ -535,6 +581,8 @@ export default function App() {
               );
             })}
           </div>
+          </div>
+          ))}
           <div className="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-line">
             <button onClick={() => { setMoreOpen(false); setSavesOpen(true); }} className="flex items-center gap-2.5 rounded-sm border border-line bg-panel2 px-3 py-3 text-sm text-left hover:border-muted min-h-[44px]">
               <Icon name="save" /> Сохранения
