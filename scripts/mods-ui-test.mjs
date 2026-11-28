@@ -4,6 +4,7 @@
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { chromium } from '@playwright/test';
+import { START_IN_CAREER } from './testMod.mjs';
 
 const BASE = process.env.BASE_URL ?? 'http://localhost:5173';
 const SHOTS = process.env.SHOTS;
@@ -16,6 +17,7 @@ const ok = (m) => console.log('ok', m);
 const shot = async (page, name, opts = {}) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png`, timeout: 15000, ...opts }).catch((e) => console.log('shot failed', name, e.message)); };
 
 const context = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+await context.addInitScript(START_IN_CAREER);
 await context.addInitScript(() => localStorage.setItem('khl.settings', JSON.stringify({ autoReplay: 'off', replay3d: false, replayPrewarm: false, matchIntro: false })));
 const page = await context.newPage();
 page.on('pageerror', (e) => errors.push(e.message));
@@ -66,6 +68,7 @@ if (!existsSync('public/mods/KHL_2627/roster.json')) {
 
     // a build without any mod: the empty state
     const bare = await browser.newContext({ viewport: { width: 1400, height: 900 } });
+    await bare.addInitScript(START_IN_CAREER);
     await bare.route('**/mods/index.json*', (r) => r.fulfill({ json: { mods: [] } }));
     const p2 = await bare.newPage();
     p2.on('pageerror', (e) => errors.push(e.message));

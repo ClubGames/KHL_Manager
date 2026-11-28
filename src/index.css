@@ -105,6 +105,16 @@
   .slide-in {
     animation: slideIn 0.3s ease-out both;
   }
+  /* the main menu: the arena drifts slowly, a light sweeps over the ice now and then */
+  .menu-pan {
+    animation: menuPan 38s ease-in-out infinite alternate;
+    transform-origin: 50% 60%;
+  }
+  .menu-glint {
+    background: linear-gradient(105deg, transparent 40%, rgba(255, 255, 255, 0.06) 50%, transparent 60%);
+    background-size: 250% 100%;
+    animation: menuGlint 9s ease-in-out infinite;
+  }
   .goal-flash {
     animation: goalFlash 0.9s ease-out;
   }
@@ -175,7 +185,17 @@
     transform: scale(1);
   }
 }
+@keyframes menuPan {
+  from { transform: scale(1.06) translate3d(-1.2%, 0, 0); }
+  to { transform: scale(1.12) translate3d(1.2%, -1%, 0); }
+}
+@keyframes menuGlint {
+  0%, 55% { background-position: 120% 0; }
+  100% { background-position: -20% 0; }
+}
 @media (prefers-reduced-motion: reduce) {
+  .menu-pan,
+  .menu-glint,
   .fade-in,
   .fade-out,
   .pop-out,

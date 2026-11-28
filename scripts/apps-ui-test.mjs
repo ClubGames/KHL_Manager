@@ -111,11 +111,20 @@ try {
     await page.evaluate(() => window.__listeners.backButton({ canGoBack: false }));
     await page.locator('[data-settings]').waitFor({ state: 'detached', timeout: 3000 });
     assert.equal(await page.evaluate(() => window.__bridge.some((m) => m.method === 'minimizeApp')), false);
-    // … and on the main screen it minimises the app.
+    // … on the career screen it goes back to the main menu…
+    await page.evaluate(() => window.__listeners.backButton({ canGoBack: false }));
+    await page.locator('[data-main-menu="main"]').waitFor({ timeout: 3000 });
+    assert.equal(await page.evaluate(() => window.__bridge.some((m) => m.method === 'minimizeApp')), false);
+    // … «Играть» → back to the first level of the menu…
+    await page.locator('[data-menu-item="play"]').click();
+    await page.evaluate(() => window.__listeners.backButton({ canGoBack: false }));
+    await page.locator('[data-main-menu="main"]').waitFor({ timeout: 3000 });
+    assert.equal(await page.evaluate(() => window.__bridge.some((m) => m.method === 'minimizeApp')), false);
+    // … and on the main menu it minimises the app.
     await page.evaluate(() => window.__listeners.backButton({ canGoBack: false }));
     await page.waitForFunction(() => window.__bridge.some((m) => m.method === 'minimizeApp'));
     await page.close();
-    ok('Android app: detected, no fullscreen button / download links, «Back» closes windows then minimises');
+    ok('Android app: detected, no fullscreen button / download links, «Back» closes windows, goes back to the menu, then minimises');
   }
 } catch (e) {
   console.error('FAIL', e.stack ?? e.message);
