@@ -66,7 +66,7 @@ export type LiveTicker = { tau?: number; wait?: boolean; hold?: boolean; slow?: 
 /** The broadcast captions over the picture. */
 type Ui = { mode: 'intro' | 'celebrate' | 'replay' | 'call'; title: string; name?: string; sub?: string; color?: string; /** the close-up's numbers (season, match) */ lines?: string[] };
 const SHOT_LABEL = { goalie: 'Вратарь', captain: 'Капитан', leader: 'Лидер команды' } as const;
-const RE_LABEL = { goal: 'Повтор гола', save: 'Опасный момент', post: 'Штанга!', hit: 'Силовой приём', miss: 'Опасный момент', penalty: 'Нарушение' } as const;
+const RE_LABEL = { goal: 'Повтор гола', save: 'Опасный момент', post: 'Штанга!', hit: 'Силовой приём', miss: 'Опасный момент', penalty: 'Нарушение', shootout: 'Повтор буллита', pshot: 'Штрафной бросок' } as const;
 type Props = {
   ai: LiveSource; ticker: LiveTicker; home: Team; away: Team; players: Record<string, Player>;
   /** everyone who may come on the ice (dressed players, both goalies): their figures are prepared up front */
@@ -421,7 +421,7 @@ export function LiveScene3D(props: Props) {
       let coachStop = NaN, coachT = NaN;
       /** a timeout on screen: since when (real ms), for the camera's move to the bench */
       let toCamAt = NaN;
-      const seenPen = new Set<number>();
+      const seenPen = new Set<number>(), seenTry = new Set<number>();
       const seenGoals = new Set<number>();
       let lastMomentClock = -Infinity, stopSeen = NaN, stopChecked = false;
       // the faceoff camera at every stoppage: when this stoppage began (match s) and the last one it was shown for
@@ -531,7 +531,8 @@ export function LiveScene3D(props: Props) {
             const fl = ai.frameAt(liveTau), side = motion.goalAt(tv.goalTau + .01)?.side ?? tv.side ?? 0, bx = BENCH.x[side];
             const ids = shownSkaters(fl).filter(p => p.side === side && !p.goalie).sort((p, q) => +(q.id === tv!.spec.player) - +(p.id === tv!.spec.player) || Math.abs(toWorld(p.pos).x - bx) - Math.abs(toWorld(q.pos).x - bx)).map(p => p.id);
             tv.side = side;
-            if (ids.length) { tv.phase = 'bump'; tv.t0 = now; tv.bump = bumpPlan(ids, bx); tickerRef.current.hold = true; tickerRef.current.slow = false; forget(); }
+            const so = !!(ai as { shootout?: unknown }).shootout;
+            if (ids.length && !so) { tv.phase = 'bump'; tv.t0 = now; tv.bump = bumpPlan(ids, bx); tickerRef.current.hold = true; tickerRef.current.slow = false; forget(); }
             else { tv.phase = 'replay'; tv.t0 = now; startReplay(); }
           }
           if (tv?.phase === 'bump' && tv.bump && now - tv.t0 >= tv.bump.length * 1000) { tv.phase = 'replay'; tv.t0 = now; startReplay(); }
@@ -559,6 +560,25 @@ export function LiveScene3D(props: Props) {
             const a = tv.player ? actors.get(tv.player) : undefined;
             if (a?.seat?.startsWith('p') && !a.off) tv.seated ??= now;
             if ((tv.seated !== undefined && now - tv.seated > 700) || now - tv.t0 > 8000) endTv();
+          }
+          // a penalty shot / a shootout attempt over: its replay while the shooter skates off (and the next one is got
+          // ready) — a goal has its own show
+          if (!tv) {
+            for (let i = ai.plays.length - 1; i >= 0; i--) {
+              const p = ai.plays[i];
+              if (p.tau < liveTau - 1.5) break;
+              if (p.tau > liveTau || seenTry.has(p.tau) || p.kind === 'goal' || !(p.text.startsWith('Буллит,') || p.text.startsWith('Штрафной бросок не реализован'))) continue;
+              seenTry.add(p.tau);
+              // the key moment: the save (or the miss) of the attempt, else the moment it ended
+              let key = p.tau - .3;
+              for (let j = i - 1; j >= 0 && ai.plays[j].tau > p.tau - 12; j--) { const q = ai.plays[j]; if (q.kind === 'save' || q.kind === 'wide' || q.kind === 'freeze' || q.kind === 'block') { key = q.tau; break; } }
+              const pk = toWorld(ai.frameAt(key).puck);
+              tv = { kind: 'moment', phase: 'replay', t0: now, spec: { kind: p.text.startsWith('Буллит,') ? 'shootout' : 'pshot', from: key - 3.2, to: Math.min(liveTau, key + 1.2), key, netX: Math.sign(pk.x || 1) * NET_X, text: p.text, player: p.player }, goalTau: NaN };
+              // (not the stoppage's own replay of the same save after it)
+              stopSeen = liveTau; stopChecked = true;
+              startReplay();
+              break;
+            }
           }
           // a stoppage: a replay of the big moment just before the whistle (now and then)
           if (!tv) {

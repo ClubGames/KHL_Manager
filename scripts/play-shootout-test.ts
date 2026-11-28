@@ -9,6 +9,7 @@ import { PlayRink, type PlayOut } from '../src/game/playRink';
 import { GameSim } from '../src/game/engine';
 import { soNext, soShooter, soTally, type SoAttempt } from '../src/game/shootout';
 import type { Team } from '../src/types';
+import { OfficialCrew } from '../src/components/officialCrew';
 
 const r = parseRosterText(readFileSync('scripts/fixtures/test-roster.json', 'utf8'));
 const P = r.players, T = r.teams;
@@ -142,6 +143,85 @@ test('the goal mouth is open: every shot the model scores crosses the line (none
   // (a body in the lane or a tip stops a few — not most; a tipped one can still go in)
   assert.ok(stopped <= Math.max(1, scored * 0.4), 'hardly ever stopped on the way');
   assert.ok(counted >= scored - stopped && counted <= scored, `${counted} goals of ${scored} scoring shots`);
+});
+
+/** Steps a rink, noting each penalty shot got ready: the stages in order, where the shooter and the puck are at the whistle. */
+function watchPrep(k: PlayRink, steps: number) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const p = k as any;
+  const tries: { stages: string[]; puckOnSpot: boolean; puckLowered: boolean; others: number; shooterGap: number; at: number }[] = [];
+  let cur: (typeof tries)[number] | null = null, last: string | undefined;
+  for (let i = 0; i < steps && !k.ended; i++) {
+    k.advance(1 / 60); k.drain();
+    const f = k.frameAt(p.tau), st = f.psStage;
+    if (st && st !== last) {
+      if (st === 'away' || !cur) { cur = { stages: [], puckOnSpot: false, puckLowered: false, others: 0, shooterGap: 99, at: p.tau }; tries.push(cur); }
+      cur.stages.push(st);
+    }
+    if (cur && st === 'place' && f.puck.h > 0.3) cur.puckLowered = true;
+    if (cur && last === 'set' && !st) {
+      // the whistle has gone: the puck where the referee put it, nobody else out there, the shooter right behind it
+      const sh = p.ps?.shooter;
+      cur.puckOnSpot = Math.hypot(p.puck.x - 30, p.puck.y - 15) < 1.2;
+      cur.others = f.skaters.filter((x) => !x.goalie && x.id !== sh?.id).length;
+      cur.shooterGap = sh ? Math.hypot(sh.x - 30, sh.y - 15) : 99;
+      cur = null;
+    }
+    last = st;
+  }
+  return tries;
+}
+
+test('every attempt got ready as on TV: the others off, the puck put on the centre spot, the shooter out behind it, the whistle', () => {
+  const [H, A] = pair(3);
+  const k = new PlayRink({ home: H, away: A, players: P, lineups: [H.lineup, A.lineup], userSide: null, kind: 'so', periodMinutes: 20, seed: 4321, so: { order: [fw(H), fw(A)] } });
+  const tries = watchPrep(k, 60 * 60 * 8).filter((t) => t.stages.includes('set'));
+  assert.ok(k.ended && tries.length >= 4, `${tries.length} attempts got ready`);
+  for (const t of tries) {
+    assert.deepEqual(t.stages, ['away', 'place', 'skate', 'set'], `stages ${t.stages}`);
+    assert.ok(t.puckLowered, 'the referee puts the puck down from his hand');
+    assert.ok(t.puckOnSpot && t.others === 0, 'alone with the goalie, the puck on the spot');
+    assert.ok(t.shooterGap < 1.5, `the shooter set behind the puck (${t.shooterGap.toFixed(2)} m), not put there`);
+  }
+  // the last shooter takes his time going off (the replay runs meanwhile): the next puck is not down at once
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const gaps = tries.slice(1).map((t, i) => t.at - tries[i].at);
+  assert.ok(Math.min(...gaps) > 9, `attempts ${Math.min(...gaps).toFixed(1)} s apart at least`);
+});
+
+test('a penalty shot in a game: everybody else off to the benches, the same set-up, then play on', () => {
+  const [H, A] = pair(5);
+  const k = new PlayRink({ home: H, away: A, players: P, lineups: [H.lineup, A.lineup], userSide: null, kind: 'reg', periodMinutes: 20, seed: 11 });
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const p = k as any;
+  for (let i = 0; i < 60 * 30; i++) k.advance(1 / 60);
+  const c = p.skaters(0)[0], d = p.skaters(1)[0];
+  p.startStop('penalty', { x: 30, y: 15 }, 1);
+  p.awardPenaltyShot({ player: d, ps: c, reason: 'подножка', side: 1 });
+  assert.ok(p.plays.at(-1).text.startsWith('Штрафной бросок!'));
+  const tries = watchPrep(k, 60 * 40);
+  assert.equal(tries.length, 1);
+  assert.deepEqual(tries[0].stages, ['away', 'place', 'skate', 'set']);
+  assert.ok(tries[0].puckOnSpot && tries[0].others === 0 && tries[0].shooterGap < 1.5);
+  assert.ok(p.plays.some((x: { text: string }) => /Штрафной бросок (не реализован|.*гол)/i.test(x.text) || x.text.startsWith('ГОЛ')), 'the shot taken');
+  assert.ok(p.skaters(0).length >= 5 && p.skaters(1).length >= 5, 'both teams back on the ice after it');
+});
+
+test('the referee at a penalty shot: bent over the centre spot putting the puck down, the arm up for the whistle when the shooter is set', () => {
+  const crew = new OfficialCrew();
+  const sk = [{ id: 's', side: 0 as const, pos: { x: 45, y: 50, h: 0 } }];
+  const frame = (psStage: 'away' | 'place' | 'skate' | 'set' | undefined, oy: number) => ({ puck: { x: 50, y: 50, h: 0 }, skaters: sk, stopped: !!psStage, official: psStage ? { x: 50, y: oy, h: 0 } : undefined, psStage });
+  let tau = 0, ref = -1;
+  const run = (sec: number, f: ReturnType<typeof frame>) => { let o; for (let t = 0; t < sec; t += 1 / 30) { tau += 1 / 30; o = crew.update(f as never, [], tau); } return o!; };
+  run(3.5, frame('away', 47.5));
+  let o = run(1.0, frame('place', 47.5));
+  ref = o.findIndex((x) => Math.hypot(x.x, x.z + .75) < 1.3);
+  assert.ok(ref >= 0, 'a referee at the centre spot');
+  assert.equal(o[ref].gesture, 'ready', 'bent over it with the puck');
+  o = run(2.5, frame('skate', 68.3));
+  assert.ok(o[ref].z > 3.5, `backed off to the side (${o[ref].z.toFixed(1)})`);
+  o = run(0.3, frame('set', 68.3));
+  assert.equal(o[ref].gesture, 'armUp', 'the whistle');
 });
 
 console.log(`${pass} played shootout tests passed`);

@@ -201,7 +201,9 @@ export class MatchSound {
       }
     }
     if (!stopped) this.stopSince = null;
-    if (wasStopped && !stopped) this.sink.cue({ k: 'drop', pan: pan(f.puck.x) });
+    // a penalty shot got ready: the referee whistles when the shooter is set (and no puck is dropped after it)
+    if (f.psStage === 'set' && prev?.psStage !== 'set') { this.recentWhistle = tau; this.sink.cue({ k: 'whistle', long: false }); }
+    if (wasStopped && !stopped && !prev?.psStage) this.sink.cue({ k: 'drop', pan: pan(f.puck.x) });
     // the organ at a stoppage: after a home goal, and now and then at a whistle
     if (stopped && this.stopSince !== null && !this.organDone) {
       const into = tau - this.stopSince;

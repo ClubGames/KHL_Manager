@@ -215,6 +215,13 @@ const buttonPower = (held: number) => clamp(0.25 + held / 0.6, 0.25, 1);
 const smooth01 = (v: number) => { const t = clamp(v, 0, 1); return t * t * (3 - 2 * t); };
 /** The official who drops the puck stands this far from the dot, across the rink on its far side (m): his hand is over the dot. */
 const OFFICIAL_AT = 0.75;
+/** A penalty shot got ready: the least time the others take to skate off after a shootout attempt (the replay runs
+ * meanwhile), the puck put down, the shooter set before the whistle, the longest wait for anyone (s); the referee's
+ * place to the side of the centre spot while the shooter comes out (m, away from the benches). */
+export const PS_PREP = { away: 6, ref: 3, place: 1.5, set: 1.0, cap: 11 };
+const PS_REF_OFF = 5.5;
+const PST = { away: 1, place: 2, skate: 3, set: 4 } as const;
+const PS_STAGE = ['away', 'place', 'skate', 'set'] as const;
 /** The longest the players take to skate to their faceoff places after a whistle (s). */
 const FO_GATHER_MAX = 11;
 /** The faceoff drop (s): the official's windup before the puck leaves his hand, its fall, the centres' battle for it before one wins it. */
@@ -349,7 +356,7 @@ interface Pending { side: Side; player: Sk; reason: string; min: 2 | 4 | 5; /** 
   /** a foul from behind on a clean breakaway: the man fouled takes a penalty shot instead of a power play */ ps?: Sk }
 /** One simulation step as recorded (and, online, streamed to the guest). */
 export type RinkFrame = Frame;
-interface Frame { tau: number; clock: number; px: number; py: number; ph: number; carrier: number; ids: string[]; sk: { id: string; side: Side; goalie: boolean; box: boolean; x: number; y: number; fa: number; ctrl: boolean; fall: number; fk: FallKind; fs: 1 | -1; check: number; poke: number; deke: number; mv: MoveKind | null; mt: number; stag: number; st: Stance | null; stT: number; hl: number; /** seconds left of stepping onto the ice */ hop: number }[]; stop: 0 | 1 | 2; ox: number; oy: number; dx: number; dy: number }
+interface Frame { tau: number; clock: number; px: number; py: number; ph: number; carrier: number; ids: string[]; sk: { id: string; side: Side; goalie: boolean; box: boolean; x: number; y: number; fa: number; ctrl: boolean; fall: number; fk: FallKind; fs: 1 | -1; check: number; poke: number; deke: number; mv: MoveKind | null; mt: number; stag: number; st: Stance | null; stT: number; hl: number; /** seconds left of stepping onto the ice */ hop: number }[]; stop: 0 | 1 | 2; ox: number; oy: number; dx: number; dy: number; /** a penalty shot being got ready: 1 away, 2 the puck put down, 3 the shooter coming out, 4 set for the whistle */ pst?: 1 | 2 | 3 | 4 }
 
 /** The HUD of one seat (see PlayRink.hud). */
 export type PlayHud = { ctl: string | null; power: number; context: 'carry' | 'support' | 'defend' | 'celebrate' | 'stop'; labels: { shoot: string; pass: string; deke: string }; energy: number; faceoff: boolean; foCue: 'ready' | 'now' | null; foCall: string | null; move: string | null };
@@ -467,6 +474,12 @@ export class PlayRink {
   private fightOn: { a: Sk; b: Sk; t0: number; win: Sk; down: boolean } | null = null;
   /** a penalty shot (a breakaway fouled from behind): awarded at the whistle, taken alone against the goalie */
   private ps: { shooter: Sk; side: Side; fouler: Sk | null; reason: string; live: boolean; t0: number; goals: number; shotSeen: boolean; round?: number } | null = null;
+  /**
+   * Getting a penalty shot (or the next shootout attempt) ready, as it is done on TV: everybody else (the last
+   * shooter too) skates off to the benches — the broadcast shows the replay meanwhile —, the referee puts the puck
+   * on the centre spot, the shooter comes out and stops behind it, the referee backs off and whistles: go.
+   */
+  private prep: { stage: 'away' | 'place' | 'skate' | 'set'; t0: number; min: number } | null = null;
   /** A penalty shot is being taken (the match screen may show it; the clock is stopped). */
   get penaltyShot(): { shooter: string; side: Side } | null { return this.ps?.live ? { shooter: this.ps.shooter.id, side: this.ps.side } : null; }
   /** The shootout (kind 'so'): the attempts so far. */
@@ -778,6 +791,7 @@ export class PlayRink {
       carrier: a.carrier >= 0 ? a.ids[a.carrier] : null, caption: cap?.text,
       official: a.stop ? { x: this.px(a.ox), y: a.oy / 0.3, h: 0 } : undefined,
       dot: a.stop ? { x: this.px(a.dx), y: a.dy / 0.3, h: 0 } : undefined,
+      psStage: a.stop && a.pst ? PS_STAGE[a.pst - 1] : undefined,
     };
   }
   /** Game clock at presentation time (the match screen shows it). */
@@ -1037,6 +1051,7 @@ export class PlayRink {
     for (const z of this.seats()) if (z.ctl === a.id) z.ctl = null;
   }
   private stepStop() {
+    if (this.prep && !this.fightOn) { this.stepPrep(); return; }
     const st = this.stopInfo, fg = this.fightOn;
     const ring = fg ? { x: (fg.a.x + fg.b.x) / 2, y: (fg.a.y + fg.b.y) / 2 } : null;
     for (const a of this.onIce()) {
@@ -1072,7 +1087,7 @@ export class PlayRink {
     if (this.tau < st.until || this.fightOn) return;
     if (this.opts.kind === 'so') {
       // the shootout: the next attempt, or the series is over
-      if (this.ps && !this.ps.live) this.startPenaltyShot();
+      if (this.ps && !this.ps.live) this.beginPrep();
       else if (!this.ps) this.finish();
       return;
     }
@@ -1081,7 +1096,7 @@ export class PlayRink {
       if (this.toPending !== null) { this.timeoutLeft[this.toPending] = true; this.toPending = null; }
       this.finish(); return;
     }
-    if (this.ps && !this.ps.live) { this.startPenaltyShot(); return; }
+    if (this.ps && !this.ps.live) { this.beginPrep(); return; }
     if (st.reason !== 'start') this.aiTimeout(st.icingSide);
     if (this.toPending !== null && st.reason !== 'start') { this.beginTimeout(this.toPending, st.dot, st.icingSide); return; }
     this.setupFaceoff(st.dot, st.icingSide, st.reason !== 'start');
@@ -1093,7 +1108,64 @@ export class PlayRink {
     this.play('penalty', a.side, `Штрафной бросок! ${a.name} — ${pen.reason} при выходе один на один. Исполняет ${v.name}`, a);
     this.stopInfo.until = Math.max(this.stopInfo.until, this.tau + 2.5);
   }
-  /** Everybody else to the benches, the shooter at centre ice with the puck, the goalie in his net: go. */
+  private beginPrep() {
+    this.celeb = null;
+    const so = this.opts.kind === 'so';
+    // (the referee needs a moment to get to the centre spot even when nobody has to go off)
+    this.prep = { stage: 'away', t0: this.tau, min: so && this.soAttempts.length ? PS_PREP.away : PS_PREP.ref };
+    for (const a of this.onIce()) if (!a.goalie && a !== this.ps!.shooter) { a.leaving = true; a.act = null; }
+    for (const z of this.seats()) z.ctl = null;
+  }
+  /** The penalty shot being got ready (see `prep`), a step of it. */
+  private stepPrep() {
+    const pr = this.prep!, ps = this.ps!, sh = ps.shooter, s = ps.side, t = this.tau - pr.t0, p = this.puck;
+    // he stops a stick length behind the puck, facing the net he shoots at
+    const spot = loc(s, { x: RED - 1.0, y: MID });
+    for (const a of this.onIce()) {
+      if (a.goalie) { this.goalieTarget(a); continue; }
+      a.manual = false; a.back = false;
+      if (a === sh) {
+        // (a penalty shot in a game: the man fouled waits by the centre circle while the others go off)
+        const w = pr.stage === 'away' ? loc(s, { x: RED - 6, y: MID - 4 }) : spot;
+        a.tx = w.x; a.ty = w.y; a.urg = pr.stage === 'away' ? 0.5 : 0.7;
+        continue;
+      }
+      a.tx = this.bench[a.side].x; a.ty = this.bench[a.side].y + 0.5; a.urg = 0.75;
+      if (dist(a, this.bench[a.side]) < 2.4) { a.on = 'bench'; a.leaving = false; a.act = null; }
+    }
+    for (const a of this.onIce()) this.move(a);
+    if (sh.on === 'ice' && (pr.stage === 'skate' || pr.stage === 'set') && dist(sh, spot) < 1.2) sh.fa += angDiff(sh.fa, s ? Math.PI : 0) * 0.15;
+    this.collide();
+    if (pr.stage === 'away') {
+      if (p.inNet !== null) this.netPuck(); else if (this.held) this.holdPuck(); else this.deadSlide();
+    } else {
+      // the referee puts the puck down on the centre spot (from his hand to the ice), there it lies
+      const k = pr.stage === 'place' ? clamp(1 - t / 0.9, 0, 1) : 0;
+      this.held = null; p.inNet = null; p.carrier = null; p.shot = null; p.passTo = null; p.dead = true;
+      p.x = RED; p.y = MID; p.h = 0.95 * k; p.vx = 0; p.vy = 0; p.vh = 0;
+    }
+    const others = this.onIce().filter(a => !a.goalie && a !== sh);
+    const next = (stage: 'place' | 'skate' | 'set') => { pr.stage = stage; pr.t0 = this.tau; };
+    if (pr.stage === 'away') {
+      if (t > PS_PREP.cap) for (const a of others) { a.on = 'bench'; a.leaving = false; a.act = null; }
+      if (t >= pr.min && !this.onIce().some(a => !a.goalie && a !== sh)) next('place');
+    } else if (pr.stage === 'place') {
+      if (t >= PS_PREP.place) {
+        next('skate');
+        // the shooter comes out through the bench door
+        if (sh.on !== 'ice') this.stepOn(sh, this.bench[s].x, this.bench[s].y + 1, true);
+      }
+    } else if (pr.stage === 'skate') {
+      const ready = dist(sh, spot) < 0.45 && Math.hypot(sh.vx, sh.vy) < 0.8;
+      if (t > PS_PREP.cap && !ready) { sh.x = spot.x; sh.y = spot.y; sh.vx = 0; sh.vy = 0; }
+      if (ready || t > PS_PREP.cap) next('set');
+    } else if (t >= PS_PREP.set) {
+      // the whistle
+      this.prep = null;
+      this.startPenaltyShot();
+    }
+  }
+  /** The shooter (set behind the puck at centre ice) takes it, the goalie in his net: go. */
   private startPenaltyShot() {
     const ps = this.ps!, s = ps.side, o = (1 - s) as Side, sh = ps.shooter;
     this.held = null; this.celeb = null;
@@ -1102,9 +1174,11 @@ export class PlayRink {
       const g = this.goalieOf(side);
       if (g) { const n = loc(side, { x: GOAL + 1, y: MID }); g.x = n.x; g.y = n.y; g.vx = 0; g.vy = 0; g.fa = side ? Math.PI : 0; g.act = null; }
     }
-    const at = loc(s, { x: RED - 2, y: MID });
-    sh.on = 'ice';
-    sh.x = at.x; sh.y = at.y; sh.fa = s ? Math.PI : 0; sh.vx = Math.cos(sh.fa) * 2; sh.vy = 0; sh.act = null; sh.stun = 0; sh.fall = 0; sh.stagger = 0; sh.leaving = false;
+    const at = loc(s, { x: RED - 1.0, y: MID });
+    // (got ready, he stands there already; else — set up straight away — he is put there)
+    if (sh.on !== 'ice' || dist(sh, at) > 1.5) { sh.x = at.x; sh.y = at.y; sh.vx = 0; sh.vy = 0; }
+    sh.on = 'ice'; sh.hopTo = undefined;
+    sh.fa = s ? Math.PI : 0; sh.vx += Math.cos(sh.fa) * 1.2; sh.act = null; sh.stun = 0; sh.fall = 0; sh.stagger = 0; sh.leaving = false;
     const p = this.puck;
     p.dead = false; p.inNet = null; p.shot = null; p.passTo = null; p.passBy = null; p.icing = null; p.h = 0; p.vh = 0; p.vx = 0; p.vy = 0;
     p.x = 30; p.y = MID; p.carrier = sh; p.last = sh; sh.ownAt = this.tau;
@@ -4126,6 +4200,8 @@ export class PlayRink {
         hop: a.hopTo !== undefined && this.tau < a.hopTo ? a.hopTo - this.tau : 0,
       })),
       stop: st as 0 | 1 | 2, ox: dot.x, oy: dot.y - OFFICIAL_AT, dx: dot.x, dy: dot.y,
+      // a penalty shot being got ready: the referee at the centre spot with the puck, then off to the side (away from the benches)
+      ...(this.prep && this.mode === 'stop' ? { pst: PST[this.prep.stage], ox: RED, oy: this.prep.stage === 'skate' || this.prep.stage === 'set' ? MID + PS_REF_OFF : MID - OFFICIAL_AT } : {}),
     };
   }
   /**

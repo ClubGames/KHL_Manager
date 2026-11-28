@@ -170,7 +170,10 @@ export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: 
   /** during a stoppage: where the official who drops the puck at the next faceoff stands (known from the whistle) */
   official?: Point;
   /** during a stoppage: the dot of the next faceoff */
-  dot?: Point };
+  dot?: Point;
+  /** a penalty shot being got ready (the played match): the others going off, the puck put on the centre spot, the
+   * shooter coming out, set for the whistle */
+  psStage?: 'away' | 'place' | 'skate' | 'set' };
 export function clipFrame(clip: ReplayClip, time: number): LiveFrame {
   return { puck: samplePath(clip.puck, time), skaters: clip.tracks.map(tr => ({ id: tr.id, side: tr.side, goalie: tr.goalie, pos: samplePath(tr.keys, time) })) };
 }
