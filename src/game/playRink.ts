@@ -178,7 +178,11 @@ const GOAL = RINK.goalLine, OPP_GOAL = L - RINK.goalLine, BLUE = RINK.blueLine, 
 const POST = RINK.goalWidth / 2, BAR = RINK.goalHeight;
 const BENCH: [V2, V2] = [{ x: 24, y: 0.9 }, { x: 36, y: 0.9 }];
 /** Seconds a man takes to get onto the ice: over the boards on the fly, through the bench door at a whistle. */
-export const HOP_FLY = 0.85, HOP_DOOR = 1.15;
+export const HOP_FLY = 1.0, HOP_DOOR = 1.15, HOP_GATE = 0.9;
+/** From the middle of a bench to each of its two doors (m; the 3D benches' doors, arenaBenches DOORS). */
+export const BENCH_DOOR = 3.7;
+/** How far from the middle of a bench a man goes over the boards (m; clear of the doors at BENCH_DOOR). */
+const HOP_SPAN = 2.6;
 const BOX: [V2, V2] = [{ x: 27, y: 29.1 }, { x: 33, y: 29.1 }];
 const NET_DEPTH = RINK.goalDepth, NET_HALF = POST + 0.06;
 const CAGES = [
@@ -318,6 +322,9 @@ interface Sk {
   ownAt: number;
   /** stepping onto the ice (over the boards / through the bench door) until this moment: he stands at the boards, the AI waits */
   hopTo?: number;
+  /** his way through the boards: onto the ice this time (`inGate`: through the bench door, else over the boards) and
+   *  off it (`outGate`, settled as he heads for the bench); `trips` counts them (the pick is a hash of it, not a roll) */
+  inGate?: boolean; outGate?: boolean; trips?: number;
   /** a fall: how, which way (side falls: ±1), when it began */
   fallK: FallKind; fallS: 1 | -1; fallAt: number;
   /** the manager's man protecting the puck (✕ held): his body between the puck and the nearest checker */
@@ -364,7 +371,7 @@ interface Pending { side: Side; player: Sk; reason: string; min: 2 | 4 | 5; /** 
   /** a foul from behind on a clean breakaway: the man fouled takes a penalty shot instead of a power play */ ps?: Sk }
 /** One simulation step as recorded (and, online, streamed to the guest). */
 export type RinkFrame = Frame;
-interface Frame { tau: number; clock: number; px: number; py: number; ph: number; carrier: number; ids: string[]; sk: { id: string; side: Side; goalie: boolean; box: boolean; x: number; y: number; fa: number; ctrl: boolean; fall: number; fk: FallKind; fs: 1 | -1; check: number; poke: number; deke: number; mv: MoveKind | null; mt: number; stag: number; /** the jolt (see Sk.jx) while he staggers */ jx: number; jy: number; jk: number; st: Stance | null; stT: number; hl: number; /** seconds left of stepping onto the ice */ hop: number }[]; stop: 0 | 1 | 2; ox: number; oy: number; dx: number; dy: number; /** a penalty shot being got ready: 1 away, 2 the puck put down, 3 the shooter coming out, 4 set for the whistle */ pst?: 1 | 2 | 3 | 4 }
+interface Frame { tau: number; clock: number; px: number; py: number; ph: number; carrier: number; ids: string[]; sk: { id: string; side: Side; goalie: boolean; box: boolean; x: number; y: number; fa: number; ctrl: boolean; fall: number; fk: FallKind; fs: 1 | -1; check: number; poke: number; deke: number; mv: MoveKind | null; mt: number; stag: number; /** the jolt (see Sk.jx) while he staggers */ jx: number; jy: number; jk: number; st: Stance | null; stT: number; hl: number; /** seconds left of stepping onto the ice */ hop: number; /** through the bench door (stepping on, or on his way off), not over the boards */ gate?: 0 | 1 }[]; stop: 0 | 1 | 2; ox: number; oy: number; dx: number; dy: number; /** a penalty shot being got ready: 1 away, 2 the puck put down, 3 the shooter coming out, 4 set for the whistle */ pst?: 1 | 2 | 3 | 4 }
 
 /** The HUD of one seat (see PlayRink.hud). */
 export type PlayHud = { ctl: string | null; power: number; context: 'carry' | 'support' | 'defend' | 'celebrate' | 'stop'; labels: { shoot: string; pass: string; deke: string }; energy: number; faceoff: boolean; foCue: 'ready' | 'now' | null; foCall: string | null; move: string | null };
@@ -791,7 +798,7 @@ export class PlayRink {
       return { id: s.id, side: s.side, goalie: s.goalie || undefined, box: s.box || undefined, pos: { x: this.px(x), y: y / 0.3, h: 0 }, dir: { x: this.opts.flip ? -Math.cos(fa) : Math.cos(fa), y: Math.sin(fa) }, ctrl: (t.ctrl && s.side === this.opts.userSide) || undefined, fall: t.fall || undefined, fallKind: t.fall ? t.fk : undefined, fallSide: t.fall && t.fk === 'side' ? t.fs : undefined, check: t.check || undefined, poke: t.poke && !t.mv ? t.poke : undefined, deke: t.deke || undefined, move: t.mv ?? undefined, moveT: t.mv ? s.mv === t.mv ? s.mt + (t.mt - s.mt) * u : t.mt : undefined, stagger: t.stag || undefined,
         staggerDir: t.stag && t.jk ? { x: this.opts.flip ? -t.jx : t.jx, y: t.jy } : undefined, staggerK: t.stag && t.jk ? t.jk : undefined,
         stance: t.st ?? undefined, stanceT: t.st ? (s.st === t.st ? s.stT + (t.stT - s.stT) * u : t.stT) : undefined, handle: t.hl ? s.hl + (t.hl - s.hl) * u : undefined,
-        hop: t.hop ? Math.max(0, (s.hop || t.hop) + (t.hop - (s.hop || t.hop)) * u) : undefined };
+        hop: t.hop ? Math.max(0, (s.hop || t.hop) + (t.hop - (s.hop || t.hop)) * u) : undefined, gate: t.gate ? true : undefined };
     });
     const cap = [...this.plays].reverse().find(p => p.tau <= a.tau + 1e-9 && a.tau - p.tau < 2.6);
     return {
@@ -973,7 +980,12 @@ export class PlayRink {
     let k = 0;
     for (const id of want) {
       const a = this.agents.get(id)!;
-      if (a.on !== 'ice') { const x = this.bench[s].x + (k++ - 2) * 0.9, y = this.bench[s].y + 1; if (hop) this.stepOn(a, x, y, true); else { a.on = 'ice'; a.x = x; a.y = y; a.vx = 0; a.vy = 0; } }
+      if (a.on !== 'ice') {
+        // (over the boards: side by side along the bench front; through the gate: each to the nearer door, one after another)
+        const x = this.bench[s].x + (k++ - 2) * 0.9, y = this.bench[s].y + 1;
+        if (hop) { this.stepOn(a, x, y, true); if (a.inGate) { const q = [...this.onIce(s)].filter(b => b !== a && b.inGate && b.hopTo !== undefined && b.hopTo > this.tau && Math.abs(b.x - a.x) < 0.5).length; a.hopTo! += q * 0.45; a.y += q * 0.25; } }
+        else { a.on = 'ice'; a.x = x; a.y = y; a.vx = 0; a.vy = 0; }
+      }
       a.leaving = false;
     }
     if (extra) this.addExtra(s);
@@ -986,10 +998,35 @@ export class PlayRink {
    * (`door`). He stands there while the 3D picture shows him getting out of the bench (the frames carry `hop`), and
    * only then skates — never sliding off before he is on the ice.
    */
-  private stepOn(a: Sk, x: number, y: number, door: boolean) {
+  private stepOn(a: Sk, x: number, y: number, door: boolean, gate = this.viaGate(a, door)) {
     a.on = 'ice'; a.leaving = false; a.act = null;
+    a.inGate = gate; a.outGate = undefined;
+    // through the gate: out of the bench door itself (the nearer of the two)
+    // (over the boards: somewhere along the bench front, clear of the doors — next to the man he replaces at a door)
+    const b = this.bench[a.side];
+    if (gate) { x = b.x + (x < b.x ? -BENCH_DOOR : BENCH_DOOR); y = b.y + 0.6; } else x = b.x + Math.max(-HOP_SPAN, Math.min(HOP_SPAN, x - b.x));
     a.x = x; a.y = y; a.vx = 0; a.vy = 0; a.fa = this.toIce(a.side);
-    a.hopTo = this.tau + (door ? HOP_DOOR : HOP_FLY);
+    a.hopTo = this.tau + (gate ? (door ? HOP_DOOR : HOP_GATE) : HOP_FLY);
+  }
+  /**
+   * Over the boards or through the gate: at a whistle most of them walk out of the door; on the fly the forwards hop
+   * the boards and the defencemen mostly come and go through the door; a goalie always uses it. (A hash of the man and
+   * his trip count, not a roll: the play's random stream stays as it was.)
+   */
+  private viaGate(a: Sk, whistle: boolean) {
+    if (a.goalie) return true;
+    const n = (a.trips = (a.trips ?? 0) + 1);
+    let h = 2166136261 ^ n * 2654435761;
+    for (let i = 0; i < a.id.length; i++) h = Math.imul(h ^ a.id.charCodeAt(i), 16777619);
+    const r = ((h >>> 0) % 1000) / 1000;
+    return r < (whistle ? 0.7 : a.kindD ? 0.65 : 0.12);
+  }
+  /** Where a man coming off heads: the nearer bench door (through the gate) or the nearest stretch of the bench front. */
+  private offSpot(a: Sk): V2 {
+    const b = this.bench[a.side];
+    a.outGate ??= this.viaGate(a, this.mode !== 'play');
+    if (a.outGate) return { x: b.x + (a.x < b.x ? -BENCH_DOOR : BENCH_DOOR), y: b.y + 0.3 };
+    return { x: b.x + Math.max(-HOP_SPAN, Math.min(HOP_SPAN, a.x - b.x)), y: b.y + 0.5 };
   }
   private addExtra(s: Side) {
     const Lu = this.opts.lineups[s];
@@ -1786,7 +1823,7 @@ export class PlayRink {
       // finish changes in progress: a man at the bench door is replaced at once
       for (const a of this.skaters(0).concat(this.skaters(1))) {
         if (!a.leaving) continue;
-        const d = dist(a, this.bench[a.side]);
+        const d = dist(a, this.offSpot(a));
         if (d < 2.6) this.swapAtBench(a);
         // now and then the next man jumps a little too early
         else if (d < 7 && !this.early[a.side] && this.mode === 'play' && this.rand() < 0.0009) this.jumpEarly(a);
@@ -1854,7 +1891,8 @@ export class PlayRink {
     if (!pick) return;
     const b = this.agents.get(pick)!;
     if (b.on !== 'bench' || b.goalie) return;
-    this.stepOn(b, this.bench[s].x + (this.rand() - 0.5), this.bench[s].y + 0.6, false);
+    const o = this.offSpot(a);
+    this.stepOn(b, o.x + (this.rand() - 0.5) * 0.6, this.bench[s].y + 0.6, false);
     this.early[s] = { id: b.id, leaver: a };
     this.assignRoles(s);
   }
@@ -1868,7 +1906,7 @@ export class PlayRink {
       if (!e) continue;
       if (e.leaver.on !== 'ice' || !e.leaver.leaving) { this.early[s] = null; continue; }
       const c = this.puck.carrier;
-      if (c?.id === e.id && dist(e.leaver, this.bench[s]) > 2.6) {
+      if (c?.id === e.id && dist(e.leaver, this.offSpot(e.leaver)) > 2.6) {
         this.early[s] = null;
         if (this.rand() < 0.75) this.foul(e.leaver, PEN_REASON.bench, c);
       }
@@ -1888,7 +1926,7 @@ export class PlayRink {
       const b = this.agents.get(pick)!;
       // the same man again (a short bench): he just stays out, where he is (no jump back to the door)
       if (b === a) { a.on = 'ice'; a.leaving = false; }
-      else this.stepOn(b, this.bench[s].x + (this.rand() - 0.5), this.bench[s].y + 0.6, this.mode !== 'play');
+      else { const o = this.offSpot(a); this.stepOn(b, o.x + (this.rand() - 0.5) * 0.6, this.bench[s].y + 0.6, this.mode !== 'play'); }
     }
     this.assignRoles(s);
     for (const z of this.seats()) if (z.ctl === a.id) this.as(z, () => this.pickControl(true));
@@ -2279,7 +2317,7 @@ export class PlayRink {
     if (update) this.aiTick = this.tau + 0.1;
     for (const a of this.onIce()) if (a.goalie) this.goalieTarget(a);
     if (!update) { if (p.carrier && !p.carrier.manual) this.carrierAct(p.carrier, false); return; }
-    for (const a of this.onIce()) if (a.leaving && !a.manual) { a.tx = this.bench[a.side].x; a.ty = this.bench[a.side].y + 0.5; a.urg = 1; a.back = false; }
+    for (const a of this.onIce()) if (a.leaving && !a.manual && !a.goalie) { const o = this.offSpot(a); a.tx = o.x; a.ty = o.y; a.urg = 1; a.back = false; }
     const carrier = p.carrier;
     if (carrier && !carrier.manual) this.carrierAct(carrier, true);
     this.pathAt = -1;
@@ -4276,6 +4314,7 @@ export class PlayRink {
         ...this.stanceOf(a),
         hl: a.manual && this.puck.carrier === a ? this.seatOf(a)?.handle?.lat ?? 0 : 0,
         hop: a.hopTo !== undefined && this.tau < a.hopTo ? a.hopTo - this.tau : 0,
+        gate: (a.leaving ? (a.outGate ??= this.viaGate(a, this.mode !== 'play')) : a.hopTo !== undefined && this.tau < a.hopTo && a.inGate) ? 1 : 0,
       })),
       stop: st as 0 | 1 | 2, ox: dot.x, oy: dot.y - OFFICIAL_AT, dx: dot.x, dy: dot.y,
       // a penalty shot being got ready: the referee at the centre spot with the puck, then off to the side (away from the benches)
