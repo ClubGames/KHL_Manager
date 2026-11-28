@@ -19,6 +19,7 @@ import { buildCtx, GuestMatch, HostMatch, outToast, type MatchCommand, type Matc
 import type { OnlineSession } from '../../net/session';
 import type { MatchView, TeamPack } from '../../net/wire';
 import { useCrowdVerdict } from '../sound/useMatchSound';
+import { useSilenceMenuMusic } from '../sound/menuMusic';
 
 /**
  * The online match on this device: the host's runs the rink (HostMatch), the guest's shows the host's frames and
@@ -39,6 +40,7 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
   const settings = useSettings();
   const [view, setView] = useState<MatchView>(() => ({ phase: 'loading', period: 1, status: 'playing', score: [0, 0], shots: [0, 0], hits: [0, 0], periodScores: [], goals: [], events: [], soEvents: [], ready: [false, false], paused: null, beyond: '' }));
   // the arena is the home side's: its fans cheer or boo the result on both devices
+  useSilenceMenuMusic();
   useCrowdVerdict(view.phase === 'final', view.score[0] > view.score[1]);
   const [rink, setRink] = useState<PlayRink | null>(null);
   const [hud, setHud] = useState<Hud | null>(null);

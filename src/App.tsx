@@ -12,6 +12,7 @@ import { Standings } from './components/Standings';
 import { GameBox, Schedule } from './components/Schedule';
 import { Match } from './components/Match';
 import { PlayMatch } from './components/PlayMatch';
+import { useMenuMusic } from './components/sound/menuMusic';
 import { OnlineScreen } from './components/online/OnlineScreen';
 import { MatchModeModal, type MatchMode } from './components/MatchModes';
 import { getSettings } from './game/settings';
@@ -79,6 +80,8 @@ export default function App() {
   const [preselect, setPreselect] = useState<string | null>(null);
   const [savesOpen, setSavesOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  // the menu music (the match screens silence it while they are open)
+  useMenuMusic(true);
   const [settingsOpen, setSettingsOpenState] = useState(false);
   const [settingsScope, setSettingsScope] = useState<'all' | 'match'>('all');
   /** the settings window: from the menus everything, from a match without what it runs with */

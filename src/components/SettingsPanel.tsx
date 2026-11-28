@@ -308,8 +308,8 @@ export function SettingsPanel({ onClose, scope = 'all', closeLabel = 'Готов
         </Row>
       </Section>
 
-      <Section tab="sound" title="Звук" hint="Звучат матчи — и тот, что вы смотрите, и тот, где играете сами.">
-        <Row k="sound" label="Звук в матчах" hint="Клюшки и шайба, борт и стекло, штанга, силовые приёмы, сейвы, свисток судьи, сирена и гудок после гола, болельщики и органист. Быстро выключить можно и кнопкой «Звук» на площадке.">
+      <Section tab="sound" title="Звук" hint="Звучат матчи — и тот, что вы смотрите, и тот, где играете сами, — а в меню играет музыка.">
+        <Row k="sound" label="Звук" hint="Весь звук игры. В матчах — клюшки и шайба, борт и стекло, штанга, силовые приёмы, сейвы, свисток судьи, сирена и гудок после гола, болельщики и органист. Быстро выключить звук матча можно и кнопкой «Звук» на площадке.">
           <Toggle id="sound" value={s.sound} onChange={(v) => set({ sound: v })} />
         </Row>
         <Row k="soundVolume" label="Громкость" disabled={!s.sound}>
@@ -317,6 +317,12 @@ export function SettingsPanel({ onClose, scope = 'all', closeLabel = 'Готов
         </Row>
         <Row k="soundCrowd" label="Болельщики" hint="Гул трибун, который нарастает у ворот соперника, рёв после гола хозяев, «у-у-у» после штанги, аплодисменты." disabled={!s.sound}>
           <Choice id="soundCrowd" value={s.soundCrowd} onChange={(v) => set({ soundCrowd: v })} options={[['off', 'Выкл'], ['quiet', 'Тихо'], ['normal', 'Обычно'], ['loud', 'Громко']]} disabled={!s.sound} />
+        </Row>
+        <Row k="menuMusic" label="Музыка в меню" hint="Спокойная музыка, написанная для игры (синтезатор, без чужих записей). Играет в меню и на экранах клуба, в матчах затихает." disabled={!s.sound}>
+          <Choice id="menuMusic" value={s.menuMusic} onChange={(v) => set({ menuMusic: v })} options={[['off', 'Выкл'], ['quiet', 'Тихо'], ['normal', 'Обычно']]} disabled={!s.sound} />
+        </Row>
+        <Row k="uiSounds" label="Звуки кнопок" hint="Мягкие щелчки кнопок, вкладок и переключателей интерфейса. Кнопки управления в матче не щёлкают." disabled={!s.sound}>
+          <Toggle id="uiSounds" value={s.uiSounds} onChange={(v) => set({ uiSounds: v })} disabled={!s.sound} />
         </Row>
         <Row k="soundOrgan" label="Органист" hint="Короткие мелодии органа на остановках и после гола хозяев. На некоторые трибуны отвечают хлопками." disabled={!s.sound}>
           <Toggle id="soundOrgan" value={s.soundOrgan} onChange={(v) => set({ soundOrgan: v })} disabled={!s.sound} />
@@ -358,7 +364,7 @@ const TAB_KEYS: Record<SettingsTab, (keyof Settings)[]> = {
   play: ['playPeriod', 'playDifficulty', 'playPenaltyClock', 'playAutoSwitch', 'playTouch'],
   controls: ['controls'],
   replays: ['replay3d', 'autoReplay', 'replayQuality', 'replayCamera', 'replaySpeed', 'replayPrewarm', 'videoHeight', 'videoFps', 'videoQuality', 'videoSlowmo', 'videoGraphics'],
-  sound: ['sound', 'soundVolume', 'soundCrowd', 'soundOrgan'],
+  sound: ['sound', 'soundVolume', 'menuMusic', 'uiSounds', 'soundCrowd', 'soundOrgan'],
   other: ['simOpenReport', 'simConfirm'],
 };
 

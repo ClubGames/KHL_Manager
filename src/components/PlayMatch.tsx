@@ -20,6 +20,7 @@ import type { FigureRequest } from './replayCache';
 import { anyGamepad, CAPTURED, COMMAND_KEYS, detectDevice, emptyTouch, gamepadPad, keyboardPad, mergePads, mouseDown, mouseMove, mousePad, mouseUp, newMouse, stickVector, swipeDeke, swipeDir, MOVE_KEYS, keyLabel, bindKeys, bindButtons, type KeyBind, type PadBind, type Command, type InputDevice, type MouseState, type SwipeDir, type TouchState } from './playInput';
 import { suspendPadNav } from '../gamepadNav';
 import { useCrowdVerdict } from './sound/useMatchSound';
+import { useSilenceMenuMusic } from './sound/menuMusic';
 import { penLength } from '../game/penalties';
 
 /**
@@ -157,6 +158,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   const sim = useRef(makeUserSim(s, game)).current.sim;
   const settings = useSettings();
   const [phase, setPhase] = useState<Phase>('intro');
+  useSilenceMenuMusic();
   useCrowdVerdict(phase === 'final', sim.score[0] > sim.score[1]);
   const [paused, setPaused] = useState(false);
   const [help, setHelp] = useState(false);

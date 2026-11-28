@@ -73,6 +73,10 @@ export type Settings = {
   soundOrgan: boolean;
   /** a played match: the clock while one side is short-handed — like the period, real time, or real time ×2 / ×4 */
   playPenaltyClock: PenaltyClock;
+  /** the music of the menus (synthesized, not in the match screens): off / quiet / normal */
+  menuMusic: 'off' | 'quiet' | 'normal';
+  /** the soft clicks of the interface's buttons, tabs and switches (not the match controls) */
+  uiSounds: boolean;
   /** a played match: the keys and gamepad buttons rebound by the player */
   controls: Controls;
 };
@@ -87,6 +91,7 @@ export function defaultSettings(): Settings {
     matchSpeed: 2, matchRink2d: true, matchView: '3d', matchCamera: 'broadcast', matchZoom: 1, matchMinimap: true, matchIntro: true, matchReplays: true, matchAdvice: true, simOpenReport: true, simConfirm: true,
     playPeriod: 5, playDifficulty: 'pro', playAutoSwitch: true, playTouch: 'auto', playPenaltyClock: 'period',
     sound: true, soundVolume: .75, soundCrowd: 'normal', soundOrgan: true,
+    menuMusic: 'normal', uiSounds: true,
     controls: {},
   };
 }
@@ -130,6 +135,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     matchSpeed: one('matchSpeed', [1, 2, 4] as const), matchRink2d: bool('matchRink2d'), matchView: one('matchView', ['2d', '3d'] as const), matchCamera: one('matchCamera', ['broadcast', 'high', 'ice', 'end', 'overhead', 'dynamic', 'zone', 'vertical'] as const), matchZoom: one('matchZoom', MATCH_ZOOMS), matchMinimap: bool('matchMinimap'), matchIntro: bool('matchIntro'), matchReplays: bool('matchReplays'), matchAdvice: bool('matchAdvice'), simOpenReport: bool('simOpenReport'), simConfirm: bool('simConfirm'),
     playPeriod: one('playPeriod', [3, 5, 8, 12, 20] as const), playDifficulty: one('playDifficulty', ['rookie', 'pro', 'star'] as const), playAutoSwitch: bool('playAutoSwitch'), playTouch: one('playTouch', ['auto', 'on', 'off'] as const), playPenaltyClock: one('playPenaltyClock', ['period', 'real', 2, 4] as const),
     sound: bool('sound'), soundVolume: one('soundVolume', SOUND_VOLUMES), soundCrowd: one('soundCrowd', ['off', 'quiet', 'normal', 'loud'] as const), soundOrgan: bool('soundOrgan'),
+    menuMusic: one('menuMusic', ['off', 'quiet', 'normal'] as const), uiSounds: bool('uiSounds'),
     controls: sanitizeControls(r.controls),
   };
 }
