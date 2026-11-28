@@ -123,9 +123,9 @@ function Choice<V extends string | number>({ id, value, options, onChange, disab
  * the battery. The one the settings match now is lit; touching a single setting afterwards leaves «свои».
  */
 export const PROFILES: { id: string; label: string; hint: string; set: Partial<Settings> }[] = [
-  { id: 'max', label: 'Максимум', hint: 'всё в 3D, высокое качество', set: { replay3d: true, replayQuality: 'high', replayPrewarm: true, matchView: '3d', matchIntro: true, matchReplays: true, matchMinimap: true, videoQuality: 'view' } },
-  { id: 'balance', label: 'Баланс', hint: 'как по умолчанию', set: { replay3d: true, replayQuality: 'auto', replayPrewarm: true, matchView: '3d', matchIntro: true, matchReplays: true, matchMinimap: true, videoQuality: 'view' } },
-  { id: 'saver', label: 'Экономия', hint: '2D, для слабых устройств и батареи', set: { replay3d: false, replayQuality: 'standard', replayPrewarm: false, matchView: '2d', matchIntro: false, matchReplays: false, matchMinimap: false, videoQuality: 'fast' } },
+  { id: 'max', label: 'Максимум', hint: 'всё в 3D, высокое качество', set: { replay3d: true, replayQuality: 'high', replayPrewarm: true, matchView: '3d', matchIntro: true, matchReplays: true, matchOutro: true, matchMinimap: true, videoQuality: 'view' } },
+  { id: 'balance', label: 'Баланс', hint: 'как по умолчанию', set: { replay3d: true, replayQuality: 'auto', replayPrewarm: true, matchView: '3d', matchIntro: true, matchReplays: true, matchOutro: true, matchMinimap: true, videoQuality: 'view' } },
+  { id: 'saver', label: 'Экономия', hint: '2D, для слабых устройств и батареи', set: { replay3d: false, replayQuality: 'standard', replayPrewarm: false, matchView: '2d', matchIntro: false, matchReplays: false, matchOutro: false, matchMinimap: false, videoQuality: 'fast' } },
 ];
 export function activeProfile(s: Settings): string | null {
   return PROFILES.find(p => Object.entries(p.set).every(([k, v]) => s[k as keyof Settings] === v))?.id ?? null;
@@ -233,6 +233,9 @@ export function SettingsPanel({ onClose, scope = 'all', closeLabel = 'Готов
         </Row>
         <Row k="matchReplays" label="Празднования и повторы в 3D-матче" hint="После гола — празднование автора крупным планом и повтор гола, на остановках — повторы опасных моментов. Матч в это время стоит, всё можно пропустить кнопкой на картинке.">
           <Toggle id="matchReplays" value={s.matchReplays} onChange={(v) => set({ matchReplays: v })} />
+        </Row>
+        <Row k="matchOutro" label="После финальной сирены" hint="В 3D после матча победители перелезают через борт и обнимают вратаря, проигравшие уезжают в подтрибунку; затем салют болельщикам и звезда матча. Серия плей-офф выиграна — рукопожатия команд, выигран финал — ковровая дорожка, капитан поднимает Кубок, круг почёта и фото чемпионов. Можно пропустить кнопкой «К итогам матча».">
+          <Toggle id="matchOutro" value={s.matchOutro} onChange={(v) => set({ matchOutro: v })} />
         </Row>
         <Row k="matchSpeed" label="Скорость матча при старте" hint="С какой скоростью начинается матч, который вы смотрите. Во время матча её меняют кнопки ×1 / ×2 / ×4.">
           <Choice id="matchSpeed" value={s.matchSpeed} onChange={(v) => set({ matchSpeed: v })} options={[[1, '×1'], [2, '×2'], [4, '×4']]} />
@@ -360,7 +363,7 @@ export function SettingsPanel({ onClose, scope = 'all', closeLabel = 'Готов
 
 /** The settings each tab holds (its «changed» dot). */
 const TAB_KEYS: Record<SettingsTab, (keyof Settings)[]> = {
-  match: ['matchView', 'matchCamera', 'matchZoom', 'matchMinimap', 'matchIntro', 'matchReplays', 'matchSpeed', 'matchRink2d', 'matchAdvice'],
+  match: ['matchView', 'matchCamera', 'matchZoom', 'matchMinimap', 'matchIntro', 'matchReplays', 'matchOutro', 'matchSpeed', 'matchRink2d', 'matchAdvice'],
   play: ['playPeriod', 'playDifficulty', 'playPenaltyClock', 'playAutoSwitch', 'playTouch'],
   controls: ['controls'],
   replays: ['replay3d', 'autoReplay', 'replayQuality', 'replayCamera', 'replaySpeed', 'replayPrewarm', 'videoHeight', 'videoFps', 'videoQuality', 'videoSlowmo', 'videoGraphics'],

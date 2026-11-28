@@ -10,6 +10,7 @@ import { LIVE_CAMERAS } from './replayCameras';
 import type { FigureRequest } from './replayCache';
 import { resolveReplayQuality } from './ReplayScene';
 import { LiveScene3D } from './LiveScene3D';
+import type { OutroSpec } from './matchOutro';
 import { crewFor } from './officialCrew';
 import { useMatchSound } from './sound/useMatchSound';
 
@@ -73,7 +74,7 @@ export function RinkSvg({ frame, home, away, players, aim, officials }: { frame:
   </svg>;
 }
 
-export function LiveRink({ ticker, ids, goalies, event, home, away, players, running, ai = null, className, fill = false, roster, allow3d = true, bare = false, minimap = true, intro = false, replays }: {
+export function LiveRink({ ticker, ids, goalies, event, home, away, players, running, ai = null, className, fill = false, roster, allow3d = true, bare = false, minimap = true, intro = false, replays, outro = null, onOutroEnd }: {
   ticker: { sec: number; tau?: number }; ids: [string[], string[]]; goalies: [string | null, string | null]; event: GameEvent | null;
   home: Team; away: Team; players: Record<string, Player>; running: boolean; ai?: LiveSource | null; className?: string; fill?: boolean;
   /** everyone who may come on the ice: the 3D view prepares their figures up front */
@@ -88,6 +89,9 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
   intro?: boolean;
   /** the broadcast's replays of moments (they hold the clock): the settings' choice unless given (online: never — the other device would not wait) */
   replays?: boolean;
+  /** the match is over: the 3D scene after the final siren (if the settings want it), then `onOutroEnd` — at once without it */
+  outro?: OutroSpec | null;
+  onOutroEnd?: () => void;
 }) {
   const settings = useSettings();
   const [failed3d, setFailed3d] = useState(false);
@@ -96,6 +100,12 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
   const can3d = !!ai && !failed3d;
   const show3d = can3d && settings.matchView === '3d' && allow3d;
   const read = () => (ai ? ticker.tau ?? 0 : ticker.sec);
+  // the scene after the siren needs the 3D picture: without it (or switched off) the match screen goes on at once
+  const outroOn = !!outro && show3d && settings.matchOutro;
+  const outroEnd = useRef(onOutroEnd); outroEnd.current = onOutroEnd;
+  useEffect(() => { if (outro && !outroOn) outroEnd.current?.(); }, [outro, outroOn]);
+  // (a safety net: the picture never got going — the final comes all the same)
+  useEffect(() => { if (!outroOn) return; const id = window.setTimeout(() => outroEnd.current?.(), 150_000); return () => window.clearTimeout(id); }, [outroOn]);
   // the match's sound follows the same frames (only with the agent rink: the formation picture has no play)
   useMatchSound(ai, ticker, running);
   const [t, setT] = useState(read);
@@ -122,7 +132,7 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
     frame = { ...source, skaters: source.skaters.filter(p => !p.goalie || goalies[p.side] !== null).map(p => p.goalie && goalies[p.side] ? { ...p, id: goalies[p.side]! } : p) };
   }
   const flipped = !!ai?.flipped;
-  const state = frame.faceoff ? 'Вбрасывание · время стоит' : frame.stopped ? 'Свисток · время стоит' : running ? 'В игре' : 'Пауза';
+  const state = outroOn ? 'Матч окончен' : frame.faceoff ? 'Вбрасывание · время стоит' : frame.stopped ? 'Свисток · время стоит' : running ? 'В игре' : 'Пауза';
   // the played match: the aim marker on the net, also in 2D
   const am = ai?.aimMarker?.() ?? null;
   const aim = am ? { x: am.x / RINK.length * 100 + 50, y: am.z / RINK.width * 100 + 50, charge: am.charge } : null;
@@ -150,7 +160,7 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
     </div>}
     {show3d ? (
       <div className={cn('relative bg-[#081421] overflow-hidden', fill ? 'flex-1 min-h-0' : 'w-full')} style={fill ? undefined : { aspectRatio: '16 / 9' }} data-rink-3d>
-        <LiveScene3D ai={ai!} ticker={ticker} home={home} away={away} players={players} roster={roster ?? []} camera={settings.matchCamera} zoom={settings.matchZoom} quality={resolveReplayQuality(settings.replayQuality)} onFail={() => setFailed3d(true)} intro={intro && settings.matchIntro} replays={replays ?? settings.matchReplays} />
+        <LiveScene3D ai={ai!} ticker={ticker} home={home} away={away} players={players} roster={roster ?? []} camera={settings.matchCamera} zoom={settings.matchZoom} quality={resolveReplayQuality(settings.replayQuality)} onFail={() => setFailed3d(true)} intro={intro && settings.matchIntro} replays={replays ?? settings.matchReplays} outro={outroOn ? outro : null} onOutroEnd={onOutroEnd} />
         {/* above the phone controls of the played match (their stick zone covers the left of the picture): the camera
             list opens down over it and must take the taps */}
         <div className="absolute top-1.5 left-1.5 flex flex-wrap gap-1 z-30" data-live-view-controls>
@@ -169,7 +179,7 @@ export function LiveRink({ ticker, ids, goalies, event, home, away, players, run
           {soundButton}
         </div>
         {/* The same frame on the 2D rink: both pictures are one simulation. */}
-        {settings.matchMinimap && minimap && <div className="absolute right-1.5 bottom-1.5 w-[28%] min-w-[120px] max-w-[240px] rounded-sm border border-white/25 bg-[#0a1828]/75 p-0.5 pointer-events-none" style={{ aspectRatio: '2 / 1' }} data-rink-minimap>{svg}</div>}
+        {settings.matchMinimap && minimap && !outroOn && <div className="absolute right-1.5 bottom-1.5 w-[28%] min-w-[120px] max-w-[240px] rounded-sm border border-white/25 bg-[#0a1828]/75 p-0.5 pointer-events-none" style={{ aspectRatio: '2 / 1' }} data-rink-minimap>{svg}</div>}
       </div>
     ) : (
       <div className="bg-[#0a1828] p-1 flex-1 min-h-0 flex items-center justify-center relative"><div className="absolute top-1.5 left-1.5 z-10 flex gap-1">{bare && viewToggle && <span className="bg-panel/90 rounded-sm">{viewToggle}</span>}{soundButton}</div><div className={fill ? 'w-full h-full' : 'w-full max-w-[560px]'} style={fill ? undefined : { aspectRatio: '2 / 1' }}>{svg}</div></div>

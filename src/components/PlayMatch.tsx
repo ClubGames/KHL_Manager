@@ -22,6 +22,7 @@ import { suspendPadNav } from '../gamepadNav';
 import { useCrowdVerdict } from './sound/useMatchSound';
 import { useSilenceMenuMusic } from './sound/menuMusic';
 import { penLength } from '../game/penalties';
+import { careerOutroInfo, outroSpecOf, type OutroInfo, type OutroSpec } from './matchOutro';
 
 /**
  * A match the manager plays himself, NHL style: he skates one of his players — the puck carrier when his team has
@@ -30,7 +31,7 @@ import { penLength } from '../game/penalties';
  * recordPlayed / endPlayed), so the result, the box score, the player lines, the shot map and the standings are
  * exactly those of any other game. Keyboard, gamepad and an on-screen stick with buttons on touch screens.
  */
-type Phase = 'intro' | 'playing' | 'break' | 'shootout' | 'final';
+type Phase = 'intro' | 'playing' | 'break' | 'shootout' | 'outro' | 'final';
 interface Hud {
   clock: number; len: number; score: [number, number]; shots: [number, number]; men: [number, number];
   boxed: [{ id: string; left: number }[], { id: string; left: number }[]]; delayed: 0 | 1 | null; mode: PlayRink['mode'];
@@ -156,12 +157,14 @@ class PlayTicker {
 export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => void }) {
   const s = useGame()!;
   const [m] = useState(() => ({ sim: makeUserSim(s, game).sim, userIdx: (game.home === s.userTeamId ? 0 : 1) as 0 | 1 }));
+  // the series as it stands before this game (the scene after the siren: the handshakes, the Cup)
+  const [outro] = useState<OutroInfo>(() => careerOutroInfo(s, game));
   const done = (clips: GameClips) => {
     void saveGameClips(gameClipsKey(s.saveId, s.seasonNumber, game.id), clips);
     commitUserResult(game.id, m.sim.result());
     onFinished();
   };
-  return <PlayMatchCore sim={m.sim} H={s.teams[game.home]} A={s.teams[game.away]} P={s.players} userIdx={m.userIdx} onDone={done} />;
+  return <PlayMatchCore sim={m.sim} H={s.teams[game.home]} A={s.teams[game.away]} P={s.players} userIdx={m.userIdx} onDone={done} outro={outro} />;
 }
 
 export interface PlayMatchProps {
@@ -177,15 +180,17 @@ export interface PlayMatchProps {
    * «Товарищеский матч» ('match'). At the end «ещё раз» or back to the menu instead of «продолжить сезон».
    */
   standalone?: { kind: 'so' | 'match'; onAgain: () => void; onQuit: () => void };
+  /** the scene after the final siren in 3D (a playoff series, the Cup); without it — none */
+  outro?: OutroInfo | null;
 }
 
 /** The played match: the rink, the input, the HUD, the intermissions, the final. */
-export function PlayMatchCore({ sim, H, A, P, userIdx, onDone, standalone }: PlayMatchProps) {
+export function PlayMatchCore({ sim, H, A, P, userIdx, onDone, standalone, outro: outroInfo }: PlayMatchProps) {
   const shootoutOnly = standalone?.kind === 'so' ? standalone : null;
   const settings = useSettings();
   const [phase, setPhase] = useState<Phase>('intro');
   useSilenceMenuMusic();
-  useCrowdVerdict(phase === 'final' || (!!shootoutOnly && phase === 'shootout'), sim.score[userIdx] > sim.score[1 - userIdx]);
+  useCrowdVerdict(phase === 'final' || phase === 'outro' || (!!shootoutOnly && phase === 'shootout'), sim.score[userIdx] > sim.score[1 - userIdx]);
   const [paused, setPaused] = useState(false);
   const [help, setHelp] = useState(false);
   /** the settings open over the pause menu / the intermission (without the ones the match runs with) */
@@ -202,6 +207,8 @@ export function PlayMatchCore({ sim, H, A, P, userIdx, onDone, standalone }: Pla
   const [padOn, setPadOn] = useState(false);
   const [, setTick] = useState(0);
   const rink = useRef<PlayRink | null>(null);
+  // (development builds: the probes reach the rink to fast-forward a period)
+  if (import.meta.env.DEV) (window as unknown as { __playRink?: () => PlayRink | null }).__playRink = () => rink.current;
   const ticker = useRef(new PlayTicker()).current;
   const [show, setShow] = useState(false);
   const showRef = useRef(false);
@@ -323,7 +330,31 @@ export function PlayMatchCore({ sim, H, A, P, userIdx, onDone, standalone }: Pla
     const evs = sim.applyShootout(k.soAttempts);
     rink.current = null;
     setSoEvents(evs);
-    setPhase('shootout');
+    toEnd(k, 'shootout');
+  };
+
+  // After the final siren: the 3D scene (the winners, the losers, the handshakes, the Cup) on the last picture of the
+  // rink, then the final sheet (or the shootout's)
+  const [outro, setOutro] = useState<OutroSpec | null>(null);
+  const outroRink = useRef<PlayRink | null>(null);
+  const outroNext = useRef<Phase>('final');
+  const toEnd = (k: PlayRink, next: Phase) => {
+    const st = settingsRef.current;
+    if (outroInfo && !shootoutOnly && sim.status === 'done' && st.matchOutro && st.matchView === '3d') {
+      outroRink.current = k; outroNext.current = next;
+      const spec = outroSpecOf(sim.result(), { ...outroInfo, home: H.id, away: A.id, teamOf: (id) => P[id]?.teamId });
+      // (development builds: the probes ask for the series / the Cup scene in any match)
+      const force = import.meta.env.DEV ? (window as unknown as { __outroKind?: OutroSpec['kind'] }).__outroKind : undefined;
+      setOutro(force ? { ...spec, kind: force, cup: 'Кубок Гагарина', season: '2026/27', series: [4, 2] } : spec);
+      setPhase('outro');
+      return;
+    }
+    setPhase(next);
+  };
+  const endOutro = () => {
+    if (phaseRef.current !== 'outro') return;
+    outroRink.current = null; setOutro(null);
+    setPhase(outroNext.current);
   };
 
   const endBlock = () => {
@@ -336,7 +367,7 @@ export function PlayMatchCore({ sim, H, A, P, userIdx, onDone, standalone }: Pla
     carry.current = sim.playedBox();
     timeouts.current = [k.timeoutLeft[0], k.timeoutLeft[1]];
     rink.current = null;
-    setPhase(sim.status === 'done' ? 'final' : 'break');
+    if (sim.status === 'done') toEnd(k, 'final'); else setPhase('break');
   };
 
   /** «Досимулировать»: the rest of the period by the rink AI, the rest of the match by the engine. */
@@ -478,6 +509,8 @@ export function PlayMatchCore({ sim, H, A, P, userIdx, onDone, standalone }: Pla
   };
 
   const k = rink.current;
+  // the rink on the screen: the period being played, or its last picture for the scene after the final siren
+  const rinkAi = phase === 'playing' ? k : phase === 'outro' ? outroRink.current : null;
   const periodLabel = sim.period <= 3 ? `${sim.period}-й период` : sim.playoff ? `${sim.period - 3}-й ОТ` : 'Овертайм';
   const nextLabel = (() => {
     const kk = blockKind();
@@ -502,7 +535,7 @@ export function PlayMatchCore({ sim, H, A, P, userIdx, onDone, standalone }: Pla
         <div className="flex flex-col items-center leading-none" data-play-score={`${score[0]}:${score[1]}`}>
           <span className="font-display text-2xl tabular">{score[0]} : {score[1]}</span>
           <span className="text-[10px] text-muted mt-0.5 tabular">
-            {phase === 'playing' && hud?.so ? <span data-play-so>Буллиты · серия <b className="text-text tabular">{hud.so.so[0]}:{hud.so.so[1]}</b></span> : phase === 'playing' && hud ? <>{periodLabel} · <b className="text-text" data-play-clock>{fmtClock(Math.max(0, Math.ceil(hud.len - hud.clock)))}</b> · <span data-play-shots>бр. {hud.shots[0]}–{hud.shots[1]}</span></> : phase === 'final' ? 'Матч окончен' : phase === 'shootout' ? 'Буллиты' : periodLabel}
+            {phase === 'playing' && hud?.so ? <span data-play-so>Буллиты · серия <b className="text-text tabular">{hud.so.so[0]}:{hud.so.so[1]}</b></span> : phase === 'playing' && hud ? <>{periodLabel} · <b className="text-text" data-play-clock>{fmtClock(Math.max(0, Math.ceil(hud.len - hud.clock)))}</b> · <span data-play-shots>бр. {hud.shots[0]}–{hud.shots[1]}</span></> : phase === 'final' || phase === 'outro' ? 'Матч окончен' : phase === 'shootout' ? 'Буллиты' : periodLabel}
           </span>
         </div>
         <div className="flex items-center gap-1.5 min-w-0 flex-1 justify-end">
@@ -542,8 +575,8 @@ export function PlayMatchCore({ sim, H, A, P, userIdx, onDone, standalone }: Pla
         onPointerUp={(e) => { if (e.pointerType === 'mouse') mouseUp(mouse.current, e.button, performance.now()); }}
         onPointerCancel={() => { mouse.current = { ...newMouse(), x: mouse.current.x, y: mouse.current.y, at: mouse.current.at }; }}
         onContextMenu={(e) => { if (phase === 'playing') e.preventDefault(); }}>
-        {phase === 'playing' && k ? (
-          <LiveRink fill className="flex-1 min-h-0 rounded-none border-0" ticker={ticker} ids={[[], []]} goalies={[null, null]} event={null} home={H} away={A} players={P} ai={k} running={!paused && !replay} roster={roster3d} allow3d={!replay} bare minimap={!touchUI} intro={sim.period === 1 && !carry.current} />
+        {rinkAi ? (
+          <LiveRink fill className="flex-1 min-h-0 rounded-none border-0" ticker={ticker} ids={[[], []]} goalies={[null, null]} event={null} home={H} away={A} players={P} ai={rinkAi} running={!paused && !replay} roster={roster3d} allow3d={!replay} bare minimap={!touchUI} intro={sim.period === 1 && !carry.current} outro={phase === 'outro' ? outro : null} onOutroEnd={endOutro} />
         ) : (
           <div className="flex-1 bg-[#0a1828]" />
         )}

@@ -27,6 +27,7 @@ import { intermissionHints, promoteToPP1, swapInLineup, type CoachHint } from '.
 import { BreakStats } from './BreakStats';
 import { useCrowdVerdict } from './sound/useMatchSound';
 import { useSilenceMenuMusic } from './sound/menuMusic';
+import { careerOutroInfo, outroSpecOf, type OutroSpec } from './matchOutro';
 
 const RATE: Record<1 | 2 | 4, number> = { 1: 30, 2: 60, 4: 120 };
 /** Seconds between shootout attempts at each speed: one shooter at a time, with a moment to see the result. */
@@ -81,6 +82,10 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   // the home crowd's verdict at the end (joy for a win, boos for a loss)
   useSilenceMenuMusic();
   useCrowdVerdict(status === 'done', sim.score[0] > sim.score[1]);
+  // after the final siren: the 3D scene (the winners, the losers, the handshakes, the Cup) before the final window
+  const [outroInfo] = useState(() => careerOutroInfo(s, game));
+  const [outro, setOutro] = useState<OutroSpec | null>(null);
+  const outroOk = useRef<() => boolean>(() => false);
   const [speed, setSpeed] = useState<1 | 2 | 4>(() => getSettings().matchSpeed);
   const [curLines, setCurLines] = useState<[number, number]>([0, 0]);
   const [score, setScore] = useState<[number, number]>([0, 0]);
@@ -107,6 +112,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const [showRink, setShowRink] = useState(() => getSettings().matchRink2d);
   const [mobileTab, setMobileTab] = useState<'live' | 'coach' | 'stats'>('live');
   const land = useLandscapePhone();
+  // (the rink must be on the screen: the shootout board replaces it, the portrait layout can hide it)
+  outroOk.current = () => kind !== 'so' && (land || showRink) && getSettings().matchOutro && getSettings().matchView === '3d';
   const [forecheck, setForecheckState] = useState<ForecheckStyle>(sim.tactics[userIdx].forecheck);
   const [attackStyle, setAttackStyleState] = useState<AttackStyle>(sim.tactics[userIdx].style);
   const [pullPolicy, setPullPolicyState] = useState<PullGoaliePolicy>(sim.tactics[userIdx].pullGoalie);
@@ -131,6 +138,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
   const blockEnd = useRef(0);
   /** the game second the play of the block stops: the end of the period or the overtime winner */
   const playEnd = useRef(0);
+  // (development builds: the probes jump the watched clock to near the end of the block)
   const feedRef = useRef<HTMLDivElement>(null);
   // Shootout: attempts are revealed one by one (soAcc counts revealed steps).
   const soMode = useRef(false);
@@ -322,6 +330,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
         // The countdown is set together with the status: a value left at 0 by the previous intermission must
         // never start the next period at once (that used to skip the «period over» window).
         if (sim.status !== 'done') { setCountdown(sim.status === 'playing' ? BREAK_SECONDS : 10); setBreakHold(false); }
+        if (sim.status === 'done' && outroOk.current()) setOutro(outroSpecOf(sim.result(), { ...outroInfo, home: game.home, away: game.away, teamOf: (id) => P[id]?.teamId }));
         setStatus(sim.status === 'done' ? 'done' : 'break');
         return;
       }
@@ -707,6 +716,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
 
   // Rink-level hockey counted over the whole match (finished periods + what has been shown of the current one).
   const shownTally = rinkAI.current?.tally(tauRef.current);
+  // (development builds: the probes jump the watched rink to the end of the block)
+  if (import.meta.env.DEV) (window as unknown as { __matchSkip?: () => void }).__matchSkip = () => { const ai = rinkAI.current; if (ai) { ai.runToEnd(); tauRef.current = ai.lastTau - .5; } };
   const rinkTally = status === 'intro' ? null : (() => {
     const t = { faceoff: [...doneTally.current.faceoff], block: [...doneTally.current.block], takeaway: [...doneTally.current.takeaway], icing: [...doneTally.current.icing], offside: [...doneTally.current.offside] } as RinkTally;
     if (shownTally) (Object.keys(t) as (keyof RinkTally)[]).forEach(k => { t[k][0] += shownTally[k][0]; t[k][1] += shownTally[k][1]; });
@@ -1092,7 +1103,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
       {land ? (
         <div className="flex-1 min-h-0 grid grid-cols-[minmax(0,1fr)_minmax(270px,36%)] grid-rows-[minmax(0,1fr)] gap-2 py-1.5 pl-[max(0.5rem,env(safe-area-inset-left))] pr-[max(0.5rem,env(safe-area-inset-right))] pb-[max(0.375rem,env(safe-area-inset-bottom))]" data-match-land>
           <div className="min-h-0 flex flex-col">
-            {kind === 'so' && status !== 'intro' ? <ShootoutBoard events={soEvents} home={H} away={A} players={P} live className="flex-1 min-h-0 overflow-y-auto" /> : <LiveRink fill className="flex-1 min-h-0" ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} roster={roster3d} allow3d={!replayEvent} intro={kind === 'reg' && period === 1} />}
+            {kind === 'so' && status !== 'intro' ? <ShootoutBoard events={soEvents} home={H} away={A} players={P} live className="flex-1 min-h-0 overflow-y-auto" /> : <LiveRink fill className="flex-1 min-h-0" ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} roster={roster3d} allow3d={!replayEvent} intro={kind === 'reg' && period === 1} outro={outro} onOutroEnd={() => setOutro(null)} />}
           </div>
           {/* Only this side list scrolls; the rink, score and controls stay put. */}
           <div ref={mobileTab === 'live' ? feedRef : undefined} className="min-h-0 overflow-y-auto overscroll-contain rounded-md border border-line bg-panel" data-land-side data-feed={mobileTab === 'live' || undefined}>
@@ -1110,7 +1121,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           <div className={cn(mobileTab !== 'live' && 'hidden lg:block')}>
             <button type="button" className="text-xs text-ice mb-2" aria-expanded={showRink} onClick={() => setShowRink(v => !v)}>{showRink ? 'Скрыть площадку' : 'Показать площадку'}</button>
             {kind === 'so' && status !== 'intro' && <ShootoutBoard events={soEvents} home={H} away={A} players={P} live className="mb-2" />}
-            {showRink && kind !== 'so' && <LiveRink ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} roster={roster3d} allow3d={!replayEvent} intro={kind === 'reg' && period === 1} />}
+            {showRink && kind !== 'so' && <LiveRink ticker={ticker} ids={rinkIds} goalies={rinkGoalies} event={rinkEvent} home={H} away={A} players={P} ai={rinkAI.current} running={status === 'playing' && !paused && !replayEvent} roster={roster3d} allow3d={!replayEvent} intro={kind === 'reg' && period === 1} outro={outro} onOutroEnd={() => setOutro(null)} />}
           </div>
           <div className={cn('grid grid-cols-1 md:grid-cols-2 gap-2', mobileTab !== 'live' && 'hidden lg:grid')}>
             {renderOnIce(0)}
@@ -1347,7 +1358,7 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
           </div>
         </Overlay>
       )}
-      {status === 'done' && res && (
+      {status === 'done' && res && !outro && (
         <Overlay wide={showPostMap}>
           <div className="text-[11px] uppercase tracking-widest text-muted">Матч завершён{res.so ? ' · буллиты' : res.ot ? ` · овертайм${res.periods > 4 ? ` ${res.periods - 3}×` : ''}` : ''}</div>
           <div className={cn('font-display text-5xl tabular', userWon ? 'text-ok' : 'text-accent')}>{userWon ? 'Победа' : 'Поражение'}</div>
