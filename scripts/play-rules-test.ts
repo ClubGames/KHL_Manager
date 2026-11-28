@@ -302,7 +302,7 @@ test('every action on every device: the keyboard has the gamepad\'s extra button
   const me = p.skaters(0)[0], c = p.skaters(1).find((x: any) => !x.goalie);
   p.ctl = me.id; clear(k, [me, c]);
   Object.assign(c, { x: 30, y: 15, act: null, cool: 9e9, decideAt: 9e9 }); Object.assign(me, { x: 27, y: 15, act: null });
-  p.puck.carrier = c; p.puck.dead = false;
+  p.puck.carrier = c; p.puck.dead = false; p.puck.passTo = null; p.puck.passBy = null;
   steps(k, 3, kb('KeyU'));
   assert.equal(p.blockBy, me, 'U on defence: the block stance');
 });

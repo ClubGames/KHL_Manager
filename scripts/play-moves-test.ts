@@ -78,6 +78,28 @@ test('the manager\'s control goes to the defender between the puck and the net w
   assert.ok(switched >= 7, 'the defender takes over');
 });
 
+test('a won draw goes back to a teammate (mostly the defenceman, now and then a winger) — not left on the centre\'s blade', () => {
+  const got: Record<string, number> = {};
+  for (let g = 0; g < 3; g++) {
+    const k = make(50 + g, { periodMinutes: 20 }), p = priv(k);
+    let watch: { w: number; c: string; t0: number } | null = null;
+    for (let i = 0; i < 60 * 60 * 24 && !k.ended; i++) {
+      k.advance(1 / 60);
+      for (const o of k.drain()) if (o.type === 'faceoff') watch = { w: o.side, c: o.player, t0: p.tau };
+      if (watch && (p.puck.carrier || p.tau - watch.t0 > 3 || p.mode !== 'play')) {
+        const c = p.puck.carrier, key = !c ? 'loose' : c.side !== watch.w ? 'lost' : c.id === watch.c ? 'C' : c.kindD ? 'D' : 'W';
+        got[key] = (got[key] ?? 0) + 1; watch = null;
+      }
+    }
+  }
+  const all = Object.values(got).reduce((a, b) => a + b, 0);
+  console.log('   after the draw:', JSON.stringify(got));
+  assert.ok(all > 40, `${all} draws`);
+  assert.ok((got.C ?? 0) / all < 0.1, 'the centre does not keep it');
+  assert.ok((got.D ?? 0) / all > 0.55, 'back to the defence');
+  assert.ok((got.W ?? 0) > 0, 'a winger sometimes');
+});
+
 test('the faceoff button: pressed as the puck drops it wins the draw far more often than a press too early', () => {
   const rate = (timing: 'good' | 'early') => {
     let won = 0, all = 0, cues = new Set<string>();

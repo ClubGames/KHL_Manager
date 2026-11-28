@@ -1494,16 +1494,21 @@ export class PlayRink {
       pr += z.side === 0 ? bonus : -bonus;
       z.foCall = { text: t < -0.07 ? 'Рано!' : t <= clean ? 'Идеально!' : t <= 0.32 ? 'Неплохо' : z.foPress < 0 ? 'Не нажали' : 'Поздно', until: this.tau + 1.4 };
     }
-    const w: Side = this.rand() < clamp(pr, 0.06, 0.94) ? 0 : 1;
+    const r = this.rand(), w: Side = r < clamp(pr, 0.06, 0.94) ? 0 : 1;
     const winner = w ? c1 : c0;
     this.faceoffWins[w]++;
-    // the puck goes back to the winner's side: toward his defenceman on the strong side
+    // the centre draws it back to his side: mostly to the defenceman on the strong side, now and then to a winger
+    // standing back of the dot (the same draw decides — no extra one from the match's dice)
     const mates = this.skaters(w).filter(a => a !== winner);
-    const back = mates.filter(a => a.kindD).sort((a, b) => dist(a, p) - dist(b, p))[0] ?? mates[0];
+    const near = (list: Sk[]) => list.sort((a, b) => dist(a, p) - dist(b, p))[0];
+    const behind = mates.filter(a => !a.kindD && loc(w, a).x < loc(w, p).x - 0.4);
+    const back = ((r * 7.31) % 1 < 0.22 ? near(behind) : undefined) ?? near(mates.filter(a => a.kindD)) ?? near(behind) ?? mates[0];
     const aim = back ? { x: back.x, y: back.y } : loc(w, { x: loc(w, p).x - 5, y: MID });
     const dx = aim.x - p.x, dy = aim.y - p.y, d = Math.hypot(dx, dy) || 1, sp = clamp(d * 1.3, 4, 9);
     p.dead = false; p.h = 0; p.vh = 0; p.vx = (dx / d) * sp; p.vy = (dy / d) * sp; p.last = winner; p.leg++;
-    p.noTouch = w ? c0 : c1; p.noTouchUntil = this.tau + 0.35;
+    // the winner has played it (he does not get it back on his own blade — it used to stay with him every time),
+    // the loser was beaten to it: neither touches it on its way back
+    p.noTouch = winner; p.noTouchUntil = this.tau + 0.4; (w ? c0 : c1).rolled = p.leg;
     if (back) { p.passTo = back; p.passBy = winner; }
     this.out.push({ type: 'faceoff', side: w, player: winner.id });
     this.play('faceoff', w, `Вбрасывание выиграл ${winner.name}`, winner);
