@@ -186,7 +186,8 @@ export function initPlatform() {
     void import('@capacitor/app').then(({ App }) => App.addListener('backButton', () => {
       const overlay = document.querySelector('div.fixed.inset-0, [role="dialog"]');
       if (overlay) document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', code: 'Escape', bubbles: true }));
-      else void App.minimizeApp();
+      // a screen that has somewhere to go back to (the career screen → the main menu) takes it; else minimise
+      else if (window.dispatchEvent(new Event('khl-back', { cancelable: true }))) void App.minimizeApp();
     })).catch((e) => console.warn('back button handler:', e));
   }
 }

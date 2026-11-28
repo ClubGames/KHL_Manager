@@ -3,7 +3,7 @@
 // to check the initials fallback.
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
-import { HAS_REAL_MOD } from './testMod.mjs';
+import { HAS_REAL_MOD, START_IN_CAREER } from './testMod.mjs';
 // player photos come from the KHL_2627 mod, which is not in the repository (the game ships with its own invented league «ХЛ» instead)
 if (!HAS_REAL_MOD) {
   console.log('SKIP: put the KHL_2627 mod into public/mods to run this test');
@@ -17,6 +17,7 @@ let broken = null;
 const ok = (m) => console.log('ok', m);
 const open = async (viewport = { width: 1280, height: 900 }, extra = {}) => {
   const page = await browser.newPage({ viewport, ...extra });
+  await page.addInitScript(START_IN_CAREER);
   page.on('pageerror', (e) => errors.push(e.message));
   await page.route(/khl\.ru\/img\//, (route) => {
     if (!broken) broken = route.request().url();

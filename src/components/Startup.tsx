@@ -421,7 +421,7 @@ function takeSafeStart(): boolean {
 }
 
 /** This launch is a safe start: the start screen opens no league by itself (read once per page load). */
-const SAFE_START = takeSafeStart();
+export const SAFE_START = takeSafeStart();
 
 function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -430,7 +430,7 @@ function withTimeout<T>(p: Promise<T>, ms: number, msg: string): Promise<T> {
   });
 }
 
-export function Startup({ onStart, onOnline }: { onStart: (r: NormalizedRoster, teamId: string) => void; onOnline?: () => void }) {
+export function Startup({ onStart, onBack }: { onStart: (r: NormalizedRoster, teamId: string) => void; /** back to the main menu */ onBack?: () => void }) {
   const ui = useUI();
   const [saveCount, setSaveCount] = useState<number | null>(null);
   const [stage, setStage] = useState<'loading' | 'error' | 'empty' | 'select' | 'format' | 'pick'>('loading');
@@ -523,16 +523,16 @@ export function Startup({ onStart, onOnline }: { onStart: (r: NormalizedRoster, 
       <div className="relative max-w-6xl mx-auto px-3 sm:px-4 py-5 sm:py-8 md:py-12">
         <header className="relative -mx-3 sm:-mx-4 md:mx-0 mb-6 sm:mb-8 md:rounded-md overflow-hidden border-0 md:border border-line bg-cover bg-center" style={{ backgroundImage: `url(${arena})`, backgroundPosition: 'center 55%' }}>
           <div className="absolute inset-0 bg-gradient-to-r from-bg via-bg/85 to-bg/25" />
+          {onBack && (
+            <button type="button" onClick={onBack} className="absolute top-3 left-3 z-10 inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line text-xs text-muted hover:text-text bg-bg/70 backdrop-blur" data-startup-back title="Главное меню (Esc)">
+              ← Меню
+            </button>
+          )}
           <div className="absolute top-3 right-3 z-10 flex gap-2">
             {platform() === 'web' && (
               <a href={APP_RELEASE} target="_blank" rel="noopener" title={`${GAME_NAME_RU} для Windows и Android: отдельное окно, видеокарта всегда включена`} className="hidden sm:inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line text-xs text-muted hover:text-text bg-bg/70 backdrop-blur" data-startup-apps>
                 ⤓ Приложения
               </a>
-            )}
-            {onOnline && (
-              <button type="button" onClick={onOnline} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-ice/50 text-xs text-ice hover:bg-ice/10 bg-bg/70 backdrop-blur" data-startup-online>
-                <Icon name="play" /> Онлайн
-              </button>
             )}
             <button type="button" onClick={() => ui.openSettings()} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line text-xs text-muted hover:text-text bg-bg/70 backdrop-blur" data-startup-settings>
               <Icon name="settings" /> Настройки
@@ -562,17 +562,6 @@ export function Startup({ onStart, onOnline }: { onStart: (r: NormalizedRoster, 
 
         {stage !== 'format' && (
           <>
-            {onOnline && (
-              <button type="button" onClick={onOnline} className="group w-full mb-6 relative overflow-hidden rounded-md border border-ice/35 bg-panel text-left px-4 sm:px-5 py-3.5 flex items-center gap-4 hover:border-ice/70 transition-colors" data-startup-online-card>
-                <span className="absolute inset-0 pointer-events-none opacity-60" style={{ background: 'linear-gradient(100deg, rgba(143,216,240,.16), transparent 45%, rgba(229,50,62,.12))' }} />
-                <span className="relative w-11 h-11 shrink-0 rounded-full bg-ice/15 text-ice flex items-center justify-center text-xl">⇄</span>
-                <span className="relative min-w-0 flex-1">
-                  <span className="block font-display uppercase tracking-wide text-lg leading-tight">Сетевая игра <span className="text-[10px] align-middle ml-1 rounded-sm bg-accent text-white px-1.5 py-0.5 tracking-widest">новое</span></span>
-                  <span className="block text-xs text-muted mt-0.5">Матч с другом по Wi-Fi — телефон или компьютер, каждый со своими модами. Отдельно от карьеры.</span>
-                </span>
-                <span className="relative text-ice font-semibold text-sm hidden sm:block group-hover:translate-x-0.5 transition-transform">Играть →</span>
-              </button>
-            )}
             <Panel className={saveCount ? 'mb-8 border-ice/40' : 'mb-8'} title={saveCount ? `Продолжить карьеру · сохранений: ${saveCount}` : 'Продолжить карьеру'}>
               <SavesList onCount={setSaveCount} />
             </Panel>

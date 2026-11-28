@@ -3,7 +3,8 @@ import { UpdateBanner } from './components/UpdateBanner';
 import { useEffect, useMemo, useState } from 'react';
 import type { Game } from './types';
 import { Button, Icon, Modal, Tag, TeamLogo, UIContext, money, type UIApi, type View } from './components/ui';
-import { FormatDoc, Startup } from './components/Startup';
+import { FormatDoc, SAFE_START, Startup } from './components/Startup';
+import { MainMenu } from './components/MainMenu';
 import { Dashboard } from './components/Dashboard';
 import { PlayerModal, Roster } from './components/Roster';
 import { TeamModal } from './components/TeamInfo';
@@ -60,6 +61,20 @@ const RAIL_LABEL: Partial<Record<string, string>> = {
 
 const MOBILE_MAIN: View[] = ['dashboard', 'roster', 'lines', 'standings'];
 
+type StartScreen = 'menu' | 'career' | 'online';
+/** The start screen survives a reload of the page (a mod installed, the boot watchdog) within the tab. */
+const START_KEY = 'khl.start';
+function readStart(): StartScreen {
+  if (SAFE_START) return 'career';
+  try {
+    const v = sessionStorage.getItem(START_KEY);
+    // the network game is not resumed by a reload: its connection is gone
+    return v === 'career' ? 'career' : 'menu';
+  } catch {
+    return 'menu';
+  }
+}
+
 type ConfirmState = { title: string; text?: string; confirmLabel?: string; danger?: boolean; onYes: () => void } | null;
 
 export default function App() {
@@ -67,8 +82,9 @@ export default function App() {
   const saveStatus = useSaveStatus();
   const [view, setView] = useState<View>('dashboard');
   const [matchGame, setMatchGame] = useState<Game | null>(null);
-  /** the network game (outside the career) is open */
-  const [online, setOnline] = useState(false);
+  /** with no career open: the main menu, the career screen (saves, a new career) or the network game */
+  const [start, setStartState] = useState<StartScreen>(readStart);
+  const setStart = (v: StartScreen) => { setStartState(v); try { sessionStorage.setItem(START_KEY, v); } catch { /* private mode */ } };
   /** how the open match is taken: played by the manager or watched from the bench */
   const [matchMode, setMatchMode] = useState<'play' | 'watch'>('watch');
   /** «Играть матч» was pressed: the choice of play / watch / quick simulation is open */
@@ -120,6 +136,23 @@ export default function App() {
   useEffect(() => {
     if (saveId) void syncPlayersFromRoster(saveId);
   }, [saveId]);
+
+  // the career screen: Esc (the pad's B) and Android «Back» go back to the main menu when nothing is open over it
+  const onCareerScreen = !s && start === 'career';
+  useEffect(() => {
+    if (!onCareerScreen) return;
+    const overlay = () => !!document.querySelector('div.fixed.inset-0, [role="dialog"], [aria-modal="true"]');
+    const back = (e: Event) => { if (!overlay()) { e.preventDefault(); setStart('menu'); } };
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (e.key !== 'Escape' || e.defaultPrevented || (t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      back(e);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('khl-back', back);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('khl-back', back); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onCareerScreen]);
 
   const api = useMemo<UIApi>(
     () => ({
@@ -178,7 +211,9 @@ export default function App() {
   if (!s) {
     return (
       <UIContext.Provider value={api}>
-        {online ? <OnlineScreen onClose={() => setOnline(false)} /> : <Startup onStart={(r, id) => void startNewGame(r, id)} onOnline={() => setOnline(true)} />}
+        {start === 'online' ? <OnlineScreen onClose={() => setStart('menu')} />
+          : start === 'career' ? <Startup onStart={(r, id) => void startNewGame(r, id)} onBack={() => setStart('menu')} />
+          : <MainMenu onPlay={(m) => setStart(m)} onOnline={() => setStart('online')} />}
       {settingsOpen && (
         <Modal open onClose={() => setSettingsOpen(false)} width="max-w-2xl" title={<span className="font-display uppercase tracking-wide">Настройки</span>}>
           <SettingsPanel onClose={() => setSettingsOpen(false)} scope={settingsScope} />

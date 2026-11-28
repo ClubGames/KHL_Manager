@@ -20,7 +20,9 @@ async function open(name) {
   await page.addInitScript(() => { Object.defineProperty(document, 'hidden', { get: () => false }); Object.defineProperty(document, 'visibilityState', { get: () => 'visible' }); });
   await page.addInitScript(([n]) => { localStorage.setItem('khl.settings', JSON.stringify({ autoReplay: 'off', matchView: '2d' })); localStorage.setItem('khl-online-name', n); }, [name]);
   await page.goto(process.env.BASE_URL ?? 'http://localhost:5173');
-  await page.locator('[data-startup-online-card]').click();
+  // the network game lives in the main menu (the tests open on the career screen: «← Меню» goes there)
+  await page.locator('[data-startup-back]').click();
+  await page.locator('[data-menu-item="online"]').click();
   await page.locator('[data-online-screen]').waitFor();
   return page;
 }

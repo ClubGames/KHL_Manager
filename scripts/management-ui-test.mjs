@@ -1,6 +1,7 @@
 // Real browser checks; start Vite first. Uses the same Chromium/BASE_URL options as rink-ui-test.mjs.
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
+import { START_IN_CAREER } from './testMod.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 // checks the real data of the KHL_2627 mod, which is not in the repository (the game ships with its own invented league «ХЛ» instead)
 if (!existsSync('public/mods/KHL_2627/roster.json')) {
@@ -12,6 +13,7 @@ const FREE_COACHES = JSON.parse(readFileSync('public/mods/KHL_2627/roster.json',
 const browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--no-sandbox', '--enable-webgl', '--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader'] });
 const errors = [];
 const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+await page.addInitScript(START_IN_CAREER);
 page.on('pageerror', e => errors.push(e.message));
 try {
   await page.goto(process.env.BASE_URL ?? 'http://localhost:5173');
