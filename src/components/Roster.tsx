@@ -33,7 +33,7 @@ import { knowledgeOf, scoutedOvr, scoutedSkill } from '../game/scouting';
 import { ScoutOvr } from './Scout';
 import { Bar, Button, Empty, Modal, OverallChip, Panel, PlayerFace, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { cn } from '../utils/cn';
-import { LG } from '../brand';
+import { FL, LG } from '../brand';
 
 type SortKey = 'number' | 'name' | 'age' | 'overall' | 'potential' | 'salary' | 'years' | 'gp' | 'goals' | 'assists' | 'points' | 'plusMinus' | 'pim' | 'wins' | 'shutouts' | 'sv' | 'gaa';
 
@@ -130,7 +130,7 @@ export function Roster({ teamId }: { teamId?: string }) {
         <div className="flex flex-wrap items-center gap-2.5">
           <span className="text-muted">Заявка {LG()}:</span>
           <Tag tone={activeKhlCount(team.players, P) >= 30 ? 'warn' : 'good'}>
-            {activeKhlCount(team.players, P)} / 30{vhlList.length > 0 ? ` · ВХЛ ${vhlList.length}/${MAX_VHL_PLAYERS}` : ''}
+            {activeKhlCount(team.players, P)} / 30{vhlList.length > 0 ? ` · ${FL()} ${vhlList.length}/${MAX_VHL_PLAYERS}` : ''}
           </Tag>
           <span className="text-muted">Лимит легионеров {LG()}:</span>
           {fl !== null ? (
@@ -164,7 +164,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                 tab === 'VHL' ? 'bg-ice text-bg' : 'bg-ice/15 text-ice border border-ice/40 hover:bg-ice/25'
               )}
             >
-              ⇄ Фарм ВХЛ и Отказы ({vhlList.length}/{activeWaivers.length})
+              ⇄ Фарм {FL()} и Отказы ({vhlList.length}/{activeWaivers.length})
             </button>
             <button
               type="button"
@@ -223,7 +223,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                 tab === 'VHL' ? 'bg-ice text-bg border-ice' : 'text-ice bg-panel border-ice/40'
               )}
             >
-              ВХЛ / Отказы ({vhlList.length}/{activeWaivers.length})
+              {FL()} / Отказы ({vhlList.length}/{activeWaivers.length})
             </button>
             <button
               onClick={() => setTab('HOF')}
@@ -252,7 +252,7 @@ export function Roster({ teamId }: { teamId?: string }) {
               {tab === 'U23'
                 ? `Развитие U23 · ${team.short}`
                 : tab === 'VHL'
-                  ? `ВХЛ и отказы · ${team.short}`
+                  ? `${FL()} и отказы · ${team.short}`
                   : tab === 'HOF'
                     ? `Зал славы · ${team.short}`
                     : `Состав · ${team.name}`}
@@ -278,7 +278,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                   onClick={() => setTab('VHL')}
                   className={cn('text-xs px-2.5 py-1 rounded-sm font-semibold transition-colors cursor-pointer', tab === 'VHL' ? 'bg-ice text-bg' : 'text-ice hover:text-text bg-panel2')}
                 >
-                  ВХЛ / Отказы
+                  {FL()} / Отказы
                 </button>
                 <button
                   onClick={() => setTab('HOF')}
@@ -297,15 +297,15 @@ export function Roster({ teamId }: { teamId?: string }) {
             <div className="space-y-3">
               <div className="rounded-md border border-line bg-bg/50 p-3 text-xs space-y-1">
                 <div className="flex items-center justify-between">
-                  <span className="font-display uppercase tracking-wider text-ice font-semibold">Командированные в ВХЛ ({vhlList.length})</span>
+                  <span className="font-display uppercase tracking-wider text-ice font-semibold">Командированные в {FL()} ({vhlList.length})</span>
                   <Tag tone="good">Разгрузка потолка: {formatMoney(totalVhlRelief)}</Tag>
                 </div>
                 <p className="text-muted">
-                  До <b>22 лет</b> — прямой перевод в ВХЛ без отказов (+игровая практика). С <b>23 лет</b> — через <b>48-часовой драфт отказов</b> (игроки с пунктом ЗНО защищены). Контракт в ВХЛ облегчает ФОТ под потолком до 15 млн ₽.
+                  До <b>22 лет</b> — прямой перевод в {FL()} без отказов (+игровая практика). С <b>23 лет</b> — через <b>48-часовой драфт отказов</b> (игроки с пунктом ЗНО защищены). Контракт в {FL()} облегчает ФОТ под потолком до 15 млн ₽.
                 </p>
               </div>
               {vhlList.length === 0 ? (
-                <Empty text="В фарм-клубе ВХЛ сейчас нет игроков." />
+                <Empty text={`В фарм-клубе ${FL()} сейчас нет игроков.`} />
               ) : (
                 <div className="space-y-1.5">
                   {vhlList.map((p) => (
@@ -327,7 +327,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                           variant="secondary"
                           onClick={() => {
                             const err = recallFromVhl(p.id);
-                            setVhlNotice({ ok: !err, msg: err ?? `${p.name} вызван из ВХЛ в основу ${LG()}.` });
+                            setVhlNotice({ ok: !err, msg: err ?? `${p.name} вызван из ${FL()} в основу ${LG()}.` });
                           }}
                         >
                           Вызвать в {LG()}
@@ -339,7 +339,7 @@ export function Roster({ teamId }: { teamId?: string }) {
               )}
 
               <div className="pt-2 border-t border-line">
-                <div className="text-[11px] uppercase tracking-wider text-muted mb-1.5">Отправить из основы {LG()} в ВХЛ</div>
+                <div className="text-[11px] uppercase tracking-wider text-muted mb-1.5">Отправить из основы {LG()} в {FL()}</div>
                 <div className="max-h-56 overflow-y-auto space-y-1 pr-1">
                   {all
                     .filter((p) => !p.inVhl)
@@ -364,11 +364,11 @@ export function Roster({ teamId }: { teamId?: string }) {
                               const err = sendToVhlOrWaivers(p.id);
                               setVhlNotice({
                                 ok: !err,
-                                msg: err ?? (exempt ? `${p.name} переведён в фарм-клуб ВХЛ.` : `${p.name} помещён в список отказов ${LG()} на 48 часов.`),
+                                msg: err ?? (exempt ? `${p.name} переведён в фарм-клуб ${FL()}.` : `${p.name} помещён в список отказов ${LG()} на 48 часов.`),
                               });
                             }}
                           >
-                            {onW ? 'На отказах' : exempt ? 'В ВХЛ' : 'На отказы'}
+                            {onW ? 'На отказах' : exempt ? `В ${FL()}` : 'На отказы'}
                           </Button>
                         </div>
                       );
@@ -661,7 +661,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                             {arch.short}
                           </span>
                         )}
-                        {p.inVhl && <span className="text-[9px] font-bold px-1 rounded bg-ice/20 text-ice">ВХЛ</span>}
+                        {p.inVhl && <span className="text-[9px] font-bold px-1 rounded bg-ice/20 text-ice">{FL()}</span>}
                         {hasTwoWayContract(p) && <span className="text-[9px] font-bold px-1 rounded bg-ok/20 text-ok">2-СТОР</span>}
                         {p.inLtir && <span className="text-[9px] font-bold px-1 rounded bg-ice/25 text-ice">ДСБТ</span>}
                         {p.nmc && <span className="text-[9px] font-bold px-1 rounded bg-gold/20 text-gold">ЗНО</span>}
@@ -765,9 +765,9 @@ export function Roster({ teamId }: { teamId?: string }) {
                         </span>
                       )}
                       <span className="ml-1.5 text-[10px] text-muted">{countryCode(p.country)}</span>
-                      {p.inVhl && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-ice/20 text-ice">ВХЛ</span>}
+                      {p.inVhl && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-ice/20 text-ice">{FL()}</span>}
                       {hasTwoWayContract(p) && (
-                        <span className="ml-1 text-[9px] font-bold px-1 rounded bg-ok/20 text-ok" title={`Двусторонний контракт ${LG()}/ВХЛ (перевод в ВХЛ без отказов)`}>
+                        <span className="ml-1 text-[9px] font-bold px-1 rounded bg-ok/20 text-ok" title={`Двусторонний контракт ${LG()}/${FL()} (перевод в ${FL()} без отказов)`}>
                           2-СТОР
                         </span>
                       )}
@@ -816,7 +816,7 @@ export function Roster({ teamId }: { teamId?: string }) {
                       {susp ? (
                         <span className="text-red font-semibold">блок потолка</span>
                       ) : p.inVhl ? (
-                        <span className="text-ice">в ВХЛ</span>
+                        <span className="text-ice">в {FL()}</span>
                       ) : p.inLtir && !p.injury ? (
                         <span className="text-ok font-semibold">здоров (в ДСБТ)</span>
                       ) : p.injury ? (
@@ -895,8 +895,8 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
                 {team.name}
               </button>
             )}
-            {p.inVhl && <Tag tone="accent">Фарм-клуб ВХЛ</Tag>}
-            {hasTwoWayContract(p) ? <Tag tone="good">Двусторонний {LG()}/ВХЛ</Tag> : p.teamId ? <Tag>Односторонний {LG()}</Tag> : null}
+            {p.inVhl && <Tag tone="accent">Фарм-клуб {FL()}</Tag>}
+            {hasTwoWayContract(p) ? <Tag tone="good">Двусторонний {LG()}/{FL()}</Tag> : p.teamId ? <Tag>Односторонний {LG()}</Tag> : null}
             {p.inLtir && <Tag tone="accent">ДСБТ {LG()} (вне потолка)</Tag>}
             {isPlayingHurt(p, s.phase) && <Tag tone="warn">На уколах (−3 навык)</Tag>}
             {p.nmc && <Tag tone="warn">ЗНО (запрет на обмен)</Tag>}
@@ -1132,10 +1132,10 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
               variant="secondary"
               onClick={() => {
                 const err = recallFromVhl(p.id);
-                setModalNotice(err ?? `${p.name} вызван из ВХЛ в основной состав.`);
+                setModalNotice(err ?? `${p.name} вызван из ${FL()} в основной состав.`);
               }}
             >
-              ↑ Вызвать из ВХЛ
+              ↑ Вызвать из {FL()}
             </Button>
           ) : (
             <Button
@@ -1143,11 +1143,11 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
               disabled={!!p.nmc}
               onClick={() => {
                 const err = sendToVhlOrWaivers(p.id);
-                setModalNotice(err ?? (isWaiverExempt(p) ? `${p.name} отправлен в ВХЛ.` : `${p.name} помещён в список отказов ${LG()} (48ч).`));
+                setModalNotice(err ?? (isWaiverExempt(p) ? `${p.name} отправлен в ${FL()}.` : `${p.name} помещён в список отказов ${LG()} (48ч).`));
               }}
-              title={p.nmc ? 'Пункт ЗНО запрещает перевод в ВХЛ / на отказы' : undefined}
+              title={p.nmc ? `Пункт ЗНО запрещает перевод в ${FL()} / на отказы` : undefined}
             >
-              ↓ {isWaiverExempt(p) ? 'В фарм ВХЛ (2-стор., без отказов)' : 'На отказы (48ч) / ВХЛ'}
+              ↓ {isWaiverExempt(p) ? `В фарм ${FL()} (2-стор., без отказов)` : `На отказы (48ч) / ${FL()}`}
             </Button>
           )
         )}

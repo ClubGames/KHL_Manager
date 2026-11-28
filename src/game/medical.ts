@@ -1,3 +1,4 @@
+import { FL } from '../brand';
 import type {
   AllStarResult,
   ClubFacilities,
@@ -244,7 +245,8 @@ export const FACILITY_META: FacilityMeta[] = [
   {
     key: 'scouting',
     title: 'Скаутское бюро и видеоаналитика',
-    subtitle: 'Региональная сеть скаутов МХЛ/ВХЛ и контрактная аналитика рынка',
+    // (read when shown: the farm league of the open career)
+    get subtitle() { return `Региональная сеть скаутов МХЛ/${FL()} и контрактная аналитика рынка`; },
     effectLabel: (lv) =>
       `Разброс потенциала на драфте ±${scoutingMaxSpread(lv)}, запросы агентов −${((1 - scoutingDemandMult(lv)) * 100).toFixed(1)}%`,
   },

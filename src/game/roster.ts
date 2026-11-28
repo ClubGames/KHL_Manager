@@ -2,7 +2,7 @@ import { isApp, saveFile } from '../platform';
 import { ensureTeamManagement, normalizeCoach } from './coaching';
 import { makeCoach } from './coachData';
 import type { Coach, CoachRole, Conference, Game, ModRef, Player, PosCode, Skills, Team } from '../types';
-import { DEFAULT_LEAGUE_NAME } from '../brand';
+import { DEFAULT_FARM_NAME, DEFAULT_LEAGUE_NAME } from '../brand';
 import { computeOverall, isGoalie } from './ratings';
 import { autoLineup } from './ai';
 import { emptyLineup, emptyRecord, emptyStats, defaultTactics } from './defaults';
@@ -16,6 +16,8 @@ import { getOfficialClubPalette } from './clubColors';
 
 export interface NormalizedRoster {
   leagueName: string;
+  /** the second (farm) league: `league.farm` (a warning and «ВХЛ» when the file has none) */
+  farmName: string;
   season: string;
   gamesPerTeam: number;
   salaryCap: number;
@@ -104,7 +106,7 @@ export function normalizeFaceUrl(raw: unknown): string | undefined {
   return undefined;
 }
 
-export function normalizePlayer(raw: any, teamId: string | null, idx: number, prefix: string, warnings: string[], onGenerated?: (c: ContractTerms) => void): Player {
+export function normalizePlayer(raw: any, teamId: string | null, idx: number, prefix: string, warnings: string[], onGenerated?: (c: ContractTerms) => void, farm = DEFAULT_FARM_NAME): Player {
   const name = String(raw?.name ?? '').trim() || `Игрок ${idx + 1}`;
   const posKey = String(raw?.position ?? raw?.pos ?? 'C').trim().toUpperCase();
   let position = POS_MAP[posKey];
@@ -132,7 +134,10 @@ export function normalizePlayer(raw: any, teamId: string | null, idx: number, pr
       raw?.vhl === true ||
       raw?.farm === true ||
       rawLeague === 'вхл' ||
-      rawLeague === 'vhl');
+      rawLeague === 'vhl' ||
+      rawLeague === 'farm' ||
+      rawLeague === 'фарм' ||
+      rawLeague === farm.toLowerCase());
   const explicitNmc =
     typeof raw?.nmc === 'boolean'
       ? raw.nmc
@@ -227,6 +232,11 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
   const rawTeams: any[] = Array.isArray(root.teams) ? root.teams : [];
   if (rawTeams.length < 2) throw new Error('В файле должно быть как минимум две команды в массиве "teams"');
   const league = root.league ?? {};
+  // the second league: «farm» (a string, or { name }); also farmLeague / farmName / secondLeague
+  const farmRaw = league.farm ?? league.farmLeague ?? league.farmName ?? league.secondLeague ?? root.farmLeague ?? root.farm;
+  const farmName = String((farmRaw && typeof farmRaw === 'object' ? (farmRaw as { name?: unknown }).name : farmRaw) ?? '').trim().slice(0, 40);
+  if (!farmName) warnings.push(`Не указано название второй (фарм) лиги — добавьте в roster.json "league": { "farm": "…" }. Пока используется «${DEFAULT_FARM_NAME}»`);
+  const farm = farmName || DEFAULT_FARM_NAME;
   const foreignLimit = Math.round(clampNum(league.foreignLimit ?? root.foreignLimit, DEFAULT_FOREIGN_LIMIT, 0, 25));
   const players: Record<string, Player> = {};
   const teams: Team[] = [];
@@ -254,7 +264,7 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
     const rawPlayers: any[] = Array.isArray(t?.players) ? t.players : [];
     const ids: string[] = [];
     rawPlayers.forEach((p, j) => {
-      const pl = normalizePlayer(p, id, j, id, warnings, (c) => filled.push({ team: i, player: j, contract: c }));
+      const pl = normalizePlayer(p, id, j, id, warnings, (c) => filled.push({ team: i, player: j, contract: c }), farm);
       let pid = pl.id;
       let k = 2;
       while (players[pid]) pid = `${pl.id}-${k++}`;
@@ -331,6 +341,7 @@ export function normalizeRoster(json: unknown): NormalizedRoster {
   if (noGoalies.length) warnings.push(`Нет вратарей: ${noGoalies.map((t) => t.name).join(', ')} — в матчах будет играть «замена» (рейтинг 55)`);
   return {
     leagueName: String(league.name ?? root.name ?? '').trim() || DEFAULT_LEAGUE_NAME,
+    farmName: farm,
     season: String(league.season ?? root.season ?? '2025/26'),
     gamesPerTeam: Math.round(clampNum(league.gamesPerTeam ?? root.gamesPerTeam, DEFAULT_GAMES, 2, 120)),
     salaryCap: Math.max(1, num(league.salaryCap ?? root.salaryCap, DEFAULT_CAP)),
@@ -448,7 +459,7 @@ export async function saveRosterFile(text: string): Promise<'saved' | 'downloade
 }
 
 export const ROSTER_EXAMPLE = `{
-  "league": { "name": "ХЛ", "season": "2026/27", "gamesPerTeam": 68, "salaryCap": 900000000 },
+  "league": { "name": "ХЛ", "farm": "ВХЛ", "season": "2026/27", "gamesPerTeam": 68, "salaryCap": 900000000 }, // farm — название второй (фарм) лиги, обязательно
   "teams": [
     {
       "id": "vyuga",
@@ -505,7 +516,7 @@ export const ROSTER_EXAMPLE = `{
 
 export function downloadExampleRoster() {
   const example = {
-    league: { name: 'ХЛ', season: '2026/27', gamesPerTeam: 68, salaryCap: 900000000 },
+    league: { name: 'ХЛ', farm: 'ВХЛ', season: '2026/27', gamesPerTeam: 68, salaryCap: 900000000 },
     teams: [
       { id: 'vyuga', name: 'Вьюга', short: 'ВЮГ', city: 'Северогорск', conference: 'Запад', division: 'Северный', primaryColor: '#1F4E8C', secondaryColor: '#FFFFFF', budget: 1500000000, players: [
         { id: 'vyuga-c01', name: 'Иван Примеров', position: 'Ц', age: 27, height: 185, weight: 92, number: 17, country: 'Россия', overall: 82, potential: 84, skills: { skating: 84, shooting: 78, passing: 88, puckControl: 85, checking: 62, defense: 74 }, contract: { salary: 65000000, years: 2 }, injury: null, morale: 78 },

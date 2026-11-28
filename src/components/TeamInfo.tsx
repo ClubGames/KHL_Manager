@@ -1,3 +1,4 @@
+import { FL } from '../brand';
 import { useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import type { Coach, Game, Player, Team } from '../types';
@@ -93,7 +94,7 @@ export function ClubOverview({
             <span className="text-muted">Игроков</span>
             <span className="tabular text-right">
               {pr.khl}
-              {pr.vhl ? <span className="text-muted"> + {pr.vhl} ВХЛ</span> : null}
+              {pr.vhl ? <span className="text-muted"> + {pr.vhl} {FL()}</span> : null}
             </span>
             <span className="text-muted">Средний возраст</span>
             <span className="tabular text-right">{pr.avgAge}</span>
@@ -317,7 +318,7 @@ export function TeamModal({ id, onClose }: { id: string; onClose: () => void }) 
                         <span className="flex-1 min-w-0">
                           <span className="block truncate text-sm">{p.name}</span>
                           <span className="text-muted">
-                            №{p.number} · {p.age} л.{p.inVhl ? ' · ВХЛ' : ''}
+                            №{p.number} · {p.age} л.{p.inVhl ? ` · ${FL()}` : ''}
                             {p.injury ? ' · травма' : ''}
                           </span>
                         </span>

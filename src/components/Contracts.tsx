@@ -9,7 +9,7 @@ import { bonusText } from '../game/bonuses';
 import { letGo, releasePlayer, respondRfaOfferSheet, tenderQualifyingOffer, useGame } from '../game/state';
 import { Button, OverallChip, Panel, PosBadge, Stat, Tag, useUI } from './ui';
 import { cn } from '../utils/cn';
-import { LG } from '../brand';
+import { FL, LG } from '../brand';
 
 const seasonLabel = (s: string, plus: number) => {
   const m = /^(\d{4})\/(\d{2})$/.exec(s);
@@ -58,7 +58,7 @@ export function Contracts() {
           sub={
             [
               capInfo.ltirRelief > 0 ? `ДСБТ: −${formatMoney(capInfo.ltirRelief)}` : null,
-              capInfo.vhlRelief > 0 ? `ВХЛ: −${formatMoney(capInfo.vhlRelief)}` : null,
+              capInfo.vhlRelief > 0 ? `${FL()}: −${formatMoney(capInfo.vhlRelief)}` : null,
               capInfo.deadCap > 0 ? `выкупы: +${formatMoney(capInfo.deadCap)}` : null,
               `потолок ${formatMoney(cap)}`,
             ]
@@ -230,7 +230,7 @@ export function Contracts() {
                       </button>
                       <span className="ml-1.5 text-[10px] text-muted">{playerStatusTag(p)}</span>
                       {hasTwoWayContract(p) && (
-                        <span title={`Двусторонний контракт ${LG()}/ВХЛ: переводы в ВХЛ без отказов и 100% снятие с потолка ${LG()} в ВХЛ`}>
+                        <span title={`Двусторонний контракт ${LG()}/${FL()}: переводы в ${FL()} без отказов и 100% снятие с потолка ${LG()} в ${FL()}`}>
                           <Tag tone="good" className="ml-1.5">2-СТОР</Tag>
                         </span>
                       )}
@@ -243,7 +243,7 @@ export function Contracts() {
                       {p.promise && <span title="Игроку обещана ведущая роль: проверка в конце регулярного чемпионата"><Tag color="#F2B544" className="ml-1.5">обещание</Tag></span>}
                       {p.inVhl && (
                         <span title={`В потолке ${LG()} учитывается ${formatMoney(c.salary - vhlPlayerCapRelief(p))}`}>
-                          <Tag tone="accent" className="ml-1.5">ВХЛ</Tag>
+                          <Tag tone="accent" className="ml-1.5">{FL()}</Tag>
                         </span>
                       )}
                       {isLegionnaire(p) && <Tag tone="warn" className="ml-1.5">ЛЕГ</Tag>}
@@ -325,7 +325,7 @@ export function Contracts() {
                   <Tag>{playerStatusTag(p)}</Tag>
                   {hasTwoWayContract(p) && <Tag tone="good">2-СТОР</Tag>}
                   {p.nmc && <Tag tone="warn">ЗНО</Tag>}
-                  {p.inVhl && <Tag tone="accent">ВХЛ</Tag>}
+                  {p.inVhl && <Tag tone="accent">{FL()}</Tag>}
                   {isLegionnaire(p) && <Tag tone="warn">ЛЕГ</Tag>}
                   {suspendedSet.has(p.id) && <Tag tone="bad">Блок потолка</Tag>}
                 </div>

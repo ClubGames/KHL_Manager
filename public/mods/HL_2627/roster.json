@@ -1,6 +1,7 @@
 {
  "league": {
   "name": "ХЛ",
+  "farm": "ВЛ",
   "season": "2026/27",
   "gamesPerTeam": 68,
   "salaryCap": 950000000,

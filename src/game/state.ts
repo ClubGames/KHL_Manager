@@ -22,7 +22,7 @@ import { clamp, formatMoney, isDefense, isGoalie, isSkater, payroll, points } fr
 import { emptyLineup, emptyRecord } from './defaults';
 import type { NormalizedRoster } from './roster';
 import { careerMod, loadModRoster } from './mods';
-import { GAME_NAME_RU, LG, setCurrentLeague } from '../brand';
+import { DEFAULT_FARM_NAME, FL, GAME_NAME_RU, LG, setCurrentLeague } from '../brand';
 import { clearLegacy, deleteSave, getBackend, listMetas, readLegacy, readSave, storageError, writeSave } from './storage';
 import type { SaveMeta } from './storage';
 import { buyoutDeadCap, CAP_GAMES_PER_POINT_DEDUCTION, CAP_GRACE_DAYS, capExcess, dailyCapFine, effectivePayroll, getCapSummary, recomputePoints } from './cap';
@@ -96,7 +96,7 @@ class Store {
     if (!this.state) return;
     fn(this.state);
     this.state = { ...this.state };
-    setCurrentLeague(this.state.league?.name);
+    setCurrentLeague(this.state.league?.name, this.state.league?.farm);
     this.emit();
     this.scheduleSave();
   }
@@ -105,7 +105,7 @@ class Store {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     this.saveTimer = null;
     this.state = s;
-    setCurrentLeague(s?.league?.name);
+    setCurrentLeague(s?.league?.name, s?.league?.farm);
     this.emit();
     if (s) this.scheduleSave();
     else this.setStatus({ state: 'idle', at: 0 });
@@ -309,7 +309,7 @@ export function rankAll(state: GameState): Team[] {
 export const roundName = (r: number) => ['1/8 финала', '1/4 финала', 'Финал конференции', 'Финал Кубка Гагарина'][r] ?? 'Плей-офф';
 
 export function createGameState(r: NormalizedRoster, userTeamId: string): GameState {
-  setCurrentLeague(r.leagueName);
+  setCurrentLeague(r.leagueName, r.farmName);
   const teamOrder = r.teams.map((t) => t.id);
   // the mod's schedule.json when it has one; otherwise the built-in generator (same calendar for the same roster)
   const { days, nextId } = r.schedule
@@ -325,7 +325,7 @@ export function createGameState(r: NormalizedRoster, userTeamId: string): GameSt
     saveId: newId(),
     saveName: user.name,
     createdAt: Date.now(),
-    league: { name: r.leagueName, season: r.season, gamesPerTeam: r.gamesPerTeam, salaryCap: r.salaryCap, foreignLimit: r.foreignLimit },
+    league: { name: r.leagueName, farm: r.farmName, season: r.season, gamesPerTeam: r.gamesPerTeam, salaryCap: r.salaryCap, foreignLimit: r.foreignLimit },
     // careers from a hand-picked file don't follow any roster file afterwards
     mod: r.mod ? { ...r.mod } : { id: '', name: 'Свой файл', base: '.', roster: null },
     seasonNumber: 1,
@@ -472,6 +472,8 @@ export async function syncPlayersFromRoster(saveId: string, url?: string): Promi
       teams: Object.fromEntries(Object.entries(now.teams).map(([k, t]) => [k, { ...t, coaches: (t.coaches ?? []).map((c) => ({ ...c })) }])),
       coachMarket: (now.coachMarket ?? []).map((c) => ({ ...c })),
     } as unknown as GameState;
+    // the farm league's name as the mod now gives it (also careers started before mods named it)
+    if (r.farmName && (now.league.farm ?? DEFAULT_FARM_NAME) !== r.farmName) store.update((s) => { if (s.saveId === saveId) s.league = { ...s.league, farm: r.farmName }; });
     if (!adoptRosterUpdates(probe, r)) return 0;
     let n = 0;
     store.update((s) => {
@@ -1776,7 +1778,7 @@ export function offerContract(id: string, salary: number, years: number, withNmc
     const cap = state.league.salaryCap;
     if (free && activeKhlCount(t.players, P) >= MAX_ROSTER) {
       return fail(
-        `В основном составе ${LG()} уже ${MAX_ROSTER} игроков — отправьте игрока в фарм-клуб ВХЛ, переведите травмированного в ДСБТ или освободите место`
+        `В основном составе ${LG()} уже ${MAX_ROSTER} игроков — отправьте игрока в фарм-клуб ${FL()}, переведите травмированного в ДСБТ или освободите место`
       );
     }
     if (free && isLegionnaire(p)) {
@@ -1814,7 +1816,7 @@ export function offerContract(id: string, salary: number, years: number, withNmc
       return;
     }
     delete p.talks;
-    const nmcTag = applyNmc ? ' (с пунктом ЗНО)' : applyTwoWay ? ` (двусторонний ${LG()}/ВХЛ)` : '';
+    const nmcTag = applyNmc ? ' (с пунктом ЗНО)' : applyTwoWay ? ` (двусторонний ${LG()}/${FL()})` : '';
     const extraTag = [signing ? `подъёмные ${formatMoney(signing)}` : '', bonuses.length ? `бонусы: ${bonuses.map((b) => `${bonusText(b)} — ${formatMoney(b.amount)}`).join(', ')}` : ''].filter(Boolean).join('; ');
     const term = `${years} ${years === 1 ? 'год' : years < 5 ? 'года' : 'лет'}, ${formatMoney(salary)} за сезон${nmcTag}${extraTag ? ` (${extraTag})` : ''}`;
     const cFlags = { twoWay: applyTwoWay, ...(bonuses.length ? { bonuses } : {}) };
@@ -1900,7 +1902,7 @@ export function sendToVhlOrWaivers(playerId: string): string | null {
       return;
     }
     if (p.inVhl) {
-      err = 'Игрок уже находится в фарм-клубе ВХЛ';
+      err = `Игрок уже находится в фарм-клубе ${FL()}`;
       return;
     }
     if (isOnWaivers(state, playerId)) {
@@ -1908,12 +1910,12 @@ export function sendToVhlOrWaivers(playerId: string): string | null {
       return;
     }
     if (p.nmc) {
-      err = `У ${p.name} действует пункт ЗНО (запрет на обмен и отправку в ВХЛ / список отказов)`;
+      err = `У ${p.name} действует пункт ЗНО (запрет на обмен и отправку в ${FL()} / список отказов)`;
       return;
     }
     const curVhl = t.players.filter((id) => P[id]?.inVhl).length;
     if (curVhl >= MAX_VHL_PLAYERS) {
-      err = `В фарм-клубе ВХЛ уже максимум командированных игроков (${MAX_VHL_PLAYERS})`;
+      err = `В фарм-клубе ${FL()} уже максимум командированных игроков (${MAX_VHL_PLAYERS})`;
       return;
     }
     const activeAfter = t.players.filter((id) => id !== playerId && P[id] && !P[id].inVhl);
@@ -1932,7 +1934,7 @@ export function sendToVhlOrWaivers(playerId: string): string | null {
       addNews(
         state,
         'info',
-        `${p.name} командирован в фарм-клуб ВХЛ по двустороннему контракту (разгрузка потолка: ${formatMoney(vhlPlayerCapRelief(p))}).`,
+        `${p.name} командирован в фарм-клуб ${FL()} по двустороннему контракту (разгрузка потолка: ${formatMoney(vhlPlayerCapRelief(p))}).`,
         U
       );
     } else {
@@ -1950,7 +1952,7 @@ export function sendToVhlOrWaivers(playerId: string): string | null {
       addNews(
         state,
         'trade',
-        `«${t.name}» поместила ${p.name} в список отказов ${LG()} на 48 часов (2 дня). Если никто не заберёт контракт — игрок отправится в ВХЛ.`,
+        `«${t.name}» поместила ${p.name} в список отказов ${LG()} на 48 часов (2 дня). Если никто не заберёт контракт — игрок отправится в ${FL()}.`,
         U
       );
     }
@@ -1967,24 +1969,24 @@ export function recallFromVhl(playerId: string): string | null {
     const t = state.teams[U];
     if (!p || p.teamId !== U || !p.inVhl) return;
     if (activeKhlCount(t.players, P) >= MAX_ROSTER) {
-      err = `В основном составе ${LG()} уже максимум игроков (${MAX_ROSTER}/30) — сначала отправьте другого игрока в ВХЛ или освободите место`;
+      err = `В основном составе ${LG()} уже максимум игроков (${MAX_ROSTER}/30) — сначала отправьте другого игрока в ${FL()} или освободите место`;
       return;
     }
     const fl = teamForeignLimit(t, state.league.foreignLimit);
     if (fl !== null && isLegionnaire(p) && countRosterLegionnaires(t.players, P) >= fl) {
-      err = `Нельзя вызвать легионера из ВХЛ: в основе ${LG()} уже ${fl} из ${fl} иностранцев`;
+      err = `Нельзя вызвать легионера из ${FL()}: в основе ${LG()} уже ${fl} из ${fl} иностранцев`;
       return;
     }
     const reliefLost = state.phase === 'offseason' ? 0 : vhlPlayerCapRelief(p);
     const afterPay = effectivePayroll(t, P, state.phase) + reliefLost;
     if (state.phase !== 'offseason' && afterPay > state.league.salaryCap) {
-      err = `Вызов из ВХЛ поднимет ФОТ ${LG()} до ${formatMoney(afterPay)} (выше потолка ${formatMoney(state.league.salaryCap)})`;
+      err = `Вызов из ${FL()} поднимет ФОТ ${LG()} до ${formatMoney(afterPay)} (выше потолка ${formatMoney(state.league.salaryCap)})`;
       return;
     }
     p.inVhl = false;
     ensureCaptains(t, P);
     t.lineup = sanitizeLineup(t.lineup, t.players, P, lineupConstraintsFor(state, U));
-    addNews(state, 'info', `${p.name} вызван из фарм-клуба ВХЛ в основной состав «${t.name}».`, U);
+    addNews(state, 'info', `${p.name} вызван из фарм-клуба ${FL()} в основной состав «${t.name}».`, U);
   });
   return err;
 }
@@ -2266,7 +2268,7 @@ export function activatePlayerFromLtir(playerId: string): string | null {
       return;
     }
     if (activeKhlCount(t.players, state.players) >= MAX_ROSTER) {
-      err = `В основном составе ${LG()} уже ${MAX_ROSTER} игроков — сначала отправьте кого-нибудь в ВХЛ или освободите место`;
+      err = `В основном составе ${LG()} уже ${MAX_ROSTER} игроков — сначала отправьте кого-нибудь в ${FL()} или освободите место`;
       return;
     }
     const fl = teamForeignLimit(t, state.league.foreignLimit);
@@ -2278,7 +2280,7 @@ export function activatePlayerFromLtir(playerId: string): string | null {
     const excess = capExcess(state, U);
     if (excess > 0) {
       p.inLtir = true;
-      err = `Нельзя вывести ${p.name} из ДСБТ: ФОТ превысит потолок ${LG()} на ${formatMoney(excess)}. Сначала освободите место (перевод в ВХЛ, обмен или выкуп).`;
+      err = `Нельзя вывести ${p.name} из ДСБТ: ФОТ превысит потолок ${LG()} на ${formatMoney(excess)}. Сначала освободите место (перевод в ${FL()}, обмен или выкуп).`;
       return;
     }
     t.lineup = sanitizeLineup(t.lineup, t.players, state.players, lineupConstraintsFor(state, U));

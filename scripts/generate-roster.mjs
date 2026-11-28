@@ -70,7 +70,7 @@ function player(teamSlug, teamShort, pos, ovr, age, n) {
   return o;
 }
 
-const out = { league: { name: 'ХЛ', season: '2025/26', gamesPerTeam: 68, salaryCap: 900000000 }, teams: [], freeAgents: [] };
+const out = { league: { name: 'ХЛ', farm: 'ВЛ', season: '2025/26', gamesPerTeam: 68, salaryCap: 900000000 }, teams: [], freeAgents: [] };
 
 for (const [name, city, conf, div, pc, sc, base, short] of TEAMS) {
   const SLUGS = ['ska', 'cska', 'loko', 'dynamo-m', 'spartak', 'severstal', 'vityaz', 'torpedo', 'sochi', 'dynamo-minsk', 'dynamo-riga', 'moscow', 'zubry', 'metallurg', 'ak-bars', 'avangard', 'salavat', 'avtomobilist', 'sibir', 'barys', 'neftekhimik', 'admiral', 'lada', 'amur', 'kunlun'];

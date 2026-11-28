@@ -8,7 +8,7 @@ const gameLogo = './icon-game.png';
 import { downloadExampleRoster, readLocalFile, ROSTER_EXAMPLE, rosterWithContracts, saveRosterFile } from '../game/roster';
 import { DEFAULT_MOD_ID, lastModId, listMods, loadMod, rememberMod } from '../game/mods';
 import type { ModEntry } from '../game/mods';
-import { DEFAULT_LEAGUE_FULL_NAME, DEFAULT_LEAGUE_NAME, GAME_NAME_EN, GAME_NAME_RU } from '../brand';
+import { DEFAULT_FARM_NAME, DEFAULT_LEAGUE_FULL_NAME, DEFAULT_LEAGUE_NAME, GAME_NAME_EN, GAME_NAME_RU } from '../brand';
 import type { NormalizedRoster } from '../game/roster';
 import { effectivePayroll } from '../game/cap';
 import { formatMoney, isGoalie, isSkater } from '../game/ratings';
@@ -22,6 +22,7 @@ import { SavesList } from './Saves';
 export function FormatDoc({ compact }: { compact?: boolean }) {
   const rows: [string, string, string][] = [
     ['league.name', 'string', `Название лиги, показывается в игре (по умолчанию «${DEFAULT_LEAGUE_NAME}» — ${DEFAULT_LEAGUE_FULL_NAME})`],
+    ['league.farm', 'string', `Обязательно: название второй (фарм) лиги, куда клубы командируют игроков по двусторонним контрактам, например "farm": "ВХЛ". Без него ростер получит предупреждение, а в игре будет «${DEFAULT_FARM_NAME}»`],
     ['league.season', 'string', 'Подпись сезона, например "2025/26"'],
     ['league.gamesPerTeam', 'number', 'Матчей в регулярном чемпионате на команду (по умолчанию 68)'],
     ['league.salaryCap', 'number', 'Потолок зарплат, ₽ за сезон (по умолчанию 900 000 000)'],
@@ -42,9 +43,9 @@ export function FormatDoc({ compact }: { compact?: boolean }) {
     ['players[].overall', 'number', 'Общий рейтинг 1–99. Необязателен: считается из skills'],
     ['players[].potential', 'number', 'Потолок развития 1–99 (для игроков до 25 лет)'],
     ['players[].skills', 'object', 'Полевые: skating, shooting, passing, puckControl, checking, defense. Вратари: reflexes, positioning, reboundControl, puckHandling, endurance (1–99)'],
-    ['players[].contract', 'object', '{ salary: оклад ₽, years: сезонов, twoWay?: true }. twoWay: true (или type: "двухсторонний") — двусторонний контракт (основа/фарм-клуб ВХЛ) без отказов'],
-    ['players[].twoWay', 'boolean', 'true — двусторонний контракт основа/ВХЛ (можно указать прямо у игрока или внутри contract.twoWay); у игроков ≤22 лет по умолчанию true'],
-    ['players[].inVhl', 'boolean', 'true — игрок начинает сезон в фарм-клубе ВХЛ (также понимаются "vhl": true или "league": "ВХЛ")'],
+    ['players[].contract', 'object', '{ salary: оклад ₽, years: сезонов, twoWay?: true }. twoWay: true (или type: "двухсторонний") — двусторонний контракт (основа/фарм-клуб второй лиги) без отказов'],
+    ['players[].twoWay', 'boolean', 'true — двусторонний контракт основа/фарм (можно указать прямо у игрока или внутри contract.twoWay); у игроков ≤22 лет по умолчанию true'],
+    ['players[].inVhl', 'boolean', 'true — игрок начинает сезон в фарм-клубе второй лиги (также понимаются "farm": true, "vhl": true или "league": название второй лиги)'],
     ['players[].nmc', 'boolean', 'true — пункт ЗНО (запрет на обмен и отправку в список отказов)'],
     ['players[].role', 'string', '"C" / "К" — капитан клуба, "A" / "А" — ассистент капитана (необязательно)'],
     ['players[].injury', 'object|null', '{ name: "Травма плеча", days: 14 } или null (поддерживается и старое games)'],
@@ -113,7 +114,7 @@ const SCHEDULE_EXAMPLE = `{
 function ModFormatDoc() {
   const rows: [string, string][] = [
     ['mod.json', 'Необязательно. { "name", "description", "author", "version", "roster": "roster.json", "schedule": "schedule.json" }. Без него мод называется по имени папки'],
-    ['roster.json', 'Лига, клубы, игроки и свободные тренеры — поля описаны ниже. Название лиги берётся из league.name'],
+    ['roster.json', 'Лига, клубы, игроки и свободные тренеры — поля описаны ниже. Названия лиг берутся из league.name и league.farm (вторая, фарм-лига — обязательно)'],
     ['schedule.json', 'Один календарь на всю лигу: games[] с датой (ГГГГ-ММ-ДД), id хозяев и гостей. Сезон начинается 1 сентября; days — длина регулярки в днях (с паузами). Клуб не может играть дважды в день. Нет файла — календарь составит игра. Плей-офф и следующие сезоны игра строит сама'],
     ['logos/', 'Эмблемы клубов (PNG с прозрачностью, лучше 160×160 и больше). Пути в roster.json — относительно папки мода'],
     ['index.json', 'Список папок модов. Браузер не умеет читать содержимое папки, поэтому новый мод нужно вписать сюда (при сборке игры список обновляется сам; в версии для Windows папки из «mods» рядом с игрой находятся без него — туда же распаковывает архив кнопка «Установить мод»)'],
@@ -370,7 +371,7 @@ function TeamSelect({ roster, onStart }: { roster: NormalizedRoster; onStart: (t
                         <div className="text-xs text-muted truncate">{t.city}</div>
                         <div className="text-[11px] text-muted mt-0.5 truncate">
                           {t.players.length} игр.
-                          {t.players.some((pid) => roster.players[pid]?.inVhl) ? ` (ВХЛ ${t.players.filter((pid) => roster.players[pid]?.inVhl).length})` : ''} · ФОТ{' '}
+                          {t.players.some((pid) => roster.players[pid]?.inVhl) ? ` (${roster.farmName} ${t.players.filter((pid) => roster.players[pid]?.inVhl).length})` : ''} · ФОТ{' '}
                           {formatMoney(effectivePayroll(t, roster.players, 'season'))}
                         </div>
                       </div>
@@ -663,7 +664,7 @@ export function Startup({ onStart, onBack }: { onStart: (r: NormalizedRoster, te
           <>
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <div className="text-sm text-muted">
-                Лига «{roster.leagueName}» · сезон {roster.season} · {roster.teams.length} команд · {Object.keys(roster.players).length} игроков · {roster.schedule ? 'календарь из мода' : 'календарь составлен игрой'}
+                Лига «{roster.leagueName}» · фарм-лига «{roster.farmName}» · сезон {roster.season} · {roster.teams.length} команд · {Object.keys(roster.players).length} игроков · {roster.schedule ? 'календарь из мода' : 'календарь составлен игрой'}
               </div>
               <div className="flex gap-2">
                 <Button size="sm" variant="ghost" onClick={() => setStage('format')}>

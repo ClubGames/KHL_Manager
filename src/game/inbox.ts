@@ -6,7 +6,7 @@ import { formatInjuryDays } from './medical';
 import { preseasonOpen } from './preseason';
 import { ensureScouting, scoutSlots } from './scouting';
 import { promiseLabel, promiseProgress } from './dressingRoom';
-import { LG } from '../brand';
+import { FL, LG } from '../brand';
 
 /**
  * The manager's inbox: everything that needs a decision today, derived from the career state so it
@@ -71,7 +71,7 @@ export function buildInbox(state: GameState, includeDismissed = false): InboxTas
   if (state.phase !== 'offseason') {
     const L = U.lineup;
     const holes = [...L.F.flat(), ...L.D.flat()].filter((x) => !x).length + (L.starterG ? 0 : 1);
-    if (holes > 0) out.push({ id: `lineup-${state.seasonNumber}-${holes}`, severity: 'urgent', kind: 'lineup', title: 'Неполный состав на матч', text: `В звеньях ${holes} пустых мест. Заполните состав или вызовите игроков из ВХЛ.`, view: 'lines' });
+    if (holes > 0) out.push({ id: `lineup-${state.seasonNumber}-${holes}`, severity: 'urgent', kind: 'lineup', title: 'Неполный состав на матч', text: `В звеньях ${holes} пустых мест. Заполните состав или вызовите игроков из ${FL()}.`, view: 'lines' });
     const g = L.starterG ? P[L.starterG] : null;
     const fresh = goalieFreshness(g);
     if (gameToday && g && fresh < 62) {

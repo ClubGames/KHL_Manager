@@ -2,12 +2,15 @@
 // the button and the folder path show up, a dropped .zip goes to installMod as bytes, the result is reported.
 import assert from 'node:assert/strict';
 import { chromium } from '@playwright/test';
+import { START_IN_CAREER } from './testMod.mjs';
 
 const browser = await chromium.launch({ ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}), args: ['--no-sandbox'] });
 const errors = [];
 const ok = (m) => console.log('ok', m);
 try {
   const context = await browser.newContext({ viewport: { width: 1400, height: 1000 } });
+  // the career screen (with the mod list) is behind the main menu: open it directly
+  await context.addInitScript(START_IN_CAREER);
   await context.addInitScript(() => {
     localStorage.setItem('khl.settings', JSON.stringify({ autoReplay: 'off', replay3d: false, replayPrewarm: false, matchIntro: false }));
     const calls = (window.__installCalls = []);
