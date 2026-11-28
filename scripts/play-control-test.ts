@@ -426,4 +426,25 @@ test('a played period followed by simulated ones (the manager hands the rest of 
   assert.ok(res.periodScores[0][0] === k.score[0] && res.periodScores[0][1] === k.score[1], 'the played period is in the box score');
 });
 
+test('a short period: the faceoff button skips the walk-up to the dot; without it the men skate there', () => {
+  type Fo = { mode: string; tau: number; fo: { gather: boolean; spots: Map<string, { x: number; y: number }> } | null; agents: Map<string, { x: number; y: number; on: string }> };
+  const gathers = (skip: boolean) => {
+    const k = make(0, { periodMinutes: 5, userSide: 0 }), p = k as unknown as Fo;
+    const out: number[] = []; let t0 = -1;
+    for (let i = 0; i < 60 * 60 * 5 && !k.ended; i++) {
+      k.advance(1 / 60, { ...NO_PAD, faceoff: skip && p.mode === 'faceoff' && !!p.fo?.gather && i % 2 === 0 });
+      if (p.mode === 'faceoff' && p.fo?.gather && t0 < 0) t0 = p.tau;
+      if (t0 >= 0 && (p.mode !== 'faceoff' || !p.fo?.gather)) {
+        out.push(p.tau - t0); t0 = -1;
+        if (p.fo) for (const [id, sp] of p.fo.spots) { const a = p.agents.get(id)!; if (a.on === 'ice') assert.ok(Math.hypot(a.x - sp.x, a.y - sp.y) < 1.3, 'set at his place'); }
+      }
+    }
+    return out.slice(1);
+  };
+  const slow = gathers(false), fast = gathers(true);
+  assert.ok(slow.length >= 3 && fast.length >= 3, `${slow.length} / ${fast.length} faceoffs`);
+  assert.ok(slow.reduce((a, b) => a + b, 0) / slow.length > 2, 'they skate to the dot');
+  assert.ok(Math.max(...fast) < 0.1, `skipped: ${fast.map(x => x.toFixed(2)).join(' ')}`);
+});
+
 console.log(`\n${pass} play-control tests passed`);
