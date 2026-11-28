@@ -447,4 +447,34 @@ test('a short period: the faceoff button skips the walk-up to the dot; without i
   assert.ok(Math.max(...fast) < 0.1, `skipped: ${fast.map(x => x.toFixed(2)).join(' ')}`);
 });
 
+test('the manager\'s aim: the mouse on the net puts the shot there (height too); the stick\'s shot goes where the marker showed', () => {
+  const avg = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
+  const one = (trial: number, mouse: boolean) => {
+    const k = make(trial, { userSide: 0, autoSwitch: false }), p = k as any;
+    for (let i = 0; i < 600 && k.mode !== 'play'; i++) k.advance(1 / 60);
+    const me = p.skaters(0).find((x: any) => !x.kindD);
+    p.ctl = me.id;
+    for (const a of p.onIce()) if (a !== me && !a.goalie) { a.x = a.side ? 52 : 8; a.y = a.side ? 27 : 3; a.vx = 0; a.vy = 0; a.act = null; }
+    const gx = RINK.length - RINK.goalLine;
+    Object.assign(me, { x: gx - 9 - (trial % 4) * 2, y: 15 + (trial % 3 - 1) * 4, vx: 4, vy: 0, fa: 0, act: null, cool: 0, stun: 0 });
+    p.puck.carrier = me; p.puck.dead = false; p.puck.passTo = null; p.mode = 'play';
+    const aimAt = { x: gx, y: 15 + ((trial * 7) % 5 - 2) * 0.3, h: 0.3 + (trial % 4) * 0.2 };
+    let shot = null, mark: { x: number; y: number; z: number } | null = null;
+    for (let i = 0; i < 90 && !shot; i++) {
+      mark = k.aimMarker() ?? mark;
+      k.advance(1 / 60, mouse ? { ...NO_PAD, aimAt, shoot: i < 3 } : { ...NO_PAD, mx: 0.6, my: [-0.9, -0.5, 0, 0.5, 0.9][trial % 5], shoot: i < (trial % 2 ? 3 : 40) });
+      shot = p.puck.shot;
+    }
+    assert.ok(shot && mark, 'shot with the marker up');
+    const q = p.puck, T = (gx - q.x) / q.vx, y = q.y + q.vy * T, h = q.h + q.vh * T - 0.5 * 9.81 * T * T, w = p.world({ x: gx, y });
+    return mouse ? { lat: Math.abs(y - aimAt.y), up: Math.abs(h - aimAt.h) } : { lat: Math.hypot(w.x - mark!.x, w.z - mark!.z), up: Math.abs(h - mark!.y) };
+  };
+  for (const mouse of [true, false]) {
+    const r = Array.from({ length: 30 }, (_, i) => one(i, mouse));
+    const lat = avg(r.map(x => x.lat)), up = avg(r.map(x => x.up));
+    console.log(`   ${mouse ? 'mouse' : 'stick'}: off the aim by ${lat.toFixed(2)} m across, ${up.toFixed(2)} m in height`);
+    assert.ok(lat < 0.14 && up < 0.12, 'close to the aim');
+  }
+});
+
 console.log(`\n${pass} play-control tests passed`);

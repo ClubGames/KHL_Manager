@@ -765,9 +765,9 @@ export function framePad(k: Pick<PlayRink, 'frameAt' | 'tau' | 'attack' | 'scree
     if (pad.sx || pad.sy) { const v = screenToRink(pad.sx ?? 0, pad.sy ?? 0, cam, px, att); pad = { ...pad, srx: v.x, sry: v.y }; }
   }
   if (mouse.at > 0 && (now - mouse.at < 3000 || mouse.lmb || mouse.rmb)) {
-    const pick = settings.matchView === '3d' && k.screenPick ? k.screenPick : svgPick;
+    const pick: (x: number, y: number) => { x: number; y: number; h?: number } | null = settings.matchView === '3d' && k.screenPick ? k.screenPick : svgPick;
     const pc = pick(mouse.x, mouse.y);
-    if (pc) pad = { ...pad, aimAt: k.fromPercent(pc.x, pc.y) };
+    if (pc) pad = { ...pad, aimAt: { ...k.fromPercent(pc.x, pc.y), ...(pc.h !== undefined ? { h: pc.h } : {}) } };
   }
   return pad;
 }
