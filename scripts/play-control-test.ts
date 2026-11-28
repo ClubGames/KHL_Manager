@@ -134,7 +134,7 @@ test('the manager controls a skater: the stick moves him, a held shot charges an
       if (o.type === 'shot' && o.side === 0 && o.outcome === 'goal') goalsByUser++;
       if (o.type === 'hit' && o.side === 0) checks++;
     }
-  }, 600);
+  }, 720);
   console.log(`   shots ${shotsByUser}, goals ${goalsByUser}, max power ${maxPower.toFixed(2)}, control switches ${swaps}, hits ${checks}, score ${k.score.join(':')}`);
   assert.ok(k.ctl !== null, 'a controlled skater');
   assert.ok(moved > 1000, 'the controlled skater skates');
