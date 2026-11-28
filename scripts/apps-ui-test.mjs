@@ -25,6 +25,7 @@ async function open(init, options = {}) {
 }
 async function openSettings(page) {
   await page.locator('[data-startup-settings]').click();
+  await page.locator('[data-settings-tab-btn="other"]').click();
   await page.locator('[data-settings-section="Приложение и графика"]').waitFor();
 }
 

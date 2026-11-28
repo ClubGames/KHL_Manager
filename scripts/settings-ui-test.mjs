@@ -59,13 +59,35 @@ try {
   await page.locator('[data-startup-settings]').click();
   const dialog = page.locator('[data-settings]');
   await dialog.waitFor();
-  for (const title of ['Повторы голов', 'Скачивание видео', 'Матч', 'Симуляция']) assert.equal(await page.locator(`[data-settings-section="${title}"]`).count(), 1, title);
+  // the tabs: each holds its sections, a search looks through all of them
+  for (const [tab, titles] of [['match', ['Матч']], ['play', ['Игра за хоккеиста']], ['replays', ['Повторы голов', 'Скачивание видео']], ['sound', ['Звук']], ['other', ['Симуляция', 'Приложение и графика']]]) {
+    await page.locator(`[data-settings-tab-btn="${tab}"]`).click();
+    for (const title of titles) assert.equal(await page.locator(`[data-settings-section="${title}"]`).count(), 1, title);
+    assert.equal(await page.locator('[data-settings-section]').count(), titles.length, `${tab}: only its sections`);
+  }
+  await page.locator('[data-settings-search]').fill('органист');
+  assert.ok(await page.locator('[data-setting-row="soundOrgan"]').isVisible(), 'the search finds the organ');
+  await page.locator('[data-settings-search]').fill('qqqq');
+  await page.locator('[data-settings-nothing]').waitFor();
+  await page.locator('[data-settings-search]').fill('');
+  await page.locator('[data-settings-tab-btn="match"]').click();
   await shot(page, 'settings');
+  // a quick graphics profile and a «↺» back to the default
+  await page.locator('[data-profile="saver"]').click();
+  assert.equal((await stored(page)).matchView, '2d');
+  assert.equal(await page.locator('[data-profile="saver"]').getAttribute('aria-pressed'), 'true');
+  await page.locator('[data-setting-row="matchView"] [data-setting-default]').click();
+  assert.equal((await stored(page)).matchView, '3d');
+  assert.equal(await page.locator('[data-profile-custom]').count(), 1, 'neither profile now');
+  await page.locator('[data-profile="balance"]').click();
+  await page.locator('[data-settings-tab-btn="replays"]').click();
   await page.locator('[data-setting="autoReplay"] [role="radio"]', { hasText: 'Только мои' }).click();
   await page.locator('[data-setting="videoSlowmo"]').click();
   await page.locator('[data-setting="videoQuality"] [role="radio"]', { hasText: 'Быстро' }).click();
   await page.locator('[data-setting="videoHeight"] [role="radio"]', { hasText: '720p' }).click();
+  await page.locator('[data-settings-tab-btn="match"]').click();
   await page.locator('[data-setting="matchSpeed"] [role="radio"]', { hasText: '×4' }).click();
+  await page.locator('[data-settings-tab-btn="replays"]').click();
   let st = await stored(page);
   assert.equal(st.autoReplay, 'mine'); assert.equal(st.videoSlowmo, false); assert.equal(st.videoQuality, 'fast'); assert.equal(st.videoHeight, 720); assert.equal(st.matchSpeed, 4);
   await page.locator('[data-setting="replay3d"]').click();
@@ -74,6 +96,7 @@ try {
   await page.reload();
   await page.getByRole('button', { name: 'Начать карьеру', exact: true }).waitFor();
   await page.locator('[data-startup-settings]').click();
+  await page.locator('[data-settings-tab-btn="replays"]').click();
   assert.equal(await page.locator('[data-setting="replay3d"]').getAttribute('aria-checked'), 'false', 'remembered after reload');
   await page.getByRole('button', { name: 'Готово' }).click();
   ok('settings window: sections, switches and choices persist across a reload');
@@ -143,6 +166,7 @@ try {
   await page.locator('[data-header-settings]').waitFor();
   await page.locator('[data-header-settings]').click();
   await page.locator('[data-settings]').waitFor();
+  await page.locator('[data-settings-tab-btn="replays"]').click();
   assert.equal(await page.locator('[data-setting="autoReplay"] [aria-checked="true"]').innerText(), 'Выкл.');
   await page.getByRole('button', { name: 'Готово' }).click();
   for (let k = 0; k < 10; k++) {
