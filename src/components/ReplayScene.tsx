@@ -353,7 +353,7 @@ export function ReplayScene(props: Props) {
             }
             // how he skates (a start, a stop, crossovers, backwards…): replayed from the last 0.7 s of his track (a replay
             // can be scrubbed, so nothing is carried from frame to frame)
-            const style = styleOf(track.id), gait = newGait(style), dtn = 1 / 30 / clip.duration, ch = Math.cos(heading), sh = Math.sin(heading);
+            const style = styleOf(track.id, players[track.id]), gait = newGait(style), dtn = 1 / 30 / clip.duration, ch = Math.cos(heading), sh = Math.sin(heading);
             let q0 = toWorld(sampleSmooth(track.keys, clamp(time - 24 * dtn, 0, 1))), q1 = toWorld(sampleSmooth(track.keys, clamp(time - 23 * dtn, 0, 1))), v0 = Math.hypot(q1.x - q0.x, q1.z - q0.z) * 30;
             for (let k = 22; k >= 0; k--) {
               const q2 = toWorld(sampleSmooth(track.keys, clamp(time - k * dtn, 0, 1)));

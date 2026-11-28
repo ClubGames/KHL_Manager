@@ -33,6 +33,7 @@ import { knowledgeOf, scoutedOvr, scoutedSkill } from '../game/scouting';
 import { ScoutOvr } from './Scout';
 import { Bar, Button, Empty, Modal, OverallChip, Panel, PlayerFace, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { cn } from '../utils/cn';
+import { ARCH_NAME, archetypeOf } from '../game/playStyle';
 import { FL, LG } from '../brand';
 
 type SortKey = 'number' | 'name' | 'age' | 'overall' | 'potential' | 'salary' | 'years' | 'gp' | 'goals' | 'assists' | 'points' | 'plusMinus' | 'pim' | 'wins' | 'shutouts' | 'sv' | 'gaa';
@@ -888,7 +889,8 @@ export function PlayerModal({ id, onClose }: { id: string; onClose: () => void }
             {capRole && <Tag color="#F2B544">{capRole === 'C' ? 'Капитан (К)' : 'Ассистент (А)'}</Tag>}
             <span className="text-xs text-muted">№{p.number}</span>
           </div>
-          <div className="text-xs text-muted mt-1">{POS_NAME[p.position]} · {p.age} лет ({faTag === 'ОСА' ? 'ОСА <28' : 'НСА 28+'}) · {p.height} см · {p.weight} кг · {p.country || '—'} · хват {p.hand === 'L' ? 'левый' : 'правый'}</div>
+          <div className="text-xs text-muted mt-1">{POS_NAME[p.position]} · {p.age} лет ({faTag === 'ОСА' ? 'ОСА <28' : 'НСА 28+'}) · {p.height} см · {p.weight} кг · {p.country || '—'} · хват {p.hand === 'L' ? 'левый' : 'правый'}
+            {!isGoalie(p) && <span title="Как он катается и держит клюшку в матче, его коронные финты и броски — тем заметнее, чем выше класс" data-play-style={archetypeOf(p)}> · манера: {ARCH_NAME[archetypeOf(p)].toLowerCase()}</span>}</div>
           <div className="flex items-center gap-2 mt-2 flex-wrap">
             {team && (
               <button type="button" className="text-sm hover:text-ice hover:underline underline-offset-2" onClick={() => ui.openTeam(team.id)} data-team-link={team.id}>

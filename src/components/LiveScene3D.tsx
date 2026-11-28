@@ -875,7 +875,7 @@ export function LiveScene3D(props: Props) {
           const amp = clamp(speed / 7, 0, 1) * (1 - .4 * (rel?.aim ?? 0) - .45 * turnAway);
           const shot = rel && rel.s >= -1 && rel.s <= 1.9 ? rel.s : undefined;
           // the way he skates (a start, crossovers, a stop, backwards, a shuffle, one hand off the stick) from his motion
-          a.style ??= styleOf(p.id);
+          a.style ??= styleOf(p.id, players[p.id]);
           const gait = a.gait ??= newGait(a.style);
           if (jumped) Object.assign(gait, newGait(a.style));
           else {

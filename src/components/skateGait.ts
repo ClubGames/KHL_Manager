@@ -6,6 +6,8 @@
  * it every picture; tests check it in Node.
  */
 
+import { archetypeOf, starOf, type Archetype } from '../game/playStyle';
+
 export interface Gait {
   /** 0…1 an explosive start */
   burst: number;
@@ -28,21 +30,47 @@ export interface GaitState extends Gait {
   hold: number;
 }
 
-/** A skater's own way of skating: stance width, how low he sits, how much the free arm swings (−1…1 each). */
-export interface SkateStyle { wide: number; low: number; swing: number; stopSide: 1 | -1 }
+/**
+ * A skater's own way of skating: stance width, how low he sits, how much the free arm swings, how far out in front
+ * he carries the stick, the blade riding off the ice, the lean of the upper body (−1…1 each) — and the archetype it
+ * comes from, with how strongly it shows (a star: all of it).
+ */
+export interface SkateStyle { wide: number; low: number; swing: number; stopSide: 1 | -1; carry: number; blade: number; lean: number; arch: Archetype; star: number }
 
 export const NO_GAIT: Gait = { burst: 0, stop: 0, stopSide: 1, back: 0, shuffle: 0, cross: 0, oneHand: 0 };
 
+/** What each archetype does to the way he skates (added to his own little quirks, scaled by how much of a star he is). */
+const ARCH_STYLE: Record<Archetype, Partial<Record<'wide' | 'low' | 'swing' | 'carry' | 'blade' | 'lean', number>>> = {
+  // long, low strides, the free arm driving, leaning into it
+  speed: { low: 0.9, swing: 0.9, lean: 0.8, wide: -0.3 },
+  // upright and wide-based, hard to knock off the puck, the blade riding a little off the ice
+  power: { low: -0.6, wide: 0.9, swing: 0.4, blade: 0.6, carry: -0.4 },
+  // the stick far out in front and low, the puck out wide on the blade, knees bent to move side to side
+  dangler: { carry: 0.9, low: 0.4, blade: -0.5, wide: 0.2 },
+  // the shot ready: the stick a little out, the head up, the weight on the balls of the feet
+  sniper: { carry: 0.3, lean: 0.3, low: 0.2 },
+  // the long stick out in the lanes, wide and solid
+  stayHome: { carry: 0.6, wide: 0.6, low: 0.3, swing: -0.4 },
+  // a forward on the blue line: lively strides, the arm swinging
+  offD: { swing: 0.5, low: 0.3, lean: 0.3 },
+  twoWay: {},
+};
+
+const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const hash = (id: string) => { let h = 2166136261; for (let i = 0; i < id.length; i++) { h ^= id.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; };
-/** Every man skates a little his own way (from his id: the same each time). */
-export function styleOf(id: string): SkateStyle {
+/**
+ * Every man skates a little his own way (from his id: the same each time) — and, given the player, his archetype
+ * on top of it, the more so the better he is (a star's style is plain to see).
+ */
+export function styleOf(id: string, p?: Parameters<typeof archetypeOf>[0]): SkateStyle {
   const h = hash(id), u = (k: number) => ((h >>> (k * 7)) & 127) / 127 * 2 - 1;
-  return { wide: u(0), low: u(1), swing: u(2), stopSide: (h & 1) ? 1 : -1 };
+  const arch = archetypeOf(p), star = p ? starOf(p) : 0, a = ARCH_STYLE[arch], k = 0.35 + 0.65 * star;
+  const mix = (q: number, key: keyof typeof a) => clamp(q * (1 - 0.7 * k * (a[key] !== undefined ? 1 : 0)) + (a[key] ?? 0) * k, -1, 1);
+  return { wide: mix(u(0), 'wide'), low: mix(u(1), 'low'), swing: mix(u(2), 'swing'), stopSide: (h & 1) ? 1 : -1, carry: mix(u(3) * 0.4, 'carry'), blade: mix(0, 'blade'), lean: mix(0, 'lean'), arch, star };
 }
 
 export const newGait = (style?: SkateStyle): GaitState => ({ ...NO_GAIT, stopSide: style?.stopSide ?? 1, acc: 0, hold: 0 });
 
-const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
 const s01 = (x: number) => { const t = clamp(x, 0, 1); return t * t * (3 - 2 * t); };
 const toward = (v: number, t: number, rate: number, dt: number) => v + (t - v) * (1 - Math.exp(-rate * dt));
 
