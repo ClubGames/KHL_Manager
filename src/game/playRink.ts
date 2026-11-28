@@ -228,6 +228,8 @@ export const PS_PREP = { away: 6, ref: 3, place: 1.5, set: 1.0, cap: 11 };
 const PS_REF_OFF = 5.5;
 const PST = { away: 1, place: 2, skate: 3, set: 4 } as const;
 const PS_STAGE = ['away', 'place', 'skate', 'set'] as const;
+/** The goalie brings a stopped puck into his hold (the glove to the chest, the glove down over it) in this long (s). */
+const HOLD_IN = 0.35;
 /** A shot from farther than this from the net (m: past the attacking blue line and a bit) is a long one — see shoot. */
 const LONG_SHOT = 26;
 /** A pass leads a skating receiver by at most this much of his skating (s): he does not keep a straight line for longer. */
@@ -496,7 +498,8 @@ export class PlayRink {
   private set foCall(v: { text: string; until: number } | null) { this.z.foCall = v; }
   private pending: Pending[] = [];
   /** the goalie's freeze: the puck caught in his glove or covered under him until the faceoff */
-  private held: { g: Sk; kind: 'glove' | 'cover'; t0: number } | null = null;
+  /** the goalie's frozen puck: in the glove or covered, from where he stopped it (`from`) to his hold over a moment */
+  private held: { g: Sk; kind: 'glove' | 'cover'; t0: number; from?: { x: number; y: number; h: number } } | null = null;
   /** a fight under way (at a stoppage): the two of them, since when, who wins it, the loser already down */
   private fightOn: { a: Sk; b: Sk; t0: number; win: Sk; down: boolean } | null = null;
   /** a penalty shot (a breakaway fouled from behind): awarded at the whistle, taken alone against the goalie */
@@ -1531,8 +1534,10 @@ export class PlayRink {
   private holdPuck() {
     const h = this.held!, g = h.g, p = this.puck;
     const lat = h.kind === 'glove' ? 0.28 * g.hand : 0.04, fwd = h.kind === 'glove' ? 0.28 : 0.42;
-    p.x = g.x + Math.cos(g.fa) * fwd - Math.sin(g.fa) * lat; p.y = g.y + Math.sin(g.fa) * fwd + Math.cos(g.fa) * lat;
-    p.h = h.kind === 'glove' ? 1.0 : 0.02; p.vx = 0; p.vy = 0; p.vh = 0;
+    const x = g.x + Math.cos(g.fa) * fwd - Math.sin(g.fa) * lat, y = g.y + Math.sin(g.fa) * fwd + Math.cos(g.fa) * lat, hh = h.kind === 'glove' ? 1.0 : 0.02;
+    // from where he stopped it into the hold (the 3D figure's glove takes the same moment: HOLD_IN)
+    const u = h.from ? smooth01((this.tau - h.t0) / HOLD_IN) : 1, f = h.from ?? { x, y, h: hh };
+    p.x = f.x + (x - f.x) * u; p.y = f.y + (y - f.y) * u; p.h = f.h + (hh - f.h) * u; p.vx = 0; p.vy = 0; p.vh = 0;
   }
   /** A dead puck (after the whistle) slides on, off the boards and the cages, until it stops — no rules apply to it. */
   private deadSlide() {
@@ -3119,7 +3124,7 @@ export class PlayRink {
     const base = { wrist: 21, snap: 25, slap: 28, backhand: 17, tip: 20, rebound: 19 }[kind];
     let speed = base + a.shoot * 0.1 * (kind === 'slap' ? 0.6 + 0.4 * power : 0.75 + 0.25 * power);
     if (kind === 'tip') speed = Math.max(14, Math.hypot(p.vx, p.vy) * 0.8);
-    const target = loc(s, { x: OPP_GOAL, y: ty });
+    let target = loc(s, { x: OPP_GOAL, y: ty });
     const onNet = Math.abs(ty - MID) < POST - 0.04 && th < BAR - 0.04;
     const post = !onNet && Math.abs(Math.abs(ty - MID) - POST) < 0.09 && th < BAR;
     // the save: the goalie's rating and the shot
@@ -3149,6 +3154,22 @@ export class PlayRink {
         if (long) pg *= 0.15;
       }
       if (this.rand() < pg) outcome = 'goal';
+    }
+    // a goal does not go through the goalie: past his body it beats him by the side with more room (or over his
+    // shoulder) — it used to fly through him into the net, as if he were not there
+    if (outcome === 'goal' && g && gl && dist(gl, net) < 3.5 && kind !== 'tip') {
+      const f = (gl.x - me.x) / Math.max(0.5, OPP_GOAL - me.x);
+      if (f > 0 && f < 1) {
+        const at = me.y + f * (ty - me.y), body = 0.5;
+        if (Math.abs(at - gl.y) < body && th < 0.95) {
+          const tyFor = (yc: number) => me.y + (yc - me.y) / f;
+          const fits = (y: number) => Math.abs(y - MID) < POST - 0.1;
+          const a = tyFor(gl.y - body - 0.08), b = tyFor(gl.y + body + 0.08);
+          const pick = [a, b].filter(fits).sort((u, v) => Math.abs(u - ty) - Math.abs(v - ty))[0];
+          if (pick !== undefined) ty = pick; else th = Math.max(th, 1.02);
+          target = loc(s, { x: OPP_GOAL, y: ty });
+        }
+      }
     }
     // released in front of the goal line: a blade reaching over the line (a shot from the post, a wraparound) lets it
     // go from the near side of it, so it flies into the mouth instead of along the line (or straight up, with no room)
@@ -3961,8 +3982,15 @@ export class PlayRink {
       if (!g || g.stun > 0) continue;
       if (shot && shot.side !== s) {
         if (shot.outcome !== 'save') continue;
-        const gl = loc(shot.side, g), pl = loc(shot.side, p);
-        if (dist(g, p) < 0.7 || pl.x >= gl.x - 0.05) { this.save(g, shot); return; }
+        // (where the puck meets him: at his body's line, not 0.7 m out in front of it — the save used to be made
+        // before the puck got to him, and the puck jumped into his glove)
+        // … and only within his reach: a shot from beyond his line (from behind the goal line, a wraparound) used to be
+        // «saved» the moment it left the stick, metres away from him
+        const gl = loc(shot.side, g), pl = loc(shot.side, p), po = loc(shot.side, { x: ox, y: oy });
+        const lat = Math.abs(pl.y - gl.y), reach = lat < 1.1 && p.h < 1.9;
+        const crossed = po.x < gl.x - 0.05 && pl.x >= gl.x - 0.05;
+        const atLine = pl.x >= OPP_GOAL - 0.3 && dist(g, p) < 1.3;
+        if (dist(g, p) < 0.4 || (crossed && reach) || atLine) { this.save(g, shot); return; }
         continue;
       }
       if (!shot && p.h < 1.1 && segDist(g, { x: ox, y: oy }, p) < 0.5 && !(p.noTouch === g && this.tau < p.noTouchUntil)) {
@@ -4088,23 +4116,31 @@ export class PlayRink {
     this.out.push({ type: 'shot', side: shot.side, shooter: shot.by.id, goalie: g.id, outcome: 'save', assists: [], strength: shot.strength, shotType: shot.kind, ...this.pct(shot), xg: shot.xg, zone: shot.zone, ice: shot.ice });
     this.lastSave = this.tau;
     // caught (a high shot more often) or kicked out as a rebound
-    const catchP = (p.h > 0.45 ? 0.55 : 0.32) * (0.75 + g.rebound / 280) * (shot.kind === 'slap' ? 0.75 : 1);
-    p.x = g.x + Math.cos(g.fa) * 0.45; p.y = g.y + Math.sin(g.fa) * 0.45;
+    // (a high one on his blocker side is hard to hold: it mostly goes off the blocker)
+    const lat = -Math.sin(g.fa) * (p.x - g.x) + Math.cos(g.fa) * (p.y - g.y);
+    const blocker = p.h > 0.45 && lat * g.hand < -0.12;
+    const catchP = (p.h > 0.45 ? 0.55 : 0.32) * (0.75 + g.rebound / 280) * (shot.kind === 'slap' ? 0.75 : 1) * (blocker ? 0.3 : 1);
+    // the puck is where it met him (in front of his body line, within his reach) — not put at his chest at once
+    {
+      const fwd = Math.cos(g.fa) * (p.x - g.x) + Math.sin(g.fa) * (p.y - g.y), l = clamp(lat, -1.0, 1.0), f = clamp(fwd, 0.05, 0.6);
+      p.x = g.x + Math.cos(g.fa) * f - Math.sin(g.fa) * l; p.y = g.y + Math.sin(g.fa) * f + Math.cos(g.fa) * l; p.h = clamp(p.h, 0, 1.6);
+    }
     if (this.rand() < catchP) {
-      // a high one into the glove (held up at his chest), a low one smothered on the ice under the glove and pads
+      // a high one into the glove (brought in to his chest), a low one smothered on the ice under the glove and pads
       const kind = p.h > 0.32 ? 'glove' : 'cover';
       p.vx = 0; p.vy = 0; p.vh = 0;
+      const from = { x: p.x, y: p.y, h: p.h };
       this.play('freeze', g.side, kind === 'glove' ? `Сейв: ${g.name} ловит шайбу в ловушку` : `Сейв: ${g.name} ловит и накрывает шайбу`, g);
       this.scrum(g);
       this.startStop('freeze', zoneDot(g.side, p.y), 1.3);
-      this.held = { g, kind, t0: this.tau }; this.holdPuck();
+      this.held = { g, kind, t0: this.tau, from }; this.holdPuck();
       return;
     }
     const out = loc(g.side, { x: 1, y: 0 }).x > 0 ? 0 : Math.PI; // facing out of his net
     const ang = (g.side === 0 ? 0 : Math.PI) + (this.rand() - 0.5) * 2.4;
     void out;
     const spd = 3.5 + this.rand() * 6 * (1.2 - g.rebound / 200);
-    p.vx = Math.cos(ang) * spd; p.vy = Math.sin(ang) * spd; p.h = 0.1; p.vh = 0.5; p.leg++;
+    p.vx = Math.cos(ang) * spd; p.vy = Math.sin(ang) * spd; p.h = Math.min(p.h, 0.9); p.vh = 0.5; p.leg++;
     p.noTouch = g; p.noTouchUntil = this.tau + 0.4; p.last = g; p.icing = null; this.released(g, true);
     // off his shoulder or the top of his glove: up into the netting or over the glass
     if (shot.kind !== 'tip' && p.vh >= 0 && this.rand() < 0.11) {
@@ -4117,12 +4153,13 @@ export class PlayRink {
   }
   private goalieStop(g: Sk, spd: number) {
     const p = this.puck, attackers = this.skaters((1 - g.side) as Side).some(a => dist(a, g) < 3.2);
-    p.x = g.x + Math.cos(g.fa) * 0.45; p.y = g.y + Math.sin(g.fa) * 0.45;
     if (spd < 9 && attackers) {
+      // smothered where it reached him (his glove comes down onto it)
       p.vx = 0; p.vy = 0; p.h = 0; this.play('freeze', g.side, `${g.name} накрывает шайбу`, g); this.scrum(g); this.startStop('freeze', zoneDot(g.side, p.y), 1.2);
-      this.held = { g, kind: 'cover', t0: this.tau }; this.holdPuck();
+      this.held = { g, kind: 'cover', t0: this.tau, ...(dist(p, g) < 0.9 ? { from: { x: p.x, y: p.y, h: 0 } } : {}) }; this.holdPuck();
       return;
     }
+    p.x = g.x + Math.cos(g.fa) * 0.45; p.y = g.y + Math.sin(g.fa) * 0.45;
     // he plays it to a teammate: to the corner or the nearest defenceman
     const mate = this.skaters(g.side, false).filter(a => a.kindD).sort((a, b) => dist(a, g) - dist(b, g))[0];
     const t = mate ? { x: mate.x, y: mate.y } : loc(g.side, { x: GOAL + 4, y: loc(g.side, g).y < MID ? 4 : 26 });
@@ -4418,7 +4455,7 @@ export class PlayRink {
   private moveOf(a: Sk): { mv: MoveKind | null; mt: number } {
     const act = a.act;
     // the goalie's freeze; a fight; the scorer's celebration; a dive to block
-    if (this.held?.g === a) return { mv: this.held.kind, mt: smooth01((this.tau - this.held.t0) / 0.3) };
+    if (this.held?.g === a) return { mv: this.held.kind, mt: smooth01((this.tau - this.held.t0) / HOLD_IN) };
     const fg = this.fightOn;
     if (fg && (fg.a === a || fg.b === a) && a.fall <= 0) return { mv: 'fight', mt: clamp((this.tau - fg.t0) / FIGHT_DUR, 0, 1) };
     if (this.celeb?.id === a.id && this.mode === 'stop') { const u = (this.tau - this.celeb.t0) / CELEB_DUR; if (u >= 0 && u < 1) return { mv: this.celeb.kind, mt: u }; }

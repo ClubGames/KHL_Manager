@@ -551,4 +551,35 @@ test('passes lead the receiver: a man skating on takes it in stride (keeps most 
   assert.ok(done / all > 0.55, 'most passes arrive');
 });
 
+test('the goalie: a save is made where the puck gets to him (no jump into his glove, none metres away), a goal does not fly through him', () => {
+  let saves = 0, maxJump = 0, goals = 0, through = 0, held = 0;
+  for (let g = 0; g < 4; g++) {
+    const k = make(g + 90), p = k as any;
+    const oSave = p.save.bind(p);
+    p.save = (gk: any, s: any) => {
+      const q = p.puck, x = q.x, y = q.y;
+      assert.ok(Math.hypot(x - gk.x, y - gk.y) < 1.6, `saved within his reach (${Math.hypot(x - gk.x, y - gk.y).toFixed(2)} m)`);
+      oSave(gk, s); saves++;
+      maxJump = Math.max(maxJump, Math.hypot(q.x - x, q.y - y));
+      if (p.held) held++;
+    };
+    let shot: any = null, crossed = false;
+    for (let i = 0; i < 60 * 60 * 22 && !k.ended; i++) {
+      const q = p.puck;
+      if (q.shot && q.shot !== shot) { shot = q.shot; crossed = false; }
+      const bx = q.x, by = q.y, bh = q.h;
+      k.advance(1 / 60);
+      if (shot && shot.outcome === 'goal' && shot.goalie && !crossed && (bx - shot.goalie.x) * (q.x - shot.goalie.x) <= 0 && bx !== q.x) {
+        crossed = true; goals++;
+        const u = (shot.goalie.x - bx) / (q.x - bx), y = by + (q.y - by) * u, h = bh + (q.h - bh) * u;
+        if (Math.abs(y - shot.goalie.y) < 0.38 && h < 0.85) through++;
+      }
+    }
+  }
+  console.log(`   ${saves} saves (${held} frozen), the puck moved at most ${maxJump.toFixed(2)} m at a save; ${goals} goals past a goalie, ${through} through him`);
+  assert.ok(saves > 60 && held > 10);
+  assert.ok(maxJump < 0.9, 'the puck stays where he stopped it');
+  assert.equal(through, 0, 'no goal through the goalie');
+});
+
 console.log(`\n${pass} play-control tests passed`);
