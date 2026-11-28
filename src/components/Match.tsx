@@ -1147,8 +1147,8 @@ export function Match({ game, onFinished }: { game: Game; onFinished: () => void
               <Icon name={paused ? 'play' : 'pause'} /> {paused ? 'Возобновить' : 'Пауза'}
             </Button>
             <div className="text-xs text-muted mt-3 mb-1">Пауза — клавиша «Пробел». Тактику, тайм-аут и вратаря можно менять прямо по ходу периода!</div>
-            <Button className="w-full mt-2" onClick={() => { if (status === 'playing') setPaused(true); ui.openSettings(); }} data-match-settings title="Повторы голов, видео, скорость матча">
-              <Icon name="settings" /> Настройки повторов
+            <Button className="w-full mt-2" onClick={() => { if (status === 'playing') setPaused(true); ui.openSettings('match'); }} data-match-settings title="Картинка, камера, повторы, звук">
+              <Icon name="settings" /> Настройки
             </Button>
             {status !== 'done' && (
               <Button className="w-full mt-2" onClick={finishNow}>

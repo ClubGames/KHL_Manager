@@ -8,7 +8,8 @@ import { gameClipsKey, goalClipKey, saveGameClips, type GameClips } from '../gam
 import { PlayRink, screenToRink, type PadState, type PlayOut } from '../game/playRink';
 import { endsSwitched } from '../game/rinkGeometry';
 import type { ReplayClip } from '../game/rinkPlayback';
-import { setSettings, useSettings } from '../game/settings';
+import { setSettings, useSettings, type Settings } from '../game/settings';
+import { MatchSettings } from './SettingsPanel';
 import { enterFullscreen, fullscreenSupported } from '../fullscreen';
 import { cn } from '../utils/cn';
 import { Button, Icon, TeamLogo } from './ui';
@@ -132,6 +133,10 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   useCrowdVerdict(phase === 'final', sim.score[0] > sim.score[1]);
   const [paused, setPaused] = useState(false);
   const [help, setHelp] = useState(false);
+  /** the settings open over the pause menu / the intermission (without the ones the match runs with) */
+  const [setOpen, setSetOpen] = useState(false);
+  /** what the match runs with, fixed when it starts (the settings may change in the menus meanwhile) */
+  const fixed = useRef<{ periodMinutes: Settings['playPeriod']; penaltyClock: Settings['playPenaltyClock']; difficulty: Settings['playDifficulty'] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [hud, setHud] = useState<Hud | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -195,11 +200,12 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       return;
     }
     sim.beginPlayed(k);
+    fixed.current ??= { periodMinutes: settings.playPeriod, penaltyClock: settings.playPenaltyClock, difficulty: settings.playDifficulty };
     const start = sim.sec;
     const box = carry.current ? ([carry.current[0].map(([id, end, coin]) => [id, end - start, coin]), carry.current[1].map(([id, end, coin]) => [id, end - start, coin])] as [[string, number, boolean?][], [string, number, boolean?][]]) : undefined;
     rink.current = new PlayRink({
       home: H, away: A, players: P, lineups: [sim.team(0).lineup, sim.team(1).lineup], userSide: userIdx, kind: k,
-      flip: endsSwitched(sim.period), periodMinutes: settings.playPeriod, penaltyClock: settings.playPenaltyClock, difficulty: settings.playDifficulty, autoSwitch: settings.playAutoSwitch,
+      flip: endsSwitched(sim.period), ...fixed.current, autoSwitch: settings.playAutoSwitch,
       goalies: [sim.goalies[0] ?? sim.team(0).lineup.starterG, sim.goalies[1] ?? sim.team(1).lineup.starterG], box, score: [sim.score[0], sim.score[1]], period: sim.period,
       timeouts: [timeouts.current[0], timeouts.current[1]],
     });
@@ -282,7 +288,8 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
 
   const command = (c: Command) => {
     const k = rink.current;
-    if (c === 'pause') { if (phase === 'playing' && !replay) setPaused((p) => !p); return; }
+    // (with the settings open the pause key goes back to the menu first)
+    if (c === 'pause') { if (setOpen) { setSetOpen(false); return; } if (phase === 'playing' && !replay) setPaused((p) => !p); return; }
     if (!k || paused || phase !== 'playing') return;
     if (c === 'pull') { const on = !k.pulled[userIdx]; k.setPulled(userIdx, on); toast(on ? 'Вратарь уходит — шестой полевой' : 'Вратарь возвращается в ворота'); }
     if (c === 'change') { k.requestChange(userIdx); toast('Смена звена'); }
@@ -372,6 +379,10 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   }, [phase, paused, replay, busy]);
   const padOnRef = useRef(false);
   const settingsRef = useRef(settings); settingsRef.current = settings;
+  // the automatic switch is a control preference: it follows the settings at once, also mid-period
+  useEffect(() => { rink.current?.setAutoSwitch(settings.playAutoSwitch); }, [settings.playAutoSwitch]);
+  // the menu closed (resumed, the period over): the settings with it
+  useEffect(() => { if (!(phase === 'playing' && paused) && phase !== 'break') setSetOpen(false); }, [phase, paused]);
 
   // Pause when the window is hidden (a phone call, switching apps).
   useEffect(() => {
@@ -529,7 +540,13 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       )}
 
       {/* Pause */}
-      {phase === 'playing' && paused && (
+      {setOpen && (phase === 'break' || (phase === 'playing' && paused)) && (
+        <Sheet>
+          <MatchSettings onBack={() => setSetOpen(false)} />
+        </Sheet>
+      )}
+
+      {phase === 'playing' && paused && !setOpen && (
         <Sheet>
           <h2 className="font-display text-xl mb-1">Пауза</h2>
           <p className="text-xs text-muted mb-3">{periodLabel} · {hud ? fmtClock(Math.max(0, Math.ceil(hud.len - hud.clock))) : ''} · счёт {score[0]}:{score[1]}</p>
@@ -538,6 +555,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
             <Button onClick={() => { rink.current?.requestChange(userIdx); setPaused(false); }}>Смена звена</Button>
             <Button onClick={() => { const kk = rink.current; if (kk) kk.setPulled(userIdx, !kk.pulled[userIdx]); setPaused(false); }}>{hud?.pulled ? 'Вернуть вратаря' : 'Снять вратаря'}</Button>
             <Button onClick={() => { setPaused(false); if (rink.current) timeout(rink.current); }} disabled={!hud?.tol || !!hud?.to} data-play-pause-timeout>{hud?.tol ? 'Тайм-аут (30 с)' : 'Тайм-аут уже взят'}</Button>
+            <Button variant="ghost" onClick={() => setSetOpen(true)} data-play-settings><Icon name="settings" /> Настройки</Button>
             <Button variant="ghost" onClick={() => setHelp((h) => !h)}>{help ? 'Скрыть управление' : 'Управление'}</Button>
             {goals.current.length > 0 && <Button variant="ghost" onClick={() => openReplay(goals.current[goals.current.length - 1])}>Повтор последнего гола</Button>}
             <Button variant="ghost" onClick={simRest} disabled={busy} data-play-simrest>{busy ? 'Симуляция…' : 'Досимулировать матч'}</Button>
@@ -547,7 +565,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       )}
 
       {/* Intermission */}
-      {phase === 'break' && (
+      {phase === 'break' && !setOpen && (
         <Sheet>
           <h2 className="font-display text-xl mb-1">{periodLabel} завершён</h2>
           <BoxLine sim={sim} home={H.short} away={A.short} />
@@ -555,6 +573,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
           <div className="flex gap-2 mt-4 flex-wrap justify-center">
             <Button variant="primary" size="lg" onClick={() => { startBlock(); setTick((t) => t + 1); }} data-play-next>{nextLabel}</Button>
             <Button size="lg" variant="ghost" onClick={simRest} disabled={busy}>{busy ? 'Симуляция…' : 'Досимулировать'}</Button>
+            <Button size="lg" variant="ghost" onClick={() => setSetOpen(true)} data-play-settings><Icon name="settings" /> Настройки</Button>
           </div>
         </Sheet>
       )}

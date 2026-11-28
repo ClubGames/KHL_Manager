@@ -18,8 +18,8 @@ export interface UIApi {
   tradeWith: (playerId: string) => void;
   /** open contract talks with a free agent or an own player */
   negotiate: (playerId: string) => void;
-  /** the settings window (replays, video, match, simulation) */
-  openSettings: () => void;
+  /** the settings window (replays, video, match, simulation); 'match' — opened from a match: without what it runs with */
+  openSettings: (scope?: 'all' | 'match') => void;
 }
 export const UIContext = createContext<UIApi>({
   openPlayer: () => {},

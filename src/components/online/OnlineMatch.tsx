@@ -8,6 +8,7 @@ import { enterFullscreen, fullscreenSupported } from '../../fullscreen';
 import { suspendPadNav } from '../../gamepadNav';
 import { cn } from '../../utils/cn';
 import { Button, Icon, TeamLogo } from '../ui';
+import { MatchSettings } from '../SettingsPanel';
 import { LiveRink } from '../RinkView';
 import { GoalReplay } from '../GoalReplay';
 import { ShootoutBoard } from '../Shootout';
@@ -44,6 +45,7 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [replay, setReplay] = useState<GoalItem | null>(null);
   const [help, setHelp] = useState(false);
+  const [setOpen, setSetOpen] = useState(false);
   const [padOn, setPadOn] = useState(false);
   const [waitLong, setWaitLong] = useState(false);
   const ticker = useRef(new Ticker()).current;
@@ -87,6 +89,8 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
   const paused = menu;
   const phaseRef = useRef(view.phase); phaseRef.current = view.phase;
   const pausedRef = useRef(paused); pausedRef.current = paused;
+  const setOpenRef = useRef(setOpen); setOpenRef.current = setOpen;
+  useEffect(() => { if (!paused) setSetOpen(false); }, [paused]);
   const openMenu = (on: boolean) => { setMenu(on); pausedRef.current = on; side.pause(on); };
   useEffect(() => { if (!playing && menu) { setMenu(false); side.pause(false); } }, [playing, menu, side]);
 
@@ -107,7 +111,7 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
   }, [ctx]);
 
   const command = (c: Command) => {
-    if (c === 'pause') { if (phaseRef.current === 'playing') openMenu(!pausedRef.current); return; }
+    if (c === 'pause') { if (setOpenRef.current) { setSetOpen(false); return; } if (phaseRef.current === 'playing') openMenu(!pausedRef.current); return; }
     if (c === 'replay') return; // online the match never stops for a replay: they are in the intermission
     if (phaseRef.current !== 'playing' || pausedRef.current) return;
     side.command(c as MatchCommand);
@@ -333,7 +337,13 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
         </Sheet>
       )}
 
-      {playing && paused && (
+      {playing && paused && setOpen && (
+        <Sheet>
+          <MatchSettings onBack={() => setSetOpen(false)} />
+        </Sheet>
+      )}
+
+      {playing && paused && !setOpen && (
         <Sheet>
           <h2 className="font-display text-xl mb-1" data-online-paused>Меню</h2>
           <p className="text-xs text-muted mb-3">Сетевой матч не останавливается: {peerName} играет дальше, а вашей командой пока управляет компьютер · счёт {score[0]}:{score[1]}</p>
@@ -341,6 +351,7 @@ export function OnlineMatch({ session, packs, onLobby, onLeave }: { session: Onl
             <Button variant="primary" size="lg" onClick={() => openMenu(false)} data-play-resume>Вернуться в игру</Button>
             <Button onClick={() => { openMenu(false); side.command('change'); }}>Смена звена</Button>
             <Button onClick={() => { openMenu(false); side.command('timeout'); }} disabled={!hud?.tol || !!hud?.to} data-play-pause-timeout>{hud?.tol ? 'Тайм-аут (30 с)' : 'Тайм-аут уже взят'}</Button>
+            <Button variant="ghost" onClick={() => setSetOpen(true)} data-play-settings><Icon name="settings" /> Настройки</Button>
             <Button variant="ghost" onClick={() => setHelp((h) => !h)}>{help ? 'Скрыть управление' : 'Управление'}</Button>
             <Button variant="danger" onClick={onLeave} data-online-leave>Выйти из матча</Button>
           </div>
