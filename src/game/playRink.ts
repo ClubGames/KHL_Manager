@@ -319,6 +319,8 @@ interface Sk {
   kickRecv?: number;
   /** laid out in a dive to block (L1 + R1) until this moment: a wide body on the ice */
   diveUntil?: number;
+  /** the next pass of the stick swept across the ice in front of him while he is laid out in a dive */
+  diveSweepAt?: number; diveSweepDir?: 1 | -1;
   /** serving a coincidental major (a fight): his team plays at full strength meanwhile, back to the bench after it */
   coin?: boolean;
   /** out of the match (ДдКМ, a match penalty): to the dressing room, never back on the ice */
@@ -3056,8 +3058,11 @@ export class PlayRink {
   /** L1 + R1 on defence: he lays out along the ice (a dive) — a wide body to block a shot or a pass for a second. */
   private dive(a: Sk) {
     a.act = null;
+    // laid out forward, the way he is going (a man skating backwards turns and goes down head first along it)
+    if (Math.hypot(a.vx, a.vy) > 1.2) a.fa = Math.atan2(a.vy, a.vx);
     a.vx += Math.cos(a.fa) * 2.2; a.vy += Math.sin(a.fa) * 2.2;
     a.diveUntil = this.tau + 1.15;
+    a.diveSweepAt = this.tau + 0.25; a.diveSweepDir = 1;
     a.stun = 1.15; a.fall = 1.15; a.fallK = 'front'; a.fallS = 1; a.fallAt = this.tau;
     a.cool = this.tau + 1.3;
     this.play('block', a.side, `${a.name} ложится под шайбу`, a);
@@ -3083,6 +3088,30 @@ export class PlayRink {
       return;
     }
     if (hit.what === 'legs') this.stickInLegs(a, c, true);
+  }
+  /**
+   * One pass of the stick swept across the ice in front of a man laid out in a dive: his hands are out past his
+   * helmet (some 0.75 m ahead of him), the blade a stick's length beyond them in an arc from one side to the other.
+   * It knocks the puck off a carrier's stick (or a loose puck) away sideways.
+   */
+  private diveSweep(a: Sk) {
+    const p = this.puck, c = p.carrier, dir = a.diveSweepDir ?? 1;
+    a.diveSweepDir = (dir > 0 ? -1 : 1);
+    // (a shot is the block's business — the body in the lane, in the puck step)
+    if (p.dead || p.shot || p.h > 0.25 || (c && c.side === a.side) || dist(a, p) > 2.6) return;
+    const hx = a.x + Math.cos(a.fa) * 0.75, hy = a.y + Math.sin(a.fa) * 0.75, from = a.fa - 0.75 * dir, pts: V2[] = [];
+    for (let k = 0; k <= 20; k++) { const ang = from + dir * 1.5 * k / 20; pts.push({ x: hx + Math.cos(ang) * 1.35, y: hy + Math.sin(ang) * 1.35 }); }
+    let i = -1;
+    if (c) { const hit = this.stickContact(pts, c); if (hit && (hit.what === 'puck' || hit.what === 'blade')) i = hit.i; }
+    else i = pts.findIndex(q => dist(q, p) < 0.22);
+    if (i < 0) return;
+    // away the way the blade was going
+    const ang = from + dir * 1.5 * i / 20, tx = -Math.sin(ang) * dir, ty = Math.cos(ang) * dir;
+    if (c) { c.act = null; c.cool = Math.max(c.cool, this.tau + 0.4); }
+    this.loose((c ? c.vx * 0.4 : p.vx * 0.3) + tx * 3, (c ? c.vy * 0.4 : p.vy * 0.3) + ty * 3);
+    if (c) { p.noTouch = c; p.noTouchUntil = this.tau + 0.45; }
+    p.last = a; p.icing = null; this.released(a, true);
+    this.play('takeaway', a.side, `${a.name} в падении выбивает шайбу клюшкой`, a);
   }
   /**
    * The puck is played toward the far end (a shot, a pass, a clear, a dump): icing is pending if it left from the
@@ -3263,6 +3292,7 @@ export class PlayRink {
   }
   private acts() {
     for (const a of this.onIce()) {
+      if ((a.diveUntil ?? 0) > this.tau && this.tau >= (a.diveSweepAt ?? Infinity)) { a.diveSweepAt = this.tau + 0.4; this.diveSweep(a); }
       const act = a.act;
       if (!act) continue;
       if (act.k === 'deke' && this.tau - act.t0 > DEKE_DUR[act.kind]) a.act = null;
