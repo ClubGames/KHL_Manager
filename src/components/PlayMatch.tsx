@@ -457,7 +457,8 @@ export function PlayMatchCore({ sim, H, A, P, userIdx, onDone, standalone, outro
     // a button still held from the menu (Start that resumed the match) is not a new press
     prevCommands.current = gamepadPad(pads()).commands;
     const loop = (now: number) => {
-      const dt = Math.min(0.1, (now - last) / 1000);
+      // (a slow device: up to 15 fixed steps a frame keep the game — and the clock — in real time; past that it slows)
+      const dt = Math.min(0.25, (now - last) / 1000);
       last = now;
       const k = rink.current;
       if (!k) return;
@@ -558,7 +559,7 @@ export function PlayMatchCore({ sim, H, A, P, userIdx, onDone, standalone, outro
           {ppSide === null && hud.men[0] !== 5 && <span className="rounded-sm px-1.5 bg-amber/15 text-amber font-semibold">{hud.men[0]} на {hud.men[1]}</span>}
           {hud.delayed !== null && <span className="rounded-sm px-1.5 bg-gold/20 text-gold font-semibold" data-play-delayed>Отложенный штраф</span>}
           {hud.pulled && <span className="rounded-sm px-1.5 bg-accent/15 text-accent font-semibold">Без вратаря</span>}
-          {hud.faceoff && !hud.foCue && <span className="text-ice font-semibold">Вбрасывание</span>}
+          {hud.faceoff && !hud.foCue && <span className="text-ice font-semibold" data-play-fo-cue="gather">Вбрасывание<span className="font-normal text-muted"> · {device === 'gamepad' ? 'RB' : device === 'touch' ? '«Вбрасывание»' : 'F'} — сразу к точке</span></span>}
           {hud.foCue === 'ready' && <span className="text-ice font-semibold" data-play-fo-cue="ready">Вбрасывание: {device === 'gamepad' ? 'RB или правый стик' : device === 'touch' ? 'кнопка «Вбрасывание»' : 'F'} — когда шайба падает</span>}
         </div>
       )}

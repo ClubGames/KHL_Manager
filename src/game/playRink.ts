@@ -424,6 +424,8 @@ interface Seat {
   /** his press for the current draw (-1: none yet) and whether it was the faceoff button */
   foPress: number;
   foBtn: boolean;
+  /** he pressed the faceoff button while the men skate to their places: skip to the draw (online: both must) */
+  foSkip?: boolean;
   /** when L2, R1 were last pressed (a tap or a hold), the last △ (twice quickly: a fight), the left stick last at rest
    *  (a flick of it with L1 held: a one-touch deke), R1 + the right stick already used for a dump-in / flip */
   ltAt: number; rbAt: number; pinTapAt: number; lRest: number; rbFlick: boolean;
@@ -1401,13 +1403,13 @@ export class PlayRink {
       if (g) { const n = loc(s, { x: GOAL + 1.0, y: MID }); place.set(g.id, n); if (!gather) { g.x = n.x; g.y = n.y; g.vx = 0; g.vy = 0; g.fa = s ? Math.PI : 0; } }
     }
     // the manager takes his centre for the draw
-    for (const z of this.seats()) { z.foPress = -1; z.foBtn = false; const c = this.center(z.side); if (c) z.ctl = c.id; }
+    for (const z of this.seats()) { z.foPress = -1; z.foBtn = false; z.foSkip = false; const c = this.center(z.side); if (c) z.ctl = c.id; }
     this.mode = 'faceoff';
     const setAt = this.tau;
     // the official skates to the dot and holds the puck out before he drops it (see officialCrew)
     // (the men just through the bench door get the time it takes them to come out)
     const late = [...this.agents.values()].some(a => a.on === 'ice' && a.hopTo !== undefined && a.hopTo > this.tau) ? HOP_DOOR : 0;
-    this.fo = { dot, setAt, drop: setAt + 1.5 + this.rand() * 0.6, done: false, gather, until: setAt + FO_GATHER_MAX + late, spots: place, decide: NaN };
+    this.fo = { dot, setAt, drop: setAt + 1.1 + this.rand() * 0.5, done: false, gather, until: setAt + FO_GATHER_MAX + late, spots: place, decide: NaN };
     this.zoneIn = [loc(0, dot).x > OPP_BLUE, loc(1, dot).x > OPP_BLUE];
   }
   /** A man standing in the straight path to `to` (within 0.8 m of it, ahead): the point beside him to skate for. */
@@ -1436,6 +1438,17 @@ export class PlayRink {
     const p = this.puck;
     if (fo.gather) {
       // everybody skates to his place (the goalies to their nets); the official waits with the puck at the dot
+      // … unless the managers do not want to watch it: the faceoff button now puts everybody in his place at once
+      // (on a short period the walk-up would otherwise eat a good part of the real time between the whistles)
+      this.seats().forEach((z, i) => { if (presses[i]?.faceoff) z.foSkip = true; });
+      const live = this.seats().filter(z => !z.away);
+      if (live.length && live.every(z => z.foSkip)) {
+        for (const a of this.onIce()) {
+          const sp = fo.spots.get(a.id);
+          if (!sp) continue;
+          a.x = sp.x; a.y = sp.y; a.vx = 0; a.vy = 0; a.hopTo = undefined; a.act = null;
+        }
+      }
       let ready = true;
       for (const a of this.onIce()) {
         a.manual = false;
@@ -1456,7 +1469,7 @@ export class PlayRink {
       if (!ready && this.tau < fo.until) return;
       // the last few centimetres are set straight (anybody still far off after the wait stays where he is: nobody is seen jumping)
       for (const a of this.onIce()) { const sp = fo.spots.get(a.id); if (sp && Math.hypot(sp.x - a.x, sp.y - a.y) < 1.2) { a.x = sp.x; a.y = sp.y; } a.vx = 0; a.vy = 0; if (!a.goalie || sp) a.fa = a.side ? Math.PI : 0; a.tx = a.x; a.ty = a.y; }
-      fo.gather = false; fo.setAt = this.tau; fo.drop = this.tau + 1.5 + this.rand() * 0.6;
+      fo.gather = false; fo.setAt = this.tau; fo.drop = this.tau + 1.1 + this.rand() * 0.5;
       return;
     }
     this.seats().forEach((z, i) => { const press = presses[i]; if (press && (press.faceoff || press.shoot || press.pass) && z.foPress < 0) { z.foPress = this.tau; z.foBtn = press.faceoff; } });
