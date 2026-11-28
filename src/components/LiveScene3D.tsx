@@ -44,6 +44,8 @@ type Actor = {
   seat?: string; sitAt?: number;
   /** skating off to the bench / the penalty box (from where he left the ice) and stepping in — or back out onto the ice */
   off?: Trip; enter?: Trip;
+  /** the rink's word on his way through the boards (the gate, or over them) in the last picture he was on the ice in; his trips counted */
+  gate?: boolean; trips?: number;
   /** on the ice in the last picture (undefined: not known — the first picture, a new period) */
   on?: boolean;
   /** how he skates right now (skateGait.ts) and his own way of skating */
@@ -52,7 +54,16 @@ type Actor = {
   jolt?: { x: number; z: number; k: number };
 };
 /** A walk between the ice and a seat: from (fx, fz), through the door in the boards (or over the boards, `hop`). */
-type Trip = { fx: number; fz: number; t0: number; hop: boolean; dur: number; /** through this door in the boards (at a whistle the bench uses its doors) */ door?: { x: number; z: number }; /** entering: the share of the trip spent getting out of the bench */ out?: number };
+type Trip = { fx: number; fz: number; t0: number; hop: boolean; dur: number; /** through this door in the boards (at a whistle the bench uses its doors) */ door?: { x: number; z: number }; /** entering: the share of the trip spent getting out of the bench */ out?: number;
+  /** over the boards for real (PlayerFigure.vault) at x: `walk` ms getting there (up from the seat / skating in), `jump` ms the vault itself, swinging the legs to `lead` */
+  vault?: { x: number; lead: 1 | -1; walk: number; jump: number } };
+/** How long the vault over the boards takes (ms). */
+const VAULT_MS = 850;
+const HW3 = RINK.width / 2;
+/** Over the boards at x in front of a bench: within its front, near where he comes from. */
+const vaultX = (side: 0 | 1, x: number, near: number, span: number) => clamp(clamp(x, near - span, near + span), BENCH.x[side] - 3, BENCH.x[side] + 3);
+/** A man's pick of the door or the boards at a whistle (most use the door) — a hash, the same on every replay of it. */
+const whistleGate = (id: string, n: number) => { let h = 2166136261 ^ Math.imul(n, 2654435761); for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 16777619); return (h >>> 0) % 10 < 7; };
 /** The bench door of a side nearest to x (on the boards' line, a step onto the ice). */
 const benchDoor = (side: 0 | 1, x: number) => { const d = DOORS.filter(o => o.kind === 'bench' && o.side === side).sort((a, b) => Math.abs(a.x - x) - Math.abs(b.x - x))[0]; return { x: d.x, z: d.z + .45 }; };
 /** The door (or the top of the boards) a seat is reached through: on the ice edge in front of it. */
@@ -703,13 +714,24 @@ export function LiveScene3D(props: Props) {
             if (a.on === false) {
               // from his seat, from where he was going, or (the light preset seats nobody) from the bench
               const p = a.seat || a.off ? a.group.position : { x: BENCH.x[a.side] + (a.phase % 1 - .5) * 4, z: BENCH.seatZ };
-              const bench = !a.seat?.startsWith('p') && p.z < 0, door = bench && f.stopped ? benchDoor(a.side, p.x) : undefined;
+              const bench = !a.seat?.startsWith('p') && p.z < 0;
               // as long as the rink holds him at the boards (the frames' `hop`): he skates only once he is out
-              const hold = f.skaters.find(q => q.id === a.id)?.hop ?? 0;
-              const base = door ? 750 + Math.hypot(door.x - p.x, door.z - p.z) / 2.2 * 1000 : 750;
-              a.enter = { fx: p.x, fz: p.z, t0: now, hop: bench && !door, dur: hold > 0 ? Math.max(hold * 1000 + 180, 600) : base, door, out: hold > 0 ? clamp((hold * 1000) / (hold * 1000 + 180), .6, .9) : .45 };
+              const fr = f.skaters.find(q => q.id === a.id), hold = fr?.hop ?? 0, track = fr ? toWorld(fr.pos) : null;
+              // through the bench door when the rink says so (at a whistle without a hold: the door, as ever), else over the boards
+              const gate = bench && (hold > 0 ? !!fr?.gate : !!f.stopped);
+              const door = gate ? benchDoor(a.side, track && hold > 0 ? track.x : p.x) : undefined;
+              if (bench && !gate) {
+                // up from the seat to the boards, the vault, and only then away on his skates (the vault ends as the hold does)
+                const H = hold > 0 ? hold * 1000 : 1000, walk = clamp(H + 150 - VAULT_MS, 200, 600);
+                a.trips = (a.trips ?? 0) + 1;
+                a.enter = { fx: p.x, fz: p.z, t0: now, hop: false, dur: walk + VAULT_MS + 320, vault: { x: vaultX(a.side, track?.x ?? p.x, p.x, 1.2), lead: (a.trips + a.id.length) % 2 ? 1 : -1, walk, jump: VAULT_MS } };
+              } else {
+                const base = door ? 750 + Math.hypot(door.x - p.x, door.z - p.z) / 2.2 * 1000 : 750;
+                a.enter = { fx: p.x, fz: p.z, t0: now, hop: false, dur: hold > 0 ? Math.max(hold * 1000 + 180, 600) : base, door, out: hold > 0 ? clamp((hold * 1000) / (hold * 1000 + 180), .6, .9) : .45 };
+              }
             }
             a.on = true; a.off = undefined;
+            a.gate = !!f.skaters.find(q => q.id === a.id)?.gate;
             if (a.seat) { leaveSeat(a); a.lx = NaN; }
             return;
           }
@@ -724,11 +746,50 @@ export function LiveScene3D(props: Props) {
           else if (a.seat) leaveSeat(a);
           if (wasOn) {
             const target = seat ?? (box === undefined ? { x: BENCH.x[a.side], z: BENCH.seatZ } : boxSeat(a.side, 0));
-            // at a whistle the bench's doors (on the fly over the boards)
-            const viaDoor = box === undefined && !!seat && f.stopped ? benchDoor(a.side, from.x) : undefined;
-            const door = viaDoor ?? doorOf(target), inside = viaDoor ? Math.hypot(target.x - door.x, target.z - door.z) / 2.2 * 1000 : 0;
-            // at skating speed all the way (a man sent off from the far end takes his time, he is not slid there)
-            a.off = { fx: from.x, fz: from.z, t0: now, hop: box === undefined && !!seat && !viaDoor, dur: clamp(Math.hypot(door.x - from.x, door.z - from.z) / 6.8, .25, 5) * 1000 + (seat ? (box === undefined ? 600 + inside : 900) : 0), door: viaDoor };
+            // the way in: on the fly the rink's word (the defencemen mostly by the door, the forwards over the boards); at a
+            // whistle most of them by the door, a few over the boards all the same
+            a.trips = (a.trips ?? 0) + 1;
+            const gate = box === undefined && (f.stopped ? whistleGate(a.id, a.trips) : !!a.gate);
+            if (box === undefined && !gate) {
+              // skating in to the boards, over them (PlayerFigure.vault), down onto the bench floor and along to his seat
+              const vx = vaultX(a.side, from.x, seat?.x ?? from.x, 1.5), skate = clamp(Math.hypot(vx - from.x, -HW3 + .45 - from.z) / 6.8, .2, 5) * 1000;
+              a.off = { fx: from.x, fz: from.z, t0: now, hop: false, dur: skate + VAULT_MS + (seat ? 300 + Math.abs(seat.x - vx) / 2.2 * 1000 : 0), vault: { x: vx, lead: (a.trips + a.id.length) % 2 ? 1 : -1, walk: skate, jump: VAULT_MS } };
+            } else {
+              const viaDoor = box === undefined && !!seat ? benchDoor(a.side, from.x) : undefined;
+              const door = viaDoor ?? doorOf(target), inside = viaDoor ? Math.hypot(target.x - door.x, target.z - door.z) / 2.2 * 1000 : 0;
+              // at skating speed all the way (a man sent off from the far end takes his time, he is not slid there)
+              a.off = { fx: from.x, fz: from.z, t0: now, hop: false, dur: clamp(Math.hypot(door.x - from.x, door.z - from.z) / 6.8, .25, 5) * 1000 + (seat ? (box === undefined ? 600 + inside : 900) : 0), door: viaDoor };
+            }
+          }
+          if (a.off?.vault) {
+            const tr = a.off, vt = tr.vault!, ms = now - tr.t0;
+            if (ms < tr.dur) {
+              const bz = -HW3 + .45;
+              let x: number, y = 0, z: number, head: number;
+              a.group.visible = true;
+              if (ms < vt.walk) {
+                // skating in to the boards
+                const v = smooth01(ms / vt.walk * .85 + .15 * (ms / vt.walk));
+                x = tr.fx + (vt.x - tr.fx) * v; z = tr.fz + (bz - tr.fz) * v; head = Math.atan2(-(bz - tr.fz), vt.x - tr.fx);
+                a.group.position.set(x, y, z); a.group.rotation.set(0, angleLerp(head, Math.PI / 2, smooth01((ms / vt.walk - .6) / .4)), 0);
+                if (a.figure) { a.phase += realDt * 6; a.group.updateMatrixWorld(true); a.figure.skate(a.phase, .7 * (1 - ms / vt.walk), undefined, 0, { bank: 0 }); a.figure.castShadows(true); }
+              } else if (ms < vt.walk + vt.jump) {
+                // over them, facing the bench
+                a.group.position.set(vt.x, 0, -HW3); a.group.rotation.set(0, Math.PI / 2, 0);
+                if (a.figure) { a.group.updateMatrixWorld(true); a.figure.vault((ms - vt.walk) / vt.jump, { lead: vt.lead, from: 0, to: BENCH.floor }); a.figure.castShadows(true); }
+              } else {
+                // down on the bench floor and along to his seat
+                const st = seat ?? { x: vt.x, y: BENCH.floor, z: BENCH.seatZ, heading: -Math.PI / 2 };
+                const v = smooth01((ms - vt.walk - vt.jump) / Math.max(1, tr.dur - vt.walk - vt.jump)), sz = -HW3 - .46;
+                x = vt.x + (st.x - vt.x) * v; z = sz + (st.z - sz) * v; y = BENCH.floor;
+                head = angleLerp(Math.abs(st.x - vt.x) > .3 ? Math.atan2(0, st.x - vt.x) : Math.PI / 2, st.heading, v * v);
+                a.group.position.set(x, y, z); a.group.rotation.set(0, head, 0);
+                if (a.figure) { a.phase += realDt * 7; a.group.updateMatrixWorld(true); a.figure.skate(a.phase, .3, undefined, 0, { walk: 1 }); }
+              }
+              a.sitAt = undefined;
+              return;
+            }
+            a.off = undefined;
           }
           if (a.off) {
             // the trip: to the door at skating speed, then through it (or over the boards) onto the seat
@@ -775,9 +836,30 @@ export function LiveScene3D(props: Props) {
           const a = actorFor(p.id, p.side, !!p.goalie);
           const w = toWorld(p.pos), b = toWorld(prevOf.get(p.id) ?? p.pos), b2 = toWorld(prev2Of.get(p.id) ?? prevOf.get(p.id) ?? p.pos);
           a.group.visible = true;
+          // over the boards for real: up from the seat to the boards and the vault (then the blend into his track below)
+          if (a.enter?.vault) {
+            const tr = a.enter, vt = tr.vault!, ms = now - tr.t0;
+            if (ms < vt.walk + vt.jump) {
+              a.group.rotation.order = 'YXZ';
+              if (ms < vt.walk) {
+                const v = smooth01(ms / vt.walk), tz = -HW3 - .45;
+                a.group.position.set(tr.fx + (vt.x - tr.fx) * v, BENCH.floor, tr.fz + (tz - tr.fz) * v); a.group.rotation.set(0, -Math.PI / 2, 0);
+                if (a.figure) { a.phase += realDt * 7; a.group.updateMatrixWorld(true); a.figure.skate(a.phase, .3, undefined, 0, { walk: 1 }); a.figure.castShadows(true); }
+              } else {
+                a.group.position.set(vt.x, 0, -HW3); a.group.rotation.set(0, -Math.PI / 2, 0);
+                if (a.figure) { a.group.updateMatrixWorld(true); a.figure.vault((ms - vt.walk) / vt.jump, { lead: vt.lead, from: BENCH.floor, to: 0 }); a.figure.castShadows(true); }
+              }
+              a.lx = NaN; a.heading = -Math.PI / 2;
+              continue;
+            }
+          }
           // stepping onto the ice from a seat: through the door / over the boards, then he blends into his track
           let lift = 0;
-          if (a.enter) {
+          if (a.enter?.vault) {
+            const tr = a.enter, vt = tr.vault!, ms = now - tr.t0, k = vt.walk + vt.jump;
+            if (ms >= tr.dur) a.enter = undefined;
+            else { const v = smooth01((ms - k) / (tr.dur - k)), lz = -HW3 + .46; w.x = vt.x + (w.x - vt.x) * v; w.z = lz + (w.z - lz) * v; }
+          } else if (a.enter) {
             const tr = a.enter, u = (now - tr.t0) / tr.dur;
             if (u >= 1) a.enter = undefined;
             else {
@@ -1112,7 +1194,7 @@ export function LiveScene3D(props: Props) {
           const users: { x: number; z: number }[] = [];
           if (intro && ip) { ip.forEach(p => { if (p.visible) users.push(p); }); officials.forEach(o => { if (o.group.visible) users.push(o.group.position); }); }
           if (outro && outroPosesNow) { outroPosesNow.forEach(p => { if (p.visible && p.y < .5) users.push(p); }); officials.forEach(o => { if (o.group.visible) users.push(o.group.position); }); }
-          actors.forEach(a => { if (a.off || a.enter) users.push(a.group.position); });
+          actors.forEach(a => { if ((a.off && !a.off.vault) || (a.enter && !a.enter.vault)) users.push(a.group.position); });
           if (f.stopped) for (const p of shown) users.push(toWorld(p.pos));
           for (const d of arena.doors) {
             const want = users.some(u => Math.abs(u.x - d.x) < 1.25 && Math.abs(u.z - d.z) < 1.7) ? 1 : 0;

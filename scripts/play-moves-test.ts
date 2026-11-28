@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { parseRosterText } from '../src/game/roster';
-import { NO_PAD, PlayRink, screenToRink, type PadState, type PlayOut } from '../src/game/playRink';
+import { BENCH_DOOR, NO_PAD, PlayRink, screenToRink, type PadState, type PlayOut } from '../src/game/playRink';
 import { autoCamera, CAMERAS, cameraPose, LIVE_CAMERAS, liveCameraPose, STATIC_CAMERAS, VIEW_LABEL, type ReplayView } from '../src/components/replayCameras';
 import { detectDevice, emptyTouch, gamepadPad, keyboardPad, mergePads } from '../src/components/playInput';
 import { foulMove, FOUL_MOVE_DUR } from '../src/game/rinkPlayback';
@@ -330,6 +330,40 @@ test('star signatures: a dangler goes between his legs, a sniper sells the shot 
   assert.ok(wind('power', 50) < 0.45, 'in close he snaps it');
   assert.ok(wind('sniper', 40) < 0.38 && wind('sniper', 40) > 0.32, 'a sniper\'s quick snap');
   assert.ok(wind('dangler', 50) < 0.28, 'a dangler\'s wrist shot in tight');
+});
+
+test('line changes: the forwards hop the boards, the defencemen mostly use the gate; the new man comes on where the old one went off', () => {
+  const n = { F: [0, 0], D: [0, 0] }, whistle = [0, 0];
+  let atDoor = 0, gates = 0, hopsInSpan = 0, hops = 0, framed = 0;
+  for (let g = 0; g < 3; g++) {
+    const k = make(g), p = priv(k);
+    let prev = new Set<string>();
+    for (let i = 0; i < 60 * 600 && !k.finished; i++) {
+      k.advance(1 / 60);
+      if (i % 3) continue;
+      const on = new Set<string>();
+      for (const a of p.onIce()) {
+        on.add(a.id);
+        if (prev.has(a.id) || a.goalie || !(a.hopTo > p.tau)) continue;
+        const b = p.bench[a.side], dx = a.x - b.x;
+        if (p.mode !== 'play') { whistle[a.inGate ? 1 : 0]++; continue; }
+        n[a.kindD ? 'D' : 'F'][a.inGate ? 1 : 0]++;
+        if (a.inGate) { gates++; if (Math.abs(Math.abs(dx) - BENCH_DOOR) < 0.6) atDoor++; } else { hops++; if (Math.abs(dx) < 3.3) hopsInSpan++; }
+        const f = p.frames[p.frames.length - 1]?.sk.find((q: any) => q.id === a.id);
+        if (f && f.hop > 0 && !!f.gate === !!a.inGate) framed++;
+      }
+      prev = on;
+    }
+  }
+  const share = (x: number[]) => x[1] / Math.max(1, x[0] + x[1]);
+  console.log(`   through the gate: forwards ${(share(n.F) * 100).toFixed(0)}% of ${n.F[0] + n.F[1]}, defencemen ${(share(n.D) * 100).toFixed(0)}% of ${n.D[0] + n.D[1]}, at a whistle ${(share(whistle) * 100).toFixed(0)}% of ${whistle[0] + whistle[1]}`);
+  assert.ok(n.F[0] + n.F[1] > 40 && n.D[0] + n.D[1] > 20, 'changes on the fly happen');
+  assert.ok(share(n.F) < 0.3, 'forwards mostly over the boards');
+  assert.ok(share(n.D) > 0.4, 'defencemen mostly through the door');
+  assert.ok(whistle[0] + whistle[1] < 10 || share(whistle) > 0.5, 'at a whistle mostly through the door');
+  assert.ok(atDoor >= gates * 0.9, `out of the door itself (${atDoor}/${gates})`);
+  assert.ok(hopsInSpan >= hops * 0.9, `over the boards along the bench front, clear of the doors (${hopsInSpan}/${hops})`);
+  assert.ok(framed >= (gates + hops) * 0.8, 'the frames tell the 3D picture the way');
 });
 
 console.log(`\n${pass} play-moves tests passed`);

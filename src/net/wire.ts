@@ -111,7 +111,7 @@ const r3 = (v: number) => Math.round(v * 1000) / 1000;
 
 /** A frame as arrays with the people as indices into the period's id table (a third of the JSON). */
 export function packFrame(f: RinkFrame, index: Map<string, number>): PackedFrame {
-  const sk = f.sk.map(s => [index.get(s.id) ?? -1, s.side, s.goalie ? 1 : 0, s.box ? 1 : 0, r3(s.x), r3(s.y), r3(s.fa), s.ctrl ? 1 : 0, r3(s.fall), s.fk, s.fs, r3(s.check), r3(s.poke), r3(s.deke), s.mv, r3(s.mt), r3(s.stag), s.st, r3(s.stT), r3(s.hl), r3(s.hop), r3(s.jx), r3(s.jy), r3(s.jk)]);
+  const sk = f.sk.map(s => [index.get(s.id) ?? -1, s.side, s.goalie ? 1 : 0, s.box ? 1 : 0, r3(s.x), r3(s.y), r3(s.fa), s.ctrl ? 1 : 0, r3(s.fall), s.fk, s.fs, r3(s.check), r3(s.poke), r3(s.deke), s.mv, r3(s.mt), r3(s.stag), s.st, r3(s.stT), r3(s.hl), r3(s.hop), r3(s.jx), r3(s.jy), r3(s.jk), s.gate ? 1 : 0]);
   return [r3(f.tau), r3(f.clock), r3(f.px), r3(f.py), r3(f.ph), f.carrier, f.stop, r3(f.ox), r3(f.oy), r3(f.dx), r3(f.dy), sk];
 }
 export function unpackFrame(a: PackedFrame, ids: string[]): RinkFrame {
@@ -121,6 +121,8 @@ export function unpackFrame(a: PackedFrame, ids: string[]): RinkFrame {
     mv: e[14] as RinkFrame['sk'][number]['mv'], mt: e[15] as number, stag: e[16] as number, st: e[17] as RinkFrame['sk'][number]['st'], stT: e[18] as number, hl: e[19] as number, hop: (e[20] as number) || 0,
     // (the jolt behind a stagger: appended, so an older peer's frames still read)
     jx: (e[21] as number) || 0, jy: (e[22] as number) || 0, jk: (e[23] as number) || 0,
+    // (the way through the boards: appended too)
+    gate: e[24] ? 1 as const : 0 as const,
   }));
   return { tau: a[0] as number, clock: a[1] as number, px: a[2] as number, py: a[3] as number, ph: a[4] as number, carrier: a[5] as number, stop: a[6] as 0 | 1 | 2, ox: a[7] as number, oy: a[8] as number, dx: a[9] as number, dy: a[10] as number, sk, ids: sk.map(s => s.id) };
 }

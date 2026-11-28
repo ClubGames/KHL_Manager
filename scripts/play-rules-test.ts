@@ -198,7 +198,7 @@ test('goalie interference: an attacker running into the goalie in his crease is 
   toPlay(k); p.mode = 'play';
   const off = p.skaters(0)[1];
   p.nextUnit(0, 'all');
-  off.leaving = true; Object.assign(off, { x: p.bench[0].x + 5, y: 3 });
+  off.leaving = true; Object.assign(off, { x: p.bench[0].x + 9, y: 3 }); // (well clear of the bench door and the stretch he would hop over at)
   p.jumpEarly(off);
   const early = p.early[0];
   assert.ok(early, 'the next man jumped on early');

@@ -310,7 +310,7 @@ export class PlayerFigure {
     this.rig.updateMatrixWorld(true);
   }
 
-  private reset() { this.restLocal.forEach((q, bone) => bone.quaternion.copy(q)); this.flex = 0; }
+  private reset() { this.restLocal.forEach((q, bone) => bone.quaternion.copy(q)); this.flex = 0; this.rig.rotation.set(0, 0, 0); }
   /** The stick in his hands (or not: thrown away after the Cup, the Cup in his hands). */
   private props(on: boolean) { if (this.kit.official) return; this.shaft.visible = this.blade.visible = on; if (this.paddle) this.paddle.visible = on; }
 
@@ -974,6 +974,66 @@ export class PlayerFigure {
       const tt = o.t ?? 0;
       this.arm('R', this.world(now.lerp(vec(-.16, 1.28 + .04 * Math.sin(tt * 8), .62 + .06 * Math.max(0, Math.sin(tt * 8))), reach)), this.dirWorld(vec(-1, -.6, -.2)));
     }
+  }
+
+  /**
+   * Over the boards (a line change on the fly, or off the ice into the bench). The root stands on the boards' line,
+   * facing the way he goes (+z); he leaves the floor at height `from` (behind him) and lands on `to` (in front).
+   * u 0…1: up to the boards, both gloves onto the top (the stick in the top hand laid across it), the weight onto the
+   * hands — up, the body turned side-on and the skates swung over together to the `lead` side (+1 his left), the hips
+   * just clearing the top — down the far side, the knees taking the landing, the stick back to the ice and away.
+   */
+  vault(u: number, o: { lead?: 1 | -1; from?: number; to?: number } = {}) {
+    this.reset();
+    this.props(true);
+    u = clamp01(u);
+    const lead = o.lead ?? 1, y0 = o.from ?? 0, y1 = o.to ?? 0, m = this.hand, FY = .023 + LIFT * .2;
+    const hipRest = this.restRig.get('UpperLegL')?.pos.y ?? .9;
+    const load = smooth(u / .2), up = smooth((u - .14) / .3), down = smooth((u - .42) / .26);
+    const land = Math.sin(Math.PI * clamp01((u - .6) / .32)), free = smooth((u - .58) / .22), away = smooth((u - .78) / .22);
+    // the hips: crouched behind the boards → up just over the top cap → out over the far side → down into the landing
+    const over = up * (1 - down);
+    const hipY = lerp(lerp(y0 + hipRest + LIFT - .16 * load, 1.07 + .3, up), y1 + hipRest + LIFT - .2 * land, down);
+    const hipZ = lerp(lerp(-.42, -.3, load), .12, up) + (.42 - .12) * down + .12 * away;
+    // side-on over the top (the legs go round the lead side), square again as he lands
+    const yaw = lead * 1.05 * over;
+    this.rig.rotation.set(0, yaw, 0);
+    this.rig.position.set(-lead * .12 * over, hipY - hipRest, hipZ);
+    // leaning onto the hands, the shoulders kept square to the boards, the head on the ice ahead
+    const lean = .35 * load * (1 - down) + .45 * over + .3 * land * (1 - away);
+    this.turn('Abdomen', _t1.setFromAxisAngle(X, lean * .6).multiply(_t2.setFromAxisAngle(Z, lead * .25 * over)));
+    this.turn('Torso', _t1.setFromAxisAngle(Y, -yaw * .45).multiply(_t2.setFromAxisAngle(X, lean * .3)));
+    this.turn('Chest', _t1.setFromAxisAngle(Y, -yaw * .3));
+    this.turn('Neck', _t1.setFromAxisAngle(X, -lean * .8).multiply(_t2.setFromAxisAngle(Y, -yaw * .2)));
+    this.root.updateMatrixWorld(true);
+    // the skates: on the floor behind → tucked up and swung round the lead side over the top → down onto the far floor
+    const feet: [T.Vector3, T.Vector3] = [vec(.16, y0 + FY, -.4), vec(-.16, y0 + FY, -.4)];
+    const yawF: [number, number] = [.12, -.12];
+    ([0, 1] as const).forEach(i => {
+      const side = i ? -1 : 1, leading = side === lead ? 1 : 0;
+      // (the lead leg a beat ahead of the other)
+      const k = clamp01((u - .16 + leading * .04) / .5), arc = Math.sin(Math.PI * k), e = smooth(k);
+      const f = vec(side * .16 + lead * .42 * arc - lead * .06 * arc * (1 - leading), lerp(y0, y1, e) + FY + (1.07 + .16 - FY - Math.max(y0, y1)) * arc * arc * (3 - 2 * arc) + .05 * leading * arc, lerp(-.4, .46, smooth((k - .08) / .84)) + .06 * leading * arc);
+      feet[i] = f;
+      yawF[i] = side * .12 + lead * .9 * arc;
+    });
+    // landed: the skates apart, the knees bent, the weight forward
+    if (u > .7) for (const i of [0, 1] as const) { const s = i ? -1 : 1; feet[i].lerp(vec(s * .17, y1 + FY, .46 + .12 * away), smooth((u - .7) / .12)); }
+    // (the knees come up and out to the lead side, not forward into the boards)
+    const kneeOut = Math.max(over, smooth((u - .06) / .14) * (1 - down));
+    const poles: [T.Vector3, T.Vector3] = [vec(.25 + lead * 1.1 * kneeOut, -.1 + .7 * kneeOut, 1 - .75 * kneeOut), vec(-.25 + lead * 1.1 * kneeOut, -.1 + .7 * kneeOut, 1 - .75 * kneeOut)];
+    this.legs(feet, poles, yawF);
+    // the gloves: planted on the top of the boards (at the boards' line, wherever the body is) until he is over
+    const handsOn = load * (1 - free);
+    const topHand = vec(.22 * m, 1.09, .02), lowHand = vec(-.24 * m, 1.09, .04);
+    // the stick: in the top hand, laid across the top of the boards with the blade out over the far side → back on the ice
+    const flight = vec(.22, 1.09 - .55, 1.35), hand = vec(.2, 1.1, .02);
+    const skateHeel = vec(-.52, 0, .98 + .12 * away), skateTop = vec(.1, 1.02 - .2 * land, .3);
+    const heel = mixV(mixV(skateHeel, flight, load), skateHeel, free), top = mixV(mixV(skateTop, hand, load), skateTop, free);
+    const g = this.stick(this.mir(heel), this.mir(top), 1, this.hand);
+    const topSide = m > 0 ? 'L' : 'R', lowSide = m > 0 ? 'R' : 'L';
+    this.arm(topSide, this.world(g.top.clone().lerp(topHand, 0)), this.dirWorld(vec(m * .9, -.5, -.1)));
+    this.arm(lowSide, this.world(g.low.clone().lerp(lowHand, handsOn)), this.dirWorld(vec(-m * .9, -.3 + .6 * handsOn, -.3)));
   }
 
   /**
