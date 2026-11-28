@@ -228,6 +228,8 @@ export const PS_PREP = { away: 6, ref: 3, place: 1.5, set: 1.0, cap: 11 };
 const PS_REF_OFF = 5.5;
 const PST = { away: 1, place: 2, skate: 3, set: 4 } as const;
 const PS_STAGE = ['away', 'place', 'skate', 'set'] as const;
+/** A shot from farther than this from the net (m: past the attacking blue line and a bit) is a long one — see shoot. */
+const LONG_SHOT = 26;
 /** How long a shot press with the puck is kept when he cannot shoot at that moment (a deke, a kick, the moment after a move), s. */
 const SHOT_BUFFER = 0.35;
 /** The longest the players take to skate to their faceoff places after a whistle (s). */
@@ -3079,18 +3081,31 @@ export class PlayRink {
     const backSide = angDiff(facing, netAng) * a.hand > 1.0;
     let kind: ShotKind = kindIn ?? (held > 0.55 && power > 0.6 ? 'slap' : held > 0.28 ? 'snap' : backSide ? 'backhand' : 'wrist');
     if (!kindIn && this.tau - this.lastSave < 1.3 && dist(me, net) < 5) kind = 'rebound';
+    const d = dist(me, net);
+    // from far away (his own half, the neutral zone): no aimed shot at a net 30–55 m off — the manager's man aiming
+    // well away from the net clears it that way; otherwise it is a long, low slider that sprays (see below)
+    const long = !kindIn && d > LONG_SHOT;
+    if (long && a.manual && aim && Math.hypot(aim.x, aim.y) > 0.35) {
+      const off = Math.abs(angDiff(Math.atan2(aim.y, aim.x), Math.atan2(loc(s, net).y - a.y, loc(s, net).x - a.x)));
+      if (off > 0.55) {
+        const n = Math.hypot(aim.x, aim.y), t = inside({ x: a.x + (aim.x / n) * 45, y: a.y + (aim.y / n) * 45 }, 1.5);
+        this.slide(a, t, 17 + 7 * power, 0.12);
+        this.play('clear', s, `${a.name} выбрасывает шайбу`, a);
+        return;
+      }
+    }
     // aimed point on the goal mouth: the manager's man where he aims (the marker on the net shows it), the AI the open side
     const spot = this.aimSpot(a, power, aim, gl, false, kind === 'slap');
-    let ty = spot.ty, th = spot.th;
-    // aim error: a weak shooter, a hard slapper, skating fast, a man on him, the distance
-    const d = dist(me, net);
+    let ty = spot.ty, th = long ? 0.02 : spot.th;
+    // aim error: a weak shooter, a hard slapper, skating fast, a man on him, the distance (an angle, really: from
+    // past the blue line it grows faster than the distance — a shot from his own end rarely even finds the net)
     const pressure = Math.min(9, ...this.skaters(o, false).map(x => dist(x, a)));
     const k = this.diffOf(a);
     // (the manager's own man: he aims with the marker, which has to mean something — a good shooter puts it close to
     // it, a poor one or a hurried one still sprays it; the AI's spread is its whole aim)
-    const mine = a.manual && !!this.seatOf(a) ? 0.55 : 1;
-    const sig = mine * (0.16 + (88 - a.shoot) * 0.008) * (kind === 'slap' ? 1.25 : kind === 'backhand' ? 1.35 : 1) * (1 + Math.hypot(a.vx, a.vy) / 16) * (pressure < 1.4 ? 1.3 : 1) * clamp(d / 11, 0.5, 2.2) / Math.sqrt(k);
-    ty += this.gauss() * sig; th += this.gauss() * sig * 0.55;
+    const mine = a.manual && !!this.seatOf(a) && !long ? 0.55 : 1;
+    const sig = (long ? Math.pow(d / LONG_SHOT, 1.6) : 1) * mine * (0.16 + (88 - a.shoot) * 0.008) * (kind === 'slap' ? 1.25 : kind === 'backhand' ? 1.35 : 1) * (1 + Math.hypot(a.vx, a.vy) / 16) * (pressure < 1.4 ? 1.3 : 1) * clamp(d / 11, 0.5, 2.2) / Math.sqrt(k);
+    ty += this.gauss() * sig; th += long ? 0 : this.gauss() * sig * 0.55;
     th = Math.max(0.02, th);
     // speed of the puck
     const base = { wrist: 21, snap: 25, slap: 28, backhand: 17, tip: 20, rebound: 19 }[kind];
@@ -3122,6 +3137,8 @@ export class PlayRink {
         const solo = this.ps?.live && this.ps.shooter === a ? PS_CAL : 1;
         pg = GOAL_CAL * (1 - sv) * q * ZONE_MULT[zone] * corner * speedF * screen * move * rebound * dekeF * tip * diff * solo;
         pg = clamp(pg, 0.008, 0.8);
+        // a long slider at a goalie in his net: he has all the time in the world
+        if (long) pg *= 0.15;
       }
       if (this.rand() < pg) outcome = 'goal';
     }
@@ -3132,7 +3149,8 @@ export class PlayRink {
     // the puck flies straight at the aimed point; the height is reached at the goal line
     const dx = target.x - p.x, dy = target.y - p.y, dd = Math.hypot(dx, dy) || 1, T = dd / speed;
     p.carrier = null; p.dead = false; p.leg++; p.passTo = null; p.passBy = null; p.saucer = false;
-    p.vx = (dx / dd) * speed; p.vy = (dy / dd) * speed; p.h = 0.05; p.vh = (th - 0.05 + 0.5 * 9.81 * T * T) / T;
+    // (a long one is not lobbed onto the net: it leaves the blade low, hops once and slides, slowing on the ice)
+    p.vx = (dx / dd) * speed; p.vy = (dy / dd) * speed; p.h = 0.05; p.vh = long ? 0.6 + power * 1.2 : (th - 0.05 + 0.5 * 9.81 * T * T) / T;
     p.noTouch = a; p.noTouchUntil = this.tau + 0.3; p.last = a; this.released(a, kind === 'tip');
     this.armIcing(a);
     p.shot = { by: a, side: s, t0: this.tau, outcome, kind, from: { x: a.x, y: a.y }, xg, zone, goalie: g, strength: this.strength(s), ice: this.ice(), assists: this.assistsFor(a), post };
@@ -3981,7 +3999,7 @@ export class PlayRink {
       p.x = c.x; p.y = c.y; p.defl = true;
       if (shot) this.missed(shot, false);
     }
-    if (shot && this.tau - shot.t0 > 2.5) this.missed(shot, false);
+    if (shot && this.tau - shot.t0 > Math.max(2.5, dist(shot.from, { x: shot.side ? GOAL : OPP_GOAL, y: MID }) / 14 + 0.8)) this.missed(shot, false);
     // icing (hybrid): from the team's own half down the ice, untouched — see icingWatch
     if (p.icing !== null && this.rules.icing && !p.shot) this.icingWatch(ox, oy);
   }
