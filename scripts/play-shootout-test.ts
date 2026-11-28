@@ -120,12 +120,16 @@ test('the books: applyShootout writes the series as the engine does — events, 
 });
 
 test('the goal mouth is open: every shot the model scores crosses the line (none bounced off the cage)', () => {
-  let scored = 0, counted = 0;
+  let scored = 0, counted = 0, stopped = 0;
   for (let g = 0; g < 4; g++) {
     const [H, A] = pair(g + 10);
     const k = new PlayRink({ home: H, away: A, players: P, lineups: [H.lineup, A.lineup], userSide: null, kind: 'reg', periodMinutes: 20, seed: 900 + g });
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const p = (k as any).puck;
+    // (a shot the model scores can still be blocked by a body in the lane, or tipped on the way: not a goal then —
+    // and not the cage's doing; counted apart)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const f of ['block', 'tip']) { const o = (k as any)[f].bind(k); (k as any)[f] = (a: unknown, shot: { outcome: string }) => { if (shot.outcome === 'goal') stopped++; return o(a, shot); }; }
     let last: unknown = null;
     for (let i = 0; i < 60 * 60 * 40 && !k.ended; i++) {
       k.advance(1 / 60);
@@ -133,9 +137,10 @@ test('the goal mouth is open: every shot the model scores crosses the line (none
       counted += k.drain().filter((o) => o.type === 'shot' && o.outcome === 'goal').length;
     }
   }
-  console.log(`   ${scored} scoring shots, ${counted} goals`);
+  console.log(`   ${scored} scoring shots, ${counted} goals, ${stopped} blocked or tipped on the way`);
   assert.ok(scored > 3);
-  assert.equal(counted, scored);
+  assert.ok(stopped <= 1, 'hardly ever stopped on the way');
+  assert.equal(counted, scored - stopped);
 });
 
 console.log(`${pass} played shootout tests passed`);

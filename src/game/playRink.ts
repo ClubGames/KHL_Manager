@@ -2922,6 +2922,10 @@ export class PlayRink {
       }
       if (this.rand() < pg) outcome = 'goal';
     }
+    // released in front of the goal line: a blade reaching over the line (a shot from the post, a wraparound) lets it
+    // go from the near side of it, so it flies into the mouth instead of along the line (or straight up, with no room)
+    const pl = loc(s, p);
+    if (pl.x > OPP_GOAL - 0.3) { const q = loc(s, { x: OPP_GOAL - 0.3, y: pl.y }); p.x = q.x; p.y = q.y; }
     // the puck flies straight at the aimed point; the height is reached at the goal line
     const dx = target.x - p.x, dy = target.y - p.y, dd = Math.hypot(dx, dy) || 1, T = dd / speed;
     p.carrier = null; p.dead = false; p.leg++; p.passTo = null; p.passBy = null; p.saucer = false;
