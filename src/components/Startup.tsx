@@ -1,7 +1,7 @@
 import { APP_RELEASE, canInstallMods, canOpenModsFolder, desktopModInstall, installModArchive, MOD_SUBMIT_URL, modInstallPlace, openModsFolder, platform, USER_MODS_DIR, userModsDir } from '../platform';
 import { removeStoredMod } from '../game/modStore';
 import type { ModInstallResult } from '../platform';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 // served next to index.html instead of being inlined into the script
 const arena = './arena.jpg';
 const gameLogo = './icon-game.png';
@@ -13,7 +13,7 @@ import type { NormalizedRoster } from '../game/roster';
 import { effectivePayroll } from '../game/cap';
 import { formatMoney, isGoalie, isSkater } from '../game/ratings';
 import { cn } from '../utils/cn';
-import { Button, Icon, OverallChip, Panel, Spinner, TeamLogo, useUI } from './ui';
+import { Button, Icon, Modal, OverallChip, Panel, Spinner, TeamLogo, useUI } from './ui';
 import { ClubOverview } from './TeamInfo';
 import type { Team } from '../types';
 import { FullscreenButton } from './FullscreenButton';
@@ -305,107 +305,191 @@ function strength(r: NormalizedRoster, teamId: string): number {
   return all.length ? Math.round(all.reduce((s, p) => s + p.overall, 0) / all.length) : 0;
 }
 
-/** Shown under the club list once a club is picked: staff, units, stars with photos. */
-function ClubPreview({ roster, team }: { roster: NormalizedRoster; team: Team }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    ref.current?.scrollIntoView?.({ behavior: 'smooth', block: 'nearest' });
-  }, [team.id]);
+/** Strength rank → how hard the club is to manage: the top third are favourites, the bottom third underdogs. */
+function tierOf(rank: number, n: number): { label: string; hint: string; color: string } {
+  if (rank <= Math.ceil(n / 3)) return { label: 'Фаворит', hint: 'борьба за кубок с первого сезона', color: '#E5323E' };
+  if (rank <= Math.ceil((2 * n) / 3)) return { label: 'Середняк', hint: 'плей-офф — реальная цель', color: '#8FD8F0' };
+  return { label: 'Аутсайдер', hint: 'трудный старт: строить команду с нуля', color: '#93A4BC' };
+}
+
+type TeamSort = 'conf' | 'strength' | 'name' | 'budget';
+const SORTS: [TeamSort, string][] = [['conf', 'По конференциям'], ['strength', 'По силе'], ['name', 'А–Я'], ['budget', 'По бюджету']];
+
+/** The picked club: staff, units, stars with photos (one column — the side panel or a sheet on a phone). */
+function ClubPreview({ roster, team, rank, n, compact }: { roster: NormalizedRoster; team: Team; rank: number; n: number; compact?: boolean }) {
+  const tier = tierOf(rank, n);
   return (
-    <div ref={ref}>
-      <Panel
-        title={
-          <span className="flex items-center gap-2 min-w-0">
-            <TeamLogo team={team} size={22} />
-            <span className="truncate">{team.name}</span>
-          </span>
-        }
-        right={<span className="text-xs text-muted">{team.city} · {team.conference}{team.division ? ` · ${team.division}` : ''}</span>}
-        data-club-preview={team.id}
-      >
-        <ClubOverview team={team} P={roster.players} teams={roster.teams} chip={(p) => <OverallChip value={p.overall} size="sm" />} salaryCap={roster.salaryCap} />
-      </Panel>
+    <div data-club-preview={team.id}>
+      <div className="flex items-center gap-3 mb-3">
+        <TeamLogo team={team} size={56} />
+        <div className="min-w-0 flex-1">
+          <div className="font-display text-2xl uppercase leading-none truncate">{team.name}</div>
+          <div className="text-xs text-muted mt-1 truncate">{team.city} · {team.conference}{team.division ? ` · ${team.division}` : ''}</div>
+          <div className="mt-1.5 flex items-center gap-1.5 flex-wrap">
+            <span className="text-[10px] uppercase tracking-wider font-semibold px-1.5 py-0.5 rounded-sm border" style={{ color: tier.color, borderColor: `${tier.color}66`, background: `${tier.color}14` }}>{tier.label}</span>
+            <span className="text-[11px] text-muted">{tier.hint}</span>
+          </div>
+        </div>
+      </div>
+      <ClubOverview team={team} P={roster.players} teams={roster.teams} chip={(p) => <OverallChip value={p.overall} size="sm" />} salaryCap={roster.salaryCap} compact={compact} />
     </div>
   );
 }
 
 function TeamSelect({ roster, onStart }: { roster: NormalizedRoster; onStart: (teamId: string) => void }) {
   const [chosen, setChosen] = useState<string | null>(null);
-  const [confFilter, setConfFilter] = useState<'Все' | 'Запад' | 'Восток'>('Все');
-  const confs = (['Запад', 'Восток'] as const).filter((c) => confFilter === 'Все' || confFilter === c);
-  const team = chosen ? roster.teams.find((t) => t.id === chosen) : null;
+  const [conf, setConf] = useState<string>('');
+  const [sort, setSort] = useState<TeamSort>('conf');
+  const [query, setQuery] = useState('');
+  const [sheet, setSheet] = useState(false);
+  const confs = useMemo(() => [...new Set(roster.teams.map((t) => t.conference))].filter(Boolean), [roster]);
+  const power = useMemo(() => {
+    const m = new Map(roster.teams.map((t) => [t.id, strength(roster, t.id)]));
+    const order = [...roster.teams].sort((a, b) => m.get(b.id)! - m.get(a.id)!);
+    return { of: (id: string) => m.get(id) ?? 0, rank: (id: string) => order.findIndex((t) => t.id === id) + 1 };
+  }, [roster]);
+  const n = roster.teams.length;
+  const payroll = (t: Team) => effectivePayroll(t, roster.players, 'season');
+  const q = query.trim().toLowerCase();
+  const shown = roster.teams
+    .filter((t) => !conf || t.conference === conf)
+    .filter((t) => !q || [t.name, t.city, t.short].some((x) => x?.toLowerCase().includes(q)));
+  const sorted = [...shown].sort((a, b) =>
+    sort === 'name' ? a.name.localeCompare(b.name, 'ru') : sort === 'budget' ? b.budget - a.budget : sort === 'strength' ? power.of(b.id) - power.of(a.id) : 0
+  );
+  const groups: { title: string | null; teams: Team[] }[] =
+    sort === 'conf' && !conf && confs.length > 1 ? confs.map((c) => ({ title: `Конференция «${c}»`, teams: sorted.filter((t) => t.conference === c) })).filter((g) => g.teams.length) : [{ title: null, teams: sorted }];
+  const team = chosen ? roster.teams.find((t) => t.id === chosen) ?? null : null;
+  const pickRandom = () => {
+    const pool = shown.length ? shown : roster.teams;
+    const t = pool[Math.floor(Math.random() * pool.length)];
+    if (t) setChosen(t.id);
+  };
+  const seg = (on: boolean) => cn('px-2.5 py-1.5 text-xs font-semibold rounded-sm transition-colors whitespace-nowrap', on ? 'bg-accent text-white' : 'text-muted hover:text-text');
   return (
-    <div className="space-y-4">
-      <div className="md:hidden inline-flex rounded-sm border border-line bg-panel p-0.5 w-full">
-        {(['Все', 'Запад', 'Восток'] as const).map((cf) => (
-          <button
-            key={cf}
-            type="button"
-            onClick={() => setConfFilter(cf)}
-            className={cn(
-              'flex-1 py-1.5 text-xs font-semibold rounded-sm transition-colors',
-              confFilter === cf ? 'bg-accent text-white' : 'text-muted hover:text-text'
-            )}
-          >
-            {cf === 'Все' ? 'Обе конференции' : cf}
-          </button>
-        ))}
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {confs.map((c) => (
-          <Panel key={c} title={`Конференция «${c}»`} noPad>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-2.5 sm:p-3">
-              {roster.teams
-                .filter((t) => t.conference === c)
-                .map((t) => {
-                  const s = strength(roster, t.id);
-                  return (
-                    <button
-                      key={t.id}
-                      onClick={() => setChosen(t.id)}
-                      className={cn('flex items-center gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-md border text-left transition-all duration-150 hover:bg-panel2', chosen === t.id ? 'border-accent bg-accent/10 ring-1 ring-accent/50' : 'border-line bg-panel2/40')}
-                    >
-                      <TeamLogo team={t} size={40} />
-                      <div className="min-w-0 flex-1">
-                        <div className="font-semibold truncate">{t.name}</div>
-                        <div className="text-xs text-muted truncate">{t.city}</div>
-                        <div className="text-[11px] text-muted mt-0.5 truncate">
-                          {t.players.length} игр.
-                          {t.players.some((pid) => roster.players[pid]?.inVhl) ? ` (${roster.farmName} ${t.players.filter((pid) => roster.players[pid]?.inVhl).length})` : ''} · ФОТ{' '}
-                          {formatMoney(effectivePayroll(t, roster.players, 'season'))}
-                        </div>
-                      </div>
-                      <div className="text-right shrink-0">
-                        <div className="font-display text-xl tabular" style={{ color: s >= 80 ? '#E5323E' : s >= 77 ? '#8FD8F0' : '#E8EEF5' }}>
-                          {s}
-                        </div>
-                        <div className="text-[10px] uppercase tracking-wider text-muted">сила</div>
-                      </div>
-                    </button>
-                  );
-                })}
+    <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-4 lg:items-start" data-team-select>
+      <div className="space-y-3 min-w-0">
+        <div className="flex flex-wrap items-center gap-2" data-team-tools>
+          <label className="relative flex-1 min-w-[180px]">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted"><Icon name="search" /></span>
+            <input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Клуб или город" className="w-full bg-panel border border-line rounded-sm pl-8 pr-2.5 py-2 text-sm placeholder:text-muted/70 focus:outline-none focus:border-ice" data-team-search aria-label="Поиск клуба" />
+          </label>
+          {confs.length > 1 && (
+            <div className="inline-flex rounded-sm border border-line bg-panel p-0.5" role="group" aria-label="Конференция">
+              {['', ...confs].map((c) => (
+                <button key={c || 'all'} type="button" onClick={() => setConf(c)} className={seg(conf === c)} aria-pressed={conf === c}>
+                  {c || 'Все'}
+                </button>
+              ))}
             </div>
-          </Panel>
+          )}
+          <select value={sort} onChange={(e) => setSort(e.target.value as TeamSort)} className="bg-panel border border-line rounded-sm px-2 py-2 text-xs text-text focus:outline-none focus:border-ice" aria-label="Сортировка" data-team-sort>
+            {SORTS.map(([id, l]) => <option key={id} value={id}>{l}</option>)}
+          </select>
+          <button type="button" onClick={pickRandom} className="inline-flex items-center gap-1.5 px-2.5 py-2 rounded-sm border border-line bg-panel text-xs text-muted hover:text-text" title="Выбрать случайный клуб" data-team-random>
+            <Icon name="dice" /> Случайный
+          </button>
+        </div>
+        {groups.map((g) => (
+          <section key={g.title ?? 'all'}>
+            {g.title && <h3 className="text-[11px] uppercase tracking-[0.18em] text-muted font-semibold mb-1.5 mt-1">{g.title}</h3>}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {g.teams.map((t) => {
+                const st = power.of(t.id), rank = power.rank(t.id), tier = tierOf(rank, n), farm = t.players.filter((pid) => roster.players[pid]?.inVhl).length;
+                const on = chosen === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setChosen(t.id)}
+                    onDoubleClick={() => onStart(t.id)}
+                    aria-pressed={on}
+                    data-team-card={t.id}
+                    className={cn('group flex items-center gap-2.5 p-2.5 rounded-md border text-left transition-all duration-150 hover:bg-panel2', on ? 'border-accent bg-accent/10 ring-1 ring-accent/50' : 'border-line bg-panel/70')}
+                  >
+                    <TeamLogo team={t} size={40} />
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold truncate">{t.name}</div>
+                      <div className="text-xs text-muted truncate">{t.city}</div>
+                      <div className="text-[11px] text-muted mt-0.5 truncate">
+                        <span style={{ color: tier.color }}>{tier.label}</span> · {t.players.length - farm} игр.{farm ? ` + ${farm} ${roster.farmName}` : ''} · ФОТ {formatMoney(payroll(t))}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-display text-xl tabular leading-none" style={{ color: st >= 80 ? '#E5323E' : st >= 77 ? '#8FD8F0' : '#E8EEF5' }}>{st}</div>
+                      <div className="text-[10px] uppercase tracking-wider text-muted mt-0.5">№{rank}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
         ))}
+        {!shown.length && <div className="rounded-md border border-dashed border-line p-6 text-center text-sm text-muted">Ничего не найдено{q ? ` по запросу «${query.trim()}»` : ''}.</div>}
+        {roster.warnings.length > 0 && (
+          <Panel title={`Предупреждения ростера (${roster.warnings.length})`}>
+            <ul className="text-xs text-amber/90 space-y-1 max-h-32 overflow-y-auto">
+              {roster.warnings.map((w, i) => (
+                <li key={i}>• {w}</li>
+              ))}
+            </ul>
+          </Panel>
+        )}
       </div>
-      {team && <ClubPreview roster={roster} team={team} />}
-      {roster.warnings.length > 0 && (
-        <Panel title={`Предупреждения ростера (${roster.warnings.length})`}>
-          <ul className="text-xs text-amber/90 space-y-1 max-h-32 overflow-y-auto">
-            {roster.warnings.map((w, i) => (
-              <li key={i}>• {w}</li>
-            ))}
-          </ul>
-        </Panel>
-      )}
-      <div className="sticky bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-10">
-        <div className="bg-panel2/95 backdrop-blur border border-line rounded-md p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 sm:gap-4 shadow-xl">
-          <div className="text-xs sm:text-sm text-muted">{team ? <>Выбран клуб: <b className="text-text">{team.name}</b>. Сезон {roster.season}, {roster.gamesPerTeam} матчей.</> : 'Выберите клуб, которым будете управлять'}</div>
-          <Button variant="primary" size="lg" className="w-full sm:w-auto" disabled={!team} onClick={() => team && onStart(team.id)}>
+
+      {/* wide screens: the picked club stays in view next to the list, with the start button */}
+      <aside className="hidden lg:flex flex-col sticky top-4 max-h-[calc(100vh-2rem)] rounded-md border border-line bg-panel/90 backdrop-blur overflow-hidden" data-club-side>
+        {team ? (
+          <>
+            <div className="flex-1 min-h-0 overflow-y-auto p-4">
+              <ClubPreview roster={roster} team={team} rank={power.rank(team.id)} n={n} compact />
+            </div>
+          </>
+        ) : (
+          <div className="p-6 text-center">
+            <div className="mx-auto w-14 h-14 rounded-full border border-dashed border-line flex items-center justify-center text-muted mb-3"><Icon name="trophy" className="w-6 h-6" /></div>
+            <div className="font-display uppercase text-lg">Выберите клуб</div>
+            <p className="text-xs text-muted mt-1.5">Нажмите на клуб в списке — здесь появятся его состав, штаб и финансы. Двойной щелчок — сразу начать карьеру.</p>
+            <p className="text-xs text-muted mt-3"><b style={{ color: '#E5323E' }}>Фаворит</b> — проще, <b style={{ color: '#93A4BC' }}>аутсайдер</b> — интереснее строить команду.</p>
+          </div>
+        )}
+        <div className="border-t border-line p-3 bg-panel2/80">
+          <div className="text-[11px] text-muted mb-2">{team ? <>Сезон {roster.season} · {roster.gamesPerTeam} матчей · бюджет {formatMoney(team.budget)}</> : <>Сезон {roster.season} · {roster.gamesPerTeam} матчей</>}</div>
+          <Button variant="primary" size="lg" className="w-full" disabled={!team} onClick={() => team && onStart(team.id)}>
+            Начать карьеру
+          </Button>
+        </div>
+      </aside>
+
+      {/* phones and tablets: the picked club in a bar at the bottom — details in a sheet, the start right there */}
+      <div className="lg:hidden sticky bottom-[max(0.75rem,env(safe-area-inset-bottom))] z-10 mt-4">
+        <div className="bg-panel2/95 backdrop-blur border border-line rounded-md p-2.5 flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-2.5 shadow-xl">
+          {team ? (
+            <button type="button" onClick={() => setSheet(true)} className="flex items-center gap-2.5 min-w-0 flex-1 basis-full sm:basis-auto text-left" data-club-details title="Подробнее о клубе">
+              <TeamLogo team={team} size={34} />
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold truncate">{team.name}</span>
+                <span className="block text-[11px] text-muted truncate">сила {power.of(team.id)} · №{power.rank(team.id)} · {tierOf(power.rank(team.id), n).label}</span>
+              </span>
+              <span className="shrink-0 inline-flex items-center gap-1 text-xs text-ice px-2 py-1 rounded-sm border border-line"><Icon name="info" /> Подробнее</span>
+            </button>
+          ) : (
+            <div className="flex-1 basis-full sm:basis-auto text-xs text-muted">Выберите клуб, которым будете управлять</div>
+          )}
+          <Button variant="primary" className="w-full sm:w-auto shrink-0" disabled={!team} onClick={() => team && onStart(team.id)}>
             Начать карьеру
           </Button>
         </div>
       </div>
+      {team && (
+        <Modal open={sheet} onClose={() => setSheet(false)} width="max-w-2xl" title={<span className="font-display uppercase tracking-wide">Клуб</span>}>
+          <ClubPreview roster={roster} team={team} rank={power.rank(team.id)} n={n} />
+          <div className="mt-4 pt-3 border-t border-line flex gap-2 justify-end">
+            <Button variant="ghost" onClick={() => setSheet(false)}>Назад к списку</Button>
+            <Button variant="primary" onClick={() => { setSheet(false); onStart(team.id); }}>Начать карьеру за «{team.name}»</Button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -519,10 +603,10 @@ export function Startup({ onStart, onBack }: { onStart: (r: NormalizedRoster, te
   const rosterFileName = currentMod ? (currentMod.legacy ? 'roster.json' : `mods/${currentMod.id}/${currentMod.roster}`) : 'roster.json';
 
   return (
-    <div className="relative min-h-screen rink-lines overflow-hidden">
+    <div className="relative min-h-screen rink-lines overflow-x-clip">
       <div className="absolute inset-0 pointer-events-none" style={{ background: 'radial-gradient(ellipse at 50% -10%, rgba(229,50,62,.14), transparent 55%)' }} />
-      <div className="relative max-w-6xl mx-auto px-3 sm:px-4 py-5 sm:py-8 md:py-12">
-        <header className="relative -mx-3 sm:-mx-4 md:mx-0 mb-6 sm:mb-8 md:rounded-md overflow-hidden border-0 md:border border-line bg-cover bg-center" style={{ backgroundImage: `url(${arena})`, backgroundPosition: 'center 55%' }}>
+      <div className="relative max-w-6xl mx-auto px-3 sm:px-4 py-4 sm:py-6 md:py-8">
+        <header className="relative -mx-3 sm:-mx-4 md:mx-0 mb-4 sm:mb-6 md:rounded-md overflow-hidden border-0 md:border border-line bg-cover bg-center" style={{ backgroundImage: `url(${arena})`, backgroundPosition: 'center 55%' }}>
           <div className="absolute inset-0 bg-gradient-to-r from-bg via-bg/85 to-bg/25" />
           {onBack && (
             <button type="button" onClick={onBack} className="absolute top-3 left-3 z-10 inline-flex items-center gap-1.5 px-2 py-1 rounded-sm border border-line text-xs text-muted hover:text-text bg-bg/70 backdrop-blur" data-startup-back title="Главное меню (Esc)">
@@ -540,23 +624,17 @@ export function Startup({ onStart, onBack }: { onStart: (r: NormalizedRoster, te
             </button>
             <FullscreenButton label className="bg-bg/70 backdrop-blur" />
           </div>
-          <div className="relative px-4 sm:px-6 md:px-10 pt-14 pb-6 sm:py-8 md:py-10">
-            <div className="flex items-center gap-3 sm:gap-5">
-              <img src={gameLogo} alt="" className="w-16 h-16 sm:w-24 sm:h-24 md:w-32 md:h-32 object-contain shrink-0 drop-shadow-[0_4px_18px_rgba(0,0,0,0.6)]" data-game-logo />
+          {/* compact: the club list is what this screen is for — it starts high on the page */}
+          <div className="relative px-4 sm:px-6 md:px-8 pt-14 pb-4 sm:pt-12 sm:pb-5 md:py-6">
+            <div className="flex items-center gap-3 sm:gap-4">
+              <img src={gameLogo} alt="" className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 object-contain shrink-0 drop-shadow-[0_4px_18px_rgba(0,0,0,0.6)]" data-game-logo />
               <div className="min-w-0">
-                <p className="text-ice font-display uppercase tracking-[0.2em] sm:tracking-[0.3em] text-[11px] sm:text-xs">{GAME_NAME_EN}</p>
-                <h1 className="font-display text-3xl sm:text-4xl md:text-6xl font-bold uppercase leading-[0.95] mt-1 sm:mt-1.5">
+                <p className="text-ice font-display uppercase tracking-[0.2em] sm:tracking-[0.3em] text-[10px] sm:text-xs">{GAME_NAME_EN} · карьера</p>
+                <h1 className="font-display text-2xl sm:text-3xl md:text-4xl font-bold uppercase leading-[0.95] mt-1">
                   Хоккейный симулятор <span className="text-accent">менеджера</span>
                 </h1>
+                <p className="hidden sm:block text-muted mt-1.5 max-w-2xl text-xs md:text-sm">Продолжите сохранённую карьеру или выберите лигу и клуб — звенья, обмены, контракты, чемпионат и плей-офф.</p>
               </div>
-            </div>
-            <p className="text-muted mt-3 sm:mt-4 max-w-2xl text-xs sm:text-sm md:text-base">Возьмите под управление хоккейный клуб: собирайте звенья, проводите обмены, ведите команду через регулярный чемпионат и плей-офф. Лиги подключаются модами из папки <code className="bg-panel2 px-1.5 py-0.5 rounded text-ice">mods</code> — выберите мод и клуб ниже.</p>
-            <div className="flex flex-wrap gap-1.5 sm:gap-2 mt-4 sm:mt-5">
-              {['Регулярный чемпионат и плей-офф', 'Звенья, большинство, меньшинство', 'Обмены, рынок, контракты'].map((t) => (
-                <span key={t} className="inline-block text-[11px] uppercase tracking-wider bg-panel/80 border border-line rounded-sm pl-2.5 pr-3.5 py-1 text-text/85 slash">
-                  {t}
-                </span>
-              ))}
             </div>
           </div>
         </header>
