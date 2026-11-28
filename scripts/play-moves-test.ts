@@ -139,6 +139,54 @@ test('checks can miss: a skater slips one or rides it out; hits put men down on 
   assert.ok(kinds.has('back') && kinds.has('side'), 'different falls');
 });
 
+test('contact: a hit he rides out knocks him the way of the hit (harder from a strong checker); a checked AI carrier shields the puck', () => {
+  // a body check that lands but does not put him down: the stagger carries the jolt — the hit's direction, its strength
+  let seen = 0;
+  const strength: number[] = [];
+  for (let trial = 0; trial < 60 && seen < 6; trial++) {
+    const k = make(70 + trial, { flip: trial % 2 === 1 }), p = priv(k);
+    toPlay(k);
+    const a = p.skaters(0)[0], t = p.skaters(1)[0];
+    clear(k, [a, t]);
+    t.x = 30; t.y = 15; t.vx = 0; t.vy = 0; t.fa = Math.PI / 2; t.stagger = 0; t.stun = 0; t.fall = 0;
+    a.x = 29.2; a.y = 15; a.vx = 2.2; a.vy = 0; a.fa = 0; a.stun = 0; a.fall = 0;
+    a.act = { k: 'check', t0: p.tau, tgt: t, kind: 'shoulder' };
+    p.resolveCheck(a, t);
+    if (t.fall > 0 || t.stagger <= p.tau || !t.jk || t.stun < 0.4) continue;
+    seen++;
+    k.advance(1 / 60);
+    assert.ok(t.jx > 0.9 && Math.abs(t.jy) < 0.3, `knocked the way of the hit (${t.jx.toFixed(2)}, ${t.jy.toFixed(2)})`);
+    strength.push(t.jk);
+    const s = k.frameAt(k.lastTau).skaters.find(x => x.id === t.id)!;
+    assert.ok(s.stagger && s.staggerK && s.staggerDir, 'the frame carries the jolt');
+    assert.ok(Math.abs(s.staggerDir.x - (trial % 2 ? -1 : 1) * t.jx) < 1e-9, 'mirrored with the ends');
+  }
+  assert.ok(seen >= 3, `hits ridden out with a jolt (${seen})`);
+  assert.ok(strength.every(x => x > 0.2 && x <= 1), `jolt strengths ${strength.map(x => x.toFixed(2)).join(' ')}`);
+  // the same impact from a stronger checker jolts harder
+  const hit = (check: number) => {
+    const k = make(90), p = priv(k); toPlay(k);
+    const a = p.skaters(0)[0], t = p.skaters(1)[0]; clear(k, [a, t]);
+    a.check = check; t.bal = 60; t.stagger = 0; t.jk = 0;
+    p.jolt(t, p.tau + 0.45, 1, 0, Math.min(1, 3 / 4.2 * Math.sqrt((a.check + 20) / (t.bal + 20))));
+    return t.jk;
+  };
+  assert.ok(hit(90) > hit(40), 'a stronger checker, a bigger stumble');
+  // AI carriers under a checker show the shielding stance (only the carrier, and not all the time)
+  const k = make(7, { periodMinutes: 5 });
+  let carry = 0, prot = 0, wrong = 0;
+  for (let i = 0; i < 60 * 240; i++) {
+    k.advance(1 / 60); k.drain();
+    if (i % 6) continue;
+    const f = k.frameAt(k.lastTau);
+    if (f.carrier) carry++;
+    for (const s of f.skaters) if (s.stance === 'protect') { if (s.id === f.carrier) prot++; else wrong++; }
+  }
+  console.log(`   shielding in ${(100 * prot / carry).toFixed(0)}% of the carrying frames`);
+  assert.ok(prot > 0 && prot < carry * 0.5, 'a carrier shields the puck now and then');
+  assert.ok(wrong < prot * 0.1, 'shielding is the carrier\'s');
+});
+
 test('interference: no call on a man who just lost the puck (the grace after it), a late hit far from the play is called', () => {
   const k = make(50), p = priv(k);
   toPlay(k);

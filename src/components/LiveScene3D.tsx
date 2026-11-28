@@ -48,6 +48,8 @@ type Actor = {
   on?: boolean;
   /** how he skates right now (skateGait.ts) and his own way of skating */
   gait?: GaitState; style?: SkateStyle;
+  /** the jolt of a hit he is staggering from (character space, eased in) */
+  jolt?: { x: number; z: number; k: number };
 };
 /** A walk between the ice and a seat: from (fx, fz), through the door in the boards (or over the boards, `hop`). */
 type Trip = { fx: number; fz: number; t0: number; hop: boolean; dur: number; /** through this door in the boards (at a whistle the bench uses its doors) */ door?: { x: number; z: number }; /** entering: the share of the trip spent getting out of the bench */ out?: number };
@@ -285,7 +287,7 @@ export function LiveScene3D(props: Props) {
       let motion: LiveMotionLike | null = null, motionOf: LiveSource | null = null;
       const focus = { x: 0, z: 0, init: false };
       let lastTau = NaN, lastNow = performance.now(), lastCam = '', firstFrame = true;
-      const puckWorld = new T.Vector3(), local = new T.Vector3(), puckOff = { x: 0, z: 0 };
+      const puckWorld = new T.Vector3(), local = new T.Vector3(), tmpQ = new T.Quaternion(), puckOff = { x: 0, z: 0 };
       const aspect = () => camera.aspect;
       let settled = false, camSpeed = 0;
       // the captions over the picture: React state, set only when they change
@@ -906,7 +908,31 @@ export function LiveScene3D(props: Props) {
             carrierW = Math.max(carrierW, reachWeight);
             reach = local.clone();
           }
-          poses.push({ figure: a.figure, args: [a.phase, amp * (1 - fall), shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind, deke: p.deke, check: p.check, poke: p.poke, move: p.move, moveT: p.moveT, stagger: p.stagger, down: fall, pitch: laid ? pitch : undefined, pitchLift: laid ? a.group.position.y : undefined, gait, style: a.style, pump, kneel, t: tau - (goal?.tau ?? 0), stance: p.stance, stanceT: p.stanceT, handle: p.handle, now: tau }], w: reachWeight, carrier: f.carrier === p.id });
+          // a hit's jolt: the way he was knocked, into his own frame (eased in over a few hundredths)
+          if (p.staggerDir && p.staggerK) {
+            const q = toWorld({ x: p.pos.x + p.staggerDir.x / .6, y: p.pos.y + p.staggerDir.y / .3, h: 0 }), dw = new T.Vector3(q.x - w.x, 0, q.z - w.z);
+            dw.normalize().applyQuaternion(a.figure.root.getWorldQuaternion(tmpQ).invert());
+            const j = a.jolt ??= { x: 0, z: 0, k: 0 };
+            j.x = dw.x; j.z = dw.z; j.k = Math.min(p.staggerK, j.k + dTau * 14);
+          } else if (a.jolt) a.jolt.k = Math.max(0, a.jolt.k - dTau * 6);
+          // the carrier with a checker on him: where the man is (shielding the puck from him), and how tight it is
+          let threat: T.Vector3 | null = null, tight = 0;
+          if (f.carrier === p.id && !p.goalie) {
+            let best = 3.2;
+            for (const o of shown) {
+              if (o.side === p.side || o.goalie || o.box) continue;
+              const ow = toWorld(o.pos), d = Math.hypot(ow.x - w.x, ow.z - w.z);
+              if (d < best) { best = d; threat = a.figure.root.worldToLocal(new T.Vector3(ow.x, 0, ow.z)); }
+            }
+            if (threat && shot === undefined && !p.move) tight = 1 - smooth01((best - .9) / 1.0);
+          }
+          // going down with the puck near: the stick shot out one-handed at it
+          let fallReach = 0;
+          if (fall > 0 && !laid && pw.y < .3 && local.z > .3 && Math.hypot(local.x, local.z) < 2.4) {
+            fallReach = smooth01(fall / .3) * (1 - smooth01((Math.hypot(local.x, local.z) - 1.7) / .7));
+            if (fallReach > 0) reach = local.clone();
+          }
+          poses.push({ figure: a.figure, args: [a.phase, amp * (1 - fall), shot, cheer, { bank, reach, reachWeight, jolt: a.jolt && a.jolt.k > .01 ? a.jolt : null, threat, tight, fallReach, kind: rel?.rel.kind, deke: p.deke, check: p.check, poke: p.poke, move: p.move, moveT: p.moveT, stagger: p.stagger, down: fall, pitch: laid ? pitch : undefined, pitchLift: laid ? a.group.position.y : undefined, gait, style: a.style, pump, kneel, t: tau - (goal?.tau ?? 0), stance: p.stance, stanceT: p.stanceT, handle: p.handle, now: tau }], w: reachWeight, carrier: f.carrier === p.id });
         }
         let blade: { x: number; z: number; w: number } | null = null;
         for (const { figure, args, w, carrier } of poses) {
