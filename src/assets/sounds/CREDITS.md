@@ -19,3 +19,9 @@ small. The game sets the levels itself (by RMS) and loops the bed and the whistl
 
 Should a file not decode on a device, the synthesized sound plays in its place. Leaving the match screen fades every
 one of them out (and the organ).
+
+## Menu music and interface clicks
+
+Not files: both are synthesized in the app (`src/components/sound/menuMusic.ts`, `uiClicks.ts`). The menu music is an
+original piece written for the game (92 BPM, A minor: a pad, a plucked arpeggio with an echo, bass, soft drums, a bell
+melody in the chorus) — no samples, no third-party recordings, nothing added to the download.

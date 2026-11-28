@@ -1,13 +1,14 @@
-// The game's sound: everything is synthesized in the browser with the Web Audio API — noise shaped by filters and
-// envelopes, oscillators, voices made up of formant filters. No recorded samples, no third-party audio files: there
-// is nothing to license and nothing added to the download.
+// The game's sound, on the Web Audio API: most of it synthesized in the browser — noise shaped by filters and
+// envelopes, oscillators, voices made up of formant filters — plus a few recordings (sounds/, crowd/). The menu music
+// and the interface clicks are synthesized too.
 //
 // One AudioContext for the whole app, created (and resumed) on the first tap / click / key press — browsers and the
 // Android WebView only let sound start from a user gesture. Three buses under a master volume and a limiter:
-// effects (sticks, boards, whistle, horn…), the crowd, the arena organ.
+// effects (sticks, boards, whistle, horn…), the crowd, the arena organ; and two outside the arena — the menu music
+// and the interface's clicks.
 import { getSettings, subscribeSettings, type Settings } from '../../game/settings';
 
-export type Bus = 'sfx' | 'crowd' | 'music';
+export type Bus = 'sfx' | 'crowd' | 'music' | 'menu' | 'ui';
 
 type Engine = { ctx: AudioContext; master: GainNode; bus: Record<Bus, GainNode>; noise: AudioBuffer; pink: AudioBuffer; /** the arena's echo (a convolution reverb fed from every bus) */ reverb: ConvolverNode | null };
 let engine: Engine | null = null;
@@ -16,6 +17,8 @@ let muted = false;
 
 /** Volume of each crowd setting (the crowd bus). */
 const CROWD_GAIN: Record<Settings['soundCrowd'], number> = { off: 0, quiet: .45, normal: .8, loud: 1.15 };
+/** Volume of the menu music settings (the menu bus). */
+const MENU_GAIN: Record<Settings['menuMusic'], number> = { off: 0, quiet: .32, normal: .6 };
 
 function makeNoise(ctx: BaseAudioContext, seconds: number, pink: boolean): AudioBuffer {
   const n = Math.floor(ctx.sampleRate * seconds), buf = ctx.createBuffer(1, n, ctx.sampleRate), d = buf.getChannelData(0);
@@ -73,7 +76,7 @@ function create(): Engine | null {
     limiter.threshold.value = -10; limiter.knee.value = 8; limiter.ratio.value = 6; limiter.attack.value = .003; limiter.release.value = .2;
     const master = ctx.createGain();
     master.connect(limiter); limiter.connect(ctx.destination);
-    const bus = { sfx: ctx.createGain(), crowd: ctx.createGain(), music: ctx.createGain() };
+    const bus = { sfx: ctx.createGain(), crowd: ctx.createGain(), music: ctx.createGain(), menu: ctx.createGain(), ui: ctx.createGain() };
     for (const b of Object.values(bus)) b.connect(master);
     // the arena: everything also goes into the hall's echo — the crowd most (it surrounds you), the organ a lot,
     // the puck and the boards a little (their slap comes back off the stands)
@@ -84,7 +87,7 @@ function create(): Engine | null {
       reverb.buffer = arenaImpulse(ctx);
       const wet = ctx.createGain(); wet.gain.value = .5;
       reverb.connect(wet); wet.connect(master);
-      for (const [b, k] of [[bus.crowd, .3], [bus.music, .45], [bus.sfx, .16]] as const) { const g = ctx.createGain(); g.gain.value = k; b.connect(g); g.connect(reverb); }
+      for (const [b, k] of [[bus.crowd, .3], [bus.music, .45], [bus.sfx, .16], [bus.menu, .18]] as const) { const g = ctx.createGain(); g.gain.value = k; b.connect(g); g.connect(reverb); }
     } catch { reverb = null; }
     engine = { ctx, master, bus, noise: makeNoise(ctx, 2, false), pink: makeNoise(ctx, 4, true), reverb };
     applySettings(getSettings());
@@ -103,6 +106,8 @@ function applySettings(s: Settings) {
   bus.sfx.gain.setTargetAtTime(1, t, .05);
   bus.crowd.gain.setTargetAtTime(CROWD_GAIN[s.soundCrowd], t, .1);
   bus.music.gain.setTargetAtTime(s.soundOrgan ? .38 : 0, t, .1);
+  bus.menu.gain.setTargetAtTime(MENU_GAIN[s.menuMusic], t, .15);
+  bus.ui.gain.setTargetAtTime(s.uiSounds ? .55 : 0, t, .05);
 }
 
 /**

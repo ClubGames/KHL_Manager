@@ -121,7 +121,10 @@ try {
   await phone.locator('[data-touch="faceoff"]').waitFor({ timeout: 8000 });
   await phone.locator('[data-touch="faceoff"]').dispatchEvent('pointerdown', { pointerId: 6, pointerType: 'touch', bubbles: true });
   await phone.locator('[data-touch="faceoff"]').dispatchEvent('pointerup', { pointerId: 6, pointerType: 'touch', bubbles: true }).catch(() => {});
-  for (const b of ['shoot', 'pass', 'deke', 'swap', 'sprint']) assert.ok(await phone.locator(`[data-touch="${b}"]`).isVisible(), `touch button ${b}`);
+  for (const b of ['shoot', 'pass', 'deke', 'sprint']) assert.ok(await phone.locator(`[data-touch="${b}"]`).isVisible(), `touch button ${b}`);
+  // «Смена» lives in the outer arc only with the puck or a loose one (on defence the pass button switches already)
+  const sw = await phone.evaluate(() => ({ ctx: document.querySelector('[data-play-touch]')?.getAttribute('data-play-touch') ?? '', swap: !!document.querySelector('[data-touch="swap"]') }));
+  assert.equal(sw.swap, !['defend', 'celebrate', 'stop'].includes(sw.ctx), `touch button swap in «${sw.ctx}»`);
   await phone.locator('[data-rink-ctrl]').waitFor({ timeout: 8000 });
   await phone.waitForFunction(() => !document.querySelector('[data-live-rink][data-stopped]'), null, { timeout: 15000 });
   const pid = await phone.locator('[data-rink-ctrl]').evaluate(n => n.closest('[data-rink-player]').getAttribute('data-rink-player'));
@@ -142,8 +145,10 @@ try {
   // the skill stick: its own zone between the skating stick and the buttons; a pull back and a flick go through
   const skill = phone.locator('[data-play-skill-zone]');
   assert.ok(await skill.isVisible(), 'the skill-stick zone');
-  const kz = await skill.boundingBox(), bz = await phone.locator('[data-play-buttons]').boundingBox(), lz = await phone.locator('[data-play-stick-zone]').boundingBox();
-  assert.ok(kz.x >= lz.x + lz.width - 1 && kz.x + kz.width <= bz.x + 1 && kz.width > 120, `skill zone between the stick and the buttons (${JSON.stringify(kz)})`);
+  // (the buttons: the thumb's inner cluster — shot, pass, deke, burst)
+  const kz = await skill.boundingBox(), lz = await phone.locator('[data-play-stick-zone]').boundingBox();
+  const bx = Math.min(...await phone.locator('[data-touch="shoot"], [data-touch="pass"], [data-touch="deke"], [data-touch="sprint"]').evaluateAll(bs => bs.map(b => b.getBoundingClientRect().left)));
+  assert.ok(kz.x >= lz.x + lz.width - 1 && kz.x + kz.width <= bx + 1 && kz.width > 120, `skill zone between the stick and the buttons (${JSON.stringify(kz)})`);
   const kx = kz.x + kz.width / 2, ky = kz.y + kz.height * 0.6;
   for (const [x, y, t] of [[kx, ky, 'pointerdown'], [kx - 50, ky, 'pointermove'], [kx - 55, ky, 'pointermove'], [kx + 60, ky, 'pointermove'], [kx + 60, ky, 'pointerup']]) {
     await skill.dispatchEvent(t, { pointerId: 9, clientX: x, clientY: y, pointerType: 'touch', isPrimary: false, bubbles: true });
