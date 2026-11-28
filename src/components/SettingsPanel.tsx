@@ -261,7 +261,7 @@ export function SettingsPanel({ onClose, scope = 'all', closeLabel = 'Готов
         <Row k="playAutoSwitch" label="Автосмена игрока" hint="Управление само переходит к игроку с шайбой, а в обороне — к ближайшему к шайбе защитнику. Вручную — кнопкой «Смена».">
           <Toggle id="playAutoSwitch" value={s.playAutoSwitch} onChange={(v) => set({ playAutoSwitch: v })} />
         </Row>
-        <Row k="playTouch" label="Экранное управление" hint="Виртуальный стик и кнопки на сенсорном экране. «Авто»: на телефонах и планшетах.">
+        <Row k="playTouch" label="Экранное управление" hint="Виртуальный стик и кнопки на сенсорном экране. «Авто»: на телефонах и планшетах. Размер, прозрачность, раскладку для левши и положение кнопок — во вкладке «Управление» → «Сенсорный экран».">
           <Choice id="playTouch" value={s.playTouch} onChange={(v) => set({ playTouch: v })} options={[['auto', 'Авто'], ['on', 'Вкл'], ['off', 'Выкл']]} />
         </Row>
       </Section>

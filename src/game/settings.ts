@@ -65,6 +65,21 @@ export type Settings = {
   playAutoSwitch: boolean;
   /** a played match: on-screen controls on a touch screen (stick and buttons) */
   playTouch: 'auto' | 'on' | 'off';
+  /** the on-screen controls: the buttons' size (× the standard) */
+  touchSize: .8 | 1 | 1.2 | 1.4;
+  /** … how see-through they are */
+  touchAlpha: 'faint' | 'normal' | 'solid';
+  /** … mirrored for the left hand: the buttons on the left, the skating stick on the right */
+  touchLefty: boolean;
+  /** … the skating stick: where the thumb lands («float») or always at the same place («fixed») */
+  touchStick: 'float' | 'fixed';
+  /** … the skill stick (shots and dekes by swiping between the stick and the buttons) */
+  touchSkill: boolean;
+  /** … a short vibration on every press (phones that can) */
+  touchHaptics: boolean;
+  /** … the buttons moved in from the corner, px (sideways, up) */
+  touchShiftX: number;
+  touchShiftY: number;
   /** match sound (all of it synthesized in the app: sticks, boards, whistle, horn, the crowd, the organ) */
   sound: boolean;
   /** master volume 0…1 */
@@ -92,6 +107,7 @@ export function defaultSettings(): Settings {
     videoHeight: coarse() ? 720 : 1080, videoFps: 30, videoSlowmo: true, videoGraphics: true, videoQuality: 'view',
     matchSpeed: 2, matchRink2d: true, matchView: '3d', matchCamera: 'broadcast', matchZoom: 1, matchMinimap: true, matchIntro: true, matchReplays: true, matchOutro: true, matchAdvice: true, simOpenReport: true, simConfirm: true,
     playPeriod: 5, playDifficulty: 'pro', playAutoSwitch: true, playTouch: 'auto', playPenaltyClock: 'period',
+    touchSize: 1, touchAlpha: 'normal', touchLefty: false, touchStick: 'float', touchSkill: true, touchHaptics: true, touchShiftX: 0, touchShiftY: 0,
     sound: true, soundVolume: .75, soundCrowd: 'normal', soundOrgan: true,
     menuMusic: 'normal', uiSounds: true,
     controls: {},
@@ -120,6 +136,11 @@ const CAMS: ReplayCamera[] = ['auto', 'broadcast', 'ice', 'net', 'goal', 'chase'
 export const REPLAY_SPEEDS = [.25, .5, .75, 1, 1.5, 2];
 export const MATCH_ZOOMS = [.7, .85, 1, 1.2, 1.45];
 export const SOUND_VOLUMES = [.25, .5, .75, 1];
+export const TOUCH_SIZES = [.8, 1, 1.2, 1.4] as const;
+/** How far the on-screen buttons can be moved in from their corner, px. */
+export const TOUCH_SHIFT = { x: 160, y: 140 } as const;
+/** The on-screen controls' own settings (the «Сенсорный экран» tab puts them back together). */
+export const TOUCH_KEYS = ['touchSize', 'touchAlpha', 'touchLefty', 'touchStick', 'touchSkill', 'touchHaptics', 'touchShiftX', 'touchShiftY'] as const;
 
 /** Keeps only known keys with valid values (anything else falls back to the default). */
 export function sanitizeSettings(raw: unknown): Settings {
@@ -128,6 +149,7 @@ export function sanitizeSettings(raw: unknown): Settings {
   const r = raw as Record<string, unknown>;
   const bool = (k: keyof Settings) => (typeof r[k] === 'boolean' ? (r[k] as boolean) : (d[k] as boolean));
   const one = <V,>(k: keyof Settings, list: readonly V[]) => (list.includes(r[k] as V) ? (r[k] as V) : (d[k] as V));
+  const px = (k: keyof Settings, max: number) => (typeof r[k] === 'number' && Number.isFinite(r[k]) ? Math.round(Math.min(max, Math.max(0, r[k] as number))) : (d[k] as number));
   return {
     replay3d: bool('replay3d'), autoReplay: one('autoReplay', ['all', 'mine', 'off'] as const),
     replayQuality: one('replayQuality', ['auto', 'standard', 'high', 'ultra'] as const), replaySpeed: one('replaySpeed', REPLAY_SPEEDS),
@@ -135,7 +157,10 @@ export function sanitizeSettings(raw: unknown): Settings {
     videoHeight: one('videoHeight', [720, 1080] as const), videoFps: one('videoFps', [30, 60] as const),
     videoSlowmo: bool('videoSlowmo'), videoGraphics: bool('videoGraphics'), videoQuality: one('videoQuality', ['fast', 'view'] as const),
     matchSpeed: one('matchSpeed', [1, 2, 4] as const), matchRink2d: bool('matchRink2d'), matchView: one('matchView', ['2d', '3d'] as const), matchCamera: one('matchCamera', ['broadcast', 'high', 'ice', 'end', 'overhead', 'dynamic', 'zone', 'vertical'] as const), matchZoom: one('matchZoom', MATCH_ZOOMS), matchMinimap: bool('matchMinimap'), matchIntro: bool('matchIntro'), matchReplays: bool('matchReplays'), matchOutro: bool('matchOutro'), matchAdvice: bool('matchAdvice'), simOpenReport: bool('simOpenReport'), simConfirm: bool('simConfirm'),
-    playPeriod: one('playPeriod', [3, 5, 8, 12, 20] as const), playDifficulty: one('playDifficulty', ['rookie', 'pro', 'star'] as const), playAutoSwitch: bool('playAutoSwitch'), playTouch: one('playTouch', ['auto', 'on', 'off'] as const), playPenaltyClock: one('playPenaltyClock', ['period', 'real', 2, 4] as const),
+    playPeriod: one('playPeriod', [3, 5, 8, 12, 20] as const), playDifficulty: one('playDifficulty', ['rookie', 'pro', 'star'] as const), playAutoSwitch: bool('playAutoSwitch'), playTouch: one('playTouch', ['auto', 'on', 'off'] as const),
+    touchSize: one('touchSize', TOUCH_SIZES), touchAlpha: one('touchAlpha', ['faint', 'normal', 'solid'] as const), touchLefty: bool('touchLefty'),
+    touchStick: one('touchStick', ['float', 'fixed'] as const), touchSkill: bool('touchSkill'), touchHaptics: bool('touchHaptics'),
+    touchShiftX: px('touchShiftX', TOUCH_SHIFT.x), touchShiftY: px('touchShiftY', TOUCH_SHIFT.y), playPenaltyClock: one('playPenaltyClock', ['period', 'real', 2, 4] as const),
     sound: bool('sound'), soundVolume: one('soundVolume', SOUND_VOLUMES), soundCrowd: one('soundCrowd', ['off', 'quiet', 'normal', 'loud'] as const), soundOrgan: bool('soundOrgan'),
     menuMusic: one('menuMusic', ['off', 'quiet', 'normal'] as const), uiSounds: bool('uiSounds'),
     controls: sanitizeControls(r.controls),

@@ -22,6 +22,7 @@ import { suspendPadNav } from '../gamepadNav';
 import { useCrowdVerdict } from './sound/useMatchSound';
 import { useSilenceMenuMusic } from './sound/menuMusic';
 import { penLength } from '../game/penalties';
+import { touchBuzz, touchLayout, TOUCH_ALPHA, type Spot } from './touchLayout';
 import { careerOutroInfo, outroSpecOf, type OutroInfo, type OutroSpec } from './matchOutro';
 
 /**
@@ -871,7 +872,9 @@ export function GoalList({ goals, P, onReplay }: { goals: GoalItem[]; P: Record<
 }
 
 /** A floating touch stick: it appears where the thumb lands inside its zone and reports a vector of length ≤ 1. */
-function FloatStick({ className, R, hint, onVec, data }: { className: string; R: number; hint: React.ReactNode; onVec: (x: number, y: number) => void; data: string }) {
+/** The centre of a fixed stick: this far in from its zone's bottom corner, px (where its dashed hint is drawn). */
+const FIXED_STICK = { x: 76, y: 80 };
+function FloatStick({ className, style, R, hint, onVec, data, fixed }: { className: string; style?: React.CSSProperties; R: number; hint: React.ReactNode; onVec: (x: number, y: number) => void; data: string; /** always centred at the zone's bottom corner on this side (else where the thumb lands) */ fixed?: 'left' | 'right' }) {
   const [stick, setStick] = useState<{ ox: number; oy: number; x: number; y: number } | null>(null);
   const stickId = useRef<number | null>(null);
   const onDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -879,7 +882,12 @@ function FloatStick({ className, R, hint, onVec, data }: { className: string; R:
     stickId.current = e.pointerId;
     try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* not an active pointer */ }
     const r = e.currentTarget.getBoundingClientRect();
-    setStick({ ox: e.clientX - r.left, oy: e.clientY - r.top, x: 0, y: 0 });
+    if (!fixed) { setStick({ ox: e.clientX - r.left, oy: e.clientY - r.top, x: 0, y: 0 }); return; }
+    // fixed: the stick stays put and the first touch already pushes it
+    const ox = fixed === 'left' ? FIXED_STICK.x : r.width - FIXED_STICK.x, oy = r.height - FIXED_STICK.y;
+    const v = stickVector(e.clientX - r.left - ox, e.clientY - r.top - oy, R);
+    onVec(v.x, v.y);
+    setStick({ ox, oy, x: v.x, y: v.y });
   };
   const onMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.pointerId !== stickId.current || !stick) return;
@@ -893,7 +901,7 @@ function FloatStick({ className, R, hint, onVec, data }: { className: string; R:
     stickId.current = null; onVec(0, 0); setStick(null);
   };
   return (
-    <div className={cn('absolute pointer-events-auto touch-none', className)} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} {...{ [data]: '' }}>
+    <div className={cn('absolute pointer-events-auto touch-none', className)} style={style} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp} {...{ [data]: '' }}>
       {stick ? (
         <div className="absolute rounded-full border border-white/30 bg-white/[.06]" style={{ left: stick.ox - R, top: stick.oy - R, width: R * 2, height: R * 2 }}>
           <div className="absolute rounded-full bg-white/40 border border-white/50" style={{ left: R - 24 + stick.x * R, top: R - 24 + stick.y * R, width: 48, height: 48 }} />
@@ -926,6 +934,9 @@ export function TouchControls({ touch, labels, onCommand, pulled, faceoff, conte
   useEffect(() => { for (const k of ['lb', 'lift', 'pin', 'push', 'vision', 'hustle', 'r3', 'fight', 'o', 'sq'] as const) if (!TOUCH_EXTRA[context].some(([x]) => x === k)) touch.current[k] = false; }, [context, touch]);
   useEffect(() => () => { touch.current = emptyTouch(); }, [touch]);
   useEffect(() => { if (!faceoff) touch.current.faceoff = false; }, [faceoff, touch]);
+  // the player's own layout (Настройки → Управление → «Сенсорный экран»)
+  const settings = useSettings();
+  const buzz = () => touchBuzz(settings.touchHaptics);
   // A quick tap is held down for a moment: a press and a release inside one frame would never reach the rink
   // (the deke button used to «not work» on a phone for exactly that reason).
   const downAt = useRef<Partial<Record<TouchKey, number>>>({});
@@ -940,6 +951,7 @@ export function TouchControls({ touch, labels, onCommand, pulled, faceoff, conte
   const hold = (key: TouchKey) => ({
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
       e.preventDefault(); try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* not an active pointer */ }
+      buzz();
       window.clearTimeout(timers.current[key]);
       // a second tap right after the first: release first, so the rink sees a new press
       if (touch.current[key]) { touch.current[key] = false; window.setTimeout(() => { touch.current[key] = true; downAt.current[key] = performance.now(); }, 34); return; }
@@ -975,6 +987,7 @@ export function TouchControls({ touch, labels, onCommand, pulled, faceoff, conte
   const dekeSwipe = {
     onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
       e.preventDefault(); try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* not an active pointer */ }
+      buzz();
       window.clearTimeout(swipe.current?.timer);
       // a still thumb is a tap after a moment (no waiting for the release)
       swipe.current = { id: e.pointerId, x: e.clientX, y: e.clientY, done: false, timer: window.setTimeout(() => fireDeke(null), 260) };
@@ -990,29 +1003,31 @@ export function TouchControls({ touch, labels, onCommand, pulled, faceoff, conte
   };
   const DEKE_SWIPE_NAME: Record<SwipeDir | 'tap', string> = { up: 'вертушка', down: 'между ног', left: '← протяжка', right: 'протяжка →', tap: 'финт' };
   // see-through: a faint tint and a thin outline (the label keeps a shadow so it reads over the ice), solid only while pressed
-  const btn = 'absolute rounded-full border border-white/30 bg-black/15 active:bg-white/30 active:scale-95 transition-transform text-white/90 font-semibold [text-shadow:0_1px_2px_rgba(0,0,0,.85)] flex items-center justify-center text-center leading-none touch-none select-none';
+  const look = TOUCH_ALPHA[settings.touchAlpha];
+  const btn = cn('absolute rounded-full border border-white/30 bg-black/15 active:bg-white/30 active:scale-95 transition-transform text-white/90 font-semibold [text-shadow:0_1px_2px_rgba(0,0,0,.85)] flex items-center justify-center text-center leading-none touch-none select-none', look.cls);
   const pill = 'rounded-full bg-black/25 text-white/90 text-[11px] px-3 py-1.5 border border-white/25 [text-shadow:0_1px_2px_rgba(0,0,0,.85)] active:bg-white/30 disabled:opacity-40';
   // The right thumb's cluster, laid out like the mobile hockey games: the shot the biggest, in the corner under the
   // thumb; pass next to it; the deke, the switch and the burst in an arc above; the situation's extras in an outer arc
   // (all reached by rolling the thumb, none hidden under another). Positions from the bottom-right corner, px.
   // (on defence the pass button switches the player already: no second «Смена» there)
   const outer: [TouchKey, string, string][] = [...(context === 'defend' || context === 'celebrate' || context === 'stop' ? [] : [['swap', 'Смена', 'сменить игрока'] as [TouchKey, string, string]]), ...TOUCH_EXTRA[context]];
-  /** A button of `size` on the arc of radius r round the shot button's centre, at angle a (π: left of it, π/2: above). */
-  const arc = (a: number, r: number, size: number) => ({ right: Math.max(2, 40 - Math.cos(a) * r - size / 2), bottom: 40 + Math.sin(a) * r - size / 2 });
-  const ring = (i: number, n: number) => arc(n > 1 ? Math.PI + (Math.PI * .5 - Math.PI) * (i / (n - 1)) : Math.PI * .75, 180, 50);
-  const inner = { pass: arc(Math.PI, 100, 64), deke: arc(Math.PI * .75, 100, 54), sprint: arc(Math.PI * .5, 100, 54) };
-  const at = (right: number, bottom: number, size: number) => ({ right: `calc(max(.5rem, env(safe-area-inset-right)) + ${right}px)`, bottom: `calc(max(.5rem, env(safe-area-inset-bottom)) + ${bottom}px)`, width: size, height: size });
+  const [screenH, setScreenH] = useState(() => (typeof window !== 'undefined' ? window.innerHeight : 400));
+  useEffect(() => { const f = () => setScreenH(window.innerHeight); window.addEventListener('resize', f); return () => window.removeEventListener('resize', f); }, []);
+  const L = touchLayout(settings, screenH), side = L.side, other = side === 'right' ? 'left' : 'right';
+  const inset = (sd: 'left' | 'right') => `max(.5rem, env(safe-area-inset-${sd}))`;
+  const at = (p: Spot | { x: number; y: number; w: number; h: number }) => ({ [side]: `calc(${inset(side)} + ${p.x}px)`, bottom: `calc(max(.5rem, env(safe-area-inset-bottom)) + ${p.y}px)`, width: 'size' in p ? p.size : p.w, height: 'size' in p ? p.size : p.h });
   return (
-    <div className="absolute inset-0 z-20 pointer-events-none" data-play-touch={context}>
-      <FloatStick className="left-0 top-[16%] bottom-0 w-[42%]" R={56} data="data-play-stick-zone" onVec={(x, y) => { touch.current.mx = x; touch.current.my = y; }}
-        hint={<div className="absolute left-[max(1.25rem,env(safe-area-inset-left))] bottom-6 w-28 h-28 rounded-full border border-dashed border-white/25 flex items-center justify-center text-[10px] text-white/50">стик</div>} />
-      <FloatStick className="left-[44%] right-[250px] top-[16%] bottom-0" R={60} data="data-play-skill-zone" onVec={(x, y) => { touch.current.sx = x; touch.current.sy = y; }}
-        hint={<div className="absolute right-2 bottom-10 w-28 h-28 rounded-full border border-dashed border-ice/35 flex flex-col items-center justify-center text-center text-[9px] leading-tight text-white/55 [text-shadow:0_1px_2px_rgba(0,0,0,.85)] px-2"><b className="text-[10px] text-ice/80">клюшка</b>назад и вперёд — щелчок<br />рывок вперёд — кистевой<br />вбок — финт</div>} />
-      <div className="absolute inset-0 pointer-events-none" data-play-buttons>
-        <button type="button" className={cn(btn, 'pointer-events-auto text-sm bg-accent/30 border-accent/60')} style={at(0, 0, 80)} {...hold('shoot')} data-touch="shoot">{labels.shoot}</button>
-        <button type="button" className={cn(btn, 'pointer-events-auto text-xs')} style={at(inner.pass.right, inner.pass.bottom, 64)} {...hold('pass')} data-touch="pass">{labels.pass}</button>
+    <div className="absolute inset-0 z-20 pointer-events-none" data-play-touch={context} data-touch-side={side}>
+      {/* the skating stick on the other thumb's side (on the right for a left-handed player) */}
+      <FloatStick className="top-[16%] bottom-0 w-[42%]" style={{ [other]: 0 }} R={56 * Math.min(1.2, settings.touchSize)} data="data-play-stick-zone" fixed={settings.touchStick === 'fixed' ? other : undefined} onVec={(x, y) => { touch.current.mx = x; touch.current.my = y; }}
+        hint={<div className={cn('absolute bottom-6 w-28 h-28 rounded-full border border-dashed flex items-center justify-center text-[10px]', settings.touchStick === 'fixed' ? 'border-white/40 bg-white/[.05] text-white/60' : 'border-white/25 text-white/50')} style={{ [other]: `max(1.25rem, env(safe-area-inset-${other}))`, opacity: look.opacity }}>стик</div>} />
+      {settings.touchSkill && <FloatStick className="top-[16%] bottom-0" style={{ [other]: '44%', [side]: L.skillGap }} R={60} data="data-play-skill-zone" onVec={(x, y) => { touch.current.sx = x; touch.current.sy = y; }}
+        hint={<div style={{ [side]: '.5rem', opacity: look.opacity }} className="absolute bottom-10 w-28 h-28 rounded-full border border-dashed border-ice/35 flex flex-col items-center justify-center text-center text-[9px] leading-tight text-white/55 [text-shadow:0_1px_2px_rgba(0,0,0,.85)] px-2"><b className="text-[10px] text-ice/80">клюшка</b>назад и вперёд — щелчок<br />рывок вперёд — кистевой<br />вбок — финт</div>} />}
+      <div className="absolute inset-0 pointer-events-none" style={{ opacity: look.opacity }} data-play-buttons>
+        <button type="button" className={cn(btn, 'pointer-events-auto text-sm bg-accent/30 border-accent/60')} style={at(L.shoot)} {...hold('shoot')} data-touch="shoot">{labels.shoot}</button>
+        <button type="button" className={cn(btn, 'pointer-events-auto text-xs')} style={at(L.pass)} {...hold('pass')} data-touch="pass">{labels.pass}</button>
         {context === 'carry'
-          ? <button type="button" className={cn(btn, 'pointer-events-auto text-[11px]')} style={at(inner.deke.right, inner.deke.bottom, 54)} {...dekeSwipe} data-touch="deke" data-touch-swipe={swiped ?? undefined} title="Финт: тап — обычный, вверх — вертушка, вниз — между ног, влево / вправо — протяжка">
+          ? <button type="button" className={cn(btn, 'pointer-events-auto text-[11px]')} style={at(L.deke)} {...dekeSwipe} data-touch="deke" data-touch-swipe={swiped ?? undefined} title="Финт: тап — обычный, вверх — вертушка, вниз — между ног, влево / вправо — протяжка">
               {/* the four ways, faintly round the label */}
               <span aria-hidden className="absolute inset-0 pointer-events-none text-[8px] text-white/45">
                 <span className="absolute top-0.5 left-1/2 -translate-x-1/2">▲</span><span className="absolute bottom-0.5 left-1/2 -translate-x-1/2">▼</span>
@@ -1021,14 +1036,14 @@ export function TouchControls({ touch, labels, onCommand, pulled, faceoff, conte
               {labels.deke}
               {swiped && <span className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-sm bg-black/60 px-1.5 py-0.5 text-[10px] text-ice fade-in" data-touch-deke-kind>{DEKE_SWIPE_NAME[swiped]}</span>}
             </button>
-          : <button type="button" className={cn(btn, 'pointer-events-auto text-[11px]')} style={at(inner.deke.right, inner.deke.bottom, 54)} {...hold('deke')} data-touch="deke">{labels.deke}</button>}
-        <button type="button" className={cn(btn, 'pointer-events-auto text-[11px]')} style={at(inner.sprint.right, inner.sprint.bottom, 54)} {...hold('sprint')} data-touch="sprint">Рывок</button>
+          : <button type="button" className={cn(btn, 'pointer-events-auto text-[11px]')} style={at(L.deke)} {...hold('deke')} data-touch="deke">{labels.deke}</button>}
+        <button type="button" className={cn(btn, 'pointer-events-auto text-[11px]')} style={at(L.sprint)} {...hold('sprint')} data-touch="sprint">Рывок</button>
       </div>
-      <div className="absolute inset-0 pointer-events-none" data-play-extra={context}>
-        {outer.map(([k, label, title], i) => { const p = ring(i, outer.length); return <button key={k} type="button" title={title} aria-label={title} className={cn(btn, 'pointer-events-auto text-[10px]', k === 'swap' ? 'bg-black/15' : 'bg-black/25 border-white/20')} style={at(p.right, p.bottom, 50)} {...hold(k)} data-touch={k}>{label}</button>; })}
+      <div className="absolute inset-0 pointer-events-none" style={{ opacity: look.opacity }} data-play-extra={context}>
+        {outer.map(([k, label, title], i) => { const p = L.ring(i, outer.length); return <button key={k} type="button" title={title} aria-label={title} className={cn(btn, 'pointer-events-auto text-[10px]', k === 'swap' ? 'bg-black/15' : 'bg-black/25 border-white/20')} style={at(p)} {...hold(k)} data-touch={k}>{label}</button>; })}
       </div>
       {/* the draw: one big button left of the cluster, pressed as the puck falls */}
-      {faceoff && <button type="button" className={cn(btn, 'z-10 pointer-events-auto rounded-2xl text-sm bg-ice/35 border-ice/70 text-white')} style={{ ...at(232, 10, 0), width: 136, height: 64 }} {...hold('faceoff')} data-touch="faceoff">Вбрасывание</button>}
+      {faceoff && <button type="button" className={cn(btn, 'z-10 pointer-events-auto rounded-2xl text-sm bg-ice/35 border-ice/70 text-white')} style={at(L.faceoff)} {...hold('faceoff')} data-touch="faceoff">Вбрасывание</button>}
       {/* the bench's calls: a row at the top right, out of the thumbs' way */}
       {calls && <div className="absolute right-[max(.5rem,env(safe-area-inset-right))] top-[calc(env(safe-area-inset-top)+3.1rem)] pointer-events-auto flex gap-1.5" data-play-calls>
         <button type="button" className={pill} onClick={() => onCommand('change')} data-touch="change">Смена звена</button>
