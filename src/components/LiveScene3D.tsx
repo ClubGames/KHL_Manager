@@ -10,7 +10,7 @@ import { INTRO_STRIDE, WALK_CYCLE, introCamera, introChapter, introCoaches, intr
 import { goalLines, seasonLine } from './statLines';
 import { outroCamera, outroChapter, outroCup, outroOfficials, outroPoses, outroShotAt, outroShow, planOutro, type OutroPlan, type OutroSkater, type OutroSpec } from './matchOutro';
 import { buildOutroProps, CUP_GRIP, type OutroProps } from './outroProps';
-import { announceCamera, announceGesture, ANNOUNCE, boxCamera, bumpCamera, bumpPlan, bumpPose, bumpReach, celebrateCamera, FACEOFF_CAM, faceoffCamera, GOAL_SHOW, goalReplay, mixCam, MOMENT_GAP, momentReplay, penaltyCaption, penaltyReplay, pickMoment, replayAngle, replayCamera, replayLength, replayTau, type BumpPlan, type ReplaySpec } from './liveShow';
+import { announceCamera, announceGesture, ANNOUNCE, boxCamera, bumpCamera, bumpPlan, bumpPose, bumpReach, celebrateCamera, FACEOFF_CAM, faceoffCamera, GOAL_SHOW, goalReplay, mixCam, MOMENT_GAP, momentReplay, penaltyCaption, penaltyReplay, penaltyShotCaption, pickMoment, replayAngle, replayCamera, replayLength, replayTau, type BumpPlan, type ReplaySpec } from './liveShow';
 import { NET_X } from './replayMotion';
 import { liveCameraPose, toWorld, ZOOM, type LiveCamera } from './replayCameras';
 import { RINK } from '../game/rinkGeometry';
@@ -413,6 +413,8 @@ export function LiveScene3D(props: Props) {
       type Tv = {
         kind: 'goal' | 'moment' | 'penalty'; phase: 'celebrate' | 'bump' | 'call' | 'replay' | 'box'; t0: number; spec: ReplaySpec; goalTau: number;
         side?: 0 | 1; bump?: BumpPlan; ref?: number; player?: string; caption?: { name: string; reason: string }; gesture?: Official['gesture']; box?: { x: number; z: number }; seated?: number;
+        /** a penalty shot awarded (the referee points to centre ice, no walk to the box) */
+        ps?: boolean;
       };
       let tv: Tv | null = null, lastAngle = '';
       // the faceoff camera: from `t0` (real ms) coming down over `dot`; `playAt` when the puck is in play (the hand-over)
@@ -541,7 +543,8 @@ export function LiveScene3D(props: Props) {
             for (let i = ai.plays.length - 1; i >= 0; i--) {
               const p = ai.plays[i];
               if (p.tau < liveTau - 1.5) break;
-              if (p.kind !== 'penalty' || p.text.startsWith('Отложенный') || p.text.startsWith('Штрафной бросок') || p.tau > liveTau || seenPen.has(p.tau)) continue;
+              if (p.kind !== 'penalty' || p.text.startsWith('Отложенный') || p.tau > liveTau || seenPen.has(p.tau)) continue;
+              const ps = p.text.startsWith('Штрафной бросок');
               seenPen.add(p.tau);
               const fp = ai.frameAt(p.tau), who = fp.skaters.find(x => x.id === p.player), at = toWorld(who?.pos ?? fp.puck);
               const crewNow = crewFor(ai).officials;
@@ -549,7 +552,9 @@ export function LiveScene3D(props: Props) {
               let inf: number | null = null;
               for (let j = i - 1; j >= 0 && ai.plays[j].tau > p.tau - 40; j--) { const q = ai.plays[j]; if (q.kind === 'penalty' && q.text.startsWith('Отложенный') && q.player === p.player) { inf = q.tau; break; } }
               const side = (p.side ?? 0) as 0 | 1;
-              tv = { kind: 'penalty', phase: 'call', t0: now, spec: penaltyReplay(p.tau, inf, p.text, p.player), goalTau: NaN, side, ref, player: p.player, caption: penaltyCaption(p.text), gesture: penaltyGesture(p.text), box: { x: BOX.x[side], z: RINK.width / 2 + .6 } };
+              tv = { kind: 'penalty', phase: 'call', t0: now, spec: penaltyReplay(p.tau, inf, p.text, p.player), goalTau: NaN, side, ref, player: p.player, caption: ps ? penaltyShotCaption(p.text) : penaltyCaption(p.text), gesture: penaltyGesture(p.text),
+                // a penalty shot: he points to centre ice, where the shooter starts
+                box: ps ? { x: 0, z: 0 } : { x: BOX.x[side], z: RINK.width / 2 + .6 }, ps };
               tickerRef.current.hold = true; tickerRef.current.slow = false; tvFocus.init = false; foCam = null;
               break;
             }
@@ -605,7 +610,7 @@ export function LiveScene3D(props: Props) {
         if (tv?.phase === 'replay') {
           const real = (now - tv.t0) / 1000;
           if (real < replayLength(tv.spec)) tau = replayTau(tv.spec, real);
-          else if (tv.kind === 'penalty') { tv.phase = 'box'; tv.t0 = now; tickerRef.current.hold = false; tickerRef.current.slow = true; tvFocus.init = false; forget(); }
+          else if (tv.kind === 'penalty' && !tv.ps) { tv.phase = 'box'; tv.t0 = now; tickerRef.current.hold = false; tickerRef.current.slow = true; tvFocus.init = false; forget(); }
           else endTv();
         }
         // the faceoff camera, from above over the dot: after the broadcast's own pictures, and at every other stoppage
@@ -1040,7 +1045,7 @@ export function LiveScene3D(props: Props) {
             const id = tv.spec.player, n = id ? ai.plays.filter(p => p.kind === 'goal' && p.player === id && p.tau <= tv!.goalTau + 1e-6).length : 0;
             showUi({ mode: 'celebrate', title: 'ГОЛ!', name: named ?? tv.spec.text.replace(/^ГОЛ!\s*/, ''), sub: team?.name, color: team?.primaryColor, lines: goalLines(who, n) });
           } else if (tv.phase === 'bump') showUi({ mode: 'celebrate', title: 'ГОЛ!', name: named, sub: 'Поздравления со скамейкой', color: team?.primaryColor });
-          else if (tv.phase === 'call') showUi({ mode: 'call', title: 'Удаление', name: named ?? tv.caption?.name, sub: tv.caption?.reason, color: team?.primaryColor });
+          else if (tv.phase === 'call') showUi({ mode: 'call', title: tv.ps ? 'Штрафной бросок' : 'Удаление', name: named ?? tv.caption?.name, sub: tv.caption?.reason, color: team?.primaryColor });
           else if (tv.phase === 'box') showUi({ mode: 'call', title: 'Штрафная скамья', name: named ?? tv.caption?.name, sub: tv.caption?.reason, color: team?.primaryColor });
           else showUi({ mode: 'replay', title: RE_LABEL[tv.spec.kind], name: tv.kind !== 'moment' ? named ?? (tv.kind === 'penalty' ? tv.caption?.name : undefined) : tv.spec.text, sub: tv.kind === 'penalty' ? tv.caption?.reason : undefined });
         } else if (foCam && !intro) {
