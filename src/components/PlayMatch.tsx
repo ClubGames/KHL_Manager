@@ -16,7 +16,7 @@ import { LiveRink } from './RinkView';
 import { GoalReplay } from './GoalReplay';
 import { ShootoutBoard } from './Shootout';
 import type { FigureRequest } from './replayCache';
-import { anyGamepad, CAPTURED, COMMAND_KEYS, detectDevice, emptyTouch, gamepadPad, keyboardPad, mergePads, mouseDown, mouseMove, mousePad, mouseUp, newMouse, stickVector, type Command, type InputDevice, type MouseState, type TouchState } from './playInput';
+import { anyGamepad, CAPTURED, COMMAND_KEYS, detectDevice, emptyTouch, gamepadPad, keyboardPad, mergePads, mouseDown, mouseMove, mousePad, mouseUp, newMouse, stickVector, swipeDeke, swipeDir, type Command, type InputDevice, type MouseState, type SwipeDir, type TouchState } from './playInput';
 import { suspendPadNav } from '../gamepadNav';
 import { useCrowdVerdict } from './sound/useMatchSound';
 import { penLength } from '../game/penalties';
@@ -660,7 +660,7 @@ export function Controls({ device }: { device: InputDevice }) {
       {view === 'touch' ? (
         <>
           <p className="mb-1 text-muted">Слева — стик (коснитесь и ведите пальцем), в центре справа — <b className="text-text">клюшка</b>, как правый стик в NHL, у края — кнопки <b className="text-text">Бросок</b> (держать — сильнее), <b className="text-text">Пас</b>, <b className="text-text">Финт</b>, <b className="text-text">Смена</b> и <b className="text-text">Рывок</b>. Подписи кнопок меняются: в обороне «Бросок» — силовой приём, «Финт» — отбор клюшкой.</p>
-          <p className="mb-1 text-muted" data-play-skill-help>Клюшка, как правый стик в NHL: проведите пальцем вниз и резко вверх — <b className="text-text">щелчок</b> (чем дольше внизу — тем сильнее, полная сила примерно за треть секунды); короткий рывок вверх — <b className="text-text">кистевой</b>; палец сбоку — ведение шайбы, рывок вбок — <b className="text-text">финт</b>, вбок и сразу обратно — <b className="text-text">между ног</b>, вниз и вбок — <b className="text-text">протяжка</b>, круг — <b className="text-text">вертушка</b>, вниз и отпустить — <b className="text-text">ложный замах</b>. Кнопка <b className="text-text">Финт</b>: обычный финт, с зажатым «Рывком» — вертушка, второе нажатие сразу после финта — между ног, стик назад — протяжка. В обороне рывок клюшкой или «Отбор» — отбор шайбы (сбоку и сзади — подбить клюшку); без шайбы в атаке — <b className="text-text">щелчок в одно касание</b>: отдайте пас партнёру, пока шайба летит — клюшку вниз (замах, сила копится) и рывок вверх, когда шайба приходит; замахнулись раньше — держите клюшку внизу, бросок уйдёт с рывком вверх. То же кнопкой «В касание»: зажать, пока идёт пас, отпустить — бросок. Метка на воротах показывает, куда полетит бросок: целится стик движения.</p>
+          <p className="mb-1 text-muted" data-play-skill-help>Клюшка, как правый стик в NHL: проведите пальцем вниз и резко вверх — <b className="text-text">щелчок</b> (чем дольше внизу — тем сильнее, полная сила примерно за треть секунды); короткий рывок вверх — <b className="text-text">кистевой</b>; палец сбоку — ведение шайбы, рывок вбок — <b className="text-text">финт</b>, вбок и сразу обратно — <b className="text-text">между ног</b>, вниз и вбок — <b className="text-text">протяжка</b>, круг — <b className="text-text">вертушка</b>, вниз и отпустить — <b className="text-text">ложный замах</b>. Кнопка <b className="text-text">Финт</b> — проведите по ней пальцем: <b className="text-text">вверх</b> — вертушка, <b className="text-text">вниз</b> — между ног, <b className="text-text">влево / вправо</b> — протяжка в эту сторону; просто нажать — обычный финт (с зажатым «Рывком» — вертушка, второе нажатие сразу после финта — между ног). В обороне рывок клюшкой или «Отбор» — отбор шайбы (сбоку и сзади — подбить клюшку); без шайбы в атаке — <b className="text-text">щелчок в одно касание</b>: отдайте пас партнёру, пока шайба летит — клюшку вниз (замах, сила копится) и рывок вверх, когда шайба приходит; замахнулись раньше — держите клюшку внизу, бросок уйдёт с рывком вверх. То же кнопкой «В касание»: зажать, пока идёт пас, отпустить — бросок. Метка на воротах показывает, куда полетит бросок: целится стик движения.</p>
           <p className="mb-1 text-muted" data-play-extra-help>Над основными кнопками — дополнительные, по ситуации. С шайбой: <b className="text-text">Верхом</b> (держать: «Пас» — пас верхом, клюшка или «Финт» — особые финты, как LB) и <b className="text-text">Ускор.</b>; без шайбы в атаке — <b className="text-text">Ускор.</b>, а основные кнопки становятся «Дай пас» и «В касание» (держать — стик готов к броску с лёта). В обороне: <b className="text-text">Блок</b> (держать), <b className="text-text">Подбить</b> клюшку, <b className="text-text">К борту</b>, <b className="text-text">Толчок</b>, <b className="text-text">Обзор</b> (держать — лицом к шайбе).</p>
           <p className="text-muted">На вбрасывании появляется большая кнопка <b className="text-text">Вбрасывание</b> — нажмите её, когда судья бросает шайбу. В обороне управление само переходит к защитнику между шайбой и воротами.</p>
         </>
@@ -785,6 +785,46 @@ export function TouchControls({ touch, labels, onCommand, pulled, faceoff, conte
     onPointerCancel: () => up(key),
     onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
   });
+  // The deke button with the puck: which way the thumb goes across it picks the deke — up a spin-o-rama, down between
+  // the legs, left / right a toe drag that way; a tap (or a thumb held still) the usual deke. The press waits for the
+  // swipe (or the release), so the rink gets the kind together with the press.
+  const swipe = useRef<{ id: number; x: number; y: number; done: boolean; timer: number } | null>(null);
+  const [swiped, setSwiped] = useState<SwipeDir | 'tap' | null>(null);
+  const flashT = useRef(0);
+  useEffect(() => () => { window.clearTimeout(swipe.current?.timer); window.clearTimeout(flashT.current); }, []);
+  // the puck lost before the swipe came: no deke (and no poke) out of it
+  useEffect(() => { if (context !== 'carry' && swipe.current) { window.clearTimeout(swipe.current.timer); swipe.current = null; } }, [context]);
+  const fireDeke = (dir: SwipeDir | null) => {
+    const sw = swipe.current; if (!sw || sw.done) return;
+    sw.done = true; window.clearTimeout(sw.timer);
+    const d = swipeDeke(dir);
+    const press = () => {
+      touch.current.dekeKind = d.kind; touch.current.dekeSide = d.side;
+      touch.current.deke = true; downAt.current.deke = performance.now();
+      timers.current.deke = window.setTimeout(() => { touch.current.deke = false; touch.current.dekeKind = undefined; touch.current.dekeSide = undefined; }, TAP_MS);
+    };
+    window.clearTimeout(timers.current.deke);
+    // still held from the last one: let go first, so the rink sees a new press
+    if (touch.current.deke) { touch.current.deke = false; timers.current.deke = window.setTimeout(press, 34); } else press();
+    setSwiped(dir ?? 'tap'); window.clearTimeout(flashT.current); flashT.current = window.setTimeout(() => setSwiped(null), 520);
+  };
+  const dekeSwipe = {
+    onPointerDown: (e: React.PointerEvent<HTMLButtonElement>) => {
+      e.preventDefault(); try { e.currentTarget.setPointerCapture?.(e.pointerId); } catch { /* not an active pointer */ }
+      window.clearTimeout(swipe.current?.timer);
+      // a still thumb is a tap after a moment (no waiting for the release)
+      swipe.current = { id: e.pointerId, x: e.clientX, y: e.clientY, done: false, timer: window.setTimeout(() => fireDeke(null), 260) };
+    },
+    onPointerMove: (e: React.PointerEvent<HTMLButtonElement>) => {
+      const sw = swipe.current; if (!sw || sw.done || sw.id !== e.pointerId) return;
+      const dir = swipeDir(e.clientX - sw.x, e.clientY - sw.y);
+      if (dir) fireDeke(dir);
+    },
+    onPointerUp: (e: React.PointerEvent<HTMLButtonElement>) => { const sw = swipe.current; if (sw && !sw.done) fireDeke(swipeDir(e.clientX - sw.x, e.clientY - sw.y)); swipe.current = null; },
+    onPointerCancel: () => { if (swipe.current) window.clearTimeout(swipe.current.timer); swipe.current = null; },
+    onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
+  };
+  const DEKE_SWIPE_NAME: Record<SwipeDir | 'tap', string> = { up: 'вертушка', down: 'между ног', left: '← протяжка', right: 'протяжка →', tap: 'финт' };
   // see-through: a faint tint and a thin outline (the label keeps a shadow so it reads over the ice), solid only while pressed
   const btn = 'absolute rounded-full border border-white/30 bg-black/15 active:bg-white/30 active:scale-95 transition-transform text-white/90 font-semibold [text-shadow:0_1px_2px_rgba(0,0,0,.85)] flex items-center justify-center text-center leading-none touch-none select-none';
   const pill = 'rounded-full bg-black/25 text-white/90 text-[11px] px-3 py-1.5 border border-white/25 [text-shadow:0_1px_2px_rgba(0,0,0,.85)] active:bg-white/30 disabled:opacity-40';
@@ -807,7 +847,17 @@ export function TouchControls({ touch, labels, onCommand, pulled, faceoff, conte
       <div className="absolute inset-0 pointer-events-none" data-play-buttons>
         <button type="button" className={cn(btn, 'pointer-events-auto text-sm bg-accent/30 border-accent/60')} style={at(0, 0, 80)} {...hold('shoot')} data-touch="shoot">{labels.shoot}</button>
         <button type="button" className={cn(btn, 'pointer-events-auto text-xs')} style={at(inner.pass.right, inner.pass.bottom, 64)} {...hold('pass')} data-touch="pass">{labels.pass}</button>
-        <button type="button" className={cn(btn, 'pointer-events-auto text-[11px]')} style={at(inner.deke.right, inner.deke.bottom, 54)} {...hold('deke')} data-touch="deke">{labels.deke}</button>
+        {context === 'carry'
+          ? <button type="button" className={cn(btn, 'pointer-events-auto text-[11px]')} style={at(inner.deke.right, inner.deke.bottom, 54)} {...dekeSwipe} data-touch="deke" data-touch-swipe={swiped ?? undefined} title="Финт: тап — обычный, вверх — вертушка, вниз — между ног, влево / вправо — протяжка">
+              {/* the four ways, faintly round the label */}
+              <span aria-hidden className="absolute inset-0 pointer-events-none text-[8px] text-white/45">
+                <span className="absolute top-0.5 left-1/2 -translate-x-1/2">▲</span><span className="absolute bottom-0.5 left-1/2 -translate-x-1/2">▼</span>
+                <span className="absolute left-1 top-1/2 -translate-y-1/2">◀</span><span className="absolute right-1 top-1/2 -translate-y-1/2">▶</span>
+              </span>
+              {labels.deke}
+              {swiped && <span className="absolute -top-6 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-sm bg-black/60 px-1.5 py-0.5 text-[10px] text-ice fade-in" data-touch-deke-kind>{DEKE_SWIPE_NAME[swiped]}</span>}
+            </button>
+          : <button type="button" className={cn(btn, 'pointer-events-auto text-[11px]')} style={at(inner.deke.right, inner.deke.bottom, 54)} {...hold('deke')} data-touch="deke">{labels.deke}</button>}
         <button type="button" className={cn(btn, 'pointer-events-auto text-[11px]')} style={at(inner.sprint.right, inner.sprint.bottom, 54)} {...hold('sprint')} data-touch="sprint">Рывок</button>
       </div>
       <div className="absolute inset-0 pointer-events-none" data-play-extra={context}>

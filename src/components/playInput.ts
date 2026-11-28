@@ -1,4 +1,4 @@
-import type { PadState } from '../game/playRink';
+import type { DekeKind, PadState } from '../game/playRink';
 
 /**
  * The controls of a played match: keyboard, gamepad (the standard mapping of the Gamepad API: Xbox / PlayStation
@@ -69,7 +69,9 @@ export const PAD_COMMANDS: Partial<Record<Command, number[]>> = { pause: [PAD.ST
 
 /** The touch screen: the sticks, the main buttons, and the extra ones (lb — the modifier, lift, pin, push, vision, hustle, r3, fight, ○, □). */
 export interface TouchState { mx: number; my: number; sx: number; sy: number; shoot: boolean; pass: boolean; deke: boolean; swap: boolean; sprint: boolean; faceoff: boolean;
-  lb: boolean; lift: boolean; pin: boolean; push: boolean; vision: boolean; hustle: boolean; r3: boolean; fight: boolean; o: boolean; sq: boolean }
+  lb: boolean; lift: boolean; pin: boolean; push: boolean; vision: boolean; hustle: boolean; r3: boolean; fight: boolean; o: boolean; sq: boolean;
+  /** the deke button swiped: the kind and side of the deke (see PadState.dekeKind) */
+  dekeKind?: DekeKind; dekeSide?: 1 | -1 }
 export const emptyTouch = (): TouchState => ({ mx: 0, my: 0, sx: 0, sy: 0, shoot: false, pass: false, deke: false, swap: false, sprint: false, faceoff: false, lb: false, lift: false, pin: false, push: false, vision: false, hustle: false, r3: false, fight: false, o: false, sq: false });
 
 export function keyboardPad(down: ReadonlySet<string>): PadState {
@@ -125,7 +127,25 @@ export function mergePads(...pads: PadState[]): PadState {
   // the extra buttons (every device has them now); the NHL scheme itself only when a gamepad is in use
   Object.assign(out, { poke: any('poke'), lift: any('lift'), pin: any('pin'), lb: any('lb'), vision: any('vision'), hustle: any('hustle'), push: any('push'), r3: any('r3'), fight: any('fight'), o: any('o'), sq: any('sq') });
   if (any('nhl')) out.nhl = true;
+  const sw = pads.find(p => p.deke && p.dekeKind);
+  if (sw) { out.dekeKind = sw.dekeKind; if (sw.dekeSide) out.dekeSide = sw.dekeSide; }
   return out;
+}
+
+/** Which way the thumb went across the deke button (px, screen y down): null — a tap (it hardly moved). */
+export type SwipeDir = 'up' | 'down' | 'left' | 'right';
+export const SWIPE_PX = 18;
+export function swipeDir(dx: number, dy: number, min = SWIPE_PX): SwipeDir | null {
+  if (Math.hypot(dx, dy) < min) return null;
+  return Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'right' : 'left') : (dy > 0 ? 'down' : 'up');
+}
+/** The deke a swipe of the touch button asks for: up a spin-o-rama, down between the legs, left / right a toe drag that way. */
+export function swipeDeke(dir: SwipeDir | null): { kind?: DekeKind; side?: 1 | -1 } {
+  if (dir === 'up') return { kind: 'spin' };
+  if (dir === 'down') return { kind: 'between' };
+  if (dir === 'left') return { kind: 'toe', side: -1 };
+  if (dir === 'right') return { kind: 'toe', side: 1 };
+  return {};
 }
 
 /** The touch stick: the thumb's offset from where it touched down, as a vector of length ≤ 1 (radius in px). */
