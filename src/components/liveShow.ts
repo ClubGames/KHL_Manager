@@ -156,6 +156,14 @@ export function penaltyCaption(text: string): { name: string; reason: string } {
   if (tail) return { name: tail[1].trim(), reason: tail[2] };
   return { name: name.trim(), reason: reason.replace(new RegExp(`,\\s*${LEN}$`), ' ($1)') };
 }
+/** A penalty shot's caption from the rinks' text («Штрафной бросок! Имя — причина при выходе один на один. Исполняет Имя2»). */
+export function penaltyShotCaption(text: string): { name: string; reason: string } {
+  const body = text.replace(/^Штрафной бросок!\s*/, '');
+  const [name, ...rest] = body.split(' — ');
+  const r = rest.join(' — ');
+  const m = r.match(/^(.*?)\.?\s*Исполняет\s+(.+)$/);
+  return m ? { name: name.trim(), reason: `${m[1].trim()} · бросок исполняет ${m[2].trim()}` } : { name: name.trim(), reason: r.trim() };
+}
 /** The infraction's replay: from a few seconds before it (the delayed call marks it, else just before the whistle). */
 export function penaltyReplay(callTau: number, infractionTau: number | null, text: string, player?: string): ReplaySpec {
   const key = infractionTau ?? callTau - .25;

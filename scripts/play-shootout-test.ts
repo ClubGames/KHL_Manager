@@ -10,6 +10,7 @@ import { GameSim } from '../src/game/engine';
 import { soNext, soShooter, soTally, type SoAttempt } from '../src/game/shootout';
 import type { Team } from '../src/types';
 import { OfficialCrew } from '../src/components/officialCrew';
+import { penaltyShotCaption } from '../src/components/liveShow';
 
 const r = parseRosterText(readFileSync('scripts/fixtures/test-roster.json', 'utf8'));
 const P = r.players, T = r.teams;
@@ -189,7 +190,7 @@ test('every attempt got ready as on TV: the others off, the puck put on the cent
   assert.ok(Math.min(...gaps) > 9, `attempts ${Math.min(...gaps).toFixed(1)} s apart at least`);
 });
 
-test('a penalty shot in a game: everybody else off to the benches, the same set-up, then play on', () => {
+test('a penalty shot in a game: the call, everybody else off to the benches, the same set-up, then play on', () => {
   const [H, A] = pair(5);
   const k = new PlayRink({ home: H, away: A, players: P, lineups: [H.lineup, A.lineup], userSide: null, kind: 'reg', periodMinutes: 20, seed: 11 });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -205,6 +206,7 @@ test('a penalty shot in a game: everybody else off to the benches, the same set-
   assert.ok(tries[0].puckOnSpot && tries[0].others === 0 && tries[0].shooterGap < 1.5);
   assert.ok(p.plays.some((x: { text: string }) => /Штрафной бросок (не реализован|.*гол)/i.test(x.text) || x.text.startsWith('ГОЛ')), 'the shot taken');
   assert.ok(p.skaters(0).length >= 5 && p.skaters(1).length >= 5, 'both teams back on the ice after it');
+  assert.deepEqual(penaltyShotCaption(p.plays.find((x: { text: string }) => x.text.startsWith('Штрафной бросок!')).text), { name: d.name, reason: `подножка при выходе один на один · бросок исполняет ${c.name}` });
 });
 
 test('the referee at a penalty shot: bent over the centre spot putting the puck down, the arm up for the whistle when the shooter is set', () => {
