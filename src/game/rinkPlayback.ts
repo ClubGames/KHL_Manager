@@ -161,6 +161,8 @@ export type LiveFrame = { puck: Point; skaters: { id: string; side: 0 | 1; pos: 
   ctrl?: boolean; fall?: number; check?: number; poke?: number; deke?: number;
   /** the played match: a named move being acted out (deke kinds, body-check kinds, a stick lift) and its progress 0…1; a stagger after a hit 0…1 */
   move?: LiveMove; moveT?: number; stagger?: number;
+  /** the jolt behind a stagger: the way he was knocked (unit vector, metres like `dir`) and how hard 0…1 */
+  staggerDir?: { x: number; y: number }; staggerK?: number;
   /** the played match: a held stance and its blend 0…1; the manager's stickhandling (the blade forehand −1 … backhand 1 across him) */
   stance?: LiveStance; stanceT?: number; handle?: number;
   /** how a fallen skater went down (on his back, face first, sideways over the hip) and, sideways, to which side (±1) */
