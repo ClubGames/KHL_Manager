@@ -527,4 +527,28 @@ test('a shot from his own end: not a lob that drops onto the net — a low slide
   }
 });
 
+test('passes lead the receiver: a man skating on takes it in stride (keeps most of his speed), the puck in front of him', () => {
+  let n = 0, keep = 0, ahead = 0, all = 0, done = 0;
+  for (let g = 0; g < 2; g++) {
+    const k = make(g + 70), p = k as any;
+    const sent = new Map<string, { v: number; vx: number; vy: number; leg: number }>();
+    const oPass = p.passTo.bind(p), oTake = p.take.bind(p);
+    p.passTo = (a: any, m: any, s: boolean, pw?: number) => { const had = p.puck.carrier === a; oPass(a, m, s, pw); if (had && p.puck.passTo === m) { all++; sent.set(m.id, { v: Math.hypot(m.vx, m.vy), vx: m.vx, vy: m.vy, leg: p.puck.leg }); } };
+    p.take = (a: any, i: boolean) => {
+      const q = p.puck, r = sent.get(a.id);
+      if (r && q.passTo === a && q.passBy?.side === a.side && r.leg === q.leg) {
+        sent.delete(a.id); done++;
+        if (r.v > 2.5) { n++; keep += Math.hypot(a.vx, a.vy) / r.v; if ((q.x - a.x) * r.vx + (q.y - a.y) * r.vy > 0) ahead++; }
+      }
+      oTake(a, i);
+    };
+    k.runToEnd();
+  }
+  console.log(`   ${all} passes, ${done} straight onto the stick; to men skating: ${n}, speed kept ${(keep / n * 100).toFixed(0)}%, the puck in front ${(ahead / n * 100).toFixed(0)}%`);
+  assert.ok(n > 200);
+  assert.ok(keep / n > 0.6, 'taken in stride, not stopping for it');
+  assert.ok(ahead / n > 0.5, 'the puck in front of him');
+  assert.ok(done / all > 0.55, 'most passes arrive');
+});
+
 console.log(`\n${pass} play-control tests passed`);

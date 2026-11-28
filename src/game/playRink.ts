@@ -230,6 +230,8 @@ const PST = { away: 1, place: 2, skate: 3, set: 4 } as const;
 const PS_STAGE = ['away', 'place', 'skate', 'set'] as const;
 /** A shot from farther than this from the net (m: past the attacking blue line and a bit) is a long one — see shoot. */
 const LONG_SHOT = 26;
+/** A pass leads a skating receiver by at most this much of his skating (s): he does not keep a straight line for longer. */
+const LEAD_MAX = 1.0;
 /** How long a shot press with the puck is kept when he cannot shoot at that moment (a deke, a kick, the moment after a move), s. */
 const SHOT_BUFFER = 0.35;
 /** The longest the players take to skate to their faceoff places after a whistle (s). */
@@ -2353,7 +2355,13 @@ export class PlayRink {
     this.pathAt = -1;
     // the man a pass is meant for skates onto it (where he meets it in time, along the puck's real path)
     const recv = p.passTo && !p.carrier ? p.passTo : null;
-    if (recv && !recv.manual && recv.on === 'ice') { const c = this.catchAt(recv); const t = this.blade2(recv, c.at); recv.tx = t.x; recv.ty = t.y; recv.urg = 1; recv.back = false; }
+    // (through it, not up to it: aiming at the point itself he braked to a stop there and took the pass standing)
+    if (recv && !recv.manual && recv.on === 'ice') {
+      const c = this.catchAt(recv), t = this.blade2(recv, c.at), dx = t.x - recv.x, dy = t.y - recv.y, d = Math.hypot(dx, dy);
+      const on = d > 0.4 && c.t < 1.6 ? clamp(Math.hypot(recv.vx, recv.vy) * 0.25, 0, 1.25) / d : 0;
+      const g = inside({ x: t.x + dx * on, y: t.y + dy * on }, 1);
+      recv.tx = g.x; recv.ty = g.y; recv.urg = 1; recv.back = false;
+    }
     const owner: Side | null = carrier?.side ?? (p.passTo && p.passBy?.side === p.passTo.side ? p.passTo.side : null);
     for (const s of [0, 1] as Side[]) {
       const free = this.skaters(s, false).filter(a => !a.manual && a !== carrier && a !== recv && a.stun <= 0);
@@ -3227,9 +3235,17 @@ export class PlayRink {
     if (p.carrier !== a) return;
     const d = dist(a, m), k = this.diffOf(a);
     const speed = clamp(9 + d * 0.5, 10, 23) * (0.92 + a.pass / 900) * (0.75 + 0.5 * clamp(power, 0, 1));
-    // lead the receiver: where he will be when the puck gets there
-    const t = d / speed;
-    let tx = m.x + m.vx * t * 0.9, ty = m.y + m.vy * t * 0.9;
+    // lead the receiver (NHL style): where he will be when the puck gets there — the puck slows on the ice on its
+    // way (a pass used to be aimed by its speed off the stick, so it came in behind a man skating on and he had to
+    // turn back for it) — and a little in front of him, so he skates onto it without breaking stride
+    const mv = Math.hypot(m.vx, m.vy), ahead = mv > 1.5 ? clamp(mv * 0.12, 0.25, 0.9) : 0;
+    const flight = (D: number) => { const dec = 0.9 + speed * 0.02, disc = speed * speed - 2 * dec * D; return disc > 0 ? (speed - Math.sqrt(disc)) / dec : (2 * D) / speed; };
+    let t = d / speed, tx = m.x, ty = m.y;
+    for (let i = 0; i < 3; i++) {
+      const tl = Math.min(t, LEAD_MAX); tx = m.x + m.vx * tl + (mv > 1e-6 ? (m.vx / mv) * ahead : 0); ty = m.y + m.vy * tl + (mv > 1e-6 ? (m.vy / mv) * ahead : 0);
+      const c = inside({ x: tx, y: ty }, 1.2); tx = c.x; ty = c.y;
+      t = flight(Math.hypot(tx - a.x, ty - a.y));
+    }
     const err = this.gauss() * (0.075 - a.pass / 1800) / Math.sqrt(k);
     const ang = Math.atan2(ty - a.y, tx - a.x) + err, dd = Math.hypot(tx - a.x, ty - a.y);
     tx = a.x + Math.cos(ang) * dd; ty = a.y + Math.sin(ang) * dd;
