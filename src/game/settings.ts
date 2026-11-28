@@ -9,6 +9,12 @@ import type { PenaltyClock } from './playRink';
 export type ReplayQualitySetting = 'auto' | 'standard' | 'high' | 'ultra';
 export type AutoReplay = 'all' | 'mine' | 'off';
 
+/**
+ * The player's own controls: keys (by physical code) and gamepad buttons per binding, over the defaults of
+ * playInput.ts — only what he changed is stored (an empty list: unbound).
+ */
+export type Controls = { keys?: Record<string, string[]>; pad?: Record<string, number[]> };
+
 export type Settings = {
   /** 3D goal replays; off = the same episode on the 2D rink (light, works everywhere) */
   replay3d: boolean;
@@ -67,6 +73,8 @@ export type Settings = {
   soundOrgan: boolean;
   /** a played match: the clock while one side is short-handed — like the period, real time, or real time ×2 / ×4 */
   playPenaltyClock: PenaltyClock;
+  /** a played match: the keys and gamepad buttons rebound by the player */
+  controls: Controls;
 };
 
 const KEY = 'khl.settings';
@@ -79,7 +87,26 @@ export function defaultSettings(): Settings {
     matchSpeed: 2, matchRink2d: true, matchView: '3d', matchCamera: 'broadcast', matchZoom: 1, matchMinimap: true, matchIntro: true, matchReplays: true, matchAdvice: true, simOpenReport: true, simConfirm: true,
     playPeriod: 5, playDifficulty: 'pro', playAutoSwitch: true, playTouch: 'auto', playPenaltyClock: 'period',
     sound: true, soundVolume: .75, soundCrowd: 'normal', soundOrgan: true,
+    controls: {},
   };
+}
+
+/** Bindings as stored: names of letters only, short lists of key codes / button indices (anything else dropped). */
+export function sanitizeControls(raw: unknown): Controls {
+  if (!raw || typeof raw !== 'object') return {};
+  const r = raw as Record<string, unknown>;
+  const out: Controls = {};
+  const map = <V,>(m: unknown, ok: (v: unknown) => v is V): Record<string, V[]> | undefined => {
+    if (!m || typeof m !== 'object' || Array.isArray(m)) return undefined;
+    const o: Record<string, V[]> = {};
+    for (const [k, v] of Object.entries(m as Record<string, unknown>)) if (/^[A-Za-z0-9]{1,20}$/.test(k) && Array.isArray(v) && v.length <= 3 && v.every(ok)) o[k] = [...new Set(v)] as V[];
+    return Object.keys(o).length ? o : undefined;
+  };
+  const keys = map(r.keys, (v): v is string => typeof v === 'string' && /^[A-Za-z0-9]{1,24}$/.test(v));
+  const pad = map(r.pad, (v): v is number => Number.isInteger(v) && (v as number) >= 0 && (v as number) < 20);
+  if (keys) out.keys = Object.fromEntries(Object.keys(keys).sort().map(k => [k, keys[k]]));
+  if (pad) out.pad = Object.fromEntries(Object.keys(pad).sort().map(k => [k, pad[k]]));
+  return out;
 }
 
 const CAMS: ReplayCamera[] = ['auto', 'broadcast', 'ice', 'net', 'goal', 'chase', 'end', 'sky', 'stands', 'corner', 'overhead', 'blue', 'rail', 'puck'];
@@ -103,6 +130,7 @@ export function sanitizeSettings(raw: unknown): Settings {
     matchSpeed: one('matchSpeed', [1, 2, 4] as const), matchRink2d: bool('matchRink2d'), matchView: one('matchView', ['2d', '3d'] as const), matchCamera: one('matchCamera', ['broadcast', 'high', 'ice', 'end', 'overhead', 'dynamic', 'zone', 'vertical'] as const), matchZoom: one('matchZoom', MATCH_ZOOMS), matchMinimap: bool('matchMinimap'), matchIntro: bool('matchIntro'), matchReplays: bool('matchReplays'), matchAdvice: bool('matchAdvice'), simOpenReport: bool('simOpenReport'), simConfirm: bool('simConfirm'),
     playPeriod: one('playPeriod', [3, 5, 8, 12, 20] as const), playDifficulty: one('playDifficulty', ['rookie', 'pro', 'star'] as const), playAutoSwitch: bool('playAutoSwitch'), playTouch: one('playTouch', ['auto', 'on', 'off'] as const), playPenaltyClock: one('playPenaltyClock', ['period', 'real', 2, 4] as const),
     sound: bool('sound'), soundVolume: one('soundVolume', SOUND_VOLUMES), soundCrowd: one('soundCrowd', ['off', 'quiet', 'normal', 'loud'] as const), soundOrgan: bool('soundOrgan'),
+    controls: sanitizeControls(r.controls),
   };
 }
 
