@@ -143,7 +143,8 @@ test('the goal mouth is open: every shot the model scores crosses the line (none
   assert.ok(scored > 3);
   // (a body in the lane or a tip stops a few — not most; a tipped one can still go in)
   assert.ok(stopped <= Math.max(1, scored * 0.4), 'hardly ever stopped on the way');
-  assert.ok(counted >= scored - stopped && counted <= scored, `${counted} goals of ${scored} scoring shots`);
+  // (one more at most: a shot the model sends wide can still carom in off a body — a goal, though not the model's)
+  assert.ok(counted >= scored - stopped && counted <= scored + 1, `${counted} goals of ${scored} scoring shots`);
 });
 
 /** Steps a rink, noting each penalty shot got ready: the stages in order, where the shooter and the puck are at the whistle. */

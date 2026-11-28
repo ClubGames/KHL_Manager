@@ -304,6 +304,48 @@ test('the manager\'s poke check takes the puck onto his stick; the skill stick c
   assert.ok(Math.abs(Math.abs(up!.x) - (RINK.length / 2 - RINK.goalLine)) < 0.01, 'the marker sits on the goal line');
 });
 
+test('skating backwards: back first (not side-on); the manager\'s defender backs up by himself before a rush and turns once beaten', () => {
+  const k = make(64, { userSide: 0, autoSwitch: false });
+  run(k, () => NO_PAD, undefined, 3);
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const raw = k as any;
+  const mine = [...raw.agents.values()].filter((a: any) => a.side === 0 && !a.goalie && a.on === 'ice'), theirs = [...raw.agents.values()].filter((a: any) => a.side === 1 && !a.goalie && a.on === 'ice');
+  const me = mine[0], c = theirs[0];
+  for (const a of [...mine, ...theirs]) if (a !== me && a !== c) { a.x = a.side ? 55 : 5; a.y = a.side ? 28 : 2; a.vx = a.vy = 0; }
+  const ang = (x: number, y: number) => { let d = y - x; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return Math.abs(d); };
+  const setup = () => {
+    raw.mode = 'play'; raw.ctl = me.id; raw.puck.dead = false; raw.puck.shot = null; raw.puck.passTo = null;
+    me.x = 24; me.y = 15; me.vx = -3; me.vy = 0; me.fa = Math.PI; me.act = null; me.stun = 0; me.fall = 0; me.cool = 9e9;
+    c.x = 36; c.y = 15; c.vx = -6; c.vy = 0; c.fa = Math.PI; c.act = null; c.stun = 0; c.cool = 9e9;
+    raw.puck.carrier = c;
+  };
+  // a rush coming at him, the stick pulled back toward his own net: he turns round and backs up, facing the man
+  setup();
+  let backed = 0;
+  for (let i = 0; i < 60; i++) {
+    c.x = 36 - 6 * (i + 1) / 60; c.y = 15; c.vx = -6; c.vy = 0; c.act = null; raw.puck.carrier = c; raw.puck.x = c.x - 0.8; raw.puck.y = 15;
+    k.advance(1 / 60, { ...NO_PAD, mx: -1, my: 0 });
+    if (me.back) backed++;
+  }
+  assert.ok(backed > 50, `backs up by himself before the rush (${backed}/60)`);
+  assert.ok(Math.cos(me.fa) > 0.8, `facing up the ice at the man (fa ${me.fa.toFixed(2)})`);
+  // beaten: the carrier level with him — he turns and races back forwards
+  c.x = me.x - 1.5; raw.puck.x = c.x - 0.8;
+  for (let i = 0; i < 60; i++) { c.x -= 6 / 60; c.vx = -6; raw.puck.carrier = c; raw.puck.x = c.x - 0.8; k.advance(1 / 60, { ...NO_PAD, mx: -1, my: 0 }); }
+  assert.ok(!me.back, 'beaten, he skates forwards again');
+  assert.ok(Math.cos(me.fa) < -0.8, `turned toward his own net (fa ${me.fa.toFixed(2)})`);
+  // the stick up the ice at the carrier: he goes to meet him forwards
+  setup(); me.vx = 0;
+  for (let i = 0; i < 30; i++) { c.x = 36; c.vx = -1.5; raw.puck.carrier = c; k.advance(1 / 60, { ...NO_PAD, mx: 1, my: 0 }); }
+  assert.ok(!me.back, 'stepping up to the man is skating forwards');
+  // backing up across the ice (vision control held): his back the way he goes, not side-on to it
+  setup(); me.vx = 0; me.vy = 0; me.fa = 0;
+  for (let i = 0; i < 90; i++) { c.x = 36; c.y = 15; c.vx = 0; c.vy = 0; raw.puck.carrier = c; k.advance(1 / 60, { ...NO_PAD, mx: -0.3, my: 1, vision: true }); }
+  const rev = Math.atan2(-me.vy, -me.vx);
+  console.log(`   backing up across: moving ${Math.atan2(me.vy, me.vx).toFixed(2)}, facing ${me.fa.toFixed(2)} (puck at ${Math.atan2(15 - me.y, 36 - me.x).toFixed(2)})`);
+  assert.ok(ang(me.fa, rev) < 0.45, 'his back the way he goes');
+});
+
 test('difficulty changes only the opponents: a star AI beats a rookie AI more often', () => {
   let rookieGoals = 0, starGoals = 0;
   for (let g = 0; g < 4; g++) {

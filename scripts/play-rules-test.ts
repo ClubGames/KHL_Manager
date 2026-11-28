@@ -153,7 +153,9 @@ test('out of play without a penalty: deflected, into a players\' bench, or sent 
 test('the new penalties: holding, high-sticking (2+2 with blood), goalie interference, elbowing, head, from behind, kneeing, roughing, too many men, delay of game', () => {
   const reasons: Record<string, number> = {};
   let periods = 0, total = 0, mins = new Set<number>();
-  for (let g = 0; g < 12; g++) {
+  // (12 periods — and more while a rare call has not come yet: a hold, a beaten man grabbing or a pin kept too long,
+  // comes about once in four periods, so 12 of them now and then have none)
+  for (let g = 0; g < 12 || (g < 30 && !(reasons['задержка соперника'] && reasons['игра высоко поднятой клюшкой'])); g++) {
     const k = make(g); k.runToEnd(); periods++;
     for (const o of k.drain() as any[]) if (o.type === 'penalty') { reasons[o.reason] = (reasons[o.reason] ?? 0) + 1; total++; mins.add(o.min); }
   }
