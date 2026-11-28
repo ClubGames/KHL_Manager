@@ -498,4 +498,33 @@ test('a shot pressed while he cannot shoot yet (the end of a deke) still goes of
   assert.equal(fired, 8, `${fired}/8 shots`);
 });
 
+test('a shot from his own end: not a lob that drops onto the net — a low slider that often misses, or a clear where he aims', () => {
+  for (const mode of ['net', 'wide'] as const) {
+    const res: Record<string, number> = {}; let peak = 0;
+    for (let trial = 0; trial < 30; trial++) {
+      const k = make(trial, { userSide: 0, autoSwitch: false }), p = k as any;
+      for (let i = 0; i < 600 && k.mode !== 'play'; i++) k.advance(1 / 60);
+      const me = p.skaters(0).find((x: any) => !x.kindD);
+      p.ctl = me.id;
+      for (const a of p.onIce()) if (a !== me && !a.goalie) { a.x = a.side ? 52 : 8; a.y = a.side ? 27 : 3; a.vx = 0; a.vy = 0; a.act = null; }
+      Object.assign(me, { x: 8 + (trial % 4) * 4, y: 8 + (trial % 5) * 3.5, vx: 3, vy: 0, fa: 0, act: null, cool: 0, stun: 0 });
+      p.puck.carrier = me; p.puck.dead = false; p.puck.passTo = null; p.mode = 'play';
+      const pad = mode === 'net' ? { ...NO_PAD, mx: 1, my: 0 } : { ...NO_PAD, mx: 0.5, my: trial % 2 ? 0.9 : -0.9 };
+      let out = 'none';
+      for (let i = 0; i < 60 * 6; i++) {
+        k.advance(1 / 60, { ...pad, shoot: i > 2 && i < 30 });
+        if (p.puck.shot) peak = Math.max(peak, p.puck.h);
+        for (const e of k.drain()) if (e.type === 'shot') out = e.outcome;
+        if (k.mode !== 'play' && out !== 'none') break;
+      }
+      res[out] = (res[out] ?? 0) + 1;
+    }
+    console.log(`   ${mode}: ${JSON.stringify(res)}, highest ${peak.toFixed(2)} m`);
+    assert.ok(peak < 0.5, 'low, not lobbed');
+    assert.ok(!res.goal, 'no goal from his own end on a goalie in his net');
+    if (mode === 'net') assert.ok((res.miss ?? 0) >= 6, 'it often misses the net');
+    else assert.ok(!res.save && !res.miss, 'aimed away from the net: a clear, not a shot');
+  }
+});
+
 console.log(`\n${pass} play-control tests passed`);
