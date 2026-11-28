@@ -912,13 +912,18 @@ export function LiveScene3D(props: Props) {
             const pokeWeight = attacker && pw.y < .2 && pl.z > .4 && pd < 2.8 ? smooth01((2.8 - pd) / 1.0) * .85 : 0;
             const drop = Math.max(!attacker && pw.y < .3 && pl.z > -.3 && pd < 2.2 ? .6 * smooth01((2.2 - pd) / .8) : 0, save && a.save && a.save.y < .45 ? saveWeight * .8 : 0);
             // the frozen puck: in his glove at the chest, or covered under him — the puck goes where his glove is
-            const hold = p.move === 'glove' || p.move === 'cover' ? p.move : null;
-            a.figure.goalie({ drop, lateral: clamp(lateral, -1, 1), save: hold ? null : save, saveWeight: hold ? 0 : saveWeight, poke: pl, pokeWeight: hold ? 0 : pokeWeight, look: clamp(angleDiff(a.heading, facePuck), -1.2, 1.2), hold, holdW: p.moveT ?? 1 });
+            // (the save's reach gives way to the hold as he brings the puck in: the glove starts where it stopped the puck)
+            const hold = p.move === 'glove' || p.move === 'cover' ? p.move : null, holdW = p.moveT ?? 1;
+            a.figure.goalie({ drop, lateral: clamp(lateral, -1, 1), save, saveWeight: hold ? saveWeight * (1 - holdW) : saveWeight, poke: pl, pokeWeight: hold ? 0 : pokeWeight, look: clamp(angleDiff(a.heading, facePuck), -1.2, 1.2), hold, holdW });
             if (hold && !f.faceoff) {
               a.group.updateMatrixWorld(true);
               const gw = a.figure.gloveWorld(local);
-              if (hold === 'glove') puck.position.set(gw.x, Math.max(PUCK_H / 2, gw.y - .04), gw.z);
-              else puck.position.set(gw.x, PUCK_H / 2, gw.z);
+              // the puck goes into the glove as the glove gets to it (it stays where he stopped it until then — the
+              // rink brings it in over the same moment), not into the glove wherever the glove happens to be
+              const k = smooth01(holdW * 1.25);
+              const gx = pw.x + (gw.x - pw.x) * k, gz = pw.z + (gw.z - pw.z) * k;
+              if (hold === 'glove') puck.position.set(gx, Math.max(PUCK_H / 2, pw.y + (gw.y - .04 - pw.y) * k), gz);
+              else puck.position.set(gx, PUCK_H / 2, gz);
               puckShadow.position.set(puck.position.x, .012, puck.position.z); puckShadow.visible = puck.position.y > .05;
               trail.visible = false;
             }

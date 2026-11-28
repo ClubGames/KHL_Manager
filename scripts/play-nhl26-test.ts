@@ -165,7 +165,7 @@ test('the goalie\'s freeze: a high puck held in the glove at his chest, a low on
   toPlay(k2); q.mode = 'play';
   const g2 = q.goalieOf(0), b = q.skaters(1, false)[0];
   Object.assign(b, { x: g2.x + 1.5, y: g2.y, vx: 0, vy: 0 });
-  q.puck.carrier = null; q.puck.dead = false;
+  q.puck.carrier = null; q.puck.dead = false; q.puck.x = g2.x + Math.cos(g2.fa) * 0.5; q.puck.y = g2.y + Math.sin(g2.fa) * 0.5; q.puck.h = 0;
   q.goalieStop(g2, 4);
   assert.equal(q.held?.kind, 'cover');
   steps(k2, 20, NO_PAD);
