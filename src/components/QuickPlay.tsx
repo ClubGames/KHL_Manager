@@ -73,7 +73,7 @@ export function QuickPlay({ kind, onClose }: { kind: QuickKind; onClose: () => v
     const { built } = game;
     return (
       <PlayMatchCore key={game.n} sim={built.sim} H={built.H} A={built.A} P={built.P} userIdx={built.userIdx} onDone={() => setGame(null)}
-        standalone={{ kind, onAgain: start, onQuit: () => setGame(null) }} />
+        standalone={{ kind, onAgain: start, onQuit: () => setGame(null) }} outro={kind === 'match' ? {} : null} />
     );
   }
 

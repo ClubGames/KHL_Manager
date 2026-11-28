@@ -306,6 +306,14 @@ export class PlayerFigure {
   }
 
   private reset() { this.restLocal.forEach((q, bone) => bone.quaternion.copy(q)); }
+  /** The stick in his hands (or not: thrown away after the Cup, the Cup in his hands). */
+  private props(on: boolean) { if (this.kit.official) return; this.shaft.visible = this.blade.visible = on; if (this.paddle) this.paddle.visible = on; }
+
+  /** Where a trophy held in both hands sits (world): between the gloves. */
+  cupPoint(out: T.Vector3): T.Vector3 {
+    const a = this.bones.HandL.getWorldPosition(new T.Vector3()), b = this.bones.HandR.getWorldPosition(new T.Vector3());
+    return out.copy(a).add(b).multiplyScalar(.5);
+  }
 
   /** Rotate a bone by a rotation expressed in character space (relative to the rest pose). */
   private turn(name: string, q: T.Quaternion) {
@@ -392,10 +400,15 @@ export class PlayerFigure {
    * opts.shake 0..1: the right hand out for a handshake (the stick stays in the other one), shaking with opts.t;
    * opts.pump 0..1: a goal scorer's fist pump with the free (right) arm, in time with opts.t; opts.kneel 0..1:
    * down on one knee, sliding (the celebration after a goal).
+   * After the final siren: opts.slump 0..1 — a loser's head down, shoulders sunk, the stick dragged; opts.noStick —
+   * the stick gone (thrown away): the gloves at his sides, or both fists up with `cheer`; opts.trophy 0..1 — a Cup in
+   * both hands, .5 at the chest, 1 high over his head (no stick; `cupPoint` is where the Cup goes).
    * Everything is solved for a right shot and mirrored for a left one.
    */
-  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number; check?: number; poke?: number; move?: LiveMove; moveT?: number; stagger?: number; down?: number; shake?: number; pump?: number; kneel?: number; bump?: number; t?: number; stance?: LiveStance; stanceT?: number; handle?: number; now?: number; walk?: number } = {}) {
+  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number; check?: number; poke?: number; move?: LiveMove; moveT?: number; stagger?: number; down?: number; shake?: number; pump?: number; kneel?: number; bump?: number; t?: number; stance?: LiveStance; stanceT?: number; handle?: number; now?: number; walk?: number; slump?: number; noStick?: boolean; trophy?: number } = {}) {
     this.reset();
+    const slump = smooth(clamp01(opts.slump ?? 0)), trophy = clamp01(opts.trophy ?? 0), noStick = !!opts.noStick || trophy > 0;
+    this.props(!noStick);
     const m = this.hand, kind = opts.kind ?? 'wrist';
     // walking on the skates (off the ice: out of the tunnel, over the bench floor): upright, a step with each foot
     const walk = smooth(clamp01(opts.walk ?? 0));
@@ -454,14 +467,14 @@ export class PlayerFigure {
       - (fHead * .55 + fElbow * .5 + fRough * (.3 + .25 * Math.sin(now * 9))) + fSlash * .3 + fTrip * .35 - fHook * .2;
     const lean = lerp(lerp(.2 + .14 * amp, .07, walk) + .1 * load * size, -.05, cheer) + chk * .22 + poke * .28 + btw * .25 + spin * .2 + toe * .1 - pin * .05 + lift * .18 - stag * .35 + rch * .42 - down * .45
       - blk * .2 + vis * .06 + hus * .16 + shove * .22 + Math.abs(hdl) * .08 + prot * .12 + brd * .3 + swp * .2 + cStick * .1 - cSky * .1 - cEar * .05
-      + fHead * .12 + fElbow * .06 + fTrip * .3 + fHook * .14 + fCross * .24 + fBoard * .3 - fHold * .04 + fRough * .04 + fSlash * .1;
+      + fHead * .12 + fElbow * .06 + fTrip * .3 + fHook * .14 + fCross * .24 + fBoard * .3 - fHold * .04 + fRough * .04 + fSlash * .1 + slump * .26;
     // Shoulders counter-rotate the stride a little (real skaters swing the upper body against the legs).
     const swing = .07 * lerp(amp, 1.2, walk) * Math.sin(phase) * (1 - load) * (1 - follow) * (1 - cheer) * (1 + 1.6 * hus) * (1 - blk);
     this.turn('Abdomen', _t1.setFromAxisAngle(Z, -bank * .45 - (opts.deke ?? 0) * .25 - hip * .35 * m + wob * .2).multiply(_t2.setFromAxisAngle(X, lean * .55)));
     this.turn('Torso', _t1.setFromAxisAngle(Y, (twist * .6 + swing) * m).multiply(_t2.setFromAxisAngle(X, lean * .3)).multiply(_q.setFromAxisAngle(Z, -bank * .35)));
     this.turn('Chest', _t1.setFromAxisAngle(Y, (twist * .4 + swing * .6) * m).multiply(_t2.setFromAxisAngle(X, lean * .25)));
     // the head stays on the play: it turns back against the shoulders (and sells a deke the other way)
-    this.turn('Neck', _t1.setFromAxisAngle(X, -lean * .8).multiply(_t2.setFromAxisAngle(Z, bank * .5)).multiply(_q.setFromAxisAngle(Y, -twist * .55 * m - deke * .4 * m)));
+    this.turn('Neck', _t1.setFromAxisAngle(X, -lean * .8 + slump * .72).multiply(_t2.setFromAxisAngle(Z, bank * .5)).multiply(_q.setFromAxisAngle(Y, -twist * .55 * m - deke * .4 * m)));
     this.root.updateMatrixWorld(true);
     const feet: [T.Vector3, T.Vector3] = [vec(0, 0, 0), vec(0, 0, 0)], yaw: [number, number] = [0, 0];
     const brace = (follow + load) * Math.min(1, size);
@@ -609,6 +622,10 @@ export class PlayerFigure {
       const k = Math.max(fCross, fBoard), thrust = smooth(clamp01((mu - .1) / .25)), lo = fBoard > fCross ? .12 : 0;
       carry = mixV(carry, vec(-.95, 1.08 - crouch - lo, .45 + .5 * thrust), k); carryTop = mixV(carryTop, vec(.4, 1.1 - crouch - lo, .45 + .5 * thrust), k);
     }
+    if (slump > 0) {
+      // dejected: the blade dragged along the ice close in, the knob low
+      carry = mixV(carry, vec(-.38, 0, .78), slump * .7); carryTop = mixV(carryTop, vec(.12, .86 - crouch, .22), slump * .7);
+    }
     let heel = carry, top = carryTop;
     if (load > 0) {
       let wind: T.Vector3, windTop: T.Vector3;
@@ -636,7 +653,14 @@ export class PlayerFigure {
       heel = mixV(heel, f[0], follow); top = mixV(top, f[1], follow);
     }
     if (cheer > 0) { heel = mixV(heel, vec(-.2, 2.25, .45), smooth(cheer)); top = mixV(top, vec(.2, 1.12, .3), smooth(cheer)); }
-    this.grip(heel, top, vec(1, -.6, -.6), vec(-1, -.8, -.3));
+    if (!noStick) this.grip(heel, top, vec(1, -.6, -.6), vec(-1, -.8, -.3));
+    else {
+      // no stick: the gloves at his sides, fists up when he cheers; a Cup at the chest (.5) and high overhead (1)
+      const c = smooth(cheer), hold = smooth(clamp01(trophy * 2)), high = smooth(clamp01((trophy - .5) * 2));
+      const side = (x: number) => mixV(mixV(vec(x * .3, .98 - crouch, .1), vec(x * .34, 2.02 - crouch, .16), c),
+        mixV(vec(x * .18, 1.22 - crouch, .4), vec(x * .16, 2.06 - crouch, .1), high), hold);
+      this.arms(side(1), side(-1), vec(1, -.5 + .4 * c, -.4), vec(-1, -.5 + .4 * c, -.4));
+    }
     // the free right hand: out for a handshake, or a fist pumped after a goal (the stick stays in the other hand)
     const shake = smooth(clamp01(opts.shake ?? 0)), pump = smooth(clamp01(opts.pump ?? 0)), bump = smooth(clamp01(opts.bump ?? 0)), tt = opts.t ?? 0;
     if (fArm > 0) {
@@ -681,6 +705,7 @@ export class PlayerFigure {
    */
   goalie(pose: GoaliePose) {
     this.reset();
+    this.props(true);
     const m = this.hand;
     const sv = pose.save ? vec(pose.save.x * m, pose.save.y, pose.save.z) : null, w = sv ? smooth(pose.saveWeight ?? 0) : 0;
     let drop = clamp01(pose.drop), glove = 0, blocker = 0, padL = 0, padR = 0;
@@ -762,6 +787,7 @@ export class PlayerFigure {
    */
   sit(o: { seat?: number; look?: number; up?: number; /** standing at the boards: the right glove out over them (a fist bump) 0…1 */ reach?: number; t?: number } = {}) {
     this.reset();
+    this.props(true);
     const seat = o.seat ?? .48, up = smooth(clamp01(o.up ?? 0)), look = Math.max(-1.1, Math.min(1.1, o.look ?? 0));
     const hip = this.restRig.get('UpperLegL')?.pos.y ?? .9;
     this.rig.position.set(0, lerp(seat + .1 - hip, LIFT, up), lerp(-.1, 0, up));
