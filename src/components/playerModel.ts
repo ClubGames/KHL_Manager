@@ -137,6 +137,8 @@ const Y = new T.Vector3(0, 1, 0), X = new T.Vector3(1, 0, 0), Z = new T.Vector3(
 const _t1 = new T.Quaternion(), _t2 = new T.Quaternion(), _q2 = new T.Quaternion();
 const LIFT = .06; // skate blade height: the rig stands on its blades
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+/** The steepest a skater's stick stands with its blade on the ice (the sine of the shaft's rise): the knob about waist high. */
+const STICK_MAX_RISE = .7;
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
 const smooth = (v: number) => { const t = clamp01(v); return t * t * (3 - 2 * t); };
 const vec = (x: number, y: number, z: number) => new T.Vector3(x, y, z);
@@ -346,6 +348,20 @@ export class PlayerFigure {
   /** Places the stick (heel on/near the ice, shaft towards `top`) and returns the two grip points. */
   private stick(heel: T.Vector3, top: T.Vector3, toeSign = 1, xSign = toeSign) {
     const dir = top.clone().sub(heel).normalize(), L = this.stickLength;
+    let choke = 0;
+    // a skater's stick never stands up straight with the blade on the ice (the knob — and the top hand on it — would
+    // go up over his head): a puck in close to his skates, the shaft keeps its lie and the top hand goes out to the side
+    // by his hip (toward the top hand's side), the stick angled across him, and both hands slide down the shaft (he
+    // chokes up on it, the knob sticking out past the top hand)
+    if (!this.kit.goalie && !this.kit.official && heel.y < .3 && dir.y > STICK_MAX_RISE) {
+      const u = clamp01((dir.y - STICK_MAX_RISE) / .15), hx = dir.x, hz = dir.z, hl = Math.hypot(hx, hz);
+      const sx = this.hand * .6, sz = -.8;
+      let nx = (hl > 1e-4 ? hx / hl : sx) * (1 - u) + sx * u, nz = (hl > 1e-4 ? hz / hl : sz) * (1 - u) + sz * u;
+      const nl = Math.hypot(nx, nz) || 1, flat = Math.sqrt(1 - STICK_MAX_RISE * STICK_MAX_RISE);
+      nx /= nl; nz /= nl;
+      dir.set(nx * flat, STICK_MAX_RISE, nz * flat);
+      choke = u;
+    }
     this.shaft.position.copy(heel).addScaledVector(dir, L / 2); this.shaft.quaternion.setFromUnitVectors(Y, dir); this.shaft.scale.set(1, L, 1);
     // the flex: the shaft bowed back (its middle behind the line from the blade to the hands)
     const bow = vec(0, 0, -1).addScaledVector(dir, dir.z); if (bow.lengthSq() < 1e-4) bow.set(1, 0, 0); bow.normalize();
@@ -356,7 +372,7 @@ export class PlayerFigure {
     this.blade.position.copy(heel).addScaledVector(toe, half); this.blade.position.y = Math.max(heel.y, 0) + .035;
     this.blade.quaternion.setFromUnitVectors(X, toe);
     if (this.paddle) { this.paddle.position.copy(heel).addScaledVector(dir, .36); this.paddle.quaternion.copy(this.shaft.quaternion); }
-    return { top: heel.clone().addScaledVector(dir, L * (this.kit.goalie ? .6 : .97)), low: heel.clone().addScaledVector(dir, L * .6).addScaledVector(bow, this.flex * Math.sin(Math.PI * .6)), dir };
+    return { top: heel.clone().addScaledVector(dir, L * (this.kit.goalie ? .6 : .97 - .26 * choke)), low: heel.clone().addScaledVector(dir, L * (.6 - .14 * choke)).addScaledVector(bow, this.flex * Math.sin(Math.PI * .6)), dir };
   }
   /** Bows the shaft by `amount` (m at its middle) along `dirLocal` (the shaft's own frame); straight again at 0. */
   private bend(amount: number, dirLocal: T.Vector3) {
