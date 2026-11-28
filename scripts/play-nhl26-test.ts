@@ -242,12 +242,29 @@ test('R3 kicks the puck off the skate and he gathers it on his stick; L1 + a fli
   assert.ok(p.plays.some((x: any) => /пас отменён/.test(x.text)));
 });
 
-test('defence: L1 + R1 a dive (a wide body down on the ice); R1 held a stick sweep along the ice', () => {
+test('defence: L1 + R1 a dive (laid out forward along his slide, the stick swept across in front); R1 held a stick sweep along the ice', () => {
   const d = onDefence(15);
   steps(d.k, 1, pad({ lb: true, poke: true }));
   assert.ok(d.me.diveUntil > d.p.tau, 'down in a dive');
   steps(d.k, 3, pad({ lb: true, poke: true }));
   assert.equal(frameOf(d.k, d.me.id).move, 'dive');
+  // forward along the way he skates (backing up, he turns and goes down head first along it), not where he faced
+  const b = onDefence(18);
+  Object.assign(b.me, { x: 25, y: 15, vx: 4, vy: 0, fa: Math.PI, act: null, cool: 0 });
+  b.p.dive(b.me);
+  assert.ok(Math.abs(b.me.fa) < 0.05 && b.me.vx > 5, 'laid out forward, along his slide');
+  // the stick swept across the ice in front knocks the puck off a carrier's stick
+  const w = onDefence(19);
+  Object.assign(w.me, { x: 30, y: 15, vx: 0, vy: 0, fa: 0, act: null, cool: 0 });
+  // (his blade, with the puck on it, some 2 m ahead of the diver's skates: where the sweep's arc runs)
+  Object.assign(w.c, { x: 32.8, y: 15.5, vx: 0, vy: 0, fa: Math.PI, act: null });
+  w.p.puck.carrier = w.c; w.p.puck.h = 0;
+  w.p.passTo = () => {}; w.p.shoot = () => {}; // (he just holds it)
+  w.p.dive(w.me);
+  let swept = false;
+  for (let i = 0; i < 70 && !swept; i++) { Object.assign(w.c, { x: 32.8, y: 15.5, vx: 0, vy: 0 }); w.me.vx = 0; w.me.vy = 0; w.me.x = 30; w.me.y = 15; steps(w.k, 1, pad({})); swept = w.p.puck.carrier !== w.c; }
+  assert.ok(swept, 'the sweep knocks the puck off his stick');
+  assert.ok(w.p.plays.some((x: any) => /в падении выбивает/.test(x.text)), 'told in the play-by-play');
   const s = onDefence(16);
   Object.assign(s.c, { x: 33.5 });
   steps(s.k, 40, (i) => { Object.assign(s.c, { x: 33.5, y: 15, vx: 0, vy: 0 }); return pad({ poke: true }); });

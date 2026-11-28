@@ -822,14 +822,18 @@ export function LiveScene3D(props: Props) {
             turnAway = rel.aim * smooth01(Math.abs(angleDiff(target, aim)) / 1.5);
             target = angleLerp(target, aim, rel.aim);
           }
-          a.heading = jumped || firstFrame ? target : angleLerp(a.heading, target, Math.max(alpha, rel ? .35 : 0));
+          a.heading = jumped || firstFrame ? target : angleLerp(a.heading, target, Math.max(alpha, rel ? .35 : p.move === 'dive' ? .3 : 0));
           // knocked down (the rink's fall 0…1: tipping over, down, getting up): on his back, face first, or sideways
           // over the hip; the body rests on the ice a little above the skates' pivot
           const fall = p.fall ?? 0, fk = p.fallKind ?? 'back';
           // a spin-o-rama: the whole body turns a full circle (toward his backhand side) and comes out facing ahead again
           const spinYaw = p.move === 'spin' ? -hand * Math.PI * 2 * smooth01(p.moveT ?? 0) : 0;
-          a.group.rotation.set(fk === 'back' ? -fall * 1.38 : fk === 'front' ? fall * 1.3 : -fall * .25, a.heading + spinYaw, fk === 'side' ? (p.fallSide ?? 1) * fall * 1.42 : 0);
+          // a dive: laid out flat along the way he slides, the body centred on his spot on the rink (the 2D man is the
+          // middle of the body that blocks), the stick swept out in front
+          const laid = p.move === 'dive' && fk === 'front' ? fall : 0, pitch = laid ? fall * 1.45 : fk === 'back' ? -fall * 1.38 : fk === 'front' ? fall * 1.3 : -fall * .25;
+          a.group.rotation.set(pitch, a.heading + spinYaw, fk === 'side' ? (p.fallSide ?? 1) * fall * 1.42 : 0);
           if (fall > 0) a.group.position.y = .1 * Math.sin(fall * Math.PI / 2);
+          if (laid > 0) { a.group.position.x -= Math.cos(a.heading) * .85 * laid; a.group.position.z += Math.sin(a.heading) * .85 * laid; }
           if (!a.figure) { a.group.position.y = Math.abs(Math.sin(a.phase)) * .04 * clamp(speed / 7, 0, 1); continue; }
           a.group.updateMatrixWorld(true);
           const h1 = Math.atan2(-(b.z - b2.z), b.x - b2.x), h2 = motionDir;
@@ -858,7 +862,7 @@ export function LiveScene3D(props: Props) {
             carrierW = Math.max(carrierW, reachWeight);
             reach = local.clone();
           }
-          poses.push({ figure: a.figure, args: [a.phase, amp * (1 - fall), shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind, deke: p.deke, check: p.check, poke: p.poke, move: p.move, moveT: p.moveT, stagger: p.stagger, down: fall, pump, kneel, t: tau - (goal?.tau ?? 0), stance: p.stance, stanceT: p.stanceT, handle: p.handle, now: tau }], w: reachWeight, carrier: f.carrier === p.id });
+          poses.push({ figure: a.figure, args: [a.phase, amp * (1 - fall), shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind, deke: p.deke, check: p.check, poke: p.poke, move: p.move, moveT: p.moveT, stagger: p.stagger, down: fall, pitch: laid ? pitch : undefined, pitchLift: laid ? a.group.position.y : undefined, pump, kneel, t: tau - (goal?.tau ?? 0), stance: p.stance, stanceT: p.stanceT, handle: p.handle, now: tau }], w: reachWeight, carrier: f.carrier === p.id });
         }
         let blade: { x: number; z: number; w: number } | null = null;
         for (const { figure, args, w, carrier } of poses) {
