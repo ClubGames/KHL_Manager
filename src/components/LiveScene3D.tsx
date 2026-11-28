@@ -1142,10 +1142,10 @@ export function LiveScene3D(props: Props) {
         </div>}
         {introOn && !(ui && ui.name) && <span className="text-[11px] font-bold uppercase tracking-[.2em] text-white/90 drop-shadow">{ui?.title ?? 'Выход команд'}</span>}
         {outroOn
-          ? <button type="button" onClick={() => { skipOutro.current = true; }} className="pointer-events-auto rounded-sm bg-black/55 hover:bg-black/75 text-white text-xs font-semibold px-3 py-1 backdrop-blur-sm" data-live-outro-skip>К итогам матча ▸</button>
+          ? <button type="button" onClick={() => { skipOutro.current = true; }} className="pointer-events-auto rounded-sm bg-black/55 hover:bg-black/75 text-white text-xs font-semibold px-3 py-1 backdrop-blur-sm" data-live-outro-skip data-pad-a><span aria-hidden className="hidden [.pad-nav_&]:inline-flex mr-1.5 w-4 h-4 rounded-full bg-[#3fae49] text-[10px] font-black items-center justify-center align-[-2px]" data-pad-glyph>A</span>К итогам матча ▸</button>
           : introOn
-          ? <button type="button" onClick={() => { skipIntro.current = true; }} className="pointer-events-auto rounded-sm bg-black/55 hover:bg-black/75 text-white text-xs font-semibold px-3 py-1 backdrop-blur-sm" data-live-intro-skip>Пропустить ▸</button>
-          : ui && <button type="button" onClick={() => { skipShow.current = true; }} className="pointer-events-auto rounded-sm bg-black/55 hover:bg-black/75 text-white text-xs font-semibold px-3 py-1 backdrop-blur-sm" data-live-show-skip>Пропустить ▸</button>}
+          ? <button type="button" onClick={() => { skipIntro.current = true; }} className="pointer-events-auto rounded-sm bg-black/55 hover:bg-black/75 text-white text-xs font-semibold px-3 py-1 backdrop-blur-sm" data-live-intro-skip data-pad-a><span aria-hidden className="hidden [.pad-nav_&]:inline-flex mr-1.5 w-4 h-4 rounded-full bg-[#3fae49] text-[10px] font-black items-center justify-center align-[-2px]" data-pad-glyph>A</span>Пропустить ▸</button>
+          : ui && <button type="button" onClick={() => { skipShow.current = true; }} className="pointer-events-auto rounded-sm bg-black/55 hover:bg-black/75 text-white text-xs font-semibold px-3 py-1 backdrop-blur-sm" data-live-show-skip data-pad-a><span aria-hidden className="hidden [.pad-nav_&]:inline-flex mr-1.5 w-4 h-4 rounded-full bg-[#3fae49] text-[10px] font-black items-center justify-center align-[-2px]" data-pad-glyph>A</span>Пропустить ▸</button>}
       </div>
     </div>}
   </div>;

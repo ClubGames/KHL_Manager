@@ -6,10 +6,13 @@
  * focused element gets a clear ring while the pad is in use; the mouse or a touch hides it again.
  *
  * Inside a played match the pad skates the player: the match suspends this (suspendPadNav) while play runs and
- * gives it back on the pause menu, the intermission and the final screen.
+ * gives it back on the pause menu, the intermission and the final screen. One exception: a button marked
+ * `data-pad-a` (the broadcast's «Пропустить ▸», «К итогам матча ▸») is pressed by A at any time — the press is
+ * then kept from the game until A is let go (padSwallow.ts).
  */
 
 import { pads } from './padSource';
+import { releasePadButtons, swallowPadButton } from './padSwallow';
 type Dir = 'up' | 'down' | 'left' | 'right';
 
 const BTN = { A: 0, B: 1, X: 2, Y: 3, LB: 4, RB: 5, LT: 6, RT: 7, BACK: 8, START: 9, UP: 12, DOWN: 13, LEFT: 14, RIGHT: 15 } as const;
@@ -19,6 +22,12 @@ const REPEAT_FIRST = 380, REPEAT_NEXT = 110;
 
 let suspended = false;
 let started = false;
+
+/** The topmost visible button A presses whatever else has the pad (see the header). */
+function quickA(): HTMLElement | null {
+  const list = [...document.querySelectorAll<HTMLElement>('[data-pad-a]')].filter(visible);
+  return list.at(-1) ?? null;
+}
 
 /** The played match takes the pad for the game (true) and gives it back (false). */
 export function suspendPadNav(on: boolean) { suspended = on; }
@@ -193,6 +202,12 @@ export function initGamepadNav() {
     const btn = (i: number) => !!gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5);
     const down = gp.buttons.map((_, i) => btn(i));
     const edge = (i: number) => down[i] && !prev[i];
+    releasePadButtons(btn);
+    // the pad in use: its glyphs on the buttons (and the focus ring) show
+    if (down.some((d, i) => d && !prev[i])) document.documentElement.classList.add('pad-nav');
+    // A on the broadcast's skip button: whoever has the pad
+    const qa = edge(BTN.A) && !document.hidden ? quickA() : null;
+    if (qa) { swallowPadButton(BTN.A); qa.click(); }
     if (!suspended && !document.hidden) {
       const ax = gp.axes[0] ?? 0, ay = gp.axes[1] ?? 0;
       const dirs: Record<Dir, boolean> = {
@@ -204,7 +219,7 @@ export function initGamepadNav() {
         if (t === undefined) { hold[d] = now + REPEAT_FIRST; move(d); }
         else if (now >= t) { hold[d] = now + REPEAT_NEXT; move(d); }
       }
-      if (edge(BTN.A)) press();
+      if (edge(BTN.A) && !qa) press();
       if (edge(BTN.B) || edge(BTN.START)) key('Escape');
       if (edge(BTN.LB)) section(-1);
       if (edge(BTN.RB)) section(1);

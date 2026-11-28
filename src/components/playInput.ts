@@ -1,5 +1,6 @@
 import type { DekeKind, PadState } from '../game/playRink';
 import { getSettings, subscribeSettings, type Controls } from '../game/settings';
+import { padButtonSwallowed } from '../padSwallow';
 
 /**
  * The controls of a played match: keyboard, gamepad (the standard mapping of the Gamepad API: Xbox / PlayStation
@@ -164,7 +165,7 @@ export function gamepadPad(pads: readonly (PadLike | null)[] | null | undefined)
   const [mx, my] = deadZone(gp.axes[0] ?? 0, gp.axes[1] ?? 0);
   const [sx, sy] = deadZone(gp.axes[2] ?? 0, gp.axes[3] ?? 0);
   // (the d-pad is the line changes and the tactics in the NHL scheme, it does not skate)
-  const btn = (i: number) => !!gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5);
+  const btn = (i: number) => !padButtonSwallowed(i) && !!gp.buttons[i] && (gp.buttons[i].pressed || gp.buttons[i].value > 0.5);
   const on = (a: PadAction) => PAD_BUTTONS[a].some(btn);
   const commands = new Set<Command>();
   for (const [c, list] of Object.entries(PAD_COMMANDS) as [Command, number[]][]) if (list.some(btn)) commands.add(c);
