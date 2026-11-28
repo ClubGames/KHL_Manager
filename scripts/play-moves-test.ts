@@ -257,7 +257,9 @@ test('cameras: NHL-style live cameras stay in the arena, the vertical one turns 
     const c = { ...clip!, scorer: `p${i}`, goal: 0.6 + (i % 7) * 0.03 };
     for (const t of [0.05, 0.3, 0.55, 0.62, 0.7, 0.95]) { const v = autoCamera(c, t); assert.ok(v in VIEW_LABEL, `auto camera ${String(v)}`); assert.ok(cameraPose(c, t, v, 1, 1.78).pos, `pose of ${v}`); }
   }
-  assert.ok(Math.hypot(cameraPose(clip!, 0.2, 'rail', 1, 1.78).pos.x - cameraPose(clip!, 0.9, 'rail', 1, 1.78).pos.x) > 0.5, 'the rail camera rides with the puck');
+  // (over the whole clip: a goal from a scramble can have the puck at one spot between any two given moments)
+  const rail = Array.from({ length: 21 }, (_, i) => cameraPose(clip!, i / 20, 'rail', 1, 1.78).pos.x);
+  assert.ok(Math.max(...rail) - Math.min(...rail) > 0.5, 'the rail camera rides with the puck');
 });
 
 console.log(`\n${pass} play-moves tests passed`);

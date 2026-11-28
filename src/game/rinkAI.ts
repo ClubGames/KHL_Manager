@@ -1,4 +1,5 @@
 import { EJECT_END } from './penalties';
+import { steer } from './skating';
 import type { AttackStyle, ForecheckStyle, GameEvent, Player, Team } from '../types';
 import type { FoulMove, Key, LiveFrame, ReplayClip, Track } from './rinkPlayback';
 import { FOUL_MOVE_DUR, foulMove } from './rinkPlayback';
@@ -1860,10 +1861,9 @@ export class RinkAI {
         const ex = a.x - b.x, ey = a.y - b.y, e = Math.hypot(ex, ey);
         if (e > 0.01 && e < 1.3) { const f = ((1.3 - e) / 1.3) * (a.scripted ? 1.2 : 2.6); vx += (ex / e) * f; vy += (ey / e) * f; }
       }
-      let ax = vx - a.vx, ay = vy - a.vy;
-      const am = Math.hypot(ax, ay), lim = a.acc * dt * (want < Math.hypot(a.vx, a.vy) ? 1.6 : 1);
-      if (am > lim) { ax *= lim / am; ay *= lim / am; }
-      a.vx += ax; a.vy += ay;
+      // skates, not wheels: an explosive start, arcs at speed (no right angles), a hard stop to go back (skating.ts)
+      const st = steer(a.vx, a.vy, vx, vy, dt, { acc: a.acc, brake: 1.6, scrub: 0.5, plain: a.goalie || a.scripted || Number.isFinite(a.arrive) });
+      a.vx += st.dvx; a.vy += st.dvy;
     }
     const sp = Math.hypot(a.vx, a.vy);
     if (sp > a.max * 1.05) { a.vx *= (a.max * 1.05) / sp; a.vy *= (a.max * 1.05) / sp; }
@@ -1941,7 +1941,12 @@ export class RinkAI {
       for (const c of CAGES) {
         const r = 0.38;
         if (!inBox(a, c, r)) continue;
-        const pen = [a.x - (c.x0 - r), c.x1 + r - a.x, a.y - (c.y0 - r), c.y1 + r - a.y], k = pen.indexOf(Math.min(...pen));
+        const pen = [a.x - (c.x0 - r), c.x1 + r - a.x, a.y - (c.y0 - r), c.y1 + r - a.y];
+        // out through the side he came in by (where he was a step ago), not the nearest one — a man skating fast past a
+        // corner would otherwise be thrown round it
+        const px = a.x - a.vx * DT, py = a.y - a.vy * DT;
+        const came = [px <= c.x0 - r, px >= c.x1 + r, py <= c.y0 - r, py >= c.y1 + r];
+        const pool = came.some(Boolean) ? pen.map((v, i) => (came[i] ? v : Infinity)) : pen, k = pool.indexOf(Math.min(...pool));
         if (k === 0) { a.x = c.x0 - r; a.vx = Math.min(0, a.vx); }
         else if (k === 1) { a.x = c.x1 + r; a.vx = Math.max(0, a.vx); }
         else if (k === 2) { a.y = c.y0 - r; a.vy = Math.min(0, a.vy); }

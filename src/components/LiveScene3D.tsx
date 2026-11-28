@@ -19,6 +19,8 @@ import { benchSeat, boxSeat, BENCH, BOX, DOORS, TUNNEL } from './arenaBenches';
 export { LIVE_CAMERAS, type LiveCamera } from './replayCameras';
 import { releaseHeading } from './replayMotion';
 import { replayPreset, type ReplayQuality } from './ReplayScene';
+import { createIceSpray } from './iceSpray';
+import { newGait, stepGait, strideRate, styleOf, type GaitState, type SkateStyle } from './skateGait';
 import { LiveMotion, LOOKAHEAD, puckVelocity, shownSkaters, type LiveMotionLike, type LiveSource } from './liveMotion';
 
 /**
@@ -44,6 +46,8 @@ type Actor = {
   off?: Trip; enter?: Trip;
   /** on the ice in the last picture (undefined: not known — the first picture, a new period) */
   on?: boolean;
+  /** how he skates right now (skateGait.ts) and his own way of skating */
+  gait?: GaitState; style?: SkateStyle;
 };
 /** A walk between the ice and a seat: from (fx, fz), through the door in the boards (or over the boards, `hop`). */
 type Trip = { fx: number; fz: number; t0: number; hop: boolean; dur: number; /** through this door in the boards (at a whistle the bench uses its doors) */ door?: { x: number; z: number }; /** entering: the share of the trip spent getting out of the bench */ out?: number };
@@ -184,6 +188,7 @@ export function LiveScene3D(props: Props) {
       const puckShadow = new T.Mesh(shadowGeo, propMats.puckShadow); puckShadow.rotation.x = -Math.PI / 2; scene.add(puckShadow);
       const trailGeo = new T.BufferGeometry().setFromPoints(Array.from({ length: 14 }, () => new T.Vector3())); geometries.push(trailGeo);
       const trail = new T.Line(trailGeo, propMats.trail); trail.frustumCulled = false; scene.add(trail);
+      const spray = createIceSpray(scene); releases.push(() => spray.dispose());
       // The four officials (two referees, two linesmen): simple striped stand-ins until the rigged figures are in.
       const refMat = new T.MeshStandardMaterial({ color: '#16191f', roughness: .7 }), refShirt = new T.MeshStandardMaterial({ color: '#f1f3f5', roughness: .7 }), armMat = new T.MeshStandardMaterial({ color: '#ff6a1a', roughness: .6 });
       materials.push(refMat, refShirt, armMat);
@@ -607,6 +612,7 @@ export function LiveScene3D(props: Props) {
         lastCam = camKey; dirty = false;
         const dTau = Number.isNaN(lastTau) ? 0 : clamp(tau - lastTau, 0, .6);
         lastTau = tau;
+        spray.update(dTau);
         // Simulate a little ahead (windups start before the release), then read the frame both rinks show.
         ai.ensure(tau + LOOKAHEAD);
         motion.update(); motion.prune(tau);
@@ -770,7 +776,7 @@ export function LiveScene3D(props: Props) {
           a.group.rotation.order = 'YXZ';
           const jumped = Number.isNaN(a.lx) || Math.hypot(w.x - a.lx, w.z - a.lz) > 4;
           const moved = Math.hypot(w.x - b.x, w.z - b.z), speed = moved / .1;
-          if (!jumped) a.phase += Math.hypot(w.x - a.lx, w.z - a.lz) / STRIDE * Math.PI * 2;
+          if (!jumped) a.phase += Math.hypot(w.x - a.lx, w.z - a.lz) / STRIDE * Math.PI * 2 * (a.gait && !a.goalie ? strideRate(a.gait) : 1);
           a.lx = w.x; a.lz = w.z;
           const facePuck = Math.atan2(-(pw.z - w.z), pw.x - w.x);
           if (a.goalie) {
@@ -841,6 +847,19 @@ export function LiveScene3D(props: Props) {
           const bank = clamp(turn * speed * .03, -.4, .4);
           const amp = clamp(speed / 7, 0, 1) * (1 - .4 * (rel?.aim ?? 0) - .45 * turnAway);
           const shot = rel && rel.s >= -1 && rel.s <= 1.9 ? rel.s : undefined;
+          // the way he skates (a start, crossovers, a stop, backwards, a shuffle, one hand off the stick) from his motion
+          a.style ??= styleOf(p.id);
+          const gait = a.gait ??= newGait(a.style);
+          if (jumped) Object.assign(gait, newGait(a.style));
+          else {
+            const vx = (w.x - b.x) / .1, vz = (w.z - b.z) / .1, ch = Math.cos(a.heading), sh = Math.sin(a.heading);
+            stepGait(gait, {
+              speed, prevSpeed: Math.hypot(b.x - b2.x, b.z - b2.z) / .1, fwd: vx * ch - vz * sh, lat: -vx * sh - vz * ch, turn,
+              carrier: f.carrier === p.id, busy: shot !== undefined || !!p.move || !!p.check || !!p.poke || fall > 0 || !!p.stagger || (!!p.stance && p.stance !== 'hustle') || !!(goal && goal.side === p.side && tau - goal.tau < 5.5),
+            }, dTau);
+            // snow off the blades in a hard stop
+            if (gait.stop > .45 && speed > 2) spray.emit(w.x, w.z, vx / speed, vz / speed, speed, dTau);
+          }
           const cheer = goal && goal.side === p.side ? clamp((tau - goal.tau) / .3, 0, 1) * (1 - smooth01((tau - goal.tau - 4) / 1.5)) * (gp?.player === p.id ? 1 : .7) : 0;
           // the scorer himself: a fist pump, and (some of them) down on one knee sliding
           let pump = 0, kneel = 0;
@@ -862,7 +881,7 @@ export function LiveScene3D(props: Props) {
             carrierW = Math.max(carrierW, reachWeight);
             reach = local.clone();
           }
-          poses.push({ figure: a.figure, args: [a.phase, amp * (1 - fall), shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind, deke: p.deke, check: p.check, poke: p.poke, move: p.move, moveT: p.moveT, stagger: p.stagger, down: fall, pitch: laid ? pitch : undefined, pitchLift: laid ? a.group.position.y : undefined, pump, kneel, t: tau - (goal?.tau ?? 0), stance: p.stance, stanceT: p.stanceT, handle: p.handle, now: tau }], w: reachWeight, carrier: f.carrier === p.id });
+          poses.push({ figure: a.figure, args: [a.phase, amp * (1 - fall), shot, cheer, { bank, reach, reachWeight, kind: rel?.rel.kind, deke: p.deke, check: p.check, poke: p.poke, move: p.move, moveT: p.moveT, stagger: p.stagger, down: fall, pitch: laid ? pitch : undefined, pitchLift: laid ? a.group.position.y : undefined, gait, style: a.style, pump, kneel, t: tau - (goal?.tau ?? 0), stance: p.stance, stanceT: p.stanceT, handle: p.handle, now: tau }], w: reachWeight, carrier: f.carrier === p.id });
         }
         let blade: { x: number; z: number; w: number } | null = null;
         for (const { figure, args, w, carrier } of poses) {

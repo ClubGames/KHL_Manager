@@ -8,6 +8,7 @@ import modelUrl from '../assets/hockey-player.glb?url';
 import { buildHelmet, kitUp } from './playerGear';
 import type { ReleaseKind } from './replayMotion';
 import type { LiveMove, LiveStance } from '../game/rinkPlayback';
+import { NO_GAIT, type Gait, type SkateStyle } from './skateGait';
 
 /**
  * Rigged 3D hockey players for the goal replay. One skinned template is loaded once and cloned per
@@ -133,7 +134,7 @@ function kitMaterial(kind: 0 | 1 | 2 | 3 | 4, base: string, trim: string, trim2:
 const _a = new T.Vector3(), _b = new T.Vector3(), _c = new T.Vector3(), _d = new T.Vector3(), _e = new T.Vector3();
 const _q = new T.Quaternion(), _wq = new T.Quaternion(), _pq = new T.Quaternion(), _bq = new T.Quaternion();
 const Y = new T.Vector3(0, 1, 0), X = new T.Vector3(1, 0, 0), Z = new T.Vector3(0, 0, 1);
-const _t1 = new T.Quaternion(), _t2 = new T.Quaternion();
+const _t1 = new T.Quaternion(), _t2 = new T.Quaternion(), _q2 = new T.Quaternion();
 const LIFT = .06; // skate blade height: the rig stands on its blades
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp01 = (v: number) => Math.max(0, Math.min(1, v));
@@ -405,7 +406,7 @@ export class PlayerFigure {
    * both hands, .5 at the chest, 1 high over his head (no stick; `cupPoint` is where the Cup goes).
    * Everything is solved for a right shot and mirrored for a left one.
    */
-  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number; check?: number; poke?: number; move?: LiveMove; moveT?: number; stagger?: number; down?: number; shake?: number; pump?: number; kneel?: number; bump?: number; t?: number; stance?: LiveStance; stanceT?: number; handle?: number; now?: number; walk?: number; slump?: number; noStick?: boolean; trophy?: number; pitch?: number; pitchLift?: number } = {}) {
+  skate(phase: number, amp: number, shot?: number, cheer = 0, opts: { bank?: number; reach?: T.Vector3 | null; reachWeight?: number; kind?: ReleaseKind; deke?: number; check?: number; poke?: number; move?: LiveMove; moveT?: number; stagger?: number; down?: number; shake?: number; pump?: number; kneel?: number; bump?: number; t?: number; stance?: LiveStance; stanceT?: number; handle?: number; now?: number; walk?: number; slump?: number; noStick?: boolean; trophy?: number; pitch?: number; pitchLift?: number; gait?: Gait; style?: SkateStyle } = {}) {
     this.reset();
     const slump = smooth(clamp01(opts.slump ?? 0)), trophy = clamp01(opts.trophy ?? 0), noStick = !!opts.noStick || trophy > 0;
     this.props(!noStick);
@@ -449,12 +450,18 @@ export class PlayerFigure {
     const blk = Math.max(st === 'block' ? stw : 0, dive), ot = st === 'oneTimer' ? stw : 0, call = st === 'call' ? stw : 0, vis = st === 'vision' ? stw : 0, hus = st === 'hustle' ? stw : 0;
     const hdl = Math.max(-1, Math.min(1, opts.handle ?? 0)), shove = w('push'), now = opts.now ?? 0;
     const kneel = Math.max(smooth(clamp01(opts.kneel ?? 0)), (st === 'block' ? stw : 0) * .9);
+    // plain skating (skateGait.ts): an explosive start, a hard stop, backwards, a shuffle, crossovers, one hand off
+    // the stick — none of it while he walks, lies on the ice, kneels, blocks or fights
+    const gt = opts.gait ?? NO_GAIT, sty = opts.style, plain = (1 - walk) * (1 - down) * (1 - kneel) * (1 - fgt) * (1 - cheer);
+    const gBurst = smooth(clamp01(gt.burst)) * plain, gStop = smooth(clamp01(gt.stop)) * plain, gSS = gt.stopSide, gBack = smooth(clamp01(gt.back)) * plain;
+    const gShuf = Math.max(-1, Math.min(1, gt.shuffle)) * plain, gCross = Math.max(-1, Math.min(1, gt.cross)) * plain, gOne = smooth(clamp01(gt.oneHand)) * plain;
     // Deeper knee bend on a hard stride, a little bob with every push.
     const crouch = lerp(.1 + .07 * amp + .012 * amp * Math.cos(phase * 2), .02, cheer) * (1 - walk) + walk * walkCrouch(phase) + Math.abs(bank) * .08 + Math.abs(deke) * .06 + chk * .1 + poke * .07
       + toe * .08 + btw * .16 + spin * .12 + hip * .14 - pin * .04 + lift * .05 - stag * .03 + rch * .14 + down * .22 * (1 - lay) - lay * .06 + kneel * .42
       + ot * .06 + vis * .08 + hus * .04 + Math.abs(hdl) * .05 + shove * .05 + prot * .1 + brd * .2 + swp * .12 + cStick * .2 + fgt * .06 - kick * .04
-      - fHead * .05 + fTrip * .14 + fKnee * .05 + fHook * .05 + fCross * .04 + fBoard * .06 - fRough * .03;
-    this.rig.position.set(.035 * Math.sin(phase) * lerp(amp, .7, walk) * (1 - cheer) + bank * .1 + (opts.deke ?? 0) * .12 + wob * .08 + hip * .12 * m, LIFT - crouch, 0);
+      - fHead * .05 + fTrip * .14 + fKnee * .05 + fHook * .05 + fCross * .04 + fBoard * .06 - fRough * .03
+      + gBurst * .08 + gStop * .2 + gBack * .12 + Math.abs(gShuf) * .07 + (sty ? sty.low * .025 * (1 - walk) : 0);
+    this.rig.position.set(.035 * Math.sin(phase) * lerp(amp, .7, walk) * (1 - cheer) * (1 - gStop) + bank * .1 + (opts.deke ?? 0) * .12 + wob * .08 + hip * .12 * m + gShuf * .05, LIFT - crouch, -gStop * .06);
     // Shot profile: load (stick back, shoulders closed), whip through the puck, follow through.
     const s = shot === undefined ? -9 : shot;
     // a shot fake: the windup comes up and is held, the puck stays on the blade
@@ -470,10 +477,14 @@ export class PlayerFigure {
       - (fHead * .55 + fElbow * .5 + fRough * (.3 + .25 * Math.sin(now * 9))) + fSlash * .3 + fTrip * .35 - fHook * .2;
     const lean = lerp(lerp(.2 + .14 * amp, .07, walk) + .1 * load * size, -.05, cheer) + chk * .22 + poke * .28 + btw * .25 + spin * .2 + toe * .1 - pin * .05 + lift * .18 - stag * .35 + rch * .42 - down * .45 * (1 - lay) - lay * .08
       - blk * .2 * (1 - lay) + vis * .06 + hus * .16 + shove * .22 + Math.abs(hdl) * .08 + prot * .12 + brd * .3 + swp * .2 + cStick * .1 - cSky * .1 - cEar * .05
-      + fHead * .12 + fElbow * .06 + fTrip * .3 + fHook * .14 + fCross * .24 + fBoard * .3 - fHold * .04 + fRough * .04 + fSlash * .1 + slump * .26;
+      + fHead * .12 + fElbow * .06 + fTrip * .3 + fHook * .14 + fCross * .24 + fBoard * .3 - fHold * .04 + fRough * .04 + fSlash * .1 + slump * .26
+      // a start: far forward over the toes; a stop: back against it, the skates out ahead; backwards: upright, sitting
+      + gBurst * .62 - gStop * .3 - gBack * .12;
     // Shoulders counter-rotate the stride a little (real skaters swing the upper body against the legs).
     const swing = .07 * lerp(amp, 1.2, walk) * Math.sin(phase) * (1 - load) * (1 - follow) * (1 - cheer) * (1 + 1.6 * hus) * (1 - blk);
-    this.turn('Abdomen', _t1.setFromAxisAngle(Z, -bank * .45 - (opts.deke ?? 0) * .25 - hip * .35 * m + wob * .2).multiply(_t2.setFromAxisAngle(X, lean * .55)));
+    // a stop: the hips (and the legs with them) turned across the way he slides, the shoulders kept square to it
+    if (gStop > 0) this.turn('Hips', _t1.setFromAxisAngle(Y, gSS * gStop * .8));
+    this.turn('Abdomen', _q2.setFromAxisAngle(Y, -gSS * gStop * .7).multiply(_t1.setFromAxisAngle(Z, -bank * .45 - (opts.deke ?? 0) * .25 - hip * .35 * m + wob * .2)).multiply(_t2.setFromAxisAngle(X, lean * .55)));
     this.turn('Torso', _t1.setFromAxisAngle(Y, (twist * .6 + swing) * m).multiply(_t2.setFromAxisAngle(X, lean * .3)).multiply(_q.setFromAxisAngle(Z, -bank * .35)));
     this.turn('Chest', _t1.setFromAxisAngle(Y, (twist * .4 + swing * .6) * m).multiply(_t2.setFromAxisAngle(X, lean * .25)));
     // the head stays on the play: it turns back against the shoulders (and sells a deke the other way)
@@ -486,8 +497,24 @@ export class PlayerFigure {
       // Push out to the side and back, recover low and forward; the inside skate carries the turn.
       const wide = (.17 + .2 * push * amp) * side + brace * .07 * side + bank * .12 + (btw * .14 + hip * .1 + pin * .06 + stag * .08 + down * .14 + rch * .08 + vis * .08) * side;
       const lift = .065 * amp * smooth(Math.max(0, -Math.sin(ph + .5)));
-      feet[i].set(wide, .023 + LIFT * .2 + lift, .08 - .28 * amp * backS);
+      feet[i].set(wide * (1 + (sty ? sty.wide * .12 : 0)), .023 + LIFT * .2 + lift, .08 - .28 * amp * backS);
       yaw[i] = side * (.1 + .32 * amp * push) + bank * .3;
+      const ice = .023 + LIFT * .2;
+      // the start: short, quick, V-shaped pushes on the toes, the skates turned well out, high off the ice coming back
+      if (gBurst > 0) { feet[i].lerp(vec(side * (.21 + .12 * push), ice + .1 * smooth(Math.max(0, -Math.sin(ph + .5))), .02 - .2 * backS), gBurst); yaw[i] = lerp(yaw[i], side * (.6 + .2 * push), gBurst); }
+      // crossovers: the outside skate lifted over in front of the inside one, the inside one pushing out under him
+      if (gCross !== 0) {
+        const c = Math.sign(gCross), cw2 = Math.abs(gCross), rec = smooth(Math.max(0, -Math.sin(ph + .3)));
+        if (side === -c) feet[i].lerp(vec(side * .17 + c * .32 * rec, ice + .1 * rec, .1 + .12 * rec - .2 * push), cw2);
+        else feet[i].lerp(vec(side * .16 - c * .3 * push, ice + .03 * rec, .1 - .1 * backS), cw2);
+        feet[i].x -= c * .08 * cw2; yaw[i] = lerp(yaw[i], c * .35, cw2);
+      }
+      // the stop: both skates turned across, one out ahead of the other, the blades scraping the ice
+      if (gStop > 0) { const front = side === -gSS; feet[i].lerp(vec((front ? -.02 : .06) * gSS, ice, front ? .46 : 0), gStop); yaw[i] = lerp(yaw[i], gSS * 1.45, gStop); }
+      // backwards: C-cuts — each skate pushed out in an arc and pulled back in under him, toes in
+      if (gBack > 0) { const c = Math.max(0, Math.sin(ph)), a2 = Math.max(.4, amp); feet[i].lerp(vec(side * (.19 + .14 * c * a2), ice + .04 * smooth(Math.max(0, -Math.sin(ph))), .06 + .14 * Math.cos(ph) * a2), gBack); yaw[i] = lerp(yaw[i], -side * .3 * c, gBack); }
+      // a shuffle: wide, low side steps, the skates never crossing
+      if (gShuf !== 0) { const sw = Math.abs(gShuf), sp2 = Math.sin(ph); feet[i].lerp(vec(side * (.25 + .07 * sp2), ice + .06 * Math.max(0, sp2), .06), sw); yaw[i] = lerp(yaw[i], side * .2, sw); }
       // on one knee: the left skate planted ahead, the right shin flat on the ice behind
       if (kneel > 0) feet[i].lerp(i ? vec(-.16, .1, -.62) : vec(.2, .023 + LIFT * .2, .38), kneel);
       if (walk > 0) { const wf = walkFoot(ph, side); feet[i].lerp(wf.foot, walk); yaw[i] = lerp(yaw[i], wf.yaw, walk); }
@@ -508,6 +535,10 @@ export class PlayerFigure {
     let carry = vec(-.52 + .07 * Math.sin(phase) * amp + deke * .8, .0, .98), carryTop = vec(.1 + deke * .2, 1.02 - crouch, .3);
     // walking: the stick carried low in front, the blade off the floor, swinging a little with the steps
     if (walk > 0) { carry = mixV(carry, vec(-.42, .16, .74 + .06 * Math.sin(phase)), walk); carryTop = mixV(carryTop, vec(.12, .98 - crouch, .24), walk); }
+    // backwards (a defenceman's gap): the stick out in front along the ice in the top hand, taking away the lane
+    if (gBack > 0) { carry = mixV(carry, vec(-.3, 0, 1.4), gBack * .8); carryTop = mixV(carryTop, vec(.06, .95 - crouch, .5), gBack * .8); }
+    // a stop: the stick lifted a little off the ice to the side, out of the way of the skates
+    if (gStop > 0) { carry = mixV(carry, vec(-.62, .12, .78), gStop * .7); carryTop = mixV(carryTop, vec(.14, 1.02 - crouch, .26), gStop * .7); }
     const reachW = opts.reach ? clamp01(opts.reachWeight ?? 0) : 0;
     if (reachW > 0 && opts.reach) {
       // The blade's middle goes onto the puck: heel a little behind and to the forehand side of it.
@@ -712,6 +743,16 @@ export class PlayerFigure {
           ? vec(-.12, 1.02 - crouch + .035 * Math.sin(tt * 13), .52)
           : vec(-.3, 1.42 - crouch + .36 * Math.pow(Math.max(0, Math.sin(tt * 6.5)), .6), .22);
       this.arm('R', this.world(now.lerp(hand, top)), this.dirWorld(bump === top ? vec(-.3, -1, -.5) : shake >= pump ? vec(-1, -.8, -.2) : vec(-1, -.2, -.6)));
+    } else if (!noStick) {
+      // one hand off the stick: at top speed the bottom hand lets go and swings with the strides for balance; skating
+      // backwards it is held out to the side (the stick out front in the top hand)
+      const freeW = Math.max(gOne, gBack * .6) * (1 - Math.max(load, follow)) * (1 - reachW) * (1 - lay) * (1 - chk) * (1 - poke);
+      if (freeW > .01) {
+        const sw = Math.sin(phase) * (.8 + .3 * (sty?.swing ?? 0));
+        const tgt = gBack > gOne ? vec(-.4, .9 - crouch, .3) : vec(-.3, .98 - crouch + .05 * Math.abs(sw), .12 + .34 * sw);
+        const sideA = m > 0 ? 'R' : 'L', cur = this.root.worldToLocal(this.bones['Hand' + sideA].getWorldPosition(new T.Vector3()));
+        this.arm(sideA, this.world(cur.lerp(this.mir(tgt), freeW)), this.dirWorld(this.mir(vec(-1, -.5, -.3))));
+      }
     }
   }
 

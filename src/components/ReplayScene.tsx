@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type MutableRefObject, type ReactNode } from 'react';
+import { newGait, stepGait, styleOf, type Gait, type SkateStyle } from './skateGait';
 import * as T from 'three';
 import type { Reflector } from 'three/examples/jsm/objects/Reflector.js';
 import type { Player, Team } from '../types';
@@ -273,7 +274,7 @@ export function ReplayScene(props: Props) {
         // Who has the puck on his stick: the skater whose blade zone is closest to it cups it with the blade;
         // others close by only reach toward it (a poke), so two blades never sit on one puck.
         let carrierW = 0;
-        const poses: { figure: PlayerFigure; args: [number, number, number | undefined, number, number, T.Vector3 | null, number]; kind?: ReleaseKind; deke: number }[] = [];
+        const poses: { figure: PlayerFigure; args: [number, number, number | undefined, number, number, T.Vector3 | null, number]; kind?: ReleaseKind; deke: number; gait?: Gait; style?: SkateStyle }[] = [];
         actors.forEach(({ track, group, legs, stick, torso, glove, distance }, index) => {
           const pos = sampleSmooth(track.keys, time), w = toWorld(pos);
           group.position.set(w.x, 0, w.z); group.rotation.set(0, 0, 0); group.scale.set(1, 1, 1);
@@ -350,7 +351,18 @@ export function ReplayScene(props: Props) {
               carrierW = Math.max(carrierW, reachWeight);
               reach = local.clone();
             }
-            poses.push({ figure, args: [phase, amp, shot, cheer, bank, reach, reachWeight], kind: rel?.rel.kind, deke: deke && deke.id === track.id ? deke.offset : 0 });
+            // how he skates (a start, a stop, crossovers, backwards…): replayed from the last 0.7 s of his track (a replay
+            // can be scrubbed, so nothing is carried from frame to frame)
+            const style = styleOf(track.id), gait = newGait(style), dtn = 1 / 30 / clip.duration, ch = Math.cos(heading), sh = Math.sin(heading);
+            let q0 = toWorld(sampleSmooth(track.keys, clamp(time - 24 * dtn, 0, 1))), q1 = toWorld(sampleSmooth(track.keys, clamp(time - 23 * dtn, 0, 1))), v0 = Math.hypot(q1.x - q0.x, q1.z - q0.z) * 30;
+            for (let k = 22; k >= 0; k--) {
+              const q2 = toWorld(sampleSmooth(track.keys, clamp(time - k * dtn, 0, 1)));
+              const vx = (q2.x - q1.x) * 30, vz = (q2.z - q1.z) * 30, v = Math.hypot(vx, vz);
+              const h0 = Math.atan2(-(q1.z - q0.z), q1.x - q0.x), h1 = Math.atan2(-vz, vx);
+              stepGait(gait, { speed: v, prevSpeed: v0, fwd: vx * ch - vz * sh, lat: -vx * sh - vz * ch, turn: v > 1 && v0 > 1 ? angleDiff(h0, h1) * 30 : 0, carrier: carrierAt(plan, time)?.id === track.id, busy: shot !== undefined || cheer > 0 }, 1 / 30);
+              q0 = q1; q1 = q2; v0 = v;
+            }
+            poses.push({ figure, args: [phase, amp, shot, cheer, bank, reach, reachWeight], kind: rel?.rel.kind, deke: deke && deke.id === track.id ? deke.offset : 0, gait, style });
             return;
           }
           group.position.y = Math.abs(Math.sin(time * 65 + index)) * .045 * (time < clip.goal ? 1 : .3);
@@ -362,8 +374,8 @@ export function ReplayScene(props: Props) {
             group.rotation.z = time > clip.goal ? Math.sin((time - clip.goal) * 10) * .08 : 0;
           }
         });
-        for (const { figure, args: [phase, amp, shot, cheer, bank, reach, w], kind, deke: dk } of poses) {
-          figure.skate(phase, amp, shot, cheer, { bank, reach, reachWeight: w >= carrierW - 1e-6 ? w : w * .35, kind, deke: dk });
+        for (const { figure, args: [phase, amp, shot, cheer, bank, reach, w], kind, deke: dk, gait, style } of poses) {
+          figure.skate(phase, amp, shot, cheer, { bank, reach, reachWeight: w >= carrierW - 1e-6 ? w : w * .35, kind, deke: dk, gait, style });
         }
         const attr = trailGeometry.getAttribute('position');
         for (let i = 0; i < 18; i++) { const v = toWorld(samplePath(clip.puck, Math.max(0, time - i * .0025))); attr.setXYZ(i, v.x, v.y + PUCK_H, v.z); } attr.needsUpdate = true;

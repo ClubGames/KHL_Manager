@@ -1,6 +1,7 @@
 import type { GameEvent, Lineup, Player, ShotZone, Strength, Team } from '../types';
 import type { FoulMove, Key, LiveFrame, ReplayClip, Track } from './rinkPlayback';
 import { FOUL_MOVE_DUR, foulMove } from './rinkPlayback';
+import { steer } from './skating';
 import type { RinkPlay, PlayKind } from './rinkAI';
 import { BOARDS_H, FACEOFF_SPOTS, RINK, glassTop, inBenchFront } from './rinkGeometry';
 import { goalieSavePct } from './ratings';
@@ -2757,13 +2758,12 @@ export class PlayRink {
     }
     const acc = a.acc * ef * (a.sprint ? 1.12 : 1);
     const idle = a.manual && Math.hypot(a.wx, a.wy) < 0.05;
-    let dvx = wx - a.vx, dvy = wy - a.vy;
+    let dvx: number, dvy: number;
     if (idle) { dvx = -a.vx * Math.min(1, 0.9 * dt); dvy = -a.vy * Math.min(1, 0.9 * dt); }
     else {
-      const sp = Math.hypot(a.vx, a.vy), dl = Math.hypot(dvx, dvy);
-      const brake = sp > 0.5 && dvx * a.vx + dvy * a.vy < 0 ? 1.7 : 1;
-      const lim = acc * brake * dt;
-      if (dl > lim) { dvx *= lim / dl; dvy *= lim / dl; }
+      // skates, not wheels: an explosive start, arcs at speed (no right angles), a hard stop to go back (skating.ts)
+      const st = steer(a.vx, a.vy, wx, wy, dt, { acc, plain: a.goalie, grip: a.manual ? 1.9 : 1.8, scrub: 0.9 });
+      dvx = st.dvx; dvy = st.dvy;
     }
     a.vx += dvx; a.vy += dvy;
     a.x += a.vx * dt; a.y += a.vy * dt;
