@@ -76,7 +76,14 @@ export interface PadState { mx: number; my: number; sprint: boolean; shoot: bool
   /** a fight (its own key / touch button; the pad: Y twice quickly) — at a stoppage or in play, with the nearest opponent */
   fight?: boolean;
   /** B (○) and X (□) on the pad (their own keys / touch buttons elsewhere): the goal celebrations 2 and 3 */
-  o?: boolean; sq?: boolean }
+  o?: boolean; sq?: boolean;
+  /**
+   * The deke the touch button was swiped for (up a spin-o-rama, down between the legs, to a side a toe drag that way;
+   * a plain tap leaves it unset — the usual deke); read on the deke press with the puck.
+   */
+  dekeKind?: DekeKind;
+  /** the side of that deke as the picture shows it: 1 — his right, -1 — his left (unset: the stick / the defender decide) */
+  dekeSide?: 1 | -1 }
 export const NO_PAD: PadState = { mx: 0, my: 0, sprint: false, shoot: false, pass: false, deke: false, swap: false };
 /** The kinds of dekes and body checks (the 3D figures act them out). */
 export type DekeKind = 'side' | 'toe' | 'between' | 'spin' | 'fake';
@@ -1868,6 +1875,13 @@ export class PlayRink {
       if (press.deke && !me.act && this.tau > me.cool) {
         // the deke button: with the burst held a spin-o-rama, a second tap right after a deke goes between the legs,
         // the stick pulled back a toe drag, otherwise a side-to-side deke
+        // the touch button swiped one way: that deke (and its side), whatever else is held
+        if (pad.dekeKind) {
+          const side = pad.dekeSide ? ((this.opts.flip ? -pad.dekeSide : pad.dekeSide) as 1 | -1) : undefined;
+          this.deke(me, mx, my, side, pad.dekeKind);
+          this.lastDekeAt = -9;
+          return;
+        }
         const back = Math.hypot(mx, my) > 0.4 && Math.cos(angDiff(me.fa, Math.atan2(my, mx))) < -0.4;
         // with the modifier held, the special dekes (as LB + the right stick): the stick back — between the legs,
         // to a side — a toe drag, straight on — a shot fake
