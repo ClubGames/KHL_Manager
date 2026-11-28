@@ -290,7 +290,7 @@ ipcMain.handle('khl:save-file', async (event, { name, data, kind }) => {
 
 /**
  * CI check of the packaged app (`"Hockey Simulator Manager.exe" --smoke-test=result.json`): the game starts from app://
- * (the start screen with the mod list — the game ships without a league), a mod installed from a .zip is listed and its
+ * (the main menu, then «Играть» → «Карьера»: the career screen with the mod list — the game ships without a league), a mod installed from a .zip is listed and its
  * roster is served, storage works and WebGL is there. Writes JSON, exits 0/1.
  */
 async function smokeTest(outFile) {
@@ -303,6 +303,13 @@ async function smokeTest(outFile) {
       w.webContents.once('did-fail-load', (_e, code, desc) => reject(new Error(`load failed ${code} ${desc}`)));
     });
     result.steps.push('loaded');
+    const waitFor = async (js, ms) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await evalJs(js)) return true; await new Promise(r => setTimeout(r, 250)); } return false; };
+    // the main menu first; «Играть» → «Карьера» opens the career screen with the mod list
+    result.menu = await waitFor('!!document.querySelector("[data-main-menu] [data-menu-item=play]")', 60000);
+    if (result.menu) {
+      await evalJs('document.querySelector("[data-menu-item=play]").click()');
+      if (await waitFor('!!document.querySelector("[data-menu-item=career]")', 10000)) await evalJs('document.querySelector("[data-menu-item=career]").click()');
+    }
     const started = Date.now();
     let text = '';
     while (Date.now() - started < 60000) {
@@ -326,7 +333,7 @@ async function smokeTest(outFile) {
     result.webgl = await evalJs(`(() => { const c = document.createElement('canvas'); const gl = c.getContext('webgl2') || c.getContext('webgl'); if (!gl) return null; const e = gl.getExtension('WEBGL_debug_renderer_info'); return e ? gl.getParameter(e.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); })()`);
     result.gpu = gpuSummary();
     result.version = app.getVersion();
-    result.ok = result.startScreen && result.modPicker && result.roster && result.storage && result.desktopBridge && result.modsInGameFolder && result.modInstall;
+    result.ok = result.menu && result.startScreen && result.modPicker && result.roster && result.storage && result.desktopBridge && result.modsInGameFolder && result.modInstall;
   } catch (e) {
     result.error = String(e && e.stack || e);
   }
