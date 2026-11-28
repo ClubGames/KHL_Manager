@@ -1224,12 +1224,21 @@ export function LiveScene3D(props: Props) {
       observer = new ResizeObserver(resize); observer.observe(element); resize();
       // The mouse on the ice (the played match aims with it): a screen point → rink percent, through the camera.
       const ray = new T.Raycaster(), ice = new T.Plane(new T.Vector3(0, 1, 0), 0), hit = new T.Vector3(), ndc = new T.Vector2();
-      const pick = (cx: number, cy: number) => {
+      // … a cursor on a goal mouth (a little beyond the posts and the bar too) aims at that point of it, height included
+      const mouthX = RINK.length / 2 - RINK.goalLine, mouth = [new T.Plane(new T.Vector3(1, 0, 0), -mouthX), new T.Plane(new T.Vector3(1, 0, 0), mouthX)], onMouth = new T.Vector3();
+      const pick = (cx: number, cy: number): { x: number; y: number; h?: number } | null => {
         const r = canvas.getBoundingClientRect();
         if (!r.width || !r.height) return null;
         ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
         ray.setFromCamera(ndc, camera);
-        if (!ray.ray.intersectPlane(ice, hit)) return null;
+        const onIce = ray.ray.intersectPlane(ice, hit);
+        const iceAt = onIce ? ray.ray.origin.distanceTo(hit) : Infinity;
+        for (const m of mouth) {
+          if (!ray.ray.intersectPlane(m, onMouth) || ray.ray.origin.distanceTo(onMouth) > iceAt + 1e-6) continue;
+          if (Math.abs(onMouth.z) > RINK.goalWidth / 2 + .35 || onMouth.y < 0 || onMouth.y > RINK.goalHeight + .3) continue;
+          return { x: clamp(onMouth.x / RINK.length * 100 + 50, 0, 100), y: clamp(onMouth.z / RINK.width * 100 + 50, 0, 100), h: onMouth.y };
+        }
+        if (!onIce) return null;
         return { x: clamp(hit.x / RINK.length * 100 + 50, 0, 100), y: clamp(hit.z / RINK.width * 100 + 50, 0, 100) };
       };
       const src = live.current.ai;

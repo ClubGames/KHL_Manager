@@ -50,8 +50,9 @@ export interface PadState { mx: number; my: number; sprint: boolean; shoot: bool
   faceoff?: boolean;
   /** the skill stick turned by the camera like mx/my (the side a deke or the stickhandling goes on the ice); default sx/sy */
   srx?: number; sry?: number;
-  /** a point on the ice the manager aims at (the mouse cursor), rink coordinates: shots go to that side of the net, passes to the man nearest it */
-  aimAt?: { x: number; y: number } | null;
+  /** a point on the ice the manager aims at (the mouse cursor), rink coordinates: shots go to that side of the net, passes to the man nearest it;
+   *  `h`: the cursor is on a goal mouth (the 3D view) — the height there (m), where the shot goes */
+  aimAt?: { x: number; y: number; h?: number } | null;
   /**
    * The gamepad's NHL 25/26 scheme (see playInput.ts): the shot and deke buttons do nothing on defence (the checks
    * are the right stick and the buttons below); RT held with the puck is a pass loading up while the right stick
@@ -407,8 +408,8 @@ interface Seat {
   away?: boolean;
   /** the last quick side-to-side of the stickhandling (a man reaching in has a harder time) */
   handleSwing: number;
-  /** where he aims: the mouse cursor on the ice (null: the skating stick decides) */
-  aimPt: V2 | null;
+  /** where he aims: the mouse cursor on the ice, with its height when it is on the net (null: the skating stick decides) */
+  aimPt: (V2 & { h?: number }) | null;
   aimVec: V2;
   lastDekeAt: number;
   /** L3 hustle latched on (until the stick is let go or L3 is pressed again) */
@@ -472,7 +473,7 @@ export class PlayRink {
   get ctl(): string | null { return this.z.ctl; }
   set ctl(v: string | null) { this.z.ctl = v; }
   /** set by the 3D view: a screen point → rink percent (the mouse aims with it) */
-  screenPick: ((cx: number, cy: number) => { x: number; y: number } | null) | null = null;
+  screenPick: ((cx: number, cy: number) => { x: number; y: number; h?: number } | null) | null = null;
   /** goalie pulled for an extra attacker (the manager's choice for his side, the AI's for the other) */
   readonly pulled: [boolean, boolean] = [false, false];
   private agents = new Map<string, Sk>();
@@ -3076,7 +3077,10 @@ export class PlayRink {
     const d = dist(me, net);
     const pressure = Math.min(9, ...this.skaters(o, false).map(x => dist(x, a)));
     const k = this.diffOf(a);
-    const sig = (0.16 + (88 - a.shoot) * 0.008) * (kind === 'slap' ? 1.25 : kind === 'backhand' ? 1.35 : 1) * (1 + Math.hypot(a.vx, a.vy) / 16) * (pressure < 1.4 ? 1.3 : 1) * clamp(d / 11, 0.5, 2.2) / Math.sqrt(k);
+    // (the manager's own man: he aims with the marker, which has to mean something — a good shooter puts it close to
+    // it, a poor one or a hurried one still sprays it; the AI's spread is its whole aim)
+    const mine = a.manual && !!this.seatOf(a) ? 0.55 : 1;
+    const sig = mine * (0.16 + (88 - a.shoot) * 0.008) * (kind === 'slap' ? 1.25 : kind === 'backhand' ? 1.35 : 1) * (1 + Math.hypot(a.vx, a.vy) / 16) * (pressure < 1.4 ? 1.3 : 1) * clamp(d / 11, 0.5, 2.2) / Math.sqrt(k);
     ty += this.gauss() * sig; th += this.gauss() * sig * 0.55;
     th = Math.max(0.02, th);
     // speed of the puck
@@ -3143,7 +3147,9 @@ export class PlayRink {
       if (!manual) ty = MID + (n < 0 ? -1 : 1) * (POST - 0.2);
       else if (Math.abs(n) > 0.22) ty = MID + clamp(n * 2.2, -1, 1) * (POST - 0.2);
     }
-    if (manual) return { ty, th: power >= 0.62 ? 0.92 : 0.16 };
+    // (the mouse on the net picks the height as well; otherwise a loaded shot goes high, a quick one low)
+    const ph = manual ? zs!.aimPt?.h : undefined;
+    if (manual) return { ty, th: ph !== undefined ? clamp(ph, 0.1, BAR - 0.14) : power >= 0.62 ? 0.92 : 0.16 };
     const high = slap ? this.rand() < 0.4 : this.rand() < (power > 0.6 ? 0.55 : 0.3);
     return { ty, th: high ? 0.85 + this.rand() * 0.25 : 0.1 + this.rand() * 0.2 };
   }
