@@ -2,7 +2,7 @@ import type { ClubEvent, ClubEventKind, Game, GameResult, GameState, Lineup, Pla
 import { clamp, fairSalary, formatMoney, isDefense, isForward, isGoalie, points } from './ratings';
 import { isLegionnaire } from './legionnaires';
 import { assignTeamRole } from './chemistry';
-import { LG } from '../brand';
+import { FL, LG } from '../brand';
 
 /**
  * The dressing room: players come with wishes, get into conflicts, agents call, fans and the city want
@@ -105,7 +105,7 @@ export function promiseLabel(state: GameState, pr: RoomPromiseSpec): string {
     case 'scratch': return `${n} пропускает матч (наказание)`;
     case 'linemate': return `${n} и ${lastName(o)} — в одном звене`;
     case 'extend': return `${n} — продление контракта`;
-    case 'callup': return `${n} — вызов из ВХЛ`;
+    case 'callup': return `${n} — вызов из ${FL()}`;
   }
 }
 
@@ -323,13 +323,13 @@ const GENS: Gen[] = [
       return {
         title: `${p.name} просится в основу`,
         text: pick([
-          `${p.name} набирает очки в ВХЛ и звонит сам: «Я готов к ${LG()}. Сколько ещё ждать?»`,
-          `Тренер фарм-клуба считает, что ${lastName(p)} перерос ВХЛ. Игрок ждёт вызова.`,
+          `${p.name} набирает очки в ${FL()} и звонит сам: «Я готов к ${LG()}. Сколько ещё ждать?»`,
+          `Тренер фарм-клуба считает, что ${lastName(p)} перерос ${FL()}. Игрок ждёт вызова.`,
         ]),
         playerIds: [p.id],
         options: [
-          opt('promise', 'Вызовем в ближайшие две недели.', fx({ playerId: p.id, playerMorale: 7, promise: { kind: 'callup', playerId: p.id } }), 'Верните игрока из ВХЛ в течение 14 дней (Состав → вызвать).'),
-          opt('month', 'Ещё месяц в ВХЛ — там ты играешь по 20 минут.', fx({ playerId: p.id, playerMorale: -2 })),
+          opt('promise', 'Вызовем в ближайшие две недели.', fx({ playerId: p.id, playerMorale: 7, promise: { kind: 'callup', playerId: p.id } }), `Верните игрока из ${FL()} в течение 14 дней (Состав → вызвать).`),
+          opt('month', `Ещё месяц в ${FL()} — там ты играешь по 20 минут.`, fx({ playerId: p.id, playerMorale: -2 })),
           opt('no', 'Пока мест нет.', fx({ playerId: p.id, playerMorale: -6 })),
         ],
         fallback: 'no',

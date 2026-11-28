@@ -564,6 +564,8 @@ export interface OffseasonPlan {
 
 export interface LeagueInfo {
   name: string;
+  /** the second (farm) league's name — `league.farm` in the mod's roster (old saves: none, «ВХЛ» is shown) */
+  farm?: string;
   season: string;
   gamesPerTeam: number;
   salaryCap: number;

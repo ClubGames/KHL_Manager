@@ -10,7 +10,7 @@ import { claimFromWaivers, useGame } from '../game/state';
 import { Button, Panel, PlayerFace, PosBadge, Tag, TeamLogo, useUI } from './ui';
 import { ScoutOvr } from './Scout';
 import { cn } from '../utils/cn';
-import { LG } from '../brand';
+import { FL, LG } from '../brand';
 
 export function Market() {
   const s = useGame()!;
@@ -161,7 +161,7 @@ export function Market() {
           </span>
           <span>
             Заявка {LG()}: <b className={khlRosterCount >= 30 ? 'text-accent' : 'text-text'}>{khlRosterCount} / 30</b>
-            {farmRosterCount > 0 ? <span className="text-ice"> (+{farmRosterCount} в ВХЛ)</span> : null}
+            {farmRosterCount > 0 ? <span className="text-ice"> (+{farmRosterCount} в {FL()})</span> : null}
           </span>
         </div>
         <div className="hidden md:block overflow-x-auto">
@@ -232,7 +232,7 @@ export function Market() {
                       {formatMoney(ask)}
                     </td>
                     <td className="py-2 pr-4 text-right">
-                      <Button size="sm" variant={left > 0 ? 'secondary' : 'ghost'} disabled={left <= 0 || khlRosterCount >= 30} onClick={() => ui.negotiate(p.id)} title={left <= 0 ? 'Игрок прервал переговоры с вашим клубом' : khlRosterCount >= 30 ? `В основе ${LG()} 30/30 игроков — отправьте игрока в ВХЛ или освободите место` : undefined}>
+                      <Button size="sm" variant={left > 0 ? 'secondary' : 'ghost'} disabled={left <= 0 || khlRosterCount >= 30} onClick={() => ui.negotiate(p.id)} title={left <= 0 ? 'Игрок прервал переговоры с вашим клубом' : khlRosterCount >= 30 ? `В основе ${LG()} 30/30 игроков — отправьте игрока в ${FL()} или освободите место` : undefined}>
                         {left <= 0 ? 'Отказ' : 'Переговоры'}
                       </Button>
                     </td>

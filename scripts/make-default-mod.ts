@@ -349,7 +349,8 @@ const freeCoaches = [
 ];
 
 const roster = {
-  league: { name: 'ХЛ', season: '2026/27', gamesPerTeam: 68, salaryCap: 950_000_000, foreignLimit: 5 },
+  // farm: the second league the clubs send players to on two-way contracts (invented like the rest of the league)
+  league: { name: 'ХЛ', farm: 'ВЛ', season: '2026/27', gamesPerTeam: 68, salaryCap: 950_000_000, foreignLimit: 5 },
   teams,
   freeAgents,
   freeCoaches,

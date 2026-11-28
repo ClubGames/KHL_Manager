@@ -18,10 +18,28 @@ export function leagueName(s?: { league?: { name?: string } | null } | null): st
   return (typeof n === 'string' && n.trim()) || DEFAULT_LEAGUE_NAME;
 }
 
+/**
+ * The second (farm) league, where the clubs send players on two-way contracts: `league.farm` in the mod's roster
+ * (a mod is expected to name it; without it the roster gets a warning and this name is used).
+ */
+export const DEFAULT_FARM_NAME = 'ВХЛ';
+
+/** Farm league name of a career or roster: `league.farm` from the mod's roster, otherwise «ВХЛ». */
+export function farmName(s?: { league?: { farm?: string } | null } | null): string {
+  const n = s?.league?.farm;
+  return (typeof n === 'string' && n.trim()) || DEFAULT_FARM_NAME;
+}
+
 let currentLeague: string | null = null;
-/** Remember the league of the open career (called by the game store; null when back in the main menu). */
-export function setCurrentLeague(name?: string | null): void {
+let currentFarm: string | null = null;
+/** Remember the leagues of the open career (called by the game store; null when back in the main menu). */
+export function setCurrentLeague(name?: string | null, farm?: string | null): void {
   currentLeague = (typeof name === 'string' && name.trim()) || null;
+  currentFarm = (typeof farm === 'string' && farm.trim()) || null;
+}
+/** Farm league name of the open career, for texts built where the state isn't at hand («ВХЛ» when none). */
+export function FL(): string {
+  return currentFarm || DEFAULT_FARM_NAME;
 }
 /** League name of the open career, for texts built where the state isn't at hand («ХЛ» when none). */
 export function LG(): string {
