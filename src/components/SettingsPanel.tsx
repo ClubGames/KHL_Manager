@@ -11,9 +11,19 @@ export type SettingsTab = 'match' | 'play' | 'replays' | 'sound' | 'other';
 const TABS: [SettingsTab, string][] = [['match', 'Матч'], ['play', 'Игра за хоккеиста'], ['replays', 'Повторы и видео'], ['sound', 'Звук'], ['other', 'Прочее']];
 const TAB_KEY = 'khl.settingsTab';
 
+/**
+ * Where the settings are open: everywhere else ('all'), or during a match ('match') — then without what the match
+ * already runs with (the period length, the difficulty, the clock of the penalties, the watched match's start
+ * speed) and without the simulation and the app.
+ */
+export type SettingsScope = 'all' | 'match';
+/** The settings a match starts with and keeps to its end: not offered in it. */
+export const FIXED_IN_MATCH: (keyof Settings)[] = ['playPeriod', 'playDifficulty', 'playPenaltyClock', 'matchSpeed'];
+const MATCH_TABS: SettingsTab[] = ['match', 'play', 'replays', 'sound'];
+
 /** What the window shows now: the tab, or a search across all tabs. */
-type View = { tab: SettingsTab; query: string };
-const ViewCtx = createContext<View>({ tab: 'match', query: '' });
+type View = { tab: SettingsTab; query: string; scope: SettingsScope };
+const ViewCtx = createContext<View>({ tab: 'match', query: '', scope: 'all' });
 
 /** Lower case, «ё» as «е»: the search ignores both. */
 const norm = (t: string) => t.toLowerCase().replace(/ё/g, 'е');
@@ -34,6 +44,7 @@ function Section({ title, hint, tab, children }: { title: string; hint?: string;
   const view = useContext(ViewCtx);
   const searching = !!view.query.trim();
   if (!searching && view.tab !== tab) return null;
+  if (view.scope === 'match' && !MATCH_TABS.includes(tab)) return null;
   return (
     // in a search a section none of whose rows match is hidden
     <section className={cn('rounded-md border border-line bg-panel2/40', searching && '[&:not(:has([data-setting-row]))]:hidden')} data-settings-section={title} data-settings-tab={tab}>
@@ -50,8 +61,9 @@ function Row({ label, hint, children, disabled, k }: { label: string; hint?: str
   const view = useContext(ViewCtx);
   const s = useSettings();
   const [more, setMore] = useState(false);
-  if (!settingMatches(view.query, label, hint)) return null;
   const keys = k === undefined ? [] : Array.isArray(k) ? k : [k];
+  if (view.scope === 'match' && keys.some(x => FIXED_IN_MATCH.includes(x))) return null;
+  if (!settingMatches(view.query, label, hint)) return null;
   const d = defaultSettings();
   const changed = keys.filter(x => s[x] !== d[x]);
   const [first, rest] = hint ? splitHint(hint) : ['', ''];
@@ -140,8 +152,8 @@ function Profiles() {
   );
 }
 
-function readTab(): SettingsTab {
-  try { const t = sessionStorage.getItem(TAB_KEY); if (TABS.some(([x]) => x === t)) return t as SettingsTab; } catch { /* private mode */ }
+function readTab(scope: SettingsScope): SettingsTab {
+  try { const t = sessionStorage.getItem(TAB_KEY) as SettingsTab | null; if (t && TABS.some(([x]) => x === t) && (scope === 'all' || MATCH_TABS.includes(t))) return t; } catch { /* private mode */ }
   return 'match';
 }
 
@@ -150,15 +162,16 @@ function readTab(): SettingsTab {
  * settings are split into tabs (the last one opened comes back), a search finds a setting in any of them; a changed
  * setting has a «↺» back to its default, long explanations open on «ещё».
  */
-export function SettingsPanel({ onClose }: { onClose?: () => void }) {
+export function SettingsPanel({ onClose, scope = 'all', closeLabel = 'Готово', pad = 'modal', title }: { onClose?: () => void; /** a heading pinned above the search (the window has none of its own) */ title?: ReactNode; scope?: SettingsScope; closeLabel?: string; /** the padding of the scroller it sits in (the pinned search bar reaches its edges) */ pad?: 'modal' | 'sheet' }) {
   const s = useSettings();
   const set = (patch: Partial<Settings>) => setSettings(patch);
   const off3d = !s.replay3d;
-  const [tab, setTabState] = useState<SettingsTab>(readTab);
+  const [tab, setTabState] = useState<SettingsTab>(() => readTab(scope));
   const setTab = (t: SettingsTab) => { setTabState(t); try { sessionStorage.setItem(TAB_KEY, t); } catch { /* private mode */ } };
   const [query, setQuery] = useState('');
   const [confirmReset, setConfirmReset] = useState(false);
-  const view = useMemo(() => ({ tab, query }), [tab, query]);
+  const view = useMemo(() => ({ tab, query, scope }), [tab, query, scope]);
+  const tabs = scope === 'match' ? TABS.filter(([t]) => MATCH_TABS.includes(t)) : TABS;
   const searching = !!query.trim();
   const d = defaultSettings();
   // «nothing found»: the rows hide themselves, so the DOM tells after the render
@@ -168,17 +181,20 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
   const changedIn = (keys: (keyof Settings)[]) => keys.filter(k => s[k] !== d[k]).length;
   return (
     <ViewCtx.Provider value={view}>
-    <div ref={root} className="space-y-3" data-settings data-settings-view={searching ? 'search' : tab}>
-      <div className="sticky -top-3.5 sm:-top-4 z-10 -mx-3.5 sm:-mx-4 -mt-3.5 sm:-mt-4 px-3.5 sm:px-4 pt-3 pb-2 bg-panel/95 backdrop-blur border-b border-line space-y-2">
+    <div ref={root} className="space-y-3 text-left" data-settings data-settings-view={searching ? 'search' : tab} data-settings-scope={scope}>
+      <div className={cn('sticky z-10 pt-3 pb-2 bg-panel/95 backdrop-blur border-b border-line space-y-2', pad === 'sheet' ? '-top-4 sm:-top-5 -mx-4 sm:-mx-5 -mt-4 sm:-mt-5 px-4 sm:px-5' : '-top-3.5 sm:-top-4 -mx-3.5 sm:-mx-4 -mt-3.5 sm:-mt-4 px-3.5 sm:px-4')}>
+        {title}
         <div className="relative">
-          <input type="text" enterKeyHint="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск настройки: звук, камера, повтор…" aria-label="Поиск настройки"
+          <input type="text" enterKeyHint="search" value={query} onChange={(e) => setQuery(e.target.value)}
+            // Esc: clears the search, then leaves the field (the next Esc closes the window / goes back to the match)
+            onKeyDown={(e) => { if (e.key !== 'Escape' || (!query && !e.currentTarget.value)) { if (e.key === 'Escape') e.currentTarget.blur(); return; } e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); setQuery(''); }} placeholder="Поиск настройки: звук, камера, повтор…" aria-label="Поиск настройки"
             className="w-full bg-bg border border-line rounded-sm pl-8 pr-8 py-1.5 text-sm placeholder:text-muted/70 focus:border-ice outline-none" data-settings-search />
           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted text-sm pointer-events-none" aria-hidden>⌕</span>
           {query && <button type="button" onClick={() => setQuery('')} className="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 text-muted hover:text-text" aria-label="Очистить поиск">×</button>}
         </div>
         <div className={cn('flex gap-1 overflow-x-auto no-scrollbar -mx-1 px-1', searching && 'opacity-50')} role="tablist" aria-label="Разделы настроек">
-          {TABS.map(([id, label]) => {
-            const n = changedIn(TAB_KEYS[id]);
+          {tabs.map(([id, label]) => {
+            const n = changedIn(TAB_KEYS[id].filter(x => scope === 'all' || !FIXED_IN_MATCH.includes(x)));
             return (
               <button key={id} type="button" role="tab" aria-selected={!searching && tab === id} onClick={() => { setQuery(''); setTab(id); }} data-settings-tab-btn={id}
                 className={cn('shrink-0 rounded-sm px-2.5 py-1 text-xs border whitespace-nowrap', !searching && tab === id ? 'bg-ice text-bg border-ice font-semibold' : 'border-line text-muted hover:text-text')}
@@ -189,6 +205,10 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
           })}
         </div>
       </div>
+
+      {scope === 'match' && !searching && tab === 'play' && (
+        <p className="text-[11px] text-muted rounded-md border border-line/60 px-3 py-2" data-settings-fixed-note>Длина периода, сложность и время в большинстве остаются такими, с какими начался матч, — их можно изменить в настройках вне матча.</p>
+      )}
 
       <Profiles />
 
@@ -312,16 +332,16 @@ export function SettingsPanel({ onClose }: { onClose?: () => void }) {
       {empty && <NothingFound query={query} />}
 
       <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-        {confirmReset
+        {scope === 'match' ? <span /> : confirmReset
           ? <span className="flex items-center gap-1.5 text-xs" data-settings-reset-confirm>
               Сбросить все настройки?
               <Button size="sm" variant="ghost" onClick={() => { resetSettings(); setConfirmReset(false); }} data-settings-reset-yes>Да, сбросить</Button>
               <Button size="sm" variant="ghost" onClick={() => setConfirmReset(false)}>Нет</Button>
             </span>
           : <Button variant="ghost" onClick={() => setConfirmReset(true)} disabled={!changedIn(Object.keys(d) as (keyof Settings)[])} data-settings-reset>Сбросить настройки</Button>}
-        {onClose && <Button variant="primary" onClick={onClose}>Готово</Button>}
+        {onClose && <Button variant="primary" onClick={onClose} data-settings-close>{closeLabel}</Button>}
       </div>
-      <p className="text-[11px] text-muted">Настройки хранятся {platform() === 'web' ? 'в этом браузере' : 'в приложении'} и не зависят от карьеры. Изменённые отмечены «↺» — нажмите, чтобы вернуть как было.</p>
+      <p className="text-[11px] text-muted">{scope === 'match' ? 'Изменения применяются сразу, прямо в этом матче. ' : ''}Настройки хранятся {platform() === 'web' ? 'в этом браузере' : 'в приложении'} и не зависят от карьеры. Изменённые отмечены «↺» — нажмите, чтобы вернуть как было.</p>
     </div>
     </ViewCtx.Provider>
   );
@@ -339,6 +359,16 @@ const TAB_KEYS: Record<SettingsTab, (keyof Settings)[]> = {
 /** «Nothing found» for a search that left no row. */
 function NothingFound({ query }: { query: string }) {
   return <p className="text-sm text-muted text-center py-4" data-settings-nothing>Ничего не найдено по запросу «{query.trim()}».</p>;
+}
+
+/** The settings inside a match (over its pause menu): a title and the panel without what the match runs with. */
+export function MatchSettings({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="w-full" data-match-settings-panel>
+      <SettingsPanel scope="match" pad="sheet" onClose={onBack} closeLabel="Назад к матчу"
+        title={<div className="flex items-center justify-between gap-2"><h2 className="font-display text-xl">Настройки</h2><button type="button" onClick={onBack} className="text-xs text-muted hover:text-text" data-settings-back>← к матчу</button></div>} />
+    </div>
+  );
 }
 
 const PLATFORM_NAME = { web: 'Браузер', windows: 'Приложение для Windows', android: 'Приложение для Android' } as const;

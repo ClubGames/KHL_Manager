@@ -79,7 +79,10 @@ export default function App() {
   const [preselect, setPreselect] = useState<string | null>(null);
   const [savesOpen, setSavesOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsOpen, setSettingsOpenState] = useState(false);
+  const [settingsScope, setSettingsScope] = useState<'all' | 'match'>('all');
+  /** the settings window: from the menus everything, from a match without what it runs with */
+  const setSettingsOpen = (on: boolean, scope: 'all' | 'match' = 'all') => { setSettingsOpenState(on); if (on) setSettingsScope(scope); };
   const [negId, setNegId] = useState<string | null>(null);
   const saveId = s?.saveId ?? null;
   const phase = s?.phase ?? null;
@@ -134,7 +137,7 @@ export default function App() {
         setView('trades');
       },
       negotiate: (id) => setNegId(id),
-      openSettings: () => setSettingsOpen(true),
+      openSettings: (scope) => { setSettingsOpenState(true); setSettingsScope(scope ?? 'all'); },
     }),
     []
   );
@@ -175,7 +178,7 @@ export default function App() {
         {online ? <OnlineScreen onClose={() => setOnline(false)} /> : <Startup onStart={(r, id) => void startNewGame(r, id)} onOnline={() => setOnline(true)} />}
       {settingsOpen && (
         <Modal open onClose={() => setSettingsOpen(false)} width="max-w-2xl" title={<span className="font-display uppercase tracking-wide">Настройки</span>}>
-          <SettingsPanel onClose={() => setSettingsOpen(false)} />
+          <SettingsPanel onClose={() => setSettingsOpen(false)} scope={settingsScope} />
         </Modal>
       )}
         {confirmModal}
@@ -507,7 +510,7 @@ export default function App() {
       )}
       {settingsOpen && (
         <Modal open onClose={() => setSettingsOpen(false)} width="max-w-2xl" title={<span className="font-display uppercase tracking-wide">Настройки</span>}>
-          <SettingsPanel onClose={() => setSettingsOpen(false)} />
+          <SettingsPanel onClose={() => setSettingsOpen(false)} scope={settingsScope} />
         </Modal>
       )}
       {confirmModal}

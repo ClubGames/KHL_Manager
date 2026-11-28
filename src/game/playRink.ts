@@ -574,6 +574,8 @@ export class PlayRink {
 
   /* ---------------- public API ---------------- */
   get flipped() { return !!this.opts.flip; }
+  /** the automatic switch to the carrier / the defender, turned on or off mid-period (a control preference) */
+  setAutoSwitch(on: boolean) { this.opts.autoSwitch = on; }
   /** The way the manager's team attacks in presentation terms (+1: toward +x); undefined without a manager. */
   get attack(): 1 | -1 | undefined { const s = this.seats()[0]?.side ?? null; return s === null ? undefined : (s === 0) !== this.flipped ? 1 : -1; }
   /** The interactive rink is simulated as it is played: nothing to compute ahead. */
