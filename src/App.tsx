@@ -15,6 +15,7 @@ import { Match } from './components/Match';
 import { PlayMatch } from './components/PlayMatch';
 import { useMenuMusic } from './components/sound/menuMusic';
 import { OnlineScreen } from './components/online/OnlineScreen';
+import { QuickPlay } from './components/QuickPlay';
 import { MatchModeModal, type MatchMode } from './components/MatchModes';
 import { getSettings } from './game/settings';
 import { Trades } from './components/Trades';
@@ -61,7 +62,7 @@ const RAIL_LABEL: Partial<Record<string, string>> = {
 
 const MOBILE_MAIN: View[] = ['dashboard', 'roster', 'lines', 'standings'];
 
-type StartScreen = 'menu' | 'career' | 'online';
+type StartScreen = 'menu' | 'career' | 'online' | 'shootout' | 'friendly';
 /** The start screen survives a reload of the page (a mod installed, the boot watchdog) within the tab. */
 const START_KEY = 'khl.start';
 function readStart(): StartScreen {
@@ -212,6 +213,7 @@ export default function App() {
     return (
       <UIContext.Provider value={api}>
         {start === 'online' ? <OnlineScreen onClose={() => setStart('menu')} />
+          : start === 'shootout' || start === 'friendly' ? <QuickPlay kind={start === 'shootout' ? 'so' : 'match'} onClose={() => setStart('menu')} />
           : start === 'career' ? <Startup onStart={(r, id) => void startNewGame(r, id)} onBack={() => setStart('menu')} />
           : <MainMenu onPlay={(m) => setStart(m)} onOnline={() => setStart('online')} />}
       {settingsOpen && (

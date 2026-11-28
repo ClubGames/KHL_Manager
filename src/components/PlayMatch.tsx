@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import type { Game, GameEvent } from '../types';
+import type { Game, GameEvent, Player, Team } from '../types';
 import { pads } from '../padSource';
-import type { BlockKind } from '../game/engine';
+import type { BlockKind, GameSim } from '../game/engine';
 import { fmtClock } from '../game/engine';
 import { commitUserResult, makeUserSim, useGame } from '../game/state';
 import { gameClipsKey, goalClipKey, saveGameClips, type GameClips } from '../game/clipStore';
@@ -15,7 +15,7 @@ import { cn } from '../utils/cn';
 import { Button, Icon, TeamLogo } from './ui';
 import { LiveRink } from './RinkView';
 import { GoalReplay } from './GoalReplay';
-import { ShootoutBoard } from './Shootout';
+import { ShooterPicker, ShootoutBoard, ShootoutStrip } from './Shootout';
 import type { FigureRequest } from './replayCache';
 import { anyGamepad, CAPTURED, COMMAND_KEYS, detectDevice, emptyTouch, gamepadPad, keyboardPad, mergePads, mouseDown, mouseMove, mousePad, mouseUp, newMouse, stickVector, swipeDeke, swipeDir, MOVE_KEYS, keyLabel, bindKeys, bindButtons, type KeyBind, type PadBind, type Command, type InputDevice, type MouseState, type SwipeDir, type TouchState } from './playInput';
 import { suspendPadNav } from '../gamepadNav';
@@ -37,6 +37,8 @@ interface Hud {
   ctl: string | null; power: number; context: 'carry' | 'support' | 'defend' | 'celebrate' | 'stop'; labels: { shoot: string; pass: string; deke: string }; energy: number; faceoff: boolean; foCue: 'ready' | 'now' | null; foCall: string | null; pulled: boolean; move: string | null;
   /** the timeout under way; whether the manager still has his; his unit on the ice in words */
   to: { side: 0 | 1; left: number } | null; tol: boolean; line: string;
+  /** a shootout under way: the series so far and who is next */
+  so: PlayRink['shootout'];
 }
 export interface GoalItem { event: GameEvent; tau: number; clip?: ReplayClip; period: number }
 interface Toast { id: number; text: string; tone: 'goal' | 'pen' | 'info' }
@@ -150,16 +152,40 @@ class PlayTicker {
   ui = false;
 }
 
+/** A career match: the books from the save, the result into the season, the goal clips kept with the save. */
 export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => void }) {
   const s = useGame()!;
-  const P = s.players;
-  const H = s.teams[game.home], A = s.teams[game.away];
-  const userIdx: 0 | 1 = game.home === s.userTeamId ? 0 : 1;
-  const sim = useRef(makeUserSim(s, game)).current.sim;
+  const [m] = useState(() => ({ sim: makeUserSim(s, game).sim, userIdx: (game.home === s.userTeamId ? 0 : 1) as 0 | 1 }));
+  const done = (clips: GameClips) => {
+    void saveGameClips(gameClipsKey(s.saveId, s.seasonNumber, game.id), clips);
+    commitUserResult(game.id, m.sim.result());
+    onFinished();
+  };
+  return <PlayMatchCore sim={m.sim} H={s.teams[game.home]} A={s.teams[game.away]} P={s.players} userIdx={m.userIdx} onDone={done} />;
+}
+
+export interface PlayMatchProps {
+  /** the books (a career game's or a game of its own — a shootout alone starts in status 'so') */
+  sim: GameSim;
+  H: Team; A: Team; P: Record<string, Player>;
+  /** the manager's side */
+  userIdx: 0 | 1;
+  /** the match over: its goal clips (a career keeps them with the save) */
+  onDone: (clips: GameClips) => void;
+  /**
+   * A game of its own from the menu, saved nowhere: «Буллиты» ('so': the series alone — its result is the end) or
+   * «Товарищеский матч» ('match'). At the end «ещё раз» or back to the menu instead of «продолжить сезон».
+   */
+  standalone?: { kind: 'so' | 'match'; onAgain: () => void; onQuit: () => void };
+}
+
+/** The played match: the rink, the input, the HUD, the intermissions, the final. */
+export function PlayMatchCore({ sim, H, A, P, userIdx, onDone, standalone }: PlayMatchProps) {
+  const shootoutOnly = standalone?.kind === 'so' ? standalone : null;
   const settings = useSettings();
   const [phase, setPhase] = useState<Phase>('intro');
   useSilenceMenuMusic();
-  useCrowdVerdict(phase === 'final', sim.score[0] > sim.score[1]);
+  useCrowdVerdict(phase === 'final' || (!!shootoutOnly && phase === 'shootout'), sim.score[userIdx] > sim.score[1 - userIdx]);
   const [paused, setPaused] = useState(false);
   const [help, setHelp] = useState(false);
   /** the settings open over the pause menu / the intermission (without the ones the match runs with) */
@@ -171,6 +197,8 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
   const [toasts, setToasts] = useState<Toast[]>([]);
   const [replay, setReplay] = useState<GoalItem | null>(null);
   const [soEvents, setSoEvents] = useState<GameEvent[]>([]);
+  /** the manager's three shooters (the intermission before the shootout; the bench's best by default) */
+  const [soPick, setSoPick] = useState<string[] | null>(null);
   const [padOn, setPadOn] = useState(false);
   const [, setTick] = useState(0);
   const rink = useRef<PlayRink | null>(null);
@@ -222,10 +250,18 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
 
   const startBlock = () => {
     const k = blockKind();
+    fixed.current ??= { periodMinutes: settings.playPeriod, penaltyClock: settings.playPenaltyClock, difficulty: settings.playDifficulty };
     if (k === 'so') {
-      const evs = sim.simShootout();
-      setSoEvents(evs);
-      setPhase('shootout');
+      // the shootout on the ice: the manager takes his team's attempts, the goalies (and the other side's shooters) are the AI
+      rink.current = new PlayRink({
+        home: H, away: A, players: P, lineups: [sim.team(0).lineup, sim.team(1).lineup], userSide: userIdx, kind: 'so',
+        so: { order: sim.soOrders() }, ...fixed.current, autoSwitch: settings.playAutoSwitch,
+        goalies: [sim.goalies[0] ?? sim.team(0).lineup.starterG, sim.goalies[1] ?? sim.team(1).lineup.starterG], score: [sim.score[0], sim.score[1]], period: sim.period + 1,
+        timeouts: [false, false],
+      });
+      ticker.tau = 0; ticker.sec = 0;
+      setPaused(false);
+      setPhase('playing');
       return;
     }
     sim.beginPlayed(k);
@@ -260,6 +296,9 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       } else if (o.type === 'penaltyShot') {
         sim.recordPlayed(k.clock, o);
         toast(`Штрафной бросок: ${P[o.shooter]?.name ?? ''} — ${o.goal ? 'гол!' : 'не реализован'}`, o.goal ? 'goal' : 'info', 2600);
+      } else if (o.type === 'soAttempt') {
+        const mine = o.side === userIdx;
+        toast(`${o.round}-й буллит: ${P[o.shooter]?.name ?? ''} — ${o.goal ? 'ГОЛ!' : 'не забил'} · серия ${o.so[0]}:${o.so[1]}`, o.goal ? (mine ? 'goal' : 'info') : 'info', 2600);
       } else if (o.type === 'waived') {
         sim.recordPlayed(k.clock, { type: 'info', side: o.side, text: o.text });
         toast(o.text);
@@ -277,9 +316,20 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
     for (const g of goals.current) if (!g.clip && g.period === sim.period) g.clip = k.goalClip(g.tau) ?? undefined;
   };
 
+  /** The shootout played on the ice into the books: the series' board, then the final. */
+  const endShootout = (k: PlayRink) => {
+    book(k, k.drain());
+    keepClips(k);
+    const evs = sim.applyShootout(k.soAttempts);
+    rink.current = null;
+    setSoEvents(evs);
+    setPhase('shootout');
+  };
+
   const endBlock = () => {
     const k = rink.current;
     if (!k) return;
+    if (k.shootout) { endShootout(k); return; }
     book(k, k.drain());
     keepClips(k);
     sim.endPlayed(k.clock);
@@ -294,15 +344,17 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
     setBusy(true);
     window.setTimeout(() => {
       const k = rink.current;
-      if (k) { k.runToEnd(); book(k, k.drain()); keepClips(k); sim.endPlayed(k.clock); carry.current = sim.playedBox(); rink.current = null; }
+      // a shootout under way: what was taken stands, the engine takes the rest of the series
+      if (k?.shootout) { book(k, k.drain()); setSoEvents(sim.applyShootout(k.soAttempts)); rink.current = null; }
+      else if (k) { k.runToEnd(); book(k, k.drain()); keepClips(k); sim.endPlayed(k.clock); carry.current = sim.playedBox(); rink.current = null; }
       let guard = 0;
       while (sim.status !== 'done' && guard++ < 12) {
         if (sim.status === 'playing') sim.simPeriod();
         else if (sim.status === 'ot') sim.simOT();
-        else sim.simShootout();
+        else setSoEvents(sim.simShootout());
       }
       setBusy(false); setPaused(false);
-      setPhase('final');
+      setPhase(shootoutOnly ? 'shootout' : 'final');
     }, 30);
   };
 
@@ -310,9 +362,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
     // the goals as they were really scored: the match card replays these clips, not a reconstruction
     const clips: GameClips = {};
     for (const g of goals.current) if (g.clip) clips[goalClipKey(g.event)] = g.clip;
-    void saveGameClips(gameClipsKey(s.saveId, s.seasonNumber, game.id), clips);
-    commitUserResult(game.id, sim.result());
-    onFinished();
+    onDone(clips);
   };
 
   const command = (c: Command) => {
@@ -320,6 +370,8 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
     // (with the settings open the pause key goes back to the menu first)
     if (c === 'pause') { if (setOpen) { setSetOpen(false); return; } if (phase === 'playing' && !replay) setPaused((p) => !p); return; }
     if (!k || paused || phase !== 'playing') return;
+    // a shootout: no lines, no goalie to pull, no timeout — only the replay of the last goal
+    if (k.shootout && c !== 'replay') return;
     if (c === 'pull') { const on = !k.pulled[userIdx]; k.setPulled(userIdx, on); toast(on ? 'Вратарь уходит — шестой полевой' : 'Вратарь возвращается в ворота'); }
     if (c === 'change') { k.requestChange(userIdx); toast('Смена звена'); }
     if (c === 'changeF') { k.requestChange(userIdx, 'F'); toast('Смена звена нападения'); }
@@ -397,7 +449,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       if (now - hudAt > 90 || k.ended) {
         hudAt = now;
         const h = k.hud();
-        setHud({ clock: k.clock, len: k.len, score: [k.score[0], k.score[1]], shots: [sim.shots[0], sim.shots[1]], men: k.men(), boxed: k.boxed(), delayed: k.delayed, mode: k.mode, pulled: k.pulled[userIdx], ...h, to: k.timeoutNow(), tol: k.timeoutLeft[userIdx], line: k.lineOn(userIdx) });
+        setHud({ clock: k.clock, len: k.len, score: [k.score[0], k.score[1]], shots: [sim.shots[0], sim.shots[1]], men: k.men(), boxed: k.boxed(), delayed: k.delayed, mode: k.mode, pulled: k.pulled[userIdx], ...h, to: k.timeoutNow(), tol: k.timeoutLeft[userIdx], line: k.lineOn(userIdx), so: k.shootout });
       }
       if (k.ended) { endBlock(); return; }
       raf = requestAnimationFrame(loop);
@@ -450,7 +502,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
         <div className="flex flex-col items-center leading-none" data-play-score={`${score[0]}:${score[1]}`}>
           <span className="font-display text-2xl tabular">{score[0]} : {score[1]}</span>
           <span className="text-[10px] text-muted mt-0.5 tabular">
-            {phase === 'playing' && hud ? <>{periodLabel} · <b className="text-text" data-play-clock>{fmtClock(Math.max(0, Math.ceil(hud.len - hud.clock)))}</b> · <span data-play-shots>бр. {hud.shots[0]}–{hud.shots[1]}</span></> : phase === 'final' ? 'Матч окончен' : phase === 'shootout' ? 'Буллиты' : periodLabel}
+            {phase === 'playing' && hud?.so ? <span data-play-so>Буллиты · серия <b className="text-text tabular">{hud.so.so[0]}:{hud.so.so[1]}</b></span> : phase === 'playing' && hud ? <>{periodLabel} · <b className="text-text" data-play-clock>{fmtClock(Math.max(0, Math.ceil(hud.len - hud.clock)))}</b> · <span data-play-shots>бр. {hud.shots[0]}–{hud.shots[1]}</span></> : phase === 'final' ? 'Матч окончен' : phase === 'shootout' ? 'Буллиты' : periodLabel}
           </span>
         </div>
         <div className="flex items-center gap-1.5 min-w-0 flex-1 justify-end">
@@ -466,7 +518,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       </header>
 
       {/* Situation strip */}
-      {phase === 'playing' && hud && (ppSide !== null || hud.men[0] !== 5 || hud.men[1] !== 5 || hud.delayed !== null || hud.pulled || hud.faceoff) && (
+      {phase === 'playing' && hud && !hud.so && (ppSide !== null || hud.men[0] !== 5 || hud.men[1] !== 5 || hud.delayed !== null || hud.pulled || hud.faceoff) && (
         <div className="absolute left-1/2 -translate-x-1/2 top-[calc(env(safe-area-inset-top)+3.4rem)] z-20 flex items-center justify-center gap-2 text-[11px] px-2 py-0.5 rounded-sm bg-black/55 text-white pointer-events-none" data-play-strip>
           {ppSide !== null && <span className={cn('rounded-sm px-1.5 font-semibold', ppSide === userIdx ? 'bg-ok/15 text-ok' : 'bg-accent/15 text-accent')} data-play-manpower>{ppSide === userIdx ? 'Большинство' : 'Меньшинство'} {hud.men[userIdx]}×{hud.men[1 - userIdx]} · {fmtClock(Math.ceil(ppLeft))}</span>}
           {ppSide === null && hud.men[0] !== 5 && <span className="rounded-sm px-1.5 bg-amber/15 text-amber font-semibold">{hud.men[0]} на {hud.men[1]}</span>}
@@ -475,6 +527,12 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
           {hud.faceoff && !hud.foCue && <span className="text-ice font-semibold">Вбрасывание</span>}
           {hud.foCue === 'ready' && <span className="text-ice font-semibold" data-play-fo-cue="ready">Вбрасывание: {device === 'gamepad' ? 'RB или правый стик' : device === 'touch' ? 'кнопка «Вбрасывание»' : 'F'} — когда шайба падает</span>}
         </div>
+      )}
+
+      {/* The shootout: the series so far, who is up */}
+      {phase === 'playing' && hud?.so && k && (
+        <ShootoutStrip attempts={k.soAttempts} next={hud.so.live ?? hud.so.next} home={H} away={A} players={P} userIdx={userIdx}
+          className="absolute left-1/2 -translate-x-1/2 top-[calc(env(safe-area-inset-top)+3.4rem)] z-20 pointer-events-none" />
       )}
 
       {/* The ice */}
@@ -493,7 +551,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
         {/* HUD: the controlled player, the shot meter */}
         {phase === 'playing' && hud && (
           <div className={cn('absolute pointer-events-none flex flex-col gap-1 w-[min(46vw,220px)] z-10', touchUI ? 'left-1/2 -translate-x-1/2 bottom-2 w-[min(34vw,200px)]' : 'left-2 bottom-2')} data-play-hud>
-            <LineChip line={hud.line} touchUI={touchUI} />
+            {!hud.so && <LineChip line={hud.line} touchUI={touchUI} />}
             {ctlName && (
               <div className={cn('rounded-sm px-2 py-1 text-white text-xs', touchUI ? 'bg-black/25 [text-shadow:0_1px_2px_rgba(0,0,0,.85)]' : 'bg-black/55 backdrop-blur-sm')}>
                 <div className="flex items-center gap-1.5"><b className="text-[#ffd23f] tabular">#{ctlName.number}</b><span className="truncate" data-play-ctl>{ctlName.name}</span><span className="ml-auto text-[10px] text-white/60">{ctlName.position}</span></div>
@@ -529,7 +587,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
         </div>
 
         {/* Desktop quick actions */}
-        {phase === 'playing' && !touchUI && (
+        {phase === 'playing' && !touchUI && !hud?.so && (
           <div className="absolute right-2 bottom-2 flex gap-1.5 z-10">
             <Button size="sm" onClick={() => command('change')} data-play-change>Смена звена <kbd className="opacity-60">{bindKeys('change')}</kbd></Button>
             <Button size="sm" variant={hud?.pulled ? 'primary' : 'secondary'} onClick={() => command('pull')} data-play-pull>{hud?.pulled ? 'Вернуть вратаря' : 'Снять вратаря'} <kbd className="opacity-60">{bindKeys('pull')}</kbd></Button>
@@ -545,7 +603,7 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
             <Button size="sm" onClick={() => command('timeout')} data-play-timeout-skip>Продолжить игру</Button>
           </div>
         )}
-        {phase === 'playing' && touchUI && !paused && !hud?.to && !show && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} faceoff={!!hud?.faceoff} context={hud?.context ?? 'carry'} timeout={!!hud?.tol && !hud?.to} />}
+        {phase === 'playing' && touchUI && !paused && !hud?.to && !show && <TouchControls touch={touch} labels={hud?.labels ?? { shoot: 'Бросок', pass: 'Пас', deke: 'Финт' }} onCommand={command} pulled={!!hud?.pulled} faceoff={!!hud?.faceoff} context={hud?.context ?? 'carry'} timeout={!!hud?.tol && !hud?.to} calls={!hud?.so} />}
       </main>
 
       {/* Intro: what to press */}
@@ -554,16 +612,19 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
           <div className="flex items-center justify-center gap-3 mb-2">
             <TeamLogo team={H} size={40} /><span className="font-display text-xl">{H.short} — {A.short}</span><TeamLogo team={A} size={40} />
           </div>
-          <p className="text-sm text-muted mb-3">Вы управляете хоккеистом своей команды: с шайбой — тем, кто её ведёт, в обороне — ближайшим к шайбе (можно переключаться). Остальные играют сами. Голы, броски и штрафы идут в протокол как в обычном матче.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full text-left mb-3">
-            <SettingPick label="Период" value={settings.playPeriod} options={[[3, '3 мин'], [5, '5 мин'], [8, '8 мин'], [12, '12 мин']]} onChange={(v) => setSettings({ playPeriod: v })} id="playPeriod" />
+          {shootoutOnly
+            ? <p className="text-sm text-muted mb-3" data-play-so-intro>Серия буллитов: за свою команду бросаете вы — один на один с вратарём, от центра. Вратари и бьющие соперника — за компьютером. По три броска разными игроками, при равенстве — по одному до первого промаха.</p>
+            : <p className="text-sm text-muted mb-3">Вы управляете хоккеистом своей команды: с шайбой — тем, кто её ведёт, в обороне — ближайшим к шайбе (можно переключаться). Остальные играют сами. {standalone ? 'Товарищеский матч: результат никуда не записывается.' : 'Голы, броски и штрафы идут в протокол как в обычном матче.'}</p>}
+          <div className={cn('grid grid-cols-1 gap-2 w-full text-left mb-3', shootoutOnly ? 'sm:grid-cols-2' : 'sm:grid-cols-3')}>
+            {!shootoutOnly && <SettingPick label="Период" value={settings.playPeriod} options={[[3, '3 мин'], [5, '5 мин'], [8, '8 мин'], [12, '12 мин']]} onChange={(v) => setSettings({ playPeriod: v })} id="playPeriod" />}
             <SettingPick label="Сложность" value={settings.playDifficulty} options={[['rookie', 'Новичок'], ['pro', 'Профи'], ['star', 'Звезда']]} onChange={(v) => setSettings({ playDifficulty: v })} id="playDifficulty" />
             <SettingPick label="Вид" value={settings.matchView} options={[['3d', '3D'], ['2d', '2D']]} onChange={(v) => setSettings({ matchView: v })} id="matchView" />
           </div>
           <Controls device={device} />
           <div className="flex gap-2 mt-4 flex-wrap justify-center">
-            <Button variant="primary" size="lg" onClick={begin} data-play-start><Icon name="play" /> Начать матч</Button>
+            <Button variant="primary" size="lg" onClick={begin} data-play-start><Icon name="play" /> {shootoutOnly ? 'Начать серию' : 'Начать матч'}</Button>
             <Button size="lg" variant="ghost" onClick={simRest} disabled={busy}>Досимулировать</Button>
+            {standalone && <Button size="lg" variant="ghost" onClick={standalone.onQuit} data-play-quit>Назад</Button>}
           </div>
         </Sheet>
       )}
@@ -578,16 +639,19 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
       {phase === 'playing' && paused && !setOpen && (
         <Sheet>
           <h2 className="font-display text-xl mb-1">Пауза</h2>
-          <p className="text-xs text-muted mb-3">{periodLabel} · {hud ? fmtClock(Math.max(0, Math.ceil(hud.len - hud.clock))) : ''} · счёт {score[0]}:{score[1]}</p>
+          <p className="text-xs text-muted mb-3">{hud?.so ? `Буллиты · серия ${hud.so.so[0]}:${hud.so.so[1]}` : `${periodLabel} · ${hud ? fmtClock(Math.max(0, Math.ceil(hud.len - hud.clock))) : ''} · счёт ${score[0]}:${score[1]}`}</p>
           <div className="flex flex-col gap-2 w-full max-w-xs">
             <Button variant="primary" size="lg" onClick={() => setPaused(false)} data-play-resume>Продолжить</Button>
+            {!hud?.so && <>
             <Button onClick={() => { rink.current?.requestChange(userIdx); setPaused(false); }}>Смена звена</Button>
             <Button onClick={() => { const kk = rink.current; if (kk) kk.setPulled(userIdx, !kk.pulled[userIdx]); setPaused(false); }}>{hud?.pulled ? 'Вернуть вратаря' : 'Снять вратаря'}</Button>
             <Button onClick={() => { setPaused(false); if (rink.current) timeout(rink.current); }} disabled={!hud?.tol || !!hud?.to} data-play-pause-timeout>{hud?.tol ? 'Тайм-аут (30 с)' : 'Тайм-аут уже взят'}</Button>
+            </>}
             <Button variant="ghost" onClick={() => setSetOpen(true)} data-play-settings><Icon name="settings" /> Настройки</Button>
             <Button variant="ghost" onClick={() => setHelp((h) => !h)}>{help ? 'Скрыть управление' : 'Управление'}</Button>
             {goals.current.length > 0 && <Button variant="ghost" onClick={() => openReplay(goals.current[goals.current.length - 1])}>Повтор последнего гола</Button>}
-            <Button variant="ghost" onClick={simRest} disabled={busy} data-play-simrest>{busy ? 'Симуляция…' : 'Досимулировать матч'}</Button>
+            <Button variant="ghost" onClick={simRest} disabled={busy} data-play-simrest>{busy ? 'Симуляция…' : shootoutOnly ? 'Досимулировать серию' : 'Досимулировать матч'}</Button>
+            {standalone && <Button variant="ghost" onClick={standalone.onQuit} data-play-quit>Выйти в меню</Button>}
           </div>
           {help && <div className="mt-3 w-full"><Controls device={device} /></div>}
         </Sheet>
@@ -599,6 +663,12 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
           <h2 className="font-display text-xl mb-1">{periodLabel} завершён</h2>
           <BoxLine sim={sim} home={H.short} away={A.short} />
           <GoalList goals={goals.current} P={P} onReplay={(g) => setReplay(g)} />
+          {blockKind() === 'so' && (() => {
+            const cands = sim.shootoutCandidates(userIdx);
+            const cur = (soPick ?? sim.soOrder[userIdx] ?? []).filter((id) => cands.includes(id));
+            const value = [...cur, ...cands.filter((id) => !cur.includes(id))].slice(0, 3);
+            return <div className="mt-3 w-full flex justify-center"><ShooterPicker candidates={cands} value={value} players={P} onChange={(ids) => { setSoPick(ids); sim.soOrder[userIdx] = ids; }} /></div>;
+          })()}
           <div className="flex gap-2 mt-4 flex-wrap justify-center">
             <Button variant="primary" size="lg" onClick={() => { startBlock(); setTick((t) => t + 1); }} data-play-next>{nextLabel}</Button>
             <Button size="lg" variant="ghost" onClick={simRest} disabled={busy}>{busy ? 'Симуляция…' : 'Досимулировать'}</Button>
@@ -607,12 +677,19 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
         </Sheet>
       )}
 
-      {/* Shootout (by the engine) */}
+      {/* Shootout: the series' board */}
       {phase === 'shootout' && (
         <Sheet>
-          <h2 className="font-display text-xl mb-2">Буллиты</h2>
+          <h2 className="font-display text-xl mb-2" data-play-so-result={shootoutOnly ? (sim.score[userIdx] > sim.score[1 - userIdx] ? 'win' : 'loss') : undefined}>
+            {shootoutOnly ? (sim.score[userIdx] > sim.score[1 - userIdx] ? 'Серия ваша!' : 'Серия проиграна') : 'Буллиты'}
+          </h2>
           <ShootoutBoard events={soEvents} home={H} away={A} players={P} className="w-full" />
-          <Button variant="primary" size="lg" className="mt-4" onClick={() => setPhase('final')}>Итоги матча</Button>
+          {shootoutOnly ? (
+            <div className="flex gap-2 mt-4 flex-wrap justify-center">
+              <Button variant="primary" size="lg" onClick={shootoutOnly.onAgain} data-play-so-again>Ещё серия</Button>
+              <Button size="lg" variant="ghost" onClick={shootoutOnly.onQuit} data-play-quit>В меню</Button>
+            </div>
+          ) : <Button variant="primary" size="lg" className="mt-4" onClick={() => setPhase('final')} data-play-so-next>Итоги матча</Button>}
         </Sheet>
       )}
 
@@ -623,7 +700,12 @@ export function PlayMatch({ game, onFinished }: { game: Game; onFinished: () => 
           <div className="font-display text-3xl tabular mb-1">{H.short} {sim.score[0]} : {sim.score[1]} {A.short}{sim.status === 'done' && sim.period > 3 ? (soEvents.length ? ' (Б)' : ' (ОТ)') : ''}</div>
           <BoxLine sim={sim} home={H.short} away={A.short} />
           <GoalList goals={goals.current} P={P} onReplay={(g) => setReplay(g)} />
-          <Button variant="primary" size="lg" className="mt-4" onClick={finish} data-play-finish>Продолжить сезон</Button>
+          {standalone ? (
+            <div className="flex gap-2 mt-4 flex-wrap justify-center">
+              <Button variant="primary" size="lg" onClick={standalone.onAgain} data-play-again>Ещё матч</Button>
+              <Button size="lg" variant="ghost" onClick={standalone.onQuit} data-play-quit>В меню</Button>
+            </div>
+          ) : <Button variant="primary" size="lg" className="mt-4" onClick={finish} data-play-finish>Продолжить сезон</Button>}
         </Sheet>
       )}
 
@@ -806,7 +888,7 @@ const TOUCH_EXTRA: Record<TouchContext, [TouchKey, string, string][]> = {
 /** The shortest press a touch button gives the rink (ms): several of its 1/60 s steps. */
 const TAP_MS = 110;
 
-export function TouchControls({ touch, labels, onCommand, pulled, faceoff, context = 'carry', timeout = true }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean; faceoff: boolean; context?: TouchContext; /** the timeout can still be called */ timeout?: boolean }) {
+export function TouchControls({ touch, labels, onCommand, pulled, faceoff, context = 'carry', timeout = true, calls = true }: { touch: React.MutableRefObject<TouchState>; labels: { shoot: string; pass: string; deke: string }; onCommand: (c: Command) => void; pulled: boolean; faceoff: boolean; context?: TouchContext; /** the timeout can still be called */ timeout?: boolean; /** the bench's calls (a shootout has none) */ calls?: boolean }) {
   // a button that disappears with the situation (defence → attack) is let go
   useEffect(() => { for (const k of ['lb', 'lift', 'pin', 'push', 'vision', 'hustle', 'r3', 'fight', 'o', 'sq'] as const) if (!TOUCH_EXTRA[context].some(([x]) => x === k)) touch.current[k] = false; }, [context, touch]);
   useEffect(() => () => { touch.current = emptyTouch(); }, [touch]);
@@ -915,11 +997,11 @@ export function TouchControls({ touch, labels, onCommand, pulled, faceoff, conte
       {/* the draw: one big button left of the cluster, pressed as the puck falls */}
       {faceoff && <button type="button" className={cn(btn, 'z-10 pointer-events-auto rounded-2xl text-sm bg-ice/35 border-ice/70 text-white')} style={{ ...at(232, 10, 0), width: 136, height: 64 }} {...hold('faceoff')} data-touch="faceoff">Вбрасывание</button>}
       {/* the bench's calls: a row at the top right, out of the thumbs' way */}
-      <div className="absolute right-[max(.5rem,env(safe-area-inset-right))] top-[calc(env(safe-area-inset-top)+3.1rem)] pointer-events-auto flex gap-1.5" data-play-calls>
+      {calls && <div className="absolute right-[max(.5rem,env(safe-area-inset-right))] top-[calc(env(safe-area-inset-top)+3.1rem)] pointer-events-auto flex gap-1.5" data-play-calls>
         <button type="button" className={pill} onClick={() => onCommand('change')} data-touch="change">Смена звена</button>
         <button type="button" className={pill} onClick={() => onCommand('pull')} data-touch="pull">{pulled ? 'Вратаря в ворота' : 'Снять вратаря'}</button>
         <button type="button" className={pill} onClick={() => onCommand('timeout')} disabled={!timeout} data-touch="timeout">Тайм-аут</button>
-      </div>
+      </div>}
     </div>
   );
 }
