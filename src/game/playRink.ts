@@ -228,6 +228,8 @@ export const PS_PREP = { away: 6, ref: 3, place: 1.5, set: 1.0, cap: 11 };
 const PS_REF_OFF = 5.5;
 const PST = { away: 1, place: 2, skate: 3, set: 4 } as const;
 const PS_STAGE = ['away', 'place', 'skate', 'set'] as const;
+/** How long a shot press with the puck is kept when he cannot shoot at that moment (a deke, a kick, the moment after a move), s. */
+const SHOT_BUFFER = 0.35;
 /** The longest the players take to skate to their faceoff places after a whistle (s). */
 const FO_GATHER_MAX = 11;
 /** The faceoff drop (s): the official's windup before the puck leaves his hand, its fall, the centres' battle for it before one wins it. */
@@ -425,6 +427,9 @@ interface Seat {
   /** his press for the current draw (-1: none yet) and whether it was the faceoff button */
   foPress: number;
   foBtn: boolean;
+  /** a shot asked for with the puck while he could not shoot yet (a deke, a kick, a moment after a move): it goes
+   *  off as soon as he can, for a short while (-1: none) */
+  shotBuf?: number;
   /** he pressed the faceoff button while the men skate to their places: skip to the draw (online: both must) */
   foSkip?: boolean;
   /** when L2, R1 were last pressed (a tap or a hold), the last △ (twice quickly: a fight), the left stick last at rest
@@ -1991,6 +1996,7 @@ export class PlayRink {
     // a stretch that got the puck: his buttons work at once (the stick pulls it in while he skates on)
     if (me.act?.k === 'reach' && me.act.done && (press.shoot || press.pass || press.deke)) me.act = null;
     const hasPuck = p.carrier === me;
+    if (press.shoot && hasPuck) this.z.shotBuf = this.tau; else if (!hasPuck) this.z.shotBuf = -1;
     const teamHas = !hasPuck && (p.carrier?.side === s || (p.passTo?.side === s && p.passBy?.side === s));
     // auto switch on defence: the man nearest the puck when the controlled one is well out of the play
     if (this.opts.autoSwitch !== false && !hasPuck && !teamHas && this.tau >= this.autoAt && (!me.act || me.stun > 0)) {
@@ -2078,7 +2084,10 @@ export class PlayRink {
         this.deke(me, mx, my, undefined, Math.cos(rel) < -0.4 ? 'between' : Math.cos(rel) > 0.6 ? 'toe' : 'side');
         return;
       }
-      if (press.shoot && !me.act && this.tau > me.cool) me.act = { k: 'windup', t0: this.tau, what: 'shot' };
+      // (a press that came while he could not shoot is kept a moment: the shot goes off as soon as he can — let go
+      // already, at once, as a quick release; still held, it loads as usual)
+      const asked = press.shoot || (z.shotBuf !== undefined && z.shotBuf >= 0 && this.tau - z.shotBuf < SHOT_BUFFER);
+      if (asked && !me.act && this.tau > me.cool) { me.act = { k: 'windup', t0: this.tau, what: 'shot', ...(pad.shoot ? {} : { fire: true }) }; z.shotBuf = -1; }
       if (me.act?.k === 'windup' && me.act.what === 'shot') {
         const held = this.tau - me.act.t0;
         // a tap still takes a moment to get the shot off (no machine-gun releases)

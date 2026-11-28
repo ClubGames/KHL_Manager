@@ -477,4 +477,25 @@ test('the manager\'s aim: the mouse on the net puts the shot there (height too);
   }
 });
 
+test('a shot pressed while he cannot shoot yet (the end of a deke) still goes off as soon as he can — not lost', () => {
+  let fired = 0;
+  for (let trial = 0; trial < 8; trial++) {
+    const k = make(trial, { userSide: 0, autoSwitch: false }), p = k as any;
+    for (let i = 0; i < 600 && k.mode !== 'play'; i++) k.advance(1 / 60);
+    const me = p.skaters(0).find((x: any) => !x.kindD);
+    p.ctl = me.id;
+    for (const a of p.onIce()) if (a !== me && !a.goalie) { a.x = a.side ? 52 : 8; a.y = a.side ? 27 : 3; a.vx = 0; a.vy = 0; a.act = null; }
+    Object.assign(me, { x: 44, y: 15, vx: 3, vy: 0, fa: 0, act: null, cool: 0, stun: 0 });
+    p.puck.carrier = me; p.puck.dead = false; p.puck.passTo = null; p.mode = 'play';
+    k.advance(1 / 60, { ...NO_PAD, deke: true }); k.advance(1 / 60, NO_PAD);
+    assert.ok(me.cool > p.tau, 'in the deke');
+    // a quick tap 0.15 s before he could shoot again
+    while (me.cool - p.tau > 0.15) k.advance(1 / 60, NO_PAD);
+    k.advance(1 / 60, { ...NO_PAD, shoot: true }); k.advance(1 / 60, { ...NO_PAD, shoot: true }); k.advance(1 / 60, NO_PAD);
+    for (let i = 0; i < 40 && !p.puck.shot; i++) k.advance(1 / 60, NO_PAD);
+    if (p.puck.shot?.by === me) fired++;
+  }
+  assert.equal(fired, 8, `${fired}/8 shots`);
+});
+
 console.log(`\n${pass} play-control tests passed`);

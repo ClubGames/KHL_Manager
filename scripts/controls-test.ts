@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { getSettings, resetSettings, sanitizeSettings, setSettings } from '../src/game/settings';
 import {
   bindButton, bindButtons, bindKey, bindKeys, CAPTURED, COMMAND_KEYS, DEFAULT_KEYS, gamepadPad, KEY_BINDS, keyBindsOf, keyboardPad, keyLabel, KEYS, PAD, PAD_BINDS, padBindsOf, resetControls,
+  mouseDown, mouseMove, mousePad, mouseUp, newMouse,
 } from '../src/components/playInput';
 
 let pass = 0;
@@ -87,6 +88,27 @@ test('stored bindings are sanitized (junk dropped, duplicates merged)', () => {
   assert.deepEqual(sanitizeSettings({ controls: 'x' }).controls, {});
   assert.deepEqual(sanitizeSettings({}).controls, {});
   assert.ok(KEY_BINDS.length >= 29);
+});
+
+test('the left mouse button: a click always shoots — moved a little while aiming, or seen by one slow frame only; a real drag is the skill stick', () => {
+  // a click, the cursor moving 18 px meanwhile (aiming as he clicks): still the shot, not a stick gesture
+  const m = newMouse();
+  mouseDown(m, 0, 100, 100, 1000); mouseMove(m, 112, 108, 1040); mouseMove(m, 115, 109, 1080); mouseUp(m, 0, 1120);
+  assert.equal(m.mode, 'none');
+  // the next frame comes 200 ms later (a slow device): it still sees the press, the one after the release
+  assert.equal(mousePad(m, 1320).shoot, true, 'a slow frame does not lose the click');
+  assert.equal(mousePad(m, 1336).shoot, false);
+  // a held press without a drag: the shot (charging) after a moment
+  const h = newMouse();
+  mouseDown(h, 0, 0, 0, 0);
+  assert.equal(mousePad(h, 50).shoot, false); assert.equal(mousePad(h, 120).shoot, true);
+  // a real drag (long or slow): the skill stick, no shot from the button
+  const d = newMouse();
+  mouseDown(d, 0, 0, 0, 0); mouseMove(d, 0, 30, 40); mouseMove(d, 0, 70, 120);
+  const pd = mousePad(d, 130);
+  assert.equal(pd.shoot, false); assert.ok((pd.sy ?? 0) > 0.6, 'the stick pulled back');
+  mouseUp(d, 0, 400);
+  assert.equal(mousePad(d, 410).shoot, false, 'a gesture is not a click');
 });
 
 console.log(`\n${pass} controls tests passed`);
