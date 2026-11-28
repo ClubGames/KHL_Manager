@@ -1,3 +1,4 @@
+import { soNext, soShooter, soTally, type SoAttempt } from './shootout';
 import type { CoachingEffects } from './coaching';
 import type { AttackStyle, ForecheckStyle, GameEvent, GameResult, Lineup, Player, PlayerGameLine, PullGoaliePolicy, ScoringPlay, ShotPoint, ShotZone, Strength, TeamGameStats, TeamTactics } from '../types';
 import { clamp, goalieSavePct, isGoalie, lineAttack, lineDefense, pairAttack, pairDefense, unitAttack, unitDefense } from './ratings';
@@ -1284,58 +1285,95 @@ export class GameSim {
    * after three rounds, it goes on one pair at a time (any skater may shoot again) until a round is won.
    */
   private simSO(): GameEvent[] {
+    const start = this.soBegin();
+    const order = this.soOrders();
+    const att: SoAttempt[] = [];
+    for (let next = soNext(att); next && next.round < 200; next = soNext(att)) {
+      const i = next.side as TI;
+      const sh = soShooter(order[i], next.round);
+      const gid = this.goalies[1 - i] ?? null;
+      const g = gid ? this.P[gid] : null;
+      let ok = false;
+      if (sh) {
+        const sp = this.P[sh];
+        const gOvr = g ? effectiveGoalieOvr(g, this.team((1 - i) as TI).roadStreak ?? 0) + (this.team((1 - i) as TI).coaching?.goalie ?? 0) : 55;
+        const lead = (this.team(i).leadershipBonus ?? 0) * 0.008;
+        const pr = clamp(0.27 + lead + (shootoutSkill(sp) - 70) * 0.0055 - (gOvr - 70) * 0.0035, 0.12, 0.6);
+        ok = Math.random() < pr;
+      }
+      const a: SoAttempt = { side: i, shooter: sh ?? '', goalie: gid, goal: ok, round: next.round };
+      att.push(a);
+      if (sh) this.soPush(a, soTally(att));
+    }
+    this.soFinish(soTally(att));
+    return this.events.slice(start);
+  }
+
+  /** The shooting order of each side: the manager's first three, then the bench's best shooters. */
+  soOrders(): [string[], string[]] {
+    return ([0, 1] as TI[]).map((i) => {
+      const all = this.shootoutCandidates(i);
+      const picked = (this.soOrder[i] ?? []).filter((id, k, arr) => all.includes(id) && arr.indexOf(id) === k).slice(0, 3);
+      return [...picked, ...all.filter((id) => !picked.includes(id))];
+    }) as [string[], string[]];
+  }
+
+  /**
+   * A shootout played on the ice (PlayRink kind 'so'): its attempts into the books, exactly as a simulated series is
+   * written, and the game decided. An undecided list (the series was left) is finished by the engine.
+   */
+  applyShootout(played: readonly SoAttempt[]): GameEvent[] {
+    this.hadSO = true;
+    const start = this.soBegin();
+    const att: SoAttempt[] = [];
+    for (const a of played) {
+      const next = soNext(att);
+      if (!next) break;
+      const x: SoAttempt = { ...a, side: next.side, round: next.round };
+      att.push(x);
+      this.soPush(x, soTally(att));
+    }
+    // left unfinished: the rest by the engine's odds, the same order
+    if (soNext(att)) {
+      const order = this.soOrders();
+      for (let next = soNext(att); next && next.round < 200; next = soNext(att)) {
+        const sh = soShooter(order[next.side], next.round);
+        const gid = this.goalies[1 - next.side] ?? null;
+        const x: SoAttempt = { side: next.side, shooter: sh ?? '', goalie: gid, goal: !!sh && Math.random() < 0.33, round: next.round };
+        att.push(x);
+        if (sh) this.soPush(x, soTally(att));
+      }
+    }
+    this.soFinish(soTally(att));
+    this.status = 'done';
+    return this.events.slice(start);
+  }
+
+  private soBegin(): number {
     const start = this.events.length;
     this.period++;
     this.blockKind = 'so';
     this.blockStart = this.sec;
     this.push({ type: 'period_start', text: 'Начинается серия буллитов: по три броска, при равенстве — по одному до первого промаха' });
-    const order = ([0, 1] as TI[]).map((i) => {
-      const all = this.shootoutCandidates(i);
-      const picked = (this.soOrder[i] ?? []).filter((id, k, arr) => all.includes(id) && arr.indexOf(id) === k).slice(0, 3);
-      return [...picked, ...all.filter((id) => !picked.includes(id))];
-    });
-    const so: [number, number] = [0, 0];
-    const taken: [number, number] = [0, 0];
-    const attempt = (i: TI, round: number) => {
-      const list = order[i];
-      // Sudden death: the next best shooters, round after round (repeats allowed once everybody has shot).
-      const sh = list.length ? list[(round - 1) % list.length] : null;
-      const gid = this.goalies[1 - i];
-      const g = gid ? this.P[gid] : null;
-      taken[i]++;
-      if (!sh) return false;
-      const sp = this.P[sh];
-      const gOvr = g ? effectiveGoalieOvr(g, this.team((1 - i) as TI).roadStreak ?? 0) + (this.team((1 - i) as TI).coaching?.goalie ?? 0) : 55;
-      const lead = (this.team(i).leadershipBonus ?? 0) * 0.008;
-      const pr = clamp(0.27 + lead + (shootoutSkill(sp) - 70) * 0.0055 - (gOvr - 70) * 0.0035, 0.12, 0.6);
-      const ok = Math.random() < pr;
-      if (ok) so[i]++;
-      const how = ok ? pick(['ЗАБИВАЕТ финтом', 'ЗАБИВАЕТ кистевым', 'ЗАБИВАЕТ под перекладину', 'ЗАБИВАЕТ между щитков', 'ЗАБИВАЕТ с бэкхенда']) : pick(['вратарь берёт бросок', 'щиток вратаря', 'мимо ворот', 'штанга!', 'вратарь не купился на финт']);
-      this.push({
-        type: ok ? 'so_goal' : 'so_miss', team: this.team(i).id, player: sh, goalie: gid ?? null, round,
-        time: `${round}-й раунд`, so: [so[0], so[1]],
-        text: `Буллит, ${round}-й раунд: ${sp.name} — ${how}${g ? ` (${g.name})` : ''}. Серия ${so[0]}:${so[1]}`,
-      }, true);
-      return ok;
-    };
-    // The first three rounds, ended early once the result cannot change.
-    const decided = () => so[0] > so[1] + (3 - taken[1]) || so[1] > so[0] + (3 - taken[0]);
-    for (let r = 1; r <= 3 && !decided(); r++) {
-      attempt(0, r);
-      if (decided()) break;
-      attempt(1, r);
-    }
-    let round = 4;
-    while (so[0] === so[1] && round < 200) {
-      attempt(0, round);
-      attempt(1, round);
-      round++;
-    }
+    return start;
+  }
+
+  private soPush(a: SoAttempt, so: [number, number]) {
+    const sp = this.P[a.shooter];
+    const g = a.goalie ? this.P[a.goalie] : null;
+    const how = a.goal ? pick(['ЗАБИВАЕТ финтом', 'ЗАБИВАЕТ кистевым', 'ЗАБИВАЕТ под перекладину', 'ЗАБИВАЕТ между щитков', 'ЗАБИВАЕТ с бэкхенда']) : pick(['вратарь берёт бросок', 'щиток вратаря', 'мимо ворот', 'штанга!', 'вратарь не купился на финт']);
+    this.push({
+      type: a.goal ? 'so_goal' : 'so_miss', team: this.team(a.side as TI).id, player: a.shooter, goalie: a.goalie ?? null, round: a.round,
+      time: `${a.round}-й раунд`, so: [so[0], so[1]],
+      text: `Буллит, ${a.round}-й раунд: ${sp?.name ?? '—'} — ${how}${g ? ` (${g.name})` : ''}. Серия ${so[0]}:${so[1]}`,
+    }, true);
+  }
+
+  private soFinish(so: [number, number]) {
     const w: TI = so[0] > so[1] ? 0 : 1;
     this.score[w]++;
     this.periodScores.push([so[0], so[1]]);
     this.push({ type: 'period_end', text: `Буллиты ${so[0]}:${so[1]}. Победа ${this.label(w)} — ${this.score[0]}:${this.score[1]}`, score: [this.score[0], this.score[1]], so: [so[0], so[1]] }, true);
-    return this.events.slice(start);
   }
 
   private computeStars(winner: TI): string[] {

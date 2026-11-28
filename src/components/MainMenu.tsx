@@ -14,7 +14,7 @@ const arena = './arena.jpg';
 const gameLogo = './icon-game.png';
 
 /** The modes behind «Играть». */
-export type PlayMode = 'career';
+export type PlayMode = 'career' | 'shootout' | 'friendly';
 type Level = 'main' | 'play';
 
 function progress(m: SaveMeta): string {
@@ -144,7 +144,7 @@ export function MainMenu({ onPlay, onOnline }: { onPlay: (mode: PlayMode) => voi
                   title="Продолжить" sub={<><b className="text-text/90 font-semibold">{latest.teamName}</b> · {progress(latest)}</>} />
               )}
               <Tile id="play" tone={latest ? 'line' : 'accent'} icon={<Icon name="play" className="w-5 h-5" />} onClick={() => setLevel('play')}
-                title="Играть" sub="Карьера менеджера" />
+                title="Играть" sub="Карьера, буллиты, товарищеский матч" />
               <Tile id="online" tone="ice" icon="⇄" onClick={onOnline} title="Онлайн" sub="Матч с другом по Wi-Fi — телефон или компьютер" />
               <Tile id="settings" icon={<Icon name="settings" className="w-5 h-5" />} onClick={() => ui.openSettings()} title="Настройки" sub="Графика, звук, управление" />
               {err && <div className="text-xs text-accent px-1" role="alert">{err}</div>}
@@ -157,6 +157,10 @@ export function MainMenu({ onPlay, onOnline }: { onPlay: (mode: PlayMode) => voi
               </div>
               <Tile id="career" tone="accent" icon={<Icon name="trophy" className="w-5 h-5" />} onClick={() => onPlay('career')}
                 title="Карьера" sub={saves ? `Новая карьера или сохранения (${saves}) — клуб, звенья, обмены, плей-офф` : 'Возьмите клуб: звенья, обмены, контракты, плей-офф'} />
+              <Tile id="shootout" tone="ice" icon={<span className="font-display text-lg leading-none">1:1</span>} onClick={() => onPlay('shootout')}
+                title="Буллиты" sub="Серия буллитов: вы бьёте, вратарь соперника — компьютер" />
+              <Tile id="friendly" icon={<Icon name="play" className="w-5 h-5" />} onClick={() => onPlay('friendly')}
+                title="Товарищеский матч" sub="Любые два клуба, вы на льду — без сохранения" />
             </>
           )}
         </nav>

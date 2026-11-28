@@ -5,6 +5,7 @@ import type { RinkPlay, PlayKind } from './rinkAI';
 import { BOARDS_H, FACEOFF_SPOTS, RINK, glassTop, inBenchFront } from './rinkGeometry';
 import { goalieSavePct } from './ratings';
 import { EJECT_END, ejects, penLength, SHORT_MIN, type PenaltyCall, type PenKind } from './penalties';
+import { soNext, soShooter, soTally, type SoAttempt } from './shootout';
 
 /*
  * A period the manager plays himself, NHL style: he skates one of his players (the puck carrier when his team
@@ -117,7 +118,10 @@ export interface PlayRinkOptions {
   userSide: Side | null;
   /** two humans (online): the sides of seat 0 and seat 1 (overrides userSide); step / advance take a pad per seat */
   humans?: Side[];
-  kind: 'reg' | 'ot3' | 'ot5';
+  /** a period, an overtime (3 on 3 / 5 on 5) — or a shootout ('so': the series, attempt after attempt, see `so`) */
+  kind: 'reg' | 'ot3' | 'ot5' | 'so';
+  /** the shootout: each side's shooters in order (the first `rounds` different men), the side shooting first, rounds */
+  so?: { order: [string[], string[]]; first?: Side; rounds?: number };
   /** the teams have switched ends: presentation is mirrored lengthwise */
   flip?: boolean;
   /** real minutes a 20-minute period takes (the clock runs 20 / periodMinutes times faster) */
@@ -154,6 +158,8 @@ export type PlayOut =
       /** the KHL kind and what comes with it (10 minutes, the automatic ДдКМ of a major) */ kind?: PenKind; plus?: PenaltyCall['plus'] }
   /** a penalty shot taken (the foul on a breakaway): its result */
   | { type: 'penaltyShot'; side: Side; shooter: string; goalie: string | null; goal: boolean; fouler?: string; reason: string }
+  /** a shootout attempt (kind 'so'): its result and the series after it */
+  | { type: 'soAttempt'; side: Side; shooter: string; goalie: string | null; goal: boolean; round: number; so: [number, number] }
   | { type: 'hit'; side: Side; player: string; victim: string }
   | { type: 'faceoff'; side: Side; player: string }
   | { type: 'icing' | 'offside'; side: Side }
@@ -185,7 +191,9 @@ const FOLLOW: Record<ReleaseKind, number> = { wrist: .45, snap: .38, slap: .5, b
 const NET_X = RINK.length / 2 - RINK.goalLine;
 /** Calibration of the goal chance of a shot on target (AI against AI: a save % of about .910, as in the KHL — the AI
  *  takes its real chances, so the shots on net are better ones on average). */
-const GOAL_CAL = 1.25;
+const GOAL_CAL = 0.62;
+/** a penalty shot / shootout attempt against the goalie's chances of a shot from the same spot in play (calibrated) */
+const PS_CAL = 5.0;
 /** The calls of the played match, in the wording of the KHL (and of the text simulation's list). */
 const PEN_REASON = {
   trip: 'подножка', hook: 'задержка клюшкой', interference: 'атака игрока, не владеющего шайбой', charge: 'атака с разбега', board: 'толчок на борт', slash: 'удар клюшкой',
@@ -442,7 +450,7 @@ export class PlayRink {
   private agents = new Map<string, Sk>();
   private rand: () => number;
   private puck: Puck = { x: 30, y: 15, h: 0, vx: 0, vy: 0, vh: 0, carrier: null, last: null, noTouch: null, noTouchUntil: 0, shot: null, passTo: null, passBy: null, icing: null, dead: true, inNet: null, leg: 0, saucer: false };
-  private stopInfo: { reason: 'start' | 'goal' | 'freeze' | 'icing' | 'offside' | 'penalty' | 'out' | 'end'; dot: V2; until: number; icingSide: Side | null } = { reason: 'start', dot: { x: 30, y: 15 }, until: 0.6, icingSide: null };
+  private stopInfo: { reason: 'start' | 'goal' | 'freeze' | 'icing' | 'offside' | 'penalty' | 'out' | 'end' | 'so'; dot: V2; until: number; icingSide: Side | null } = { reason: 'start', dot: { x: 30, y: 15 }, until: 0.6, icingSide: null };
   /** the faceoff: `gather` while the players skate to their places (spots by id), then the official sets, winds up and throws the puck down
    *  (`drop`: the moment it leaves his hand), and the centres battle for it for a moment (`decide`) */
   private fo: { dot: V2; setAt: number; drop: number; done: boolean; gather: boolean; until: number; spots: Map<string, V2>; decide: number } | null = null;
@@ -454,9 +462,18 @@ export class PlayRink {
   /** a fight under way (at a stoppage): the two of them, since when, who wins it, the loser already down */
   private fightOn: { a: Sk; b: Sk; t0: number; win: Sk; down: boolean } | null = null;
   /** a penalty shot (a breakaway fouled from behind): awarded at the whistle, taken alone against the goalie */
-  private ps: { shooter: Sk; side: Side; fouler: Sk; reason: string; live: boolean; t0: number; goals: number; shotSeen: boolean } | null = null;
+  private ps: { shooter: Sk; side: Side; fouler: Sk | null; reason: string; live: boolean; t0: number; goals: number; shotSeen: boolean; round?: number } | null = null;
   /** A penalty shot is being taken (the match screen may show it; the clock is stopped). */
   get penaltyShot(): { shooter: string; side: Side } | null { return this.ps?.live ? { shooter: this.ps.shooter.id, side: this.ps.side } : null; }
+  /** The shootout (kind 'so'): the attempts so far. */
+  readonly soAttempts: SoAttempt[] = [];
+  /** The shootout: the series score, the next shooter (null: decided) and whether an attempt is under way. */
+  get shootout(): { so: [number, number]; next: { side: Side; round: number; shooter: string | null } | null; live: { side: Side; shooter: string; round: number } | null } | null {
+    if (this.opts.kind !== 'so') return null;
+    const next = this.ps && !this.ps.live ? { side: this.ps.side, round: this.ps.round ?? 1, shooter: this.ps.shooter.id } : null;
+    const live = this.ps?.live ? { side: this.ps.side, shooter: this.ps.shooter.id, round: this.ps.round ?? 1 } : null;
+    return { so: soTally(this.soAttempts), next, live };
+  }
   /** the goal celebration the scorer's manager picked */
   private celeb: { id: string; kind: CelebKind; t0: number } | null = null;
   private zoneIn: [boolean, boolean] = [false, false];
@@ -566,10 +583,29 @@ export class PlayRink {
       }
     }
     if (opts.timeouts) this.timeoutLeft = [opts.timeouts[0], opts.timeouts[1]];
+    if (opts.kind === 'so') {
+      // the shootout: no rules to whistle, everybody at the benches, the goalies in their nets, the first shooter up
+      this.rules = { offside: false, icing: false, penalties: false };
+      this.len = 1e9;
+      this.soQueue();
+      this.startStop('so', { x: 30, y: 15 }, 1.6);
+      return;
+    }
     for (const s of [0, 1] as Side[]) this.setUnit(s, true, false);
     // lined up for the opening faceoff from the first frame (nobody is seen jumping from the bench to his place)
     this.setupFaceoff({ x: 30, y: 15 }, null, false);
     this.startStop('start', { x: 30, y: 15 }, 0.4);
+  }
+  /** The shootout: the next attempt is set up (or, the series decided, nothing — the stop under way ends the block). */
+  private soQueue() {
+    const so = this.opts.so, next = soNext(this.soAttempts, so?.first ?? 0, so?.rounds ?? 3);
+    if (!next || next.round > 200) { this.ps = null; return; }
+    const order = so?.order[next.side] ?? [];
+    const valid = order.filter(id => { const a = this.agents.get(id); return a && !a.goalie && !a.ejected; });
+    const id = soShooter(valid.length ? valid : [...this.agents.values()].filter(a => a.side === next.side && !a.goalie).map(a => a.id), next.round);
+    const sh = id ? this.agents.get(id) : undefined;
+    if (!sh) { this.soAttempts.push({ side: next.side, shooter: '', goalie: null, goal: false, round: next.round }); this.soQueue(); return; }
+    this.ps = { shooter: sh, side: next.side, fouler: null, reason: 'буллит', live: false, t0: this.tau, goals: this.goalsFor.length, shotSeen: false, round: next.round };
   }
 
   /* ---------------- public API ---------------- */
@@ -583,7 +619,11 @@ export class PlayRink {
   get ended() { return this.mode === 'end'; }
   get lastTau() { return this.frames.length ? this.frames[this.frames.length - 1].tau : 0; }
   /** Events since the last call. */
-  drain(): PlayOut[] { const o = this.out; this.out = []; return o; }
+  drain(): PlayOut[] {
+    const o = this.out; this.out = [];
+    // a shootout's shots are not the game's (no shots on goal, no saves in the books): its attempts go as 'soAttempt'
+    return this.opts.kind === 'so' ? o.filter(x => x.type !== 'shot') : o;
+  }
   /** Advances real time by `dt` seconds (fixed internal steps of 1/60 s) with the manager's controls. */
   advance(dt: number, pad: PadState | readonly PadState[] | (() => readonly PadState[]) = NO_PAD) {
     if (this.mirror) return;
@@ -672,7 +712,7 @@ export class PlayRink {
     const lastG = this.goalsFor[this.goalsFor.length - 1], st = this.stopInfo;
     // a goal of his team: the scorer's celebration on the buttons; another stoppage: a fight can start
     const context: PlayHud['context'] = this.mode === 'stop' && st.reason === 'goal' && s !== null && lastG?.side === s ? 'celebrate'
-      : this.mode === 'stop' && st.reason !== 'end' && st.reason !== 'start' && st.reason !== 'goal' ? 'stop'
+      : this.mode === 'stop' && st.reason !== 'end' && st.reason !== 'start' && st.reason !== 'goal' && st.reason !== 'so' ? 'stop'
       : me && p.carrier === me ? 'carry' : s !== null && (p.carrier?.side === s || (p.passTo && p.passTo.side === s)) ? 'support' : 'defend';
     const act = me?.act;
     const otLoad = me?.oneTimer && me.otAt !== undefined && !act ? (me.otBy === 'stick' ? stickPower : buttonPower)(this.tau - me.otAt) : 0;
@@ -1026,6 +1066,12 @@ export class PlayRink {
     else this.deadSlide();
     if (fg) this.stepFight();
     if (this.tau < st.until || this.fightOn) return;
+    if (this.opts.kind === 'so') {
+      // the shootout: the next attempt, or the series is over
+      if (this.ps && !this.ps.live) this.startPenaltyShot();
+      else if (!this.ps) this.finish();
+      return;
+    }
     if (st.reason === 'end' || (st.reason === 'goal' && this.opts.kind !== 'reg' && this.goalsFor.length)) {
       // a timeout asked for as the period ended is not lost
       if (this.toPending !== null) { this.timeoutLeft[this.toPending] = true; this.toPending = null; }
@@ -1053,6 +1099,7 @@ export class PlayRink {
       if (g) { const n = loc(side, { x: GOAL + 1, y: MID }); g.x = n.x; g.y = n.y; g.vx = 0; g.vy = 0; g.fa = side ? Math.PI : 0; g.act = null; }
     }
     const at = loc(s, { x: RED - 2, y: MID });
+    sh.on = 'ice';
     sh.x = at.x; sh.y = at.y; sh.fa = s ? Math.PI : 0; sh.vx = Math.cos(sh.fa) * 2; sh.vy = 0; sh.act = null; sh.stun = 0; sh.fall = 0; sh.stagger = 0; sh.leaving = false;
     const p = this.puck;
     p.dead = false; p.inNet = null; p.shot = null; p.passTo = null; p.passBy = null; p.icing = null; p.h = 0; p.vh = 0; p.vx = 0; p.vy = 0;
@@ -1071,7 +1118,19 @@ export class PlayRink {
     const over = goal || (ps.shotSeen && !p.shot) || this.held !== null || (p.carrier !== sh && !p.shot && this.tau - ps.t0 > 1) || back || this.tau - ps.t0 > 14;
     if (!over) return;
     this.ps = null;
-    this.out.push({ type: 'penaltyShot', side: s, shooter: sh.id, goalie: this.goalieOf(o)?.id ?? null, goal, fouler: ps.fouler.id, reason: ps.reason });
+    if (this.opts.kind === 'so') {
+      // the shootout: the attempt into the series, the next one queued for the end of this stop
+      const a: SoAttempt = { side: s, shooter: sh.id, goalie: this.goalieOf(o)?.id ?? null, goal, round: ps.round ?? 1 };
+      this.soAttempts.push(a);
+      const so = soTally(this.soAttempts);
+      this.out.push({ type: 'soAttempt', ...a, so });
+      this.play(goal ? 'goal' : 'freeze', s, `Буллит, ${a.round}-й раунд: ${sh.name} — ${goal ? 'ГОЛ!' : 'не забил'}. Серия ${so[0]}:${so[1]}`, sh);
+      this.soQueue();
+      if (!goal && this.mode === 'play') this.startStop('so', { x: 30, y: 15 }, 1.8);
+      else if (goal) this.stopInfo.until = Math.max(this.stopInfo.until, this.tau + 2.6);
+      return;
+    }
+    this.out.push({ type: 'penaltyShot', side: s, shooter: sh.id, goalie: this.goalieOf(o)?.id ?? null, goal, ...(ps.fouler ? { fouler: ps.fouler.id } : {}), reason: ps.reason });
     if (goal) return; // the goal's own stoppage, the faceoff at centre after it
     this.play('freeze', o, `Штрафной бросок не реализован: ${sh.name}`, sh);
     if (this.mode === 'play') this.startStop('freeze', zoneDot(o, MID), 1.4);
@@ -1388,7 +1447,7 @@ export class PlayRink {
       st.until = Math.max(st.until, Math.min(g.tau + 9, this.tau + (keep ? 1.6 : CELEB_DUR - 0.2)));
       return;
     }
-    if (st.reason === 'end' || st.reason === 'start') return;
+    if (st.reason === 'end' || st.reason === 'start' || st.reason === 'so') return;
     if (press.pin) { if (this.tau - z.pinTapAt < 0.38) { press.fight = true; z.pinTapAt = -9; } else z.pinTapAt = this.tau; }
     if (!press.fight) return;
     const me = this.ctl ? this.agents.get(this.ctl) : undefined;
@@ -2832,7 +2891,10 @@ export class PlayRink {
         const dekeF = this.tau - a.dekeBeat < 0.7 && d < a.dekeR ? a.dekeF : 1;
         const tip = kind === 'tip' ? 1.5 : 1;
         const diff = !this.seats().length ? 1 : this.human(s) ? (this.difficulty === 'rookie' ? 1.5 : this.difficulty === 'star' ? 0.85 : 1.1) : (this.difficulty === 'rookie' ? 0.7 : this.difficulty === 'star' ? 1.15 : 0.95);
-        pg = GOAL_CAL * (1 - sv) * q * ZONE_MULT[zone] * corner * speedF * screen * move * rebound * dekeF * tip * diff;
+        // alone on the goalie (a penalty shot, a shootout attempt): a move of the shooter's choosing at his own pace —
+        // about three in ten go in (the KHL's and the NHL's shootouts)
+        const solo = this.ps?.live && this.ps.shooter === a ? PS_CAL : 1;
+        pg = GOAL_CAL * (1 - sv) * q * ZONE_MULT[zone] * corner * speedF * screen * move * rebound * dekeF * tip * diff * solo;
         pg = clamp(pg, 0.008, 0.8);
       }
       if (this.rand() < pg) outcome = 'goal';
@@ -3616,6 +3678,9 @@ export class PlayRink {
     // the cages from the sides and the back
     for (const cg of CAGES) if (inBox(p, cg, 0.04) && !inBox({ x: ox, y: oy }, cg, 0.04)) {
       const fromX = ox < cg.x0 - 0.04 || ox > cg.x1 + 0.04;
+      // the mouth is open: a puck coming at it between the posts and under the bar crosses the line next frame
+      const mouth = cg.x0 < L / 2 ? ox > cg.x1 : ox < cg.x0;
+      if (fromX && mouth && Math.abs(p.y - MID) < POST - 0.04 && p.h < BAR - 0.04) continue;
       if (fromX) p.vx = -p.vx * 0.4; else p.vy = -p.vy * 0.4;
       p.x = ox; p.y = oy; p.leg++; p.defl = true;
       if (p.icing !== null && (cg.x0 < L / 2 ? 0 : 1) !== p.icing) p.icing = null;
@@ -3765,6 +3830,16 @@ export class PlayRink {
     const g = this.goalieOf((1 - side) as Side);
     const xg = shot?.xg ?? clamp((1 - goalieSavePct(77)) * ZONE_MULT[zone], 0.006, 0.42);
     p.shot = null;
+    if (this.opts.kind === 'so') {
+      // a shootout goal: into the net and the scorer's celebration — the series keeps its own count (soAttempts)
+      this.goalsFor.push({ id: last.id, side, tau: this.tau, clock: this.clock });
+      const rel = [...this.releases].reverse().find(r => r.id === last.id);
+      this.clips.push({ e: { tau: this.tau, scorer: last.id, side, kind, release: rel?.t ?? this.tau - 0.4, strength: 'EV' }, clip: null });
+      p.x = at.x; p.y = at.y; p.h = Math.min(at.h, 1.0); p.inNet = (1 - side) as Side; p.carrier = null;
+      this.startStop('goal', { x: 30, y: 15 }, this.human(side) ? 3.4 : 2.8);
+      p.dead = false;
+      return;
+    }
     this.shots[side]++;
     this.score[side]++;
     this.goalsFor.push({ id: last.id, side, tau: this.tau, clock: this.clock });

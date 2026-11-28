@@ -337,7 +337,7 @@ function peerModHint(p: TeamPack, entries: ModEntry[] | null): { text: string; t
   return { text: `мод «${p.mod.name}» есть и у вас`, tone: 'ok' };
 }
 
-function ClubCard({ title, pack, ready, mine = false, side, hint }: { title: string; pack: TeamPack | null; ready: boolean; mine?: boolean; side: number; hint?: { text: string; tone: 'ok' | 'ice' | 'amber' } }) {
+export function ClubCard({ title, pack, ready, mine = false, side, hint }: { title: string; pack: TeamPack | null; ready: boolean; mine?: boolean; side: number; hint?: { text: string; tone: 'ok' | 'ice' | 'amber' } }) {
   const color = pack?.team.primaryColor ?? '#24354f';
   return (
     <div className={cn('relative rounded-md border overflow-hidden bg-panel min-h-[150px] flex flex-col', ready ? 'border-ok/60' : 'border-line')} data-online-club={mine ? 'mine' : 'peer'}>
@@ -361,7 +361,8 @@ function ClubCard({ title, pack, ready, mine = false, side, hint }: { title: str
   );
 }
 
-function ClubPicker({ entries, pack, onPick }: { entries: ModEntry[] | null; pack: TeamPack | null; onPick: (p: TeamPack) => void }) {
+/** A club from an installed mod (the online lobby; the menu's own games). */
+export function ClubPicker({ entries, pack, onPick, title = 'Ваш клуб' }: { entries: ModEntry[] | null; pack: TeamPack | null; onPick: (p: TeamPack) => void; title?: string }) {
   const [modId, setModId] = useState<string | null>(pack?.mod?.id ?? null);
   const [roster, setRoster] = useState<NormalizedRoster | null>(null);
   const [err, setErr] = useState('');
@@ -389,7 +390,7 @@ function ClubPicker({ entries, pack, onPick }: { entries: ModEntry[] | null; pac
     return packStrength({ players: t.players.map((p) => roster.players[p]).filter(Boolean) });
   };
   return (
-    <Panel title="Ваш клуб" noPad right={usable.length > 1 ? (
+    <Panel title={title} noPad right={usable.length > 1 ? (
       <select value={mod?.id ?? ''} onChange={(e) => setModId(e.target.value)} className="bg-panel2 border border-line rounded-sm px-2 py-1 text-xs max-w-[200px]" data-online-mod>
         {usable.map((m) => <option key={m.id} value={m.id}>{m.name}{m.version ? ` · ${m.version}` : ''}</option>)}
       </select>

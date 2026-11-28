@@ -1,6 +1,7 @@
 import type { GameEvent, Player, Team } from '../types';
 import { PlayerFace, TeamLogo } from './ui';
 import { cn } from '../utils/cn';
+import { soTally, type SoAttempt } from '../game/shootout';
 
 const isAttempt = (e: GameEvent) => e.type === 'so_goal' || e.type === 'so_miss';
 const surname = (name?: string) => (name ? name.split(' ').slice(-1)[0] : '—');
@@ -132,6 +133,47 @@ export function ShooterPicker({ candidates, value, onChange, players }: {
         ))}
       </div>
       <div className="mt-1.5 text-[10px] text-muted">По три разных игрока от команды. Если счёт равный — по одному броску до первого промаха, бросать может любой полевой игрок.</div>
+    </div>
+  );
+}
+
+/**
+ * The series on the ice (a shootout played, PlayRink kind 'so'): each side's attempts as marks (● goal, ✕ missed,
+ * ○ still to come in the three rounds), the score and who is up next — «ваш бросок» when it is the manager's turn.
+ */
+export function ShootoutStrip({ attempts, next, home, away, players, userIdx, className }: {
+  attempts: readonly SoAttempt[]; next: { side: 0 | 1; round: number; shooter: string | null } | null;
+  home: Team; away: Team; players: Record<string, Player>; userIdx: 0 | 1 | null; className?: string;
+}) {
+  const tally = soTally(attempts);
+  const rounds = Math.max(3, ...attempts.map((a) => a.round), next?.round ?? 0);
+  const up = next?.shooter ? players[next.shooter] : null;
+  return (
+    <div className={cn('flex flex-col items-center gap-1 rounded-sm bg-black/60 px-3 py-1.5 text-white shadow-lg', className)} data-shootout-strip data-shootout-score={`${tally[0]}:${tally[1]}`} data-shootout-next={next ? (next.side === userIdx ? 'mine' : 'theirs') : 'done'}>
+      <div className="flex items-center gap-3">
+        {([home, away] as const).map((t, ti) => (
+          <div key={t.id} className={cn('flex items-center gap-1.5', ti === 1 && 'flex-row-reverse')}>
+            <TeamLogo team={t} size={18} />
+            <div className={cn('flex gap-0.5', ti === 1 && 'flex-row-reverse')}>
+              {Array.from({ length: rounds }, (_, r) => {
+                const a = attempts.find((x) => x.side === ti && x.round === r + 1);
+                const now = next && next.side === ti && next.round === r + 1;
+                return (
+                  <span key={r} className={cn('grid h-4 w-4 place-items-center rounded-full text-[10px] leading-none', a ? (a.goal ? 'bg-ok text-black' : 'bg-white/15 text-bad') : now ? 'ring-1 ring-ice' : 'bg-white/10', r >= 3 && !a && !now && 'opacity-60')}
+                    title={a ? `${players[a.shooter]?.name ?? ''}: ${a.goal ? 'гол' : 'мимо'}` : undefined}>
+                    {a ? (a.goal ? '●' : '✕') : ''}
+                  </span>
+                );
+              })}
+            </div>
+            {ti === 0 && <b className="font-display text-lg tabular ml-1">{tally[0]}</b>}
+            {ti === 1 && <b className="font-display text-lg tabular mr-1">{tally[1]}</b>}
+          </div>
+        ))}
+      </div>
+      <div className="text-[11px] text-white/80 leading-none">
+        {next ? <>{next.round > 3 ? `${next.round}-й раунд · до первого промаха` : `${next.round}-й раунд`} · {next.side === userIdx ? <b className="text-ice">ваш бросок</b> : 'бросает соперник'}{up ? `: ${up.name}` : ''}</> : 'Серия завершена'}
+      </div>
     </div>
   );
 }
